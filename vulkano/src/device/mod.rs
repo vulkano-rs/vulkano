@@ -29,20 +29,25 @@
 //!
 //! // We just choose the first physical device. In a real application you would choose depending
 //! // on the capabilities of the physical device and the user's preferences.
-//! let physical_device = PhysicalDevice::enumerate(&instance).next().expect("No physical device");
+//! let physical_device = instance
+//!     .enumerate_physical_devices()
+//!     .unwrap_or_else(|err| panic!("Couldn't enumerate physical devices: {:?}", err))
+//!     .next().expect("No physical device");
 //!
 //! // Here is the device-creating code.
 //! let device = {
-//!     let queue_family = physical_device.queue_families().next().unwrap();
-//!     let features = Features::none();
-//!     let extensions = DeviceExtensions::none();
+//!     let features = Features::empty();
+//!     let extensions = DeviceExtensions::empty();
 //!
 //!     match Device::new(
 //!         physical_device,
 //!         DeviceCreateInfo {
 //!             enabled_extensions: extensions,
 //!             enabled_features: features,
-//!             queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+//!             queue_create_infos: vec![QueueCreateInfo {
+//!                 queue_family_index: 0,
+//!                 ..Default::default()
+//!             }],
 //!             ..Default::default()
 //!         },
 //!     ) {
@@ -96,11 +101,11 @@
 //!
 //! TODO: write
 
-use self::physical::{PhysicalDevice, QueueFamily};
+use self::physical::PhysicalDevice;
 pub(crate) use self::{features::FeaturesFfi, properties::PropertiesFfi};
 pub use self::{
     features::{FeatureRestriction, FeatureRestrictionError, Features},
-    properties::Properties,
+    queue::{Queue, QueueError, QueueFamilyProperties, QueueFlags, QueueGuard},
 };
 pub use crate::{
     device::extensions::DeviceExtensions,
@@ -108,47 +113,46 @@ pub use crate::{
     fns::DeviceFunctions,
 };
 use crate::{
-    instance::{debug::DebugUtilsLabel, Instance},
+    instance::Instance,
     memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
-    OomError, SynchronizedVulkanObject, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
-use once_cell::sync::OnceCell;
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
     error::Error,
     ffi::CString,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     fs::File,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Deref,
     ptr,
-    sync::Arc,
+    sync::{Arc, Weak},
 };
 
 pub(crate) mod extensions;
 pub(crate) mod features;
 pub mod physical;
 pub(crate) mod properties;
+mod queue;
 
 /// Represents a Vulkan context.
 #[derive(Debug)]
 pub struct Device {
     handle: ash::vk::Device,
-    instance: Arc<Instance>,
-    physical_device: usize,
+    physical_device: Arc<PhysicalDevice>,
 
     // The highest version that is supported for this device.
     // This is the minimum of Instance::max_api_version and PhysicalDevice::api_version.
     api_version: Version,
 
     fns: DeviceFunctions,
-    standard_memory_pool: OnceCell<Arc<StandardMemoryPool>>,
+    standard_memory_pool: Mutex<Weak<StandardMemoryPool>>,
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
-    active_queue_families: SmallVec<[u32; 2]>,
+    active_queue_family_indices: SmallVec<[u32; 2]>,
     allocation_count: Mutex<u32>,
     fence_pool: Mutex<Vec<ash::vk::Fence>>,
     semaphore_pool: Mutex<Vec<ash::vk::Semaphore>>,
@@ -173,7 +177,7 @@ impl Device {
     /// - Panics if `create_info.queues` contains an element where `queues` contains a value that is
     ///   not between 0.0 and 1.0 inclusive.
     pub fn new(
-        physical_device: PhysicalDevice,
+        physical_device: Arc<PhysicalDevice>,
         create_info: DeviceCreateInfo,
     ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), DeviceCreationError> {
         let DeviceCreateInfo {
@@ -192,7 +196,7 @@ impl Device {
         */
 
         struct QueueToGet {
-            family: u32,
+            queue_family_index: u32,
             id: u32,
         }
 
@@ -201,26 +205,27 @@ impl Device {
 
         let mut queue_create_infos_vk: SmallVec<[_; 2]> =
             SmallVec::with_capacity(queue_create_infos.len());
-        let mut active_queue_families: SmallVec<[_; 2]> =
+        let mut active_queue_family_indices: SmallVec<[_; 2]> =
             SmallVec::with_capacity(queue_create_infos.len());
         let mut queues_to_get: SmallVec<[_; 2]> = SmallVec::with_capacity(queue_create_infos.len());
 
-        for QueueCreateInfo {
-            family,
-            queues,
-            _ne: _,
-        } in &queue_create_infos
-        {
-            assert_eq!(
-                family.physical_device().internal_object(),
-                physical_device.internal_object()
-            );
+        for queue_create_info in &queue_create_infos {
+            let &QueueCreateInfo {
+                queue_family_index,
+                ref queues,
+                _ne: _,
+            } = queue_create_info;
+
+            // VUID-VkDeviceQueueCreateInfo-queueFamilyIndex-00381
+            // TODO: return error instead of panicking?
+            let queue_family_properties =
+                &physical_device.queue_family_properties()[queue_family_index as usize];
 
             // VUID-VkDeviceCreateInfo-queueFamilyIndex-02802
             assert!(
                 queue_create_infos
                     .iter()
-                    .filter(|qc2| qc2.family == *family)
+                    .filter(|qc2| qc2.queue_family_index == queue_family_index)
                     .count()
                     == 1
             );
@@ -233,24 +238,26 @@ impl Device {
                 .iter()
                 .all(|&priority| (0.0..=1.0).contains(&priority)));
 
-            if queues.len() > family.queues_count() {
+            if queues.len() > queue_family_properties.queue_count as usize {
                 return Err(DeviceCreationError::TooManyQueuesForFamily);
             }
 
-            let family = family.id();
             queue_create_infos_vk.push(ash::vk::DeviceQueueCreateInfo {
                 flags: ash::vk::DeviceQueueCreateFlags::empty(),
-                queue_family_index: family,
+                queue_family_index,
                 queue_count: queues.len() as u32,
                 p_queue_priorities: queues.as_ptr(), // borrows from queue_create
                 ..Default::default()
             });
-            active_queue_families.push(family);
-            queues_to_get.extend((0..queues.len() as u32).map(move |id| QueueToGet { family, id }));
+            active_queue_family_indices.push(queue_family_index);
+            queues_to_get.extend((0..queues.len() as u32).map(move |id| QueueToGet {
+                queue_family_index,
+                id,
+            }));
         }
 
-        active_queue_families.sort_unstable();
-        active_queue_families.dedup();
+        active_queue_family_indices.sort_unstable();
+        active_queue_family_indices.dedup();
         let supported_extensions = physical_device.supported_extensions();
 
         if supported_extensions.khr_portability_subset {
@@ -399,14 +406,13 @@ impl Device {
 
         let device = Arc::new(Device {
             handle,
-            instance: physical_device.instance().clone(),
-            physical_device: physical_device.index(),
+            physical_device,
             api_version,
             fns,
-            standard_memory_pool: OnceCell::new(),
+            standard_memory_pool: Mutex::new(Weak::new()),
             enabled_extensions,
             enabled_features,
-            active_queue_families,
+            active_queue_family_indices,
             allocation_count: Mutex::new(0),
             fence_pool: Mutex::new(Vec::new()),
             semaphore_pool: Mutex::new(Vec::new()),
@@ -416,20 +422,23 @@ impl Device {
         // Iterator to return the queues
         let queues_iter = {
             let device = device.clone();
-            queues_to_get
-                .into_iter()
-                .map(move |QueueToGet { family, id }| unsafe {
+            queues_to_get.into_iter().map(
+                move |QueueToGet {
+                          queue_family_index,
+                          id,
+                      }| unsafe {
                     let fns = device.fns();
                     let mut output = MaybeUninit::uninit();
-                    (fns.v1_0.get_device_queue)(handle, family, id, output.as_mut_ptr());
-
-                    Arc::new(Queue {
-                        handle: Mutex::new(output.assume_init()),
-                        device: device.clone(),
-                        family,
+                    (fns.v1_0.get_device_queue)(
+                        handle,
+                        queue_family_index,
                         id,
-                    })
-                })
+                        output.as_mut_ptr(),
+                    );
+
+                    Queue::from_handle(device.clone(), output.assume_init(), queue_family_index, id)
+                },
+            )
         };
 
         Ok((device, queues_iter))
@@ -451,47 +460,22 @@ impl Device {
         &self.fns
     }
 
-    /// Waits until all work on this device has finished. You should never need to call
-    /// this function, but it can be useful for debugging or benchmarking purposes.
-    ///
-    /// > **Note**: This is the Vulkan equivalent of OpenGL's `glFinish`.
-    ///
-    /// # Safety
-    ///
-    /// This function is not thread-safe. You must not submit anything to any of the queue
-    /// of the device (either explicitly or implicitly, for example with a future's destructor)
-    /// while this function is waiting.
-    ///
-    pub unsafe fn wait(&self) -> Result<(), OomError> {
-        let fns = self.fns();
-        (fns.v1_0.device_wait_idle)(self.handle)
-            .result()
-            .map_err(VulkanError::from)?;
-        Ok(())
+    /// Returns the physical device that was used to create this device.
+    #[inline]
+    pub fn physical_device(&self) -> &Arc<PhysicalDevice> {
+        &self.physical_device
     }
 
     /// Returns the instance used to create this device.
     #[inline]
     pub fn instance(&self) -> &Arc<Instance> {
-        &self.instance
+        self.physical_device.instance()
     }
 
-    /// Returns the physical device that was used to create this device.
+    /// Returns the queue family indices that this device uses.
     #[inline]
-    pub fn physical_device(&self) -> PhysicalDevice {
-        PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
-    }
-
-    /// Returns an iterator to the list of queues families that this device uses.
-    ///
-    /// > **Note**: Will return `-> impl ExactSizeIterator<Item = QueueFamily>` in the future.
-    // TODO: ^
-    #[inline]
-    pub fn active_queue_families(&self) -> impl ExactSizeIterator<Item = QueueFamily> {
-        let physical_device = self.physical_device();
-        self.active_queue_families
-            .iter()
-            .map(move |&id| physical_device.queue_family_by_id(id).unwrap())
+    pub fn active_queue_family_indices(&self) -> &[u32] {
+        &self.active_queue_family_indices
     }
 
     /// Returns the extensions that have been enabled on the device.
@@ -507,16 +491,25 @@ impl Device {
     }
 
     /// Returns the standard memory pool used by default if you don't provide any other pool.
-    pub fn standard_memory_pool<'a>(self: &'a Arc<Self>) -> &'a Arc<StandardMemoryPool> {
-        self.standard_memory_pool
-            .get_or_init(|| StandardMemoryPool::new(self.clone()))
+    pub fn standard_memory_pool(self: &Arc<Self>) -> Arc<StandardMemoryPool> {
+        let mut pool = self.standard_memory_pool.lock();
+
+        if let Some(p) = pool.upgrade() {
+            return p;
+        }
+
+        // The weak pointer is empty, so we create the pool.
+        let new_pool = StandardMemoryPool::new(self.clone());
+        *pool = Arc::downgrade(&new_pool);
+
+        new_pool
     }
 
     /// Used to track the number of allocations on this device.
     ///
     /// To ensure valid usage of the Vulkan API, we cannot call `vkAllocateMemory` when
     /// `maxMemoryAllocationCount` has been exceeded. See the Vulkan specs:
-    /// https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#vkAllocateMemory
+    /// https://registry.khronos.org/vulkan/specs/1.0/html/vkspec.html#vkAllocateMemory
     ///
     /// Warning: You should never modify this value, except in `device_memory` module
     pub(crate) fn allocation_count(&self) -> &Mutex<u32> {
@@ -545,6 +538,7 @@ impl Device {
     /// # Safety
     ///
     /// - `file` must be a handle to external memory that was created outside the Vulkan API.
+    #[cfg_attr(not(unix), allow(unused_variables))]
     pub unsafe fn memory_fd_properties(
         &self,
         handle_type: ExternalMemoryHandleType,
@@ -560,6 +554,9 @@ impl Device {
         #[cfg(unix)]
         {
             use std::os::unix::io::IntoRawFd;
+
+            // VUID-vkGetMemoryFdPropertiesKHR-handleType-parameter
+            handle_type.validate_device(self)?;
 
             // VUID-vkGetMemoryFdPropertiesKHR-handleType-00674
             if handle_type == ExternalMemoryHandleType::OpaqueFd {
@@ -606,12 +603,31 @@ impl Device {
         };
 
         unsafe {
-            let fns = self.instance.fns();
+            let fns = self.instance().fns();
             (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info)
                 .result()
                 .map_err(VulkanError::from)?;
         }
 
+        Ok(())
+    }
+
+    /// Waits until all work on this device has finished. You should never need to call
+    /// this function, but it can be useful for debugging or benchmarking purposes.
+    ///
+    /// > **Note**: This is the Vulkan equivalent of OpenGL's `glFinish`.
+    ///
+    /// # Safety
+    ///
+    /// This function is not thread-safe. You must not submit anything to any of the queue
+    /// of the device (either explicitly or implicitly, for example with a future's destructor)
+    /// while this function is waiting.
+    ///
+    pub unsafe fn wait_idle(&self) -> Result<(), OomError> {
+        let fns = self.fns();
+        (fns.v1_0.device_wait_idle)(self.handle)
+            .result()
+            .map_err(VulkanError::from)?;
         Ok(())
     }
 }
@@ -648,7 +664,7 @@ unsafe impl VulkanObject for Device {
 impl PartialEq for Device {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.instance == other.instance
+        self.handle == other.handle && self.physical_device == other.physical_device
     }
 }
 
@@ -658,7 +674,7 @@ impl Hash for Device {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
-        self.instance.hash(state);
+        self.physical_device.hash(state);
     }
 }
 
@@ -692,44 +708,44 @@ pub enum DeviceCreationError {
 
 impl Error for DeviceCreationError {}
 
-impl fmt::Display for DeviceCreationError {
+impl Display for DeviceCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::InitializationFailed => {
                 write!(
-                    fmt,
+                    f,
                     "failed to create the device for an implementation-specific reason"
                 )
             }
-            Self::OutOfHostMemory => write!(fmt, "no memory available on the host"),
+            Self::OutOfHostMemory => write!(f, "no memory available on the host"),
             Self::OutOfDeviceMemory => {
-                write!(fmt, "no memory available on the graphical device")
+                write!(f, "no memory available on the graphical device")
             }
-            Self::DeviceLost => write!(fmt, "failed to connect to the device"),
+            Self::DeviceLost => write!(f, "failed to connect to the device"),
             Self::TooManyQueuesForFamily => {
-                write!(fmt, "tried to create too many queues for a given family")
+                write!(f, "tried to create too many queues for a given family")
             }
             Self::FeatureNotPresent => {
                 write!(
-                    fmt,
+                    f,
                     "some of the requested features are unsupported by the physical device"
                 )
             }
             Self::PriorityOutOfRange => {
                 write!(
-                    fmt,
+                    f,
                     "the priority of one of the queues is out of the [0.0; 1.0] range"
                 )
             }
             Self::ExtensionNotPresent => {
-                write!(fmt,"some of the requested device extensions are not supported by the physical device")
+                write!(f,"some of the requested device extensions are not supported by the physical device")
             }
             Self::TooManyObjects => {
-                write!(fmt,"you have reached the limit to the number of devices that can be created from the same physical device")
+                write!(f,"you have reached the limit to the number of devices that can be created from the same physical device")
             }
-            Self::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
-            Self::FeatureRestrictionNotMet(err) => err.fmt(fmt),
+            Self::ExtensionRestrictionNotMet(err) => err.fmt(f),
+            Self::FeatureRestrictionNotMet(err) => err.fmt(f),
         }
     }
 }
@@ -766,31 +782,31 @@ impl From<FeatureRestrictionError> for DeviceCreationError {
 
 /// Parameters to create a new `Device`.
 #[derive(Clone, Debug)]
-pub struct DeviceCreateInfo<'qf> {
+pub struct DeviceCreateInfo {
     /// The extensions to enable on the device.
     ///
-    /// The default value is [`DeviceExtensions::none()`].
+    /// The default value is [`DeviceExtensions::empty()`].
     pub enabled_extensions: DeviceExtensions,
 
     /// The features to enable on the device.
     ///
-    /// The default value is [`Features::none()`].
+    /// The default value is [`Features::empty()`].
     pub enabled_features: Features,
 
     /// The queues to create for the device.
     ///
     /// The default value is empty, which must be overridden.
-    pub queue_create_infos: Vec<QueueCreateInfo<'qf>>,
+    pub queue_create_infos: Vec<QueueCreateInfo>,
 
     pub _ne: crate::NonExhaustive,
 }
 
-impl Default for DeviceCreateInfo<'static> {
+impl Default for DeviceCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
-            enabled_extensions: DeviceExtensions::none(),
-            enabled_features: Features::none(),
+            enabled_extensions: DeviceExtensions::empty(),
+            enabled_features: Features::empty(),
             queue_create_infos: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
@@ -799,9 +815,11 @@ impl Default for DeviceCreateInfo<'static> {
 
 /// Parameters to create queues in a new `Device`.
 #[derive(Clone, Debug)]
-pub struct QueueCreateInfo<'qf> {
-    /// The queue family to create queues for.
-    pub family: QueueFamily<'qf>,
+pub struct QueueCreateInfo {
+    /// The index of the queue family to create queues for.
+    ///
+    /// The default value is `0`.
+    pub queue_family_index: u32,
 
     /// The queues to create for the given queue family, each with a relative priority.
     ///
@@ -816,12 +834,11 @@ pub struct QueueCreateInfo<'qf> {
     pub _ne: crate::NonExhaustive,
 }
 
-impl<'qf> QueueCreateInfo<'qf> {
-    /// Returns a `QueueCreateInfo` with the given queue family.
+impl Default for QueueCreateInfo {
     #[inline]
-    pub fn family(family: QueueFamily) -> QueueCreateInfo {
-        QueueCreateInfo {
-            family,
+    fn default() -> Self {
+        Self {
+            queue_family_index: 0,
             queues: vec![0.5],
             _ne: crate::NonExhaustive(()),
         }
@@ -864,6 +881,11 @@ pub enum MemoryFdPropertiesError {
     /// No memory available on the host.
     OutOfHostMemory,
 
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
     /// The provided external handle was not valid.
     InvalidExternalHandle,
 
@@ -876,19 +898,29 @@ pub enum MemoryFdPropertiesError {
 
 impl Error for MemoryFdPropertiesError {}
 
-impl fmt::Display for MemoryFdPropertiesError {
+impl Display for MemoryFdPropertiesError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
-            Self::OutOfHostMemory => write!(fmt, "no memory available on the host"),
+            Self::OutOfHostMemory => write!(f, "no memory available on the host"),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+
             Self::InvalidExternalHandle => {
-                write!(fmt, "the provided external handle was not valid")
+                write!(f, "the provided external handle was not valid")
             }
             Self::InvalidExternalHandleType => {
-                write!(fmt, "the provided external handle type was not valid")
+                write!(f, "the provided external handle type was not valid")
             }
             Self::NotSupported => write!(
-                fmt,
+                f,
                 "the `khr_external_memory_fd` extension was not enabled on the device",
             ),
         }
@@ -906,249 +938,12 @@ impl From<VulkanError> for MemoryFdPropertiesError {
     }
 }
 
-/// Represents a queue where commands can be submitted.
-// TODO: should use internal synchronization?
-#[derive(Debug)]
-pub struct Queue {
-    handle: Mutex<ash::vk::Queue>,
-    device: Arc<Device>,
-    family: u32,
-    id: u32, // id within family
-}
-
-impl Queue {
-    /// Returns the device this queue belongs to.
+impl From<RequirementNotMet> for MemoryFdPropertiesError {
     #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
-    /// Returns the family this queue belongs to.
-    #[inline]
-    pub fn family(&self) -> QueueFamily {
-        self.device
-            .physical_device()
-            .queue_family_by_id(self.family)
-            .unwrap()
-    }
-
-    /// Returns the index of this queue within its family.
-    #[inline]
-    pub fn id_within_family(&self) -> u32 {
-        self.id
-    }
-
-    /// Waits until all work on this queue has finished.
-    ///
-    /// Just like `Device::wait()`, you shouldn't have to call this function in a typical program.
-    #[inline]
-    pub fn wait(&self) -> Result<(), OomError> {
-        unsafe {
-            let fns = self.device.fns();
-            let handle = self.handle.lock();
-            (fns.v1_0.queue_wait_idle)(*handle)
-                .result()
-                .map_err(VulkanError::from)?;
-            Ok(())
-        }
-    }
-
-    /// Opens a queue debug label region.
-    ///
-    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
-    /// enabled on the instance.
-    #[inline]
-    pub fn begin_debug_utils_label(
-        &self,
-        mut label_info: DebugUtilsLabel,
-    ) -> Result<(), DebugUtilsError> {
-        self.validate_begin_debug_utils_label(&mut label_info)?;
-
-        let DebugUtilsLabel {
-            label_name,
-            color,
-            _ne: _,
-        } = label_info;
-
-        let label_name_vk = CString::new(label_name.as_str()).unwrap();
-        let label_info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: label_name_vk.as_ptr(),
-            color,
-            ..Default::default()
-        };
-
-        unsafe {
-            let fns = self.device.instance().fns();
-            let handle = self.handle.lock();
-            (fns.ext_debug_utils.queue_begin_debug_utils_label_ext)(*handle, &label_info);
-        }
-
-        Ok(())
-    }
-
-    fn validate_begin_debug_utils_label(
-        &self,
-        _label_info: &mut DebugUtilsLabel,
-    ) -> Result<(), DebugUtilsError> {
-        if !self
-            .device()
-            .instance()
-            .enabled_extensions()
-            .ext_debug_utils
-        {
-            return Err(DebugUtilsError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to submit a debug utils command",
-            });
-        }
-
-        Ok(())
-    }
-
-    /// Closes a queue debug label region.
-    ///
-    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
-    /// enabled on the instance.
-    ///
-    /// # Safety
-    ///
-    /// - There must be an outstanding queue label region begun with `begin_debug_utils_label` in
-    ///   the queue.
-    #[inline]
-    pub unsafe fn end_debug_utils_label(&self) -> Result<(), DebugUtilsError> {
-        self.validate_end_debug_utils_label()?;
-
-        {
-            let fns = self.device.instance().fns();
-            let handle = self.handle.lock();
-            (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(*handle);
-        }
-
-        Ok(())
-    }
-
-    fn validate_end_debug_utils_label(&self) -> Result<(), DebugUtilsError> {
-        if !self
-            .device()
-            .instance()
-            .enabled_extensions()
-            .ext_debug_utils
-        {
-            return Err(DebugUtilsError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to submit a debug utils command",
-            });
-        }
-
-        // VUID-vkQueueEndDebugUtilsLabelEXT-None-01911
-        // TODO: not checked, so unsafe for now
-
-        Ok(())
-    }
-
-    /// Inserts a queue debug label.
-    ///
-    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
-    /// enabled on the instance.
-    #[inline]
-    pub fn insert_debug_utils_label(
-        &mut self,
-        mut label_info: DebugUtilsLabel,
-    ) -> Result<(), DebugUtilsError> {
-        self.validate_insert_debug_utils_label(&mut label_info)?;
-
-        let DebugUtilsLabel {
-            label_name,
-            color,
-            _ne: _,
-        } = label_info;
-
-        let label_name_vk = CString::new(label_name.as_str()).unwrap();
-        let label_info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: label_name_vk.as_ptr(),
-            color,
-            ..Default::default()
-        };
-
-        unsafe {
-            let fns = self.device.instance().fns();
-            let handle = self.handle.lock();
-            (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(*handle, &label_info);
-        }
-
-        Ok(())
-    }
-
-    fn validate_insert_debug_utils_label(
-        &self,
-        _label_info: &mut DebugUtilsLabel,
-    ) -> Result<(), DebugUtilsError> {
-        if !self
-            .device()
-            .instance()
-            .enabled_extensions()
-            .ext_debug_utils
-        {
-            return Err(DebugUtilsError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to submit a debug utils command",
-            });
-        }
-
-        Ok(())
-    }
-}
-
-unsafe impl SynchronizedVulkanObject for Queue {
-    type Object = ash::vk::Queue;
-
-    #[inline]
-    fn internal_object_guard(&self) -> MutexGuard<Self::Object> {
-        self.handle.lock()
-    }
-}
-
-unsafe impl DeviceOwned for Queue {
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-impl PartialEq for Queue {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.family == other.family && self.device == other.device
-    }
-}
-
-impl Eq for Queue {}
-
-impl Hash for Queue {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-        self.family.hash(state);
-        self.device.hash(state);
-    }
-}
-
-/// Error that can happen when submitting a debug utils command to a queue.
-#[derive(Clone, Debug)]
-pub enum DebugUtilsError {
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-}
-
-impl Error for DebugUtilsError {}
-
-impl fmt::Display for DebugUtilsError {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -1156,8 +951,8 @@ impl fmt::Display for DebugUtilsError {
 #[cfg(test)]
 mod tests {
     use crate::device::{
-        physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceCreationError,
-        FeatureRestriction, FeatureRestrictionError, Features, QueueCreateInfo,
+        Device, DeviceCreateInfo, DeviceCreationError, FeatureRestriction, FeatureRestrictionError,
+        Features, QueueCreateInfo,
     };
     use std::sync::Arc;
 
@@ -1170,20 +965,25 @@ mod tests {
     #[test]
     fn too_many_queues() {
         let instance = instance!();
-        let physical = match PhysicalDevice::enumerate(&instance).next() {
+        let physical_device = match instance.enumerate_physical_devices().unwrap().next() {
             Some(p) => p,
             None => return,
         };
 
-        let family = physical.queue_families().next().unwrap();
-        let _queues = (0..family.queues_count() + 1).map(|_| (family, 1.0));
+        let queue_family_index = 0;
+        let queue_family_properties =
+            &physical_device.queue_family_properties()[queue_family_index as usize];
+        let queues = (0..queue_family_properties.queue_count + 1)
+            .map(|_| (0.5))
+            .collect();
 
         match Device::new(
-            physical,
+            physical_device,
             DeviceCreateInfo {
                 queue_create_infos: vec![QueueCreateInfo {
-                    queues: (0..family.queues_count() + 1).map(|_| (0.5)).collect(),
-                    ..QueueCreateInfo::family(family)
+                    queue_family_index,
+                    queues,
+                    ..Default::default()
                 }],
                 ..Default::default()
             },
@@ -1194,26 +994,27 @@ mod tests {
     }
 
     #[test]
-    fn unsupposed_features() {
+    fn unsupported_features() {
         let instance = instance!();
-        let physical = match PhysicalDevice::enumerate(&instance).next() {
+        let physical_device = match instance.enumerate_physical_devices().unwrap().next() {
             Some(p) => p,
             None => return,
         };
 
-        let family = physical.queue_families().next().unwrap();
-
         let features = Features::all();
         // In the unlikely situation where the device supports everything, we ignore the test.
-        if physical.supported_features().is_superset_of(&features) {
+        if physical_device.supported_features().contains(&features) {
             return;
         }
 
         match Device::new(
-            physical,
+            physical_device,
             DeviceCreateInfo {
                 enabled_features: features,
-                queue_create_infos: vec![QueueCreateInfo::family(family)],
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index: 0,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
         ) {
@@ -1228,20 +1029,19 @@ mod tests {
     #[test]
     fn priority_out_of_range() {
         let instance = instance!();
-        let physical = match PhysicalDevice::enumerate(&instance).next() {
+        let physical_device = match instance.enumerate_physical_devices().unwrap().next() {
             Some(p) => p,
             None => return,
         };
 
-        let family = physical.queue_families().next().unwrap();
-
         assert_should_panic!({
             Device::new(
-                physical,
+                physical_device.clone(),
                 DeviceCreateInfo {
                     queue_create_infos: vec![QueueCreateInfo {
+                        queue_family_index: 0,
                         queues: vec![1.4],
-                        ..QueueCreateInfo::family(family)
+                        ..Default::default()
                     }],
                     ..Default::default()
                 },
@@ -1250,11 +1050,12 @@ mod tests {
 
         assert_should_panic!({
             Device::new(
-                physical,
+                physical_device,
                 DeviceCreateInfo {
                     queue_create_infos: vec![QueueCreateInfo {
+                        queue_family_index: 0,
                         queues: vec![-0.2],
-                        ..QueueCreateInfo::family(family)
+                        ..Default::default()
                     }],
                     ..Default::default()
                 },

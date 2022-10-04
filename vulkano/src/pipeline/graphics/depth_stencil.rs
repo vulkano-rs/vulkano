@@ -20,7 +20,7 @@
 //! value in the stencil buffer at each fragment's location. Depending on the outcome of the
 //! depth and stencil tests, the value of the stencil buffer at that location can be updated.
 
-use crate::pipeline::StateMode;
+use crate::{macros::vulkan_enum, pipeline::StateMode};
 use std::ops::RangeInclusive;
 
 /// The state in a graphics pipeline describing how the depth, depth bounds and stencil tests
@@ -244,41 +244,49 @@ impl Default for StencilOps {
     }
 }
 
-/// Operation to perform after the depth and stencil tests.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(i32)]
-pub enum StencilOp {
-    Keep = ash::vk::StencilOp::KEEP.as_raw(),
-    Zero = ash::vk::StencilOp::ZERO.as_raw(),
-    Replace = ash::vk::StencilOp::REPLACE.as_raw(),
-    IncrementAndClamp = ash::vk::StencilOp::INCREMENT_AND_CLAMP.as_raw(),
-    DecrementAndClamp = ash::vk::StencilOp::DECREMENT_AND_CLAMP.as_raw(),
-    Invert = ash::vk::StencilOp::INVERT.as_raw(),
-    IncrementAndWrap = ash::vk::StencilOp::INCREMENT_AND_WRAP.as_raw(),
-    DecrementAndWrap = ash::vk::StencilOp::DECREMENT_AND_WRAP.as_raw(),
+vulkan_enum! {
+    /// Operation to perform after the depth and stencil tests.
+    #[non_exhaustive]
+    StencilOp = StencilOp(i32);
+
+    // TODO: document
+    Keep = KEEP,
+
+    // TODO: document
+    Zero = ZERO,
+
+    // TODO: document
+    Replace = REPLACE,
+
+    // TODO: document
+    IncrementAndClamp = INCREMENT_AND_CLAMP,
+
+    // TODO: document
+    DecrementAndClamp = DECREMENT_AND_CLAMP,
+
+    // TODO: document
+    Invert = INVERT,
+
+    // TODO: document
+    IncrementAndWrap = INCREMENT_AND_WRAP,
+
+    // TODO: document
+    DecrementAndWrap = DECREMENT_AND_WRAP,
 }
 
-impl From<StencilOp> for ash::vk::StencilOp {
-    #[inline]
-    fn from(val: StencilOp) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// Specifies a face for stencil operations.
+    #[non_exhaustive]
+    StencilFaces = StencilFaceFlags(u32);
 
-/// Specifies a face for stencil operations.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
-pub enum StencilFaces {
-    Front = ash::vk::StencilFaceFlags::FRONT.as_raw(),
-    Back = ash::vk::StencilFaceFlags::BACK.as_raw(),
-    FrontAndBack = ash::vk::StencilFaceFlags::FRONT_AND_BACK.as_raw(),
-}
+    // TODO: document
+    Front = FRONT,
 
-impl From<StencilFaces> for ash::vk::StencilFaceFlags {
-    #[inline]
-    fn from(val: StencilFaces) -> Self {
-        Self::from_raw(val as u32)
-    }
+    // TODO: document
+    Back = BACK,
+
+    // TODO: document
+    FrontAndBack = FRONT_AND_BACK,
 }
 
 /// Specifies a dynamic state value for the front and back faces.
@@ -288,33 +296,34 @@ pub struct DynamicStencilValue {
     pub back: u32,
 }
 
-/// Specifies how two values should be compared to decide whether a test passes or fails.
-///
-/// Used for both depth testing and stencil testing.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(i32)]
-pub enum CompareOp {
-    /// The test never passes.
-    Never = ash::vk::CompareOp::NEVER.as_raw(),
-    /// The test passes if `value < reference_value`.
-    Less = ash::vk::CompareOp::LESS.as_raw(),
-    /// The test passes if `value == reference_value`.
-    Equal = ash::vk::CompareOp::EQUAL.as_raw(),
-    /// The test passes if `value <= reference_value`.
-    LessOrEqual = ash::vk::CompareOp::LESS_OR_EQUAL.as_raw(),
-    /// The test passes if `value > reference_value`.
-    Greater = ash::vk::CompareOp::GREATER.as_raw(),
-    /// The test passes if `value != reference_value`.
-    NotEqual = ash::vk::CompareOp::NOT_EQUAL.as_raw(),
-    /// The test passes if `value >= reference_value`.
-    GreaterOrEqual = ash::vk::CompareOp::GREATER_OR_EQUAL.as_raw(),
-    /// The test always passes.
-    Always = ash::vk::CompareOp::ALWAYS.as_raw(),
-}
+vulkan_enum! {
+    /// Specifies how two values should be compared to decide whether a test passes or fails.
+    ///
+    /// Used for both depth testing and stencil testing.
+    #[non_exhaustive]
+    CompareOp = CompareOp(i32);
 
-impl From<CompareOp> for ash::vk::CompareOp {
-    #[inline]
-    fn from(val: CompareOp) -> Self {
-        Self::from_raw(val as i32)
-    }
+    /// The test never passes.
+    Never = NEVER,
+
+    /// The test passes if `value < reference_value`.
+    Less = LESS,
+
+    /// The test passes if `value == reference_value`.
+    Equal = EQUAL,
+
+    /// The test passes if `value <= reference_value`.
+    LessOrEqual = LESS_OR_EQUAL,
+
+    /// The test passes if `value > reference_value`.
+    Greater = GREATER,
+
+    /// The test passes if `value != reference_value`.
+    NotEqual = NOT_EQUAL,
+
+    /// The test passes if `value >= reference_value`.
+    GreaterOrEqual = GREATER_OR_EQUAL,
+
+    /// The test always passes.
+    Always = ALWAYS,
 }

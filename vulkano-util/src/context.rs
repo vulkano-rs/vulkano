@@ -49,7 +49,7 @@ impl Default for VulkanoConfig {
     fn default() -> Self {
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
-            ..DeviceExtensions::none()
+            ..DeviceExtensions::empty()
         };
         VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
@@ -57,7 +57,7 @@ impl Default for VulkanoConfig {
                 enabled_extensions: InstanceExtensions {
                     #[cfg(target_os = "macos")]
                     khr_portability_enumeration: true,
-                    ..InstanceExtensions::none()
+                    ..InstanceExtensions::empty()
                 },
                 #[cfg(target_os = "macos")]
                 enumerate_portability: true,
@@ -65,7 +65,7 @@ impl Default for VulkanoConfig {
             },
             debug_create_info: None,
             device_filter_fn: Arc::new(move |p| {
-                p.supported_extensions().is_superset_of(&device_extensions)
+                p.supported_extensions().contains(&device_extensions)
             }),
             device_priority_fn: Arc::new(|p| match p.properties().device_type {
                 PhysicalDeviceType::DiscreteGpu => 1,
@@ -73,10 +73,11 @@ impl Default for VulkanoConfig {
                 PhysicalDeviceType::VirtualGpu => 3,
                 PhysicalDeviceType::Cpu => 4,
                 PhysicalDeviceType::Other => 5,
+                _ => 6,
             }),
             print_device_name: false,
             device_extensions,
-            device_features: Features::none(),
+            device_features: Features::empty(),
         }
     }
 }
@@ -148,7 +149,9 @@ impl VulkanoContext {
                 });
 
         // Get prioritized device
-        let physical_device = PhysicalDevice::enumerate(&instance)
+        let physical_device = instance
+            .enumerate_physical_devices()
+            .expect("Failed to enumerate physical devices")
             .filter(|p| (config.device_filter_fn)(p))
             .min_by_key(|p| (config.device_priority_fn)(p))
             .expect("Failed to create physical device");
@@ -180,34 +183,49 @@ impl VulkanoContext {
     /// Creates vulkano device with required queue families and required extensions. Creates a
     /// separate queue for compute if possible. If not, same queue as graphics is used.
     fn create_device(
-        physical: PhysicalDevice,
+        physical_device: Arc<PhysicalDevice>,
         device_extensions: DeviceExtensions,
         features: Features,
     ) -> (Arc<Device>, Arc<Queue>, Arc<Queue>) {
-        let (gfx_index, queue_family_graphics) = physical
-            .queue_families()
+        let queue_family_graphics = physical_device
+            .queue_family_properties()
+            .iter()
             .enumerate()
-            .find(|&(_i, q)| q.supports_graphics())
+            .map(|(i, q)| (i as u32, q))
+            .find(|(_i, q)| q.queue_flags.graphics)
+            .map(|(i, _)| i)
             .expect("Could not find a queue that supports graphics");
         // Try finding a separate queue for compute
-        let compute_family_data = physical
-            .queue_families()
+        let queue_family_compute = physical_device
+            .queue_family_properties()
+            .iter()
             .enumerate()
-            .find(|&(i, q)| q.supports_compute() && i != gfx_index);
+            .map(|(i, q)| (i as u32, q))
+            .find(|(i, q)| q.queue_flags.compute && *i != queue_family_graphics)
+            .map(|(i, _)| i);
+        let is_separate_compute_queue = queue_family_compute.is_some();
 
-        let is_separate_compute_queue = compute_family_data.is_some();
-        let queue_create_infos = if is_separate_compute_queue {
-            let (_i, queue_family_compute) = compute_family_data.unwrap();
+        let queue_create_infos = if let Some(queue_family_compute) = queue_family_compute {
             vec![
-                QueueCreateInfo::family(queue_family_graphics),
-                QueueCreateInfo::family(queue_family_compute),
+                QueueCreateInfo {
+                    queue_family_index: queue_family_graphics,
+                    ..Default::default()
+                },
+                QueueCreateInfo {
+                    queue_family_index: queue_family_compute,
+                    ..Default::default()
+                },
             ]
         } else {
-            vec![QueueCreateInfo::family(queue_family_graphics)]
+            vec![QueueCreateInfo {
+                queue_family_index: queue_family_graphics,
+                ..Default::default()
+            }]
         };
+
         let (device, mut queues) = {
             Device::new(
-                physical,
+                physical_device,
                 DeviceCreateInfo {
                     enabled_extensions: device_extensions,
                     enabled_features: features,

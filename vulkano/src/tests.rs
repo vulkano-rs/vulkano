@@ -29,28 +29,31 @@ macro_rules! instance {
 /// Creates a device and a queue for graphics operations.
 macro_rules! gfx_dev_and_queue {
     ($($feature:ident),*) => ({
-        use crate::device::physical::{PhysicalDevice, PhysicalDeviceType};
+        use crate::device::physical::PhysicalDeviceType;
         use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
         use crate::device::Features;
 
         let instance = instance!();
-        let enabled_extensions = DeviceExtensions::none();
+        let enabled_extensions = DeviceExtensions::empty();
         let enabled_features = Features {
             $(
                 $feature: true,
             )*
-            .. Features::none()
+            .. Features::empty()
         };
 
-        let select = PhysicalDevice::enumerate(&instance)
-            .filter(|&p| {
-                p.supported_extensions().is_superset_of(&enabled_extensions) &&
-                p.supported_features().is_superset_of(&enabled_features)
+        let select = match instance.enumerate_physical_devices() {
+            Ok(x) => x,
+            Err(_) => return,
+        }
+            .filter(|p| {
+                p.supported_extensions().contains(&enabled_extensions) &&
+                p.supported_features().contains(&enabled_features)
             })
             .filter_map(|p| {
-                p.queue_families()
-                    .find(|&q| q.supports_graphics())
-                    .map(|q| (p, q))
+                p.queue_family_properties().iter()
+                    .position(|q| q.queue_flags.graphics)
+                    .map(|i| (p, i as u32))
             })
             .min_by_key(|(p, _)| {
                 match p.properties().device_type {
@@ -62,7 +65,7 @@ macro_rules! gfx_dev_and_queue {
                 }
             });
 
-        let (physical_device, queue_family) = match select {
+        let (physical_device, queue_family_index) = match select {
             Some(x) => x,
             None => return,
         };
@@ -70,7 +73,10 @@ macro_rules! gfx_dev_and_queue {
         let (device, mut queues) = match Device::new(
             physical_device,
             DeviceCreateInfo {
-                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
                 enabled_extensions,
                 enabled_features,
                 ..Default::default()

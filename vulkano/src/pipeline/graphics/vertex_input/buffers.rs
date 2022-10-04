@@ -17,7 +17,10 @@ use crate::{
     shader::ShaderInterface,
     DeviceSize,
 };
-use std::mem;
+use std::{
+    fmt::{Debug, Error as FmtError, Formatter},
+    mem,
+};
 
 /// A vertex definition for any number of vertex and instance buffers.
 #[derive(Clone, Debug, Default)]
@@ -30,8 +33,8 @@ struct VertexBuffer {
     input_rate: VertexInputRate,
 }
 
-impl std::fmt::Debug for VertexBuffer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for VertexBuffer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.debug_struct("VertexBuffer")
             .field("stride", &self.stride)
             .field("input_rate", &self.input_rate)

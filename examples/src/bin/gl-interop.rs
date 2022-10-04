@@ -1,6 +1,8 @@
 fn main() {
     #[cfg(target_os = "linux")]
     linux::main();
+    #[cfg(not(target_os = "linux"))]
+    println!("Not Implemented");
 }
 
 // TODO: Can this be demonstrated for other platforms as well?
@@ -15,15 +17,16 @@ mod linux {
     use vulkano::{
         buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
         command_buffer::{
-            allocator::StandardCommandBufferAllocator, submit::SubmitCommandBufferBuilder,
-            AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
+            CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
+            SubpassContents,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
         },
         device::{
-            physical::{PhysicalDevice, PhysicalDeviceType},
-            Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo,
+            physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
+            QueueCreateInfo,
         },
         format::Format,
         image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
@@ -43,10 +46,13 @@ mod linux {
         },
         render_pass::{Framebuffer, RenderPass, Subpass},
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
-        swapchain::{AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
+        swapchain::{
+            AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+            SwapchainCreationError, SwapchainPresentInfo,
+        },
         sync::{
-            now, ExternalSemaphoreHandleTypes, FlushError, GpuFuture, PipelineStages, Semaphore,
-            SemaphoreCreateInfo,
+            now, ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, FlushError, GpuFuture,
+            Semaphore, SemaphoreCreateInfo,
         },
         VulkanLibrary,
     };
@@ -58,18 +64,18 @@ mod linux {
     };
 
     pub fn main() {
-        let event_loop_gl = glutin::event_loop::EventLoop::new();
+        let event_loop = EventLoop::new();
         // For some reason, this must be created before the vulkan window
         let hrb = glutin::ContextBuilder::new()
             .with_gl_debug_flag(true)
             .with_gl(glutin::GlRequest::Latest)
-            .build_surfaceless(&event_loop_gl)
+            .build_surfaceless(&event_loop)
             .unwrap();
 
         let hrb_vk = glutin::ContextBuilder::new()
             .with_gl_debug_flag(true)
             .with_gl(glutin::GlRequest::Latest)
-            .build_surfaceless(&event_loop_gl)
+            .build_surfaceless(&event_loop)
             .unwrap();
 
         let display = glium::HeadlessRenderer::with_debug(
@@ -82,7 +88,6 @@ mod linux {
             _instance,
             mut swapchain,
             surface,
-            event_loop,
             mut viewport,
             queue,
             render_pass,
@@ -90,7 +95,7 @@ mod linux {
             sampler,
             pipeline,
             vertex_buffer,
-        ) = vk_setup(display);
+        ) = vk_setup(display, &event_loop);
 
         let image = StorageImage::new_with_exportable_fd(
             device.clone(),
@@ -104,13 +109,13 @@ mod linux {
                 sampled: true,
                 transfer_src: true,
                 transfer_dst: true,
-                ..ImageUsage::none()
+                ..ImageUsage::empty()
             },
             ImageCreateFlags {
                 mutable_format: true,
-                ..ImageCreateFlags::none()
+                ..ImageCreateFlags::empty()
             },
-            [queue.family()],
+            [queue.queue_family_index()],
         )
         .unwrap();
 
@@ -125,7 +130,10 @@ mod linux {
             Semaphore::new(
                 device.clone(),
                 SemaphoreCreateInfo {
-                    export_handle_types: ExternalSemaphoreHandleTypes::posix(),
+                    export_handle_types: ExternalSemaphoreHandleTypes {
+                        opaque_fd: true,
+                        ..ExternalSemaphoreHandleTypes::empty()
+                    },
                     ..Default::default()
                 },
             )
@@ -135,15 +143,26 @@ mod linux {
             Semaphore::new(
                 device.clone(),
                 SemaphoreCreateInfo {
-                    export_handle_types: ExternalSemaphoreHandleTypes::posix(),
+                    export_handle_types: ExternalSemaphoreHandleTypes {
+                        opaque_fd: true,
+                        ..ExternalSemaphoreHandleTypes::empty()
+                    },
                     ..Default::default()
                 },
             )
             .unwrap(),
         );
 
-        let acquire_fd = unsafe { acquire_sem.export_opaque_fd().unwrap() };
-        let release_fd = unsafe { release_sem.export_opaque_fd().unwrap() };
+        let acquire_fd = unsafe {
+            acquire_sem
+                .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
+                .unwrap()
+        };
+        let release_fd = unsafe {
+            release_sem
+                .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
+                .unwrap()
+        };
 
         let barrier_clone = barrier.clone();
         let barrier_2_clone = barrier_2.clone();
@@ -211,7 +230,8 @@ mod linux {
 
         let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
         let command_buffer_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+            StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
+                .unwrap();
 
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
 
@@ -243,26 +263,36 @@ mod linux {
                     recreate_swapchain = true;
                 }
                 Event::RedrawEventsCleared => {
-                    unsafe {
-                        let mut builder = SubmitCommandBufferBuilder::new();
-                        builder.add_signal_semaphore(&acquire_sem);
-                        builder.submit(&queue).unwrap();
-                    };
+                    queue
+                        .with(|mut q| unsafe {
+                            q.submit_unchecked(
+                                [SubmitInfo {
+                                    signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                        acquire_sem.clone(),
+                                    )],
+                                    ..Default::default()
+                                }],
+                                None,
+                            )
+                        })
+                        .unwrap();
 
                     barrier.wait();
                     barrier_2.wait();
 
-                    unsafe {
-                        let mut builder = SubmitCommandBufferBuilder::new();
-                        builder.add_wait_semaphore(
-                            &release_sem,
-                            PipelineStages {
-                                all_commands: true,
-                                ..PipelineStages::none()
-                            },
-                        );
-                        builder.submit(&queue).unwrap();
-                    };
+                    queue
+                        .with(|mut q| unsafe {
+                            q.submit_unchecked(
+                                [SubmitInfo {
+                                    wait_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                        release_sem.clone(),
+                                    )],
+                                    ..Default::default()
+                                }],
+                                None,
+                            )
+                        })
+                        .unwrap();
 
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
 
@@ -288,7 +318,7 @@ mod linux {
                         recreate_swapchain = false;
                     }
 
-                    let (image_num, suboptimal, acquire_future) =
+                    let (image_index, suboptimal, acquire_future) =
                         match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
                             Ok(r) => r,
                             Err(AcquireError::OutOfDate) => {
@@ -304,7 +334,7 @@ mod linux {
 
                     let mut builder = AutoCommandBufferBuilder::primary(
                         &command_buffer_allocator,
-                        queue.family(),
+                        queue.queue_family_index(),
                         CommandBufferUsage::OneTimeSubmit,
                     )
                     .unwrap();
@@ -312,7 +342,9 @@ mod linux {
                         .begin_render_pass(
                             RenderPassBeginInfo {
                                 clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                                ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                                ..RenderPassBeginInfo::framebuffer(
+                                    framebuffers[image_index as usize].clone(),
+                                )
                             },
                             SubpassContents::Inline,
                         )
@@ -337,7 +369,13 @@ mod linux {
                     let future = future
                         .then_execute(queue.clone(), command_buffer)
                         .unwrap()
-                        .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                        .then_swapchain_present(
+                            queue.clone(),
+                            SwapchainPresentInfo::swapchain_image_index(
+                                swapchain.clone(),
+                                image_index,
+                            ),
+                        )
                         .then_signal_fence_and_flush();
 
                     match future {
@@ -371,12 +409,12 @@ mod linux {
     #[allow(clippy::type_complexity)]
     fn vk_setup(
         display: glium::HeadlessRenderer,
+        event_loop: &EventLoop<()>,
     ) -> (
         Arc<vulkano::device::Device>,
         Arc<vulkano::instance::Instance>,
         Arc<Swapchain<winit::window::Window>>,
         Arc<vulkano::swapchain::Surface<winit::window::Window>>,
-        winit::event_loop::EventLoop<()>,
         vulkano::pipeline::graphics::viewport::Viewport,
         Arc<Queue>,
         Arc<RenderPass>,
@@ -397,7 +435,7 @@ mod linux {
                     khr_external_fence_capabilities: true,
                     ext_debug_utils: true,
 
-                    ..InstanceExtensions::none()
+                    ..InstanceExtensions::empty()
                 }
                 .union(&required_extensions),
 
@@ -425,9 +463,8 @@ mod linux {
             .unwrap()
         };
 
-        let event_loop = EventLoop::new();
         let surface = WindowBuilder::new()
-            .build_vk_surface(&event_loop, instance.clone())
+            .build_vk_surface(event_loop, instance.clone())
             .unwrap();
 
         let device_extensions = DeviceExtensions {
@@ -438,17 +475,22 @@ mod linux {
             khr_external_fence: true,
             khr_external_fence_fd: true,
             khr_swapchain: true,
-            ..DeviceExtensions::none()
+            ..DeviceExtensions::empty()
         };
 
-        let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-            .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+        let (physical_device, queue_family_index) = instance
+            .enumerate_physical_devices()
+            .unwrap()
+            .filter(|p| p.supported_extensions().contains(&device_extensions))
             .filter_map(|p| {
-                p.queue_families()
-                    .find(|&q| {
-                        q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false)
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| {
+                        q.queue_flags.graphics
+                            && p.surface_support(i as u32, &surface).unwrap_or(false)
                     })
-                    .map(|q| (p, q))
+                    .map(|i| (p, i as u32))
             })
             .filter(|(p, _)| p.properties().driver_uuid.unwrap() == display.driver_uuid().unwrap())
             .filter(|(p, _)| {
@@ -463,6 +505,7 @@ mod linux {
                 PhysicalDeviceType::VirtualGpu => 2,
                 PhysicalDeviceType::Cpu => 3,
                 PhysicalDeviceType::Other => 4,
+                _ => 5,
             })
             .unwrap();
 
@@ -476,7 +519,10 @@ mod linux {
             physical_device,
             DeviceCreateInfo {
                 enabled_extensions: device_extensions,
-                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
         )
@@ -485,11 +531,13 @@ mod linux {
         let queue = queues.next().unwrap();
 
         let (swapchain, images) = {
-            let surface_capabilities = physical_device
+            let surface_capabilities = device
+                .physical_device()
                 .surface_capabilities(&surface, Default::default())
                 .unwrap();
             let image_format = Some(
-                physical_device
+                device
+                    .physical_device()
                     .surface_formats(&surface, Default::default())
                     .unwrap()[0]
                     .0,
@@ -502,7 +550,10 @@ mod linux {
                     min_image_count: surface_capabilities.min_image_count,
                     image_format,
                     image_extent: surface.window().inner_size().into(),
-                    image_usage: ImageUsage::color_attachment(),
+                    image_usage: ImageUsage {
+                        color_attachment: true,
+                        ..ImageUsage::empty()
+                    },
                     composite_alpha: surface_capabilities
                         .supported_composite_alpha
                         .iter()
@@ -530,7 +581,10 @@ mod linux {
         ];
         let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             vertices,
         )
@@ -596,7 +650,6 @@ mod linux {
             instance,
             swapchain,
             surface,
-            event_loop,
             viewport,
             queue,
             render_pass,

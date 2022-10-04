@@ -21,7 +21,7 @@ use crate::{
             MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation,
             StandardMemoryPoolAlloc,
         },
-        DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
     },
     DeviceSize,
@@ -97,7 +97,7 @@ impl AttachmentImage {
             dimensions,
             1,
             format,
-            ImageUsage::none(),
+            ImageUsage::empty(),
             SampleCount::Sample1,
         )
     }
@@ -113,7 +113,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -137,7 +137,7 @@ impl AttachmentImage {
         samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, 1, format, ImageUsage::none(), samples)
+        AttachmentImage::new_impl(device, dimensions, 1, format, ImageUsage::empty(), samples)
     }
 
     /// Same as `multisampled`, but creates an image that can be used as an input attachment.
@@ -152,7 +152,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -215,7 +215,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             sampled: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -240,7 +240,7 @@ impl AttachmentImage {
         let base_usage = ImageUsage {
             sampled: true,
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -268,7 +268,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             sampled: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -288,7 +288,7 @@ impl AttachmentImage {
         let base_usage = ImageUsage {
             sampled: true,
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -308,7 +308,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             transient_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -333,7 +333,7 @@ impl AttachmentImage {
         let base_usage = ImageUsage {
             transient_attachment: true,
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -361,7 +361,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             transient_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -381,7 +381,7 @@ impl AttachmentImage {
         let base_usage = ImageUsage {
             transient_attachment: true,
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -437,13 +437,13 @@ impl AttachmentImage {
 
         let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
-            device.standard_memory_pool(),
+            &device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,
             Some(DedicatedAllocation::Image(&image)),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -508,7 +508,7 @@ impl AttachmentImage {
                 },
                 external_memory_handle_types: ExternalMemoryHandleTypes {
                     opaque_fd: true,
-                    ..ExternalMemoryHandleTypes::none()
+                    ..ExternalMemoryHandleTypes::empty()
                 },
                 mutable_format: true,
                 ..Default::default()
@@ -523,7 +523,7 @@ impl AttachmentImage {
             MappingRequirement::DoNotMap,
             DedicatedAllocation::Image(&image),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -550,7 +550,7 @@ impl AttachmentImage {
 
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryExportError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
@@ -567,7 +567,7 @@ where
     A: MemoryPoolAlloc,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         ImageInner {
             image: &self.image,
             first_layer: 0,

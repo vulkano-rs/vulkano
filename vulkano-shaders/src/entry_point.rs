@@ -110,6 +110,10 @@ fn write_descriptor_requirements(
             let ident = format_ident!("{}", format!("{:?}", ty));
             quote! { ::vulkano::descriptor_set::layout::DescriptorType::#ident }
         });
+        let descriptor_count = match descriptor_count {
+            Some(descriptor_count) => quote! { Some(#descriptor_count) },
+            None => quote! { None },
+        };
         let image_format = match image_format {
             Some(image_format) => {
                 let ident = format_ident!("{}", format!("{:?}", image_format));
@@ -173,6 +177,7 @@ fn write_descriptor_requirements(
                 miss,
                 intersection,
                 callable,
+                _ne: _,
             } = stages;
 
             quote! {
@@ -189,6 +194,7 @@ fn write_descriptor_requirements(
                     miss: #miss,
                     intersection: #intersection,
                     callable: #callable,
+                    ..::vulkano::shader::ShaderStages::empty()
                 }
             }
         };
@@ -249,6 +255,7 @@ fn write_push_constant_requirements(
                     miss,
                     intersection,
                     callable,
+                    _ne: _,
                 } = stages;
 
                 quote! {
@@ -265,6 +272,7 @@ fn write_push_constant_requirements(
                         miss: #miss,
                         intersection: #intersection,
                         callable: #callable,
+                        ..::vulkano::shader::ShaderStages::empty()
                     }
                 }
             };

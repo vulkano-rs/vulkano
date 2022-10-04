@@ -14,12 +14,12 @@ pub use self::{
     },
     pool::{StandardMemoryPool, StandardMemoryPoolAlloc},
 };
+use super::MemoryType;
 use crate::{
-    device::{physical::MemoryType, Device, DeviceOwned},
+    device::{Device, DeviceOwned},
     memory::{
-        device_memory::MemoryAllocateInfo, DedicatedAllocation, DeviceMemory,
-        DeviceMemoryAllocationError, ExternalMemoryHandleTypes, MappedDeviceMemory,
-        MemoryRequirements,
+        device_memory::MemoryAllocateInfo, DedicatedAllocation, DeviceMemory, DeviceMemoryError,
+        ExternalMemoryHandleTypes, MappedDeviceMemory, MemoryRequirements,
     },
     DeviceSize,
 };
@@ -33,34 +33,40 @@ mod pool;
 // the pool. This prevents the pool from overallocating a significant amount of memory.
 const MAX_POOL_ALLOC: DeviceSize = 256 * 1024 * 1024;
 
-fn choose_allocation_memory_type<'s, F>(
-    device: &'s Arc<Device>,
+fn choose_allocation_memory_type<F>(
+    device: &Arc<Device>,
     requirements: &MemoryRequirements,
     mut filter: F,
     map: MappingRequirement,
-) -> MemoryType<'s>
+) -> u32
 where
-    F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
+    F: FnMut(&MemoryType) -> AllocFromRequirementsFilter,
 {
     let mem_ty = {
-        let mut filter = |ty: MemoryType| {
-            if map == MappingRequirement::Map && !ty.is_host_visible() {
+        let mut filter = |ty: &MemoryType| {
+            if map == MappingRequirement::Map && !ty.property_flags.host_visible {
                 return AllocFromRequirementsFilter::Forbidden;
             }
             filter(ty)
         };
         let first_loop = device
             .physical_device()
-            .memory_types()
-            .map(|t| (t, AllocFromRequirementsFilter::Preferred));
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (i as u32, t, AllocFromRequirementsFilter::Preferred));
         let second_loop = device
             .physical_device()
-            .memory_types()
-            .map(|t| (t, AllocFromRequirementsFilter::Allowed));
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (i as u32, t, AllocFromRequirementsFilter::Allowed));
         first_loop
             .chain(second_loop)
-            .filter(|&(t, _)| (requirements.memory_type_bits & (1 << t.id())) != 0)
-            .find(|&(t, rq)| filter(t) == rq)
+            .filter(|(i, _, _)| (requirements.memory_type_bits & (1 << *i)) != 0)
+            .find(|&(_, t, rq)| filter(t) == rq)
             .expect("Couldn't find a memory type to allocate from")
             .0
     };
@@ -74,24 +80,24 @@ pub(crate) fn alloc_dedicated_with_exportable_fd<F>(
     requirements: &MemoryRequirements,
     _layout: AllocLayout,
     map: MappingRequirement,
-    dedicated_allocation: DedicatedAllocation,
+    dedicated_allocation: DedicatedAllocation<'_>,
     filter: F,
-) -> Result<PotentialDedicatedAllocation<StandardMemoryPoolAlloc>, DeviceMemoryAllocationError>
+) -> Result<PotentialDedicatedAllocation<StandardMemoryPoolAlloc>, DeviceMemoryError>
 where
-    F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
+    F: FnMut(&MemoryType) -> AllocFromRequirementsFilter,
 {
     assert!(device.enabled_extensions().khr_external_memory_fd);
     assert!(device.enabled_extensions().khr_external_memory);
 
-    let memory_type = choose_allocation_memory_type(&device, requirements, filter, map);
+    let memory_type_index = choose_allocation_memory_type(&device, requirements, filter, map);
     let memory = DeviceMemory::allocate(
-        device.clone(),
+        device,
         MemoryAllocateInfo {
             allocation_size: requirements.size,
-            memory_type_index: memory_type.id(),
+            memory_type_index,
             export_handle_types: ExternalMemoryHandleTypes {
                 opaque_fd: true,
-                ..ExternalMemoryHandleTypes::none()
+                ..ExternalMemoryHandleTypes::empty()
             },
             ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
         },
@@ -134,12 +140,12 @@ pub unsafe trait MemoryPool: DeviceOwned {
     ///
     fn alloc_generic(
         &self,
-        ty: MemoryType,
+        memory_type_index: u32,
         size: DeviceSize,
         alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
-    ) -> Result<Self::Alloc, DeviceMemoryAllocationError>;
+    ) -> Result<Self::Alloc, DeviceMemoryError>;
 
     /// Chooses a memory type and allocates memory from it.
     ///
@@ -175,19 +181,20 @@ pub unsafe trait MemoryPool: DeviceOwned {
         requirements: &MemoryRequirements,
         layout: AllocLayout,
         map: MappingRequirement,
-        dedicated_allocation: Option<DedicatedAllocation>,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
         filter: F,
-    ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocationError>
+    ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryError>
     where
-        F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
+        F: FnMut(&MemoryType) -> AllocFromRequirementsFilter,
     {
         // Choose a suitable memory type.
-        let memory_type = choose_allocation_memory_type(self.device(), requirements, filter, map);
+        let memory_type_index =
+            choose_allocation_memory_type(self.device(), requirements, filter, map);
 
         // Redirect to `self.alloc_generic` if we don't perform a dedicated allocation.
         if !requirements.prefer_dedicated && requirements.size <= MAX_POOL_ALLOC {
             let alloc = self.alloc_generic(
-                memory_type,
+                memory_type_index,
                 requirements.size,
                 requirements.alignment,
                 layout,
@@ -197,7 +204,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
         }
         if dedicated_allocation.is_none() {
             let alloc = self.alloc_generic(
-                memory_type,
+                memory_type_index,
                 requirements.size,
                 requirements.alignment,
                 layout,
@@ -211,7 +218,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
             self.device().clone(),
             MemoryAllocateInfo {
                 allocation_size: requirements.size,
-                memory_type_index: memory_type.id(),
+                memory_type_index,
                 dedicated_allocation,
                 ..Default::default()
             },

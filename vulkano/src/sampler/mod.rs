@@ -50,13 +50,14 @@ use self::ycbcr::SamplerYcbcrConversion;
 use crate::{
     device::{Device, DeviceOwned},
     image::{view::ImageViewType, ImageViewAbstract},
+    macros::vulkan_enum,
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
-    OomError, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::RangeInclusive,
@@ -139,28 +140,39 @@ impl Sampler {
             _ne: _,
         } = create_info;
 
-        if address_mode
-            .into_iter()
-            .any(|mode| mode == SamplerAddressMode::MirrorClampToEdge)
-        {
+        for filter in [mag_filter, min_filter] {
+            // VUID-VkSamplerCreateInfo-magFilter-parameter
+            // VUID-VkSamplerCreateInfo-minFilter-parameter
+            filter.validate_device(&device)?;
+        }
+
+        // VUID-VkSamplerCreateInfo-mipmapMode-parameter
+        mipmap_mode.validate_device(&device)?;
+
+        for mode in address_mode {
+            // VUID-VkSamplerCreateInfo-addressModeU-parameter
+            // VUID-VkSamplerCreateInfo-addressModeV-parameter
+            // VUID-VkSamplerCreateInfo-addressModeW-parameter
+            mode.validate_device(&device)?;
+
+            if mode == SamplerAddressMode::ClampToBorder {
+                // VUID-VkSamplerCreateInfo-addressModeU-01078
+                border_color.validate_device(&device)?;
+            }
+        }
+
+        if address_mode.contains(&SamplerAddressMode::MirrorClampToEdge) {
             if !device.enabled_features().sampler_mirror_clamp_to_edge
                 && !device.enabled_extensions().khr_sampler_mirror_clamp_to_edge
             {
-                if device
-                    .physical_device()
-                    .supported_features()
-                    .sampler_mirror_clamp_to_edge
-                {
-                    return Err(SamplerCreationError::FeatureNotEnabled {
-                        feature: "sampler_mirror_clamp_to_edge",
-                        reason: "one or more address modes were MirrorClampToEdge",
-                    });
-                } else {
-                    return Err(SamplerCreationError::ExtensionNotEnabled {
-                        extension: "khr_sampler_mirror_clamp_to_edge",
-                        reason: "one or more address modes were MirrorClampToEdge",
-                    });
-                }
+                return Err(SamplerCreationError::RequirementNotMet {
+                    required_for: "`create_info.address_mode` contains `SamplerAddressMode::MirrorClampToEdge`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sampler_mirror_clamp_to_edge"],
+                        device_extensions: &["khr_sampler_mirror_clamp_to_edge"],
+                        ..Default::default()
+                    },
+                });
             }
         }
 
@@ -179,9 +191,12 @@ impl Sampler {
             assert!(max_anisotropy >= 1.0);
 
             if !device.enabled_features().sampler_anisotropy {
-                return Err(SamplerCreationError::FeatureNotEnabled {
-                    feature: "sampler_anisotropy",
-                    reason: "anisotropy was set to `Some`",
+                return Err(SamplerCreationError::RequirementNotMet {
+                    required_for: "`create_info.anisotropy` is `Some`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sampler_anisotropy"],
+                        ..Default::default()
+                    },
                 });
             }
 
@@ -209,6 +224,9 @@ impl Sampler {
         };
 
         let (compare_enable, compare_op) = if let Some(compare_op) = compare {
+            // VUID-VkSamplerCreateInfo-compareEnable-01080
+            compare_op.validate_device(&device)?;
+
             if reduction_mode != SamplerReductionMode::WeightedAverage {
                 return Err(SamplerCreationError::CompareInvalidReductionMode { reduction_mode });
             }
@@ -260,35 +278,32 @@ impl Sampler {
             }
         }
 
-        let mut sampler_reduction_mode_create_info =
-            if reduction_mode != SamplerReductionMode::WeightedAverage {
-                if !(device.enabled_features().sampler_filter_minmax
-                    || device.enabled_extensions().ext_sampler_filter_minmax)
-                {
-                    if device
-                        .physical_device()
-                        .supported_features()
-                        .sampler_filter_minmax
-                    {
-                        return Err(SamplerCreationError::FeatureNotEnabled {
-                            feature: "sampler_filter_minmax",
-                            reason: "reduction_mode was not WeightedAverage",
-                        });
-                    } else {
-                        return Err(SamplerCreationError::ExtensionNotEnabled {
-                            extension: "ext_sampler_filter_minmax",
-                            reason: "reduction_mode was not WeightedAverage",
-                        });
-                    }
-                }
+        let mut sampler_reduction_mode_create_info = if reduction_mode
+            != SamplerReductionMode::WeightedAverage
+        {
+            if !(device.enabled_features().sampler_filter_minmax
+                || device.enabled_extensions().ext_sampler_filter_minmax)
+            {
+                return Err(SamplerCreationError::RequirementNotMet {
+                        required_for: "`create_info.reduction_mode` is not `SamplerReductionMode::WeightedAverage`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["sampler_filter_minmax"],
+                            device_extensions: &["ext_sampler_filter_minmax"],
+                            ..Default::default()
+                        },
+                    });
+            }
 
-                Some(ash::vk::SamplerReductionModeCreateInfo {
-                    reduction_mode: reduction_mode.into(),
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
+            // VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter
+            reduction_mode.validate_device(&device)?;
+
+            Some(ash::vk::SamplerReductionModeCreateInfo {
+                reduction_mode: reduction_mode.into(),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
 
         // Don't need to check features because you can't create a conversion object without the
         // feature anyway.
@@ -297,10 +312,13 @@ impl Sampler {
         {
             assert_eq!(&device, sampler_ycbcr_conversion.device());
 
-            let potential_format_features = device
-                .physical_device()
-                .format_properties(sampler_ycbcr_conversion.format().unwrap())
-                .potential_format_features();
+            // Use unchecked, because all validation has been done by the SamplerYcbcrConversion.
+            let potential_format_features = unsafe {
+                device
+                    .physical_device()
+                    .format_properties_unchecked(sampler_ycbcr_conversion.format().unwrap())
+                    .potential_format_features()
+            };
 
             // VUID-VkSamplerCreateInfo-minFilter-01645
             if !potential_format_features
@@ -411,7 +429,7 @@ impl Sampler {
             border_color: address_mode
                 .into_iter()
                 .any(|mode| mode == SamplerAddressMode::ClampToBorder)
-                .then(|| border_color),
+                .then_some(border_color),
             compare,
             lod,
             mag_filter,
@@ -424,14 +442,16 @@ impl Sampler {
         }))
     }
 
-    /// Creates a new `Sampler` from an ash-handle
+    /// Creates a new `Sampler` from a raw object handle.
+    ///
     /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
+        device: Arc<Device>,
         handle: ash::vk::Sampler,
         create_info: SamplerCreateInfo,
-        device: Arc<Device>,
     ) -> Arc<Sampler> {
         let SamplerCreateInfo {
             mag_filter,
@@ -458,7 +478,7 @@ impl Sampler {
             border_color: address_mode
                 .into_iter()
                 .any(|mode| mode == SamplerAddressMode::ClampToBorder)
-                .then(|| border_color),
+                .then_some(border_color),
             compare,
             lod,
             mag_filter,
@@ -482,7 +502,7 @@ impl Sampler {
         /*
             Note: Most of these checks come from the Instruction/Sampler/Image View Validation
             section, and are not strictly VUIDs.
-            https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap16.html#textures-input-validation
+            https://registry.khronos.org/vulkan/specs/1.2-extensions/html/chap16.html#textures-input-validation
         */
 
         if self.compare.is_some() {
@@ -598,7 +618,7 @@ impl Sampler {
 
         // The sampler unnormalizedCoordinates is VK_TRUE and any of the limitations of
         // unnormalized coordinates are violated.
-        // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap13.html#samplers-unnormalizedCoordinates
+        // https://registry.khronos.org/vulkan/specs/1.2-extensions/html/chap13.html#samplers-unnormalizedCoordinates
         if self.unnormalized_coordinates {
             // The viewType must be either VK_IMAGE_VIEW_TYPE_1D or
             // VK_IMAGE_VIEW_TYPE_2D.
@@ -752,13 +772,9 @@ pub enum SamplerCreationError {
     /// Note the specs guarantee that at least 4000 samplers can exist simultaneously.
     TooManyObjects,
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// Anisotropy was enabled with an invalid filter.
@@ -850,59 +866,61 @@ impl Error for SamplerCreationError {
     }
 }
 
-impl fmt::Display for SamplerCreationError {
+impl Display for SamplerCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::TooManyObjects => write!(fmt, "too many simultaneous sampler objects",),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::TooManyObjects => write!(f, "too many simultaneous sampler objects",),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
-            Self::AnisotropyInvalidFilter { .. } => write!(fmt, "anisotropy was enabled with an invalid filter"),
-            Self::CompareInvalidReductionMode { .. } => write!(fmt, "depth comparison was enabled with an invalid reduction mode"),
+
+            Self::AnisotropyInvalidFilter { .. } => write!(f, "anisotropy was enabled with an invalid filter"),
+            Self::CompareInvalidReductionMode { .. } => write!(f, "depth comparison was enabled with an invalid reduction mode"),
             Self::MaxSamplerAnisotropyExceeded { .. } => {
-                write!(fmt, "max_sampler_anisotropy limit exceeded")
+                write!(f, "max_sampler_anisotropy limit exceeded")
             }
-            Self::MaxSamplerLodBiasExceeded { .. } => write!(fmt, "mip lod bias limit exceeded"),
+            Self::MaxSamplerLodBiasExceeded { .. } => write!(f, "mip lod bias limit exceeded"),
             Self::SamplerYcbcrConversionAnisotropyEnabled => write!(
-                fmt,
+                f,
                 "sampler YCbCr conversion was enabled together with anisotropy"
             ),
-            Self::SamplerYcbcrConversionChromaFilterMismatch { .. } => write!(fmt, "sampler YCbCr conversion was enabled, and its format does not support `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter` or `min_filter` did not match the conversion's `chroma_filter`"),
-            Self::SamplerYcbcrConversionInvalidAddressMode { .. } => write!(fmt, "sampler YCbCr conversion was enabled, but the address mode for u, v or w was something other than `ClampToEdge`"),
-            Self::SamplerYcbcrConversionInvalidReductionMode { .. } => write!(fmt, "sampler YCbCr conversion was enabled, but the reduction mode was something other than `WeightedAverage`"),
+            Self::SamplerYcbcrConversionChromaFilterMismatch { .. } => write!(f, "sampler YCbCr conversion was enabled, and its format does not support `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter` or `min_filter` did not match the conversion's `chroma_filter`"),
+            Self::SamplerYcbcrConversionInvalidAddressMode { .. } => write!(f, "sampler YCbCr conversion was enabled, but the address mode for u, v or w was something other than `ClampToEdge`"),
+            Self::SamplerYcbcrConversionInvalidReductionMode { .. } => write!(f, "sampler YCbCr conversion was enabled, but the reduction mode was something other than `WeightedAverage`"),
             Self::SamplerYcbcrConversionUnnormalizedCoordinatesEnabled => write!(
-                fmt,
+                f,
                 "sampler YCbCr conversion was enabled together with unnormalized coordinates"
             ),
             Self::UnnormalizedCoordinatesAnisotropyEnabled => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled together with anisotropy"
             ),
             Self::UnnormalizedCoordinatesCompareEnabled => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled together with depth comparison"
             ),
             Self::UnnormalizedCoordinatesFiltersNotEqual { .. } => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled, but the min and mag filters were not equal"
             ),
             Self::UnnormalizedCoordinatesInvalidAddressMode { .. } => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled, but the address mode for u or v was something other than `ClampToEdge` or `ClampToBorder`"
             ),
             Self::UnnormalizedCoordinatesInvalidMipmapMode { .. } => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`"
             ),
             Self::UnnormalizedCoordinatesNonzeroLod { .. } => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled, but the LOD range was not zero"
             ),
         }
@@ -924,6 +942,16 @@ impl From<VulkanError> for SamplerCreationError {
             err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
             VulkanError::TooManyObjects => Self::TooManyObjects,
             _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<RequirementNotMet> for SamplerCreationError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -1222,33 +1250,33 @@ impl From<ComponentMapping> for ash::vk::ComponentMapping {
     }
 }
 
-/// Describes the value that an individual component must return when being accessed.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum ComponentSwizzle {
+vulkan_enum! {
+    /// Describes the value that an individual component must return when being accessed.
+    #[non_exhaustive]
+    ComponentSwizzle = ComponentSwizzle(i32);
+
     /// Returns the value that this component should normally have.
     ///
     /// This is the `Default` value.
-    Identity = ash::vk::ComponentSwizzle::IDENTITY.as_raw(),
-    /// Always return zero.
-    Zero = ash::vk::ComponentSwizzle::ZERO.as_raw(),
-    /// Always return one.
-    One = ash::vk::ComponentSwizzle::ONE.as_raw(),
-    /// Returns the value of the first component.
-    Red = ash::vk::ComponentSwizzle::R.as_raw(),
-    /// Returns the value of the second component.
-    Green = ash::vk::ComponentSwizzle::G.as_raw(),
-    /// Returns the value of the third component.
-    Blue = ash::vk::ComponentSwizzle::B.as_raw(),
-    /// Returns the value of the fourth component.
-    Alpha = ash::vk::ComponentSwizzle::A.as_raw(),
-}
+    Identity = IDENTITY,
 
-impl From<ComponentSwizzle> for ash::vk::ComponentSwizzle {
-    #[inline]
-    fn from(val: ComponentSwizzle) -> Self {
-        Self::from_raw(val as i32)
-    }
+    /// Always return zero.
+    Zero = ZERO,
+
+    /// Always return one.
+    One = ONE,
+
+    /// Returns the value of the first component.
+    Red = R,
+
+    /// Returns the value of the second component.
+    Green = G,
+
+    /// Returns the value of the third component.
+    Blue = B,
+
+    /// Returns the value of the fourth component.
+    Alpha = A,
 }
 
 impl Default for ComponentSwizzle {
@@ -1258,18 +1286,19 @@ impl Default for ComponentSwizzle {
     }
 }
 
-/// Describes how the color of each pixel should be determined.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum Filter {
+vulkan_enum! {
+    /// Describes how the color of each pixel should be determined.
+    #[non_exhaustive]
+    Filter = Filter(i32);
+
     /// The pixel whose center is nearest to the requested coordinates is taken from the source
     /// and its value is returned as-is.
-    Nearest = ash::vk::Filter::NEAREST.as_raw(),
+    Nearest = NEAREST,
 
     /// The 8/4/2 pixels (depending on view dimensionality) whose center surround the requested
     /// coordinates are taken, then their values are combined according to the chosen
     /// `reduction_mode`.
-    Linear = ash::vk::Filter::LINEAR.as_raw(),
+    Linear = LINEAR,
 
     /// The 64/16/4 pixels (depending on the view dimensionality) whose center surround the
     /// requested coordinates are taken, then their values are combined according to the chosen
@@ -1278,51 +1307,41 @@ pub enum Filter {
     /// The [`ext_filter_cubic`](crate::device::DeviceExtensions::ext_filter_cubic) extension must
     /// be enabled on the device, and anisotropy must be disabled. Sampled image views must have
     /// a type of [`Dim2d`](crate::image::view::ImageViewType::Dim2d).
-    Cubic = ash::vk::Filter::CUBIC_EXT.as_raw(),
+    Cubic = CUBIC_EXT {
+        device_extensions: [ext_filter_cubic, img_filter_cubic],
+    },
 }
 
-impl From<Filter> for ash::vk::Filter {
-    #[inline]
-    fn from(val: Filter) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// Describes which mipmap from the source to use.
+    #[non_exhaustive]
+    SamplerMipmapMode = SamplerMipmapMode(i32);
 
-/// Describes which mipmap from the source to use.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SamplerMipmapMode {
     /// Use the mipmap whose dimensions are the nearest to the dimensions of the destination.
-    Nearest = ash::vk::SamplerMipmapMode::NEAREST.as_raw(),
+    Nearest = NEAREST,
 
     /// Take the mipmap whose dimensions are no greater than that of the destination together
     /// with the next higher level mipmap, calculate the value for both, and interpolate them.
-    Linear = ash::vk::SamplerMipmapMode::LINEAR.as_raw(),
+    Linear = LINEAR,
 }
 
-impl From<SamplerMipmapMode> for ash::vk::SamplerMipmapMode {
-    #[inline]
-    fn from(val: SamplerMipmapMode) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// How the sampler should behave when it needs to access a pixel that is out of range of the
+    /// texture.
+    #[non_exhaustive]
+    SamplerAddressMode = SamplerAddressMode(i32);
 
-/// How the sampler should behave when it needs to access a pixel that is out of range of the
-/// texture.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SamplerAddressMode {
     /// Repeat the texture. In other words, the pixel at coordinate `x + 1.0` is the same as the
     /// one at coordinate `x`.
-    Repeat = ash::vk::SamplerAddressMode::REPEAT.as_raw(),
+    Repeat = REPEAT,
 
     /// Repeat the texture but mirror it at every repetition. In other words, the pixel at
     /// coordinate `x + 1.0` is the same as the one at coordinate `1.0 - x`.
-    MirroredRepeat = ash::vk::SamplerAddressMode::MIRRORED_REPEAT.as_raw(),
+    MirroredRepeat = MIRRORED_REPEAT,
 
     /// The coordinates are clamped to the valid range. Coordinates below 0.0 have the same value
     /// as coordinate 0.0. Coordinates over 1.0 have the same value as coordinate 1.0.
-    ClampToEdge = ash::vk::SamplerAddressMode::CLAMP_TO_EDGE.as_raw(),
+    ClampToEdge = CLAMP_TO_EDGE,
 
     /// Any pixel out of range is colored using the colour selected with the `border_color` on the
     /// `SamplerBuilder`.
@@ -1332,7 +1351,7 @@ pub enum SamplerAddressMode {
     /// floating-point or depth image views. When using an integer border color, the sampler can
     /// only be used with integer or stencil image views. In addition to this, you can't use an
     /// opaque black border color with an image view that uses component swizzling.
-    ClampToBorder = ash::vk::SamplerAddressMode::CLAMP_TO_BORDER.as_raw(),
+    ClampToBorder = CLAMP_TO_BORDER,
 
     /// Similar to `MirroredRepeat`, except that coordinates are clamped to the range
     /// `[-1.0, 1.0]`.
@@ -1341,59 +1360,62 @@ pub enum SamplerAddressMode {
     /// feature or the
     /// [`khr_sampler_mirror_clamp_to_edge`](crate::device::DeviceExtensions::khr_sampler_mirror_clamp_to_edge)
     /// extension must be enabled on the device.
-    MirrorClampToEdge = ash::vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE.as_raw(),
+    MirrorClampToEdge = MIRROR_CLAMP_TO_EDGE {
+        api_version: V1_2,
+        device_extensions: [khr_sampler_mirror_clamp_to_edge],
+    },
 }
 
-impl From<SamplerAddressMode> for ash::vk::SamplerAddressMode {
-    #[inline]
-    fn from(val: SamplerAddressMode) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// The color to use for the border of an image.
+    ///
+    /// Only relevant if you use `ClampToBorder`.
+    ///
+    /// Using a border color restricts the sampler to either floating-point images or integer images.
+    #[non_exhaustive]
+    BorderColor = BorderColor(i32);
 
-/// The color to use for the border of an image.
-///
-/// Only relevant if you use `ClampToBorder`.
-///
-/// Using a border color restricts the sampler to either floating-point images or integer images.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum BorderColor {
     /// The value `(0.0, 0.0, 0.0, 0.0)`. Can only be used with floating-point images.
-    FloatTransparentBlack = ash::vk::BorderColor::FLOAT_TRANSPARENT_BLACK.as_raw(),
+    FloatTransparentBlack = FLOAT_TRANSPARENT_BLACK,
 
     /// The value `(0, 0, 0, 0)`. Can only be used with integer images.
-    IntTransparentBlack = ash::vk::BorderColor::INT_TRANSPARENT_BLACK.as_raw(),
+    IntTransparentBlack = INT_TRANSPARENT_BLACK,
 
     /// The value `(0.0, 0.0, 0.0, 1.0)`. Can only be used with floating-point identity-swizzled
     /// images.
-    FloatOpaqueBlack = ash::vk::BorderColor::FLOAT_OPAQUE_BLACK.as_raw(),
+    FloatOpaqueBlack = FLOAT_OPAQUE_BLACK,
 
     /// The value `(0, 0, 0, 1)`. Can only be used with integer identity-swizzled images.
-    IntOpaqueBlack = ash::vk::BorderColor::INT_OPAQUE_BLACK.as_raw(),
+    IntOpaqueBlack = INT_OPAQUE_BLACK,
 
     /// The value `(1.0, 1.0, 1.0, 1.0)`. Can only be used with floating-point images.
-    FloatOpaqueWhite = ash::vk::BorderColor::FLOAT_OPAQUE_WHITE.as_raw(),
+    FloatOpaqueWhite = FLOAT_OPAQUE_WHITE,
 
     /// The value `(1, 1, 1, 1)`. Can only be used with integer images.
-    IntOpaqueWhite = ash::vk::BorderColor::INT_OPAQUE_WHITE.as_raw(),
+    IntOpaqueWhite = INT_OPAQUE_WHITE,
+
+    /*
+    // TODO: document
+    FloatCustom = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT {
+        device_extensions: [ext_custom_border_color],
+    },
+
+    // TODO: document
+    IntCustom = INT_CUSTOM_EXT {
+        device_extensions: [ext_custom_border_color],
+    },
+     */
 }
 
-impl From<BorderColor> for ash::vk::BorderColor {
-    #[inline]
-    fn from(val: BorderColor) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// Describes how the value sampled from a mipmap should be calculated from the selected
+    /// pixels, for the `Linear` and `Cubic` filters.
+    #[non_exhaustive]
+    SamplerReductionMode = SamplerReductionMode(i32);
 
-/// Describes how the value sampled from a mipmap should be calculated from the selected
-/// pixels, for the `Linear` and `Cubic` filters.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SamplerReductionMode {
     /// Calculates a weighted average of the selected pixels. For `Linear` filtering the pixels
     /// are evenly weighted, for `Cubic` filtering they use Catmull-Rom weights.
-    WeightedAverage = ash::vk::SamplerReductionMode::WEIGHTED_AVERAGE.as_raw(),
+    WeightedAverage = WEIGHTED_AVERAGE,
 
     /// Calculates the minimum of the selected pixels.
     ///
@@ -1401,7 +1423,7 @@ pub enum SamplerReductionMode {
     /// feature or the
     /// [`ext_sampler_filter_minmax`](crate::device::DeviceExtensions::ext_sampler_filter_minmax)
     /// extension must be enabled on the device.
-    Min = ash::vk::SamplerReductionMode::MIN.as_raw(),
+    Min = MIN,
 
     /// Calculates the maximum of the selected pixels.
     ///
@@ -1409,14 +1431,7 @@ pub enum SamplerReductionMode {
     /// feature or the
     /// [`ext_sampler_filter_minmax`](crate::device::DeviceExtensions::ext_sampler_filter_minmax)
     /// extension must be enabled on the device.
-    Max = ash::vk::SamplerReductionMode::MAX.as_raw(),
-}
-
-impl From<SamplerReductionMode> for ash::vk::SamplerReductionMode {
-    #[inline]
-    fn from(val: SamplerReductionMode) -> Self {
-        Self::from_raw(val as i32)
-    }
+    Max = MAX,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1460,19 +1475,19 @@ pub enum SamplerImageViewIncompatibleError {
 
 impl Error for SamplerImageViewIncompatibleError {}
 
-impl fmt::Display for SamplerImageViewIncompatibleError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl Display for SamplerImageViewIncompatibleError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::BorderColorFormatNotCompatible => write!(fmt, "the sampler has a border color with a numeric type different from the image view"),
-            Self::BorderColorOpaqueBlackNotIdentitySwizzled => write!(fmt, "the sampler has an opaque black border color, but the image view is not identity swizzled"),
-            Self::DepthComparisonNotSupported => write!(fmt, "the sampler has depth comparison enabled, but this is not supported by the image view"),
-            Self::DepthComparisonWrongAspect => write!(fmt, "the sampler has depth comparison enabled, but the image view does not select the `depth` aspect"),
-            Self::FilterLinearNotSupported => write!(fmt, "the sampler uses a linear filter, but this is not supported by the image view's format features"),
-            Self::FilterCubicNotSupported => write!(fmt, "the sampler uses a cubic filter, but this is not supported by the image view's format features"),
-            Self::FilterCubicMinmaxNotSupported => write!(fmt, "the sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is not supported by the image view's format features"),
-            Self::MipmapModeLinearNotSupported => write!(fmt, "the sampler uses a linear mipmap mode, but this is not supported by the image view's format features"),
-            Self::UnnormalizedCoordinatesMultipleMipLevels => write!(fmt, "the sampler uses unnormalized coordinates, but the image view has multiple mip levels"),
-            Self::UnnormalizedCoordinatesViewTypeNotCompatible => write!(fmt, "the sampler uses unnormalized coordinates, but the image view has a type other than `Dim1d` or `Dim2d`"),
+            Self::BorderColorFormatNotCompatible => write!(f, "the sampler has a border color with a numeric type different from the image view"),
+            Self::BorderColorOpaqueBlackNotIdentitySwizzled => write!(f, "the sampler has an opaque black border color, but the image view is not identity swizzled"),
+            Self::DepthComparisonNotSupported => write!(f, "the sampler has depth comparison enabled, but this is not supported by the image view"),
+            Self::DepthComparisonWrongAspect => write!(f, "the sampler has depth comparison enabled, but the image view does not select the `depth` aspect"),
+            Self::FilterLinearNotSupported => write!(f, "the sampler uses a linear filter, but this is not supported by the image view's format features"),
+            Self::FilterCubicNotSupported => write!(f, "the sampler uses a cubic filter, but this is not supported by the image view's format features"),
+            Self::FilterCubicMinmaxNotSupported => write!(f, "the sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is not supported by the image view's format features"),
+            Self::MipmapModeLinearNotSupported => write!(f, "the sampler uses a linear mipmap mode, but this is not supported by the image view's format features"),
+            Self::UnnormalizedCoordinatesMultipleMipLevels => write!(f, "the sampler uses unnormalized coordinates, but the image view has multiple mip levels"),
+            Self::UnnormalizedCoordinatesViewTypeNotCompatible => write!(f, "the sampler uses unnormalized coordinates, but the image view has a type other than `Dim1d` or `Dim2d`"),
         }
     }
 }
@@ -1485,6 +1500,7 @@ mod tests {
             Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError,
             SamplerReductionMode,
         },
+        RequiresOneOf,
     };
 
     #[test]
@@ -1615,10 +1631,10 @@ mod tests {
         );
 
         match r {
-            Err(SamplerCreationError::FeatureNotEnabled {
-                feature: "sampler_anisotropy",
+            Err(SamplerCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"sampler_anisotropy") => (),
             _ => panic!(),
         }
     }
@@ -1685,16 +1701,16 @@ mod tests {
         );
 
         match r {
-            Err(
-                SamplerCreationError::FeatureNotEnabled {
-                    feature: "sampler_mirror_clamp_to_edge",
-                    ..
-                }
-                | SamplerCreationError::ExtensionNotEnabled {
-                    extension: "khr_sampler_mirror_clamp_to_edge",
-                    ..
-                },
-            ) => (),
+            Err(SamplerCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        features,
+                        device_extensions,
+                        ..
+                    },
+                ..
+            }) if features.contains(&"sampler_mirror_clamp_to_edge")
+                && device_extensions.contains(&"khr_sampler_mirror_clamp_to_edge") => {}
             _ => panic!(),
         }
     }
@@ -1714,16 +1730,16 @@ mod tests {
         );
 
         match r {
-            Err(
-                SamplerCreationError::FeatureNotEnabled {
-                    feature: "sampler_filter_minmax",
-                    ..
-                }
-                | SamplerCreationError::ExtensionNotEnabled {
-                    extension: "ext_sampler_filter_minmax",
-                    ..
-                },
-            ) => (),
+            Err(SamplerCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        features,
+                        device_extensions,
+                        ..
+                    },
+                ..
+            }) if features.contains(&"sampler_filter_minmax")
+                && device_extensions.contains(&"ext_sampler_filter_minmax") => {}
             _ => panic!(),
         }
     }

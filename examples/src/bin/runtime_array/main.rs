@@ -23,8 +23,8 @@ use vulkano::{
         PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        QueueCreateInfo,
     },
     format::Format,
     image::{
@@ -45,7 +45,8 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -81,14 +82,20 @@ fn main() {
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
+                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                })
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -96,6 +103,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -114,9 +122,12 @@ fn main() {
                 shader_uniform_buffer_array_non_uniform_indexing: true,
                 runtime_descriptor_array: true,
                 descriptor_binding_variable_descriptor_count: true,
-                ..Features::none()
+                ..Features::empty()
             },
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -124,11 +135,13 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let surface_capabilities = physical_device
+        let surface_capabilities = device
+            .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
         let image_format = Some(
-            physical_device
+            device
+                .physical_device()
                 .surface_formats(&surface, Default::default())
                 .unwrap()[0]
                 .0,
@@ -141,7 +154,10 @@ fn main() {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent: surface.window().inner_size().into(),
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()
@@ -226,7 +242,10 @@ fn main() {
     ];
     let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
         device.clone(),
-        BufferUsage::all(),
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
         false,
         vertices,
     )
@@ -253,7 +272,7 @@ fn main() {
 
     let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
 
     let mascot_texture = {
         let png_bytes = include_bytes!("rust_mascot.png").to_vec();
@@ -432,7 +451,7 @@ fn main() {
                 recreate_swapchain = false;
             }
 
-            let (image_num, suboptimal, acquire_future) =
+            let (image_index, suboptimal, acquire_future) =
                 match acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
@@ -448,7 +467,7 @@ fn main() {
 
             let mut builder = AutoCommandBufferBuilder::primary(
                 &command_buffer_allocator,
-                queue.family(),
+                queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )
             .unwrap();
@@ -456,7 +475,9 @@ fn main() {
                 .begin_render_pass(
                     RenderPassBeginInfo {
                         clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                        ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                        ..RenderPassBeginInfo::framebuffer(
+                            framebuffers[image_index as usize].clone(),
+                        )
                     },
                     SubpassContents::Inline,
                 )
@@ -482,7 +503,10 @@ fn main() {
                 .join(acquire_future)
                 .then_execute(queue.clone(), command_buffer)
                 .unwrap()
-                .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                .then_swapchain_present(
+                    queue.clone(),
+                    SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                )
                 .then_signal_fence_and_flush();
 
             match future {

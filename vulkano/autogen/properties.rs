@@ -41,6 +41,7 @@ struct PropertiesMember {
     name: Ident,
     ty: TokenStream,
     doc: String,
+    raw: String,
     ffi_name: Ident,
     ffi_members: Vec<(Ident, TokenStream)>,
     optional: bool,
@@ -206,6 +207,7 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
                             name: format_ident!("{}", vulkano_member),
                             ty: vulkano_ty,
                             doc: String::new(),
+                            raw: name.to_owned(),
                             ffi_name: format_ident!("{}", vulkano_member),
                             ffi_members: vec![ty_name.clone()],
                             optional,
@@ -233,7 +235,13 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
 
 fn make_doc(prop: &mut PropertiesMember, vulkan_ty_name: &str) {
     let writer = &mut prop.doc;
-    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/{}.html#limits-{})", vulkan_ty_name, prop.name).unwrap();
+    write!(
+        writer,
+        "- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/{}.html#limits-{})",
+        vulkan_ty_name,
+        prop.raw
+    )
+    .unwrap();
 }
 
 #[derive(Clone, Debug)]

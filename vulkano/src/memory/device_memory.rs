@@ -9,17 +9,18 @@
 
 use super::DedicatedAllocation;
 use crate::{
-    device::{physical::MemoryType, Device, DeviceOwned},
-    DeviceSize, OomError, Version, VulkanError, VulkanObject,
+    device::{Device, DeviceOwned},
+    macros::{vulkan_bitflags, vulkan_enum},
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
     ffi::c_void,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     fs::File,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
-    ops::{BitOr, Range},
+    ops::Range,
     ptr, slice,
     sync::Arc,
 };
@@ -34,14 +35,14 @@ use std::{
 /// use vulkano::memory::{DeviceMemory, MemoryAllocateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let memory_type = device.physical_device().memory_types().next().unwrap();
+/// let memory_type_index = 0;
 ///
 /// // Allocates 1KB of memory.
 /// let memory = DeviceMemory::allocate(
 ///     device.clone(),
 ///     MemoryAllocateInfo {
 ///         allocation_size: 1024,
-///         memory_type_index: memory_type.id(),
+///         memory_type_index,
 ///         ..Default::default()
 ///     },
 /// ).unwrap();
@@ -69,8 +70,8 @@ impl DeviceMemory {
     ///   image does not belong to `device`.
     pub fn allocate(
         device: Arc<Device>,
-        mut allocate_info: MemoryAllocateInfo,
-    ) -> Result<Self, DeviceMemoryAllocationError> {
+        mut allocate_info: MemoryAllocateInfo<'_>,
+    ) -> Result<Self, DeviceMemoryError> {
         Self::validate(&device, &mut allocate_info, None)?;
         let handle = unsafe { Self::create(&device, &allocate_info, None)? };
 
@@ -92,6 +93,35 @@ impl DeviceMemory {
         })
     }
 
+    /// Creates a new `DeviceMemory` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `allocate_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        device: Arc<Device>,
+        handle: ash::vk::DeviceMemory,
+        allocate_info: MemoryAllocateInfo<'_>,
+    ) -> DeviceMemory {
+        let MemoryAllocateInfo {
+            allocation_size,
+            memory_type_index,
+            dedicated_allocation: _,
+            export_handle_types,
+            _ne: _,
+        } = allocate_info;
+
+        DeviceMemory {
+            handle,
+            device,
+
+            allocation_size,
+            memory_type_index,
+            export_handle_types,
+        }
+    }
+
     /// Imports a block of memory from an external source.
     ///
     /// # Safety
@@ -105,9 +135,9 @@ impl DeviceMemory {
     ///   image does not belong to `device`.
     pub unsafe fn import(
         device: Arc<Device>,
-        mut allocate_info: MemoryAllocateInfo,
+        mut allocate_info: MemoryAllocateInfo<'_>,
         mut import_info: MemoryImportInfo,
-    ) -> Result<Self, DeviceMemoryAllocationError> {
+    ) -> Result<Self, DeviceMemoryError> {
         Self::validate(&device, &mut allocate_info, Some(&mut import_info))?;
         let handle = Self::create(&device, &allocate_info, Some(import_info))?;
 
@@ -131,9 +161,9 @@ impl DeviceMemory {
 
     fn validate(
         device: &Device,
-        allocate_info: &mut MemoryAllocateInfo,
+        allocate_info: &mut MemoryAllocateInfo<'_>,
         import_info: Option<&mut MemoryImportInfo>,
-    ) -> Result<(), DeviceMemoryAllocationError> {
+    ) -> Result<(), DeviceMemoryError> {
         let &mut MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
@@ -149,20 +179,25 @@ impl DeviceMemory {
             *dedicated_allocation = None;
         }
 
+        let memory_properties = device.physical_device().memory_properties();
+
         // VUID-vkAllocateMemory-pAllocateInfo-01714
-        let memory_type = device
-            .physical_device()
-            .memory_type_by_id(memory_type_index)
-            .ok_or_else(|| DeviceMemoryAllocationError::MemoryTypeIndexOutOfRange {
+        let memory_type = memory_properties
+            .memory_types
+            .get(memory_type_index as usize)
+            .ok_or(DeviceMemoryError::MemoryTypeIndexOutOfRange {
                 memory_type_index,
-                memory_type_count: device.physical_device().memory_types().len() as u32,
+                memory_type_count: memory_properties.memory_types.len() as u32,
             })?;
 
         // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
-        if memory_type.is_protected() && !device.enabled_features().protected_memory {
-            return Err(DeviceMemoryAllocationError::FeatureNotEnabled {
-                feature: "protected_memory",
-                reason: "selected memory type is protected",
+        if memory_type.property_flags.protected && !device.enabled_features().protected_memory {
+            return Err(DeviceMemoryError::RequirementNotMet {
+                required_for: "`allocate_info.memory_type_index` refers to a memory type where `property_flags.protected` is set",
+                requires_one_of: RequiresOneOf {
+                    features: &["protected_memory"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -170,9 +205,9 @@ impl DeviceMemory {
         assert!(allocation_size != 0);
 
         // VUID-vkAllocateMemory-pAllocateInfo-01713
-        let heap_size = memory_type.heap().size();
+        let heap_size = memory_properties.memory_heaps[memory_type.heap_index as usize].size;
         if heap_size != 0 && allocation_size > heap_size {
-            return Err(DeviceMemoryAllocationError::MemoryTypeHeapSizeExceeded {
+            return Err(DeviceMemoryError::MemoryTypeHeapSizeExceeded {
                 allocation_size,
                 heap_size,
             });
@@ -188,12 +223,10 @@ impl DeviceMemory {
 
                     // VUID-VkMemoryDedicatedAllocateInfo-buffer-02965
                     if allocation_size != required_size {
-                        return Err(
-                            DeviceMemoryAllocationError::DedicatedAllocationSizeMismatch {
-                                allocation_size,
-                                required_size,
-                            },
-                        );
+                        return Err(DeviceMemoryError::DedicatedAllocationSizeMismatch {
+                            allocation_size,
+                            required_size,
+                        });
                     }
                 }
                 DedicatedAllocation::Image(image) => {
@@ -204,47 +237,56 @@ impl DeviceMemory {
 
                     // VUID-VkMemoryDedicatedAllocateInfo-image-02964
                     if allocation_size != required_size {
-                        return Err(
-                            DeviceMemoryAllocationError::DedicatedAllocationSizeMismatch {
-                                allocation_size,
-                                required_size,
-                            },
-                        );
+                        return Err(DeviceMemoryError::DedicatedAllocationSizeMismatch {
+                            allocation_size,
+                            required_size,
+                        });
                     }
                 }
             }
         }
 
-        // VUID-VkMemoryAllocateInfo-pNext-00639
-        // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
-        // TODO: how do you fullfill this when you don't know the image or buffer parameters?
-        // Does exporting memory require specifying these parameters up front, and does it tie the
-        // allocation to only images or buffers of that type?
+        if !export_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_external_memory)
+            {
+                return Err(DeviceMemoryError::RequirementNotMet {
+                    required_for: "`allocate_info.export_handle_types` is not empty",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        device_extensions: &["khr_external_memory"],
+                        ..Default::default()
+                    },
+                });
+            }
 
-        if export_handle_types.opaque_fd && !device.enabled_extensions().khr_external_memory_fd {
-            return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
-                extension: "khr_external_memory_fd",
-                reason: "`export_handle_types.opaque_fd` was set",
-            });
-        }
+            // VUID-VkExportMemoryAllocateInfo-handleTypes-parameter
+            export_handle_types.validate_device(device)?;
 
-        if export_handle_types.dma_buf && !device.enabled_extensions().ext_external_memory_dma_buf {
-            return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
-                extension: "ext_external_memory_dma_buf",
-                reason: "`export_handle_types.dma_buf` was set",
-            });
+            // VUID-VkMemoryAllocateInfo-pNext-00639
+            // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
+            // TODO: how do you fullfill this when you don't know the image or buffer parameters?
+            // Does exporting memory require specifying these parameters up front, and does it tie the
+            // allocation to only images or buffers of that type?
         }
 
         if let Some(import_info) = import_info {
-            match import_info {
-                &mut MemoryImportInfo::Fd {
+            match *import_info {
+                MemoryImportInfo::Fd {
+                    #[cfg(unix)]
                     handle_type,
+                    #[cfg(not(unix))]
+                        handle_type: _,
                     file: _,
                 } => {
                     if !device.enabled_extensions().khr_external_memory_fd {
-                        return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
-                            extension: "khr_external_memory_fd",
-                            reason: "`import_info` was `MemoryImportInfo::Fd`",
+                        return Err(DeviceMemoryError::RequirementNotMet {
+                            required_for:
+                                "`allocate_info.import_info` is `Some(MemoryImportInfo::Fd)`",
+                            requires_one_of: RequiresOneOf {
+                                device_extensions: &["khr_external_memory_fd"],
+                                ..Default::default()
+                            },
                         });
                     }
 
@@ -255,6 +297,9 @@ impl DeviceMemory {
 
                     #[cfg(unix)]
                     {
+                        // VUID-VkImportMemoryFdInfoKHR-handleType-parameter
+                        handle_type.validate_device(device)?;
+
                         // VUID-VkImportMemoryFdInfoKHR-handleType-00669
                         match handle_type {
                             ExternalMemoryHandleType::OpaqueFd => {
@@ -267,24 +312,67 @@ impl DeviceMemory {
                                 // VUID-VkMemoryDedicatedAllocateInfo-image-01878
                                 // Can't validate, must be ensured by user
                             }
-                            ExternalMemoryHandleType::DmaBuf => {
-                                if !device.enabled_extensions().ext_external_memory_dma_buf {
-                                    return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
-                                    extension: "ext_external_memory_dma_buf",
-                                    reason: "`import_info` was `MemoryImportInfo::Fd` and `handle_type` was `ExternalMemoryHandleType::DmaBuf`"
-                                });
-                                }
-                            }
+                            ExternalMemoryHandleType::DmaBuf => {}
                             _ => {
-                                return Err(
-                                    DeviceMemoryAllocationError::ImportFdHandleTypeNotSupported {
-                                        handle_type,
-                                    },
-                                )
+                                return Err(DeviceMemoryError::ImportFdHandleTypeNotSupported {
+                                    handle_type,
+                                })
                             }
                         }
 
                         // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00648
+                        // Can't validate, must be ensured by user
+                    }
+                }
+                MemoryImportInfo::Win32 {
+                    #[cfg(windows)]
+                    handle_type,
+                    #[cfg(not(windows))]
+                        handle_type: _,
+                    handle: _,
+                } => {
+                    if !device.enabled_extensions().khr_external_memory_win32 {
+                        return Err(DeviceMemoryError::RequirementNotMet {
+                            required_for:
+                                "`allocate_info.import_info` is `Some(MemoryImportInfo::Win32)`",
+                            requires_one_of: RequiresOneOf {
+                                device_extensions: &["khr_external_memory_win32"],
+                                ..Default::default()
+                            },
+                        });
+                    }
+
+                    #[cfg(not(windows))]
+                    unreachable!(
+                        "`khr_external_memory_win32` was somehow enabled on a non-Windows system"
+                    );
+
+                    #[cfg(windows)]
+                    {
+                        // VUID-VkImportMemoryWin32HandleInfoKHR-handleType-parameter
+                        handle_type.validate_device(device)?;
+
+                        // VUID-VkImportMemoryWin32HandleInfoKHR-handleType-00660
+                        match handle_type {
+                            ExternalMemoryHandleType::OpaqueWin32
+                            | ExternalMemoryHandleType::OpaqueWin32Kmt => {
+                                // VUID-VkMemoryAllocateInfo-allocationSize-01742
+                                // Can't validate, must be ensured by user
+
+                                // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
+                                // Can't validate, must be ensured by user
+
+                                // VUID-VkMemoryDedicatedAllocateInfo-image-01878
+                                // Can't validate, must be ensured by user
+                            }
+                            _ => {
+                                return Err(DeviceMemoryError::ImportWin32HandleTypeNotSupported {
+                                    handle_type,
+                                })
+                            }
+                        }
+
+                        // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645
                         // Can't validate, must be ensured by user
                     }
                 }
@@ -296,9 +384,9 @@ impl DeviceMemory {
 
     unsafe fn create(
         device: &Device,
-        allocate_info: &MemoryAllocateInfo,
+        allocate_info: &MemoryAllocateInfo<'_>,
         import_info: Option<MemoryImportInfo>,
-    ) -> Result<ash::vk::DeviceMemory, DeviceMemoryAllocationError> {
+    ) -> Result<ash::vk::DeviceMemory, DeviceMemoryError> {
         let &MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
@@ -328,7 +416,7 @@ impl DeviceMemory {
             allocate_info = allocate_info.push_next(info);
         }
 
-        let mut export_allocate_info = if export_handle_types != ExternalMemoryHandleTypes::none() {
+        let mut export_allocate_info = if !export_handle_types.is_empty() {
             Some(ash::vk::ExportMemoryAllocateInfo {
                 handle_types: export_handle_types.into(),
                 ..Default::default()
@@ -360,6 +448,24 @@ impl DeviceMemory {
             allocate_info = allocate_info.push_next(info);
         }
 
+        #[cfg(windows)]
+        let mut import_win32_handle_info = match import_info {
+            Some(MemoryImportInfo::Win32 {
+                handle_type,
+                handle,
+            }) => Some(ash::vk::ImportMemoryWin32HandleInfoKHR {
+                handle_type: handle_type.into(),
+                handle,
+                ..Default::default()
+            }),
+            _ => None,
+        };
+
+        #[cfg(windows)]
+        if let Some(info) = import_win32_handle_info.as_mut() {
+            allocate_info = allocate_info.push_next(info);
+        }
+
         let mut allocation_count = device.allocation_count().lock();
 
         // VUID-vkAllocateMemory-maxMemoryAllocationCount-04101
@@ -370,7 +476,7 @@ impl DeviceMemory {
                 .properties()
                 .max_memory_allocation_count
         {
-            return Err(DeviceMemoryAllocationError::TooManyObjects);
+            return Err(DeviceMemoryError::TooManyObjects);
         }
 
         let handle = {
@@ -392,19 +498,66 @@ impl DeviceMemory {
         Ok(handle)
     }
 
-    /// Returns the memory type that this memory was allocated from.
+    /// Returns the index of the memory type that this memory was allocated from.
     #[inline]
-    pub fn memory_type(&self) -> MemoryType {
-        self.device
-            .physical_device()
-            .memory_type_by_id(self.memory_type_index)
-            .unwrap()
+    pub fn memory_type_index(&self) -> u32 {
+        self.memory_type_index
     }
 
     /// Returns the size in bytes of the memory allocation.
     #[inline]
     pub fn allocation_size(&self) -> DeviceSize {
         self.allocation_size
+    }
+
+    /// Returns the handle types that can be exported from the memory allocation.
+    #[inline]
+    pub fn export_handle_types(&self) -> ExternalMemoryHandleTypes {
+        self.export_handle_types
+    }
+
+    /// Retrieves the amount of lazily-allocated memory that is currently commited to this
+    /// memory object.
+    ///
+    /// The device may change this value at any time, and the returned value may be
+    /// already out-of-date.
+    ///
+    /// `self` must have been allocated from a memory type that has the
+    /// [`lazily_allocated`](crate::memory::MemoryPropertyFlags::lazily_allocated) flag set.
+    #[inline]
+    pub fn commitment(&self) -> Result<DeviceSize, DeviceMemoryError> {
+        self.validate_commitment()?;
+
+        unsafe { Ok(self.commitment_unchecked()) }
+    }
+
+    fn validate_commitment(&self) -> Result<(), DeviceMemoryError> {
+        let memory_type = &self
+            .device
+            .physical_device()
+            .memory_properties()
+            .memory_types[self.memory_type_index as usize];
+
+        // VUID-vkGetDeviceMemoryCommitment-memory-00690
+        if !memory_type.property_flags.lazily_allocated {
+            return Err(DeviceMemoryError::NotLazilyAllocated);
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn commitment_unchecked(&self) -> DeviceSize {
+        let mut output: DeviceSize = 0;
+
+        let fns = self.device.fns();
+        (fns.v1_0.get_device_memory_commitment)(
+            self.device.internal_object(),
+            self.handle,
+            &mut output,
+        );
+
+        output
     }
 
     /// Exports the device memory into a Unix file descriptor. The caller owns the returned `File`.
@@ -416,20 +569,23 @@ impl DeviceMemory {
     pub fn export_fd(
         &self,
         handle_type: ExternalMemoryHandleType,
-    ) -> Result<std::fs::File, DeviceMemoryExportError> {
+    ) -> Result<std::fs::File, DeviceMemoryError> {
+        // VUID-VkMemoryGetFdInfoKHR-handleType-parameter
+        handle_type.validate_device(&self.device)?;
+
         // VUID-VkMemoryGetFdInfoKHR-handleType-00672
         if !matches!(
             handle_type,
             ExternalMemoryHandleType::OpaqueFd | ExternalMemoryHandleType::DmaBuf
         ) {
-            return Err(DeviceMemoryExportError::HandleTypeNotSupported { handle_type });
+            return Err(DeviceMemoryError::HandleTypeNotSupported { handle_type });
         }
 
         // VUID-VkMemoryGetFdInfoKHR-handleType-00671
         if !ash::vk::ExternalMemoryHandleTypeFlags::from(self.export_handle_types)
             .intersects(ash::vk::ExternalMemoryHandleTypeFlags::from(handle_type))
         {
-            return Err(DeviceMemoryExportError::HandleTypeNotSupported { handle_type });
+            return Err(DeviceMemoryError::HandleTypeNotSupported { handle_type });
         }
 
         debug_assert!(self.device().enabled_extensions().khr_external_memory_fd);
@@ -511,147 +667,6 @@ impl Hash for DeviceMemory {
     }
 }
 
-/// Error type returned by functions related to `DeviceMemory`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DeviceMemoryAllocationError {
-    /// Not enough memory available.
-    OomError(OomError),
-
-    /// The maximum number of allocations has been exceeded.
-    TooManyObjects,
-
-    /// An error occurred when mapping the memory.
-    MemoryMapError(MemoryMapError),
-
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
-    },
-
-    /// `dedicated_allocation` was `Some`, but the provided `allocation_size`  was different from
-    /// the required size of the buffer or image.
-    DedicatedAllocationSizeMismatch {
-        allocation_size: DeviceSize,
-        required_size: DeviceSize,
-    },
-
-    /// The provided `MemoryImportInfo::Fd::handle_type` is not supported for file descriptors.
-    ImportFdHandleTypeNotSupported {
-        handle_type: ExternalMemoryHandleType,
-    },
-
-    /// The provided `allocation_size` was greater than the memory type's heap size.
-    MemoryTypeHeapSizeExceeded {
-        allocation_size: DeviceSize,
-        heap_size: DeviceSize,
-    },
-
-    /// The provided `memory_type_index` was not less than the number of memory types in the
-    /// physical device.
-    MemoryTypeIndexOutOfRange {
-        memory_type_index: u32,
-        memory_type_count: u32,
-    },
-
-    /// Spec violation, containing the Valid Usage ID (VUID) from the Vulkan spec.
-    // TODO: Remove
-    SpecViolation(u32),
-
-    /// An implicit violation that's convered in the Vulkan spec.
-    // TODO: Remove
-    ImplicitSpecViolation(&'static str),
-}
-
-impl Error for DeviceMemoryAllocationError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
-            Self::MemoryMapError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for DeviceMemoryAllocationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::TooManyObjects => {
-                write!(fmt, "the maximum number of allocations has been exceeded")
-            }
-            Self::MemoryMapError(_) => write!(fmt, "error occurred when mapping the memory"),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
-            ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
-            Self::DedicatedAllocationSizeMismatch { allocation_size, required_size } => write!(
-                fmt,
-                "`dedicated_allocation` was `Some`, but the provided `allocation_size` ({}) was different from the required size of the buffer or image ({})",
-                allocation_size, required_size,
-            ),
-            Self::ImportFdHandleTypeNotSupported { handle_type } => write!(
-                fmt,
-                "the provided `MemoryImportInfo::Fd::handle_type` ({:?}) is not supported for file descriptors",
-                handle_type,
-            ),
-            Self::MemoryTypeHeapSizeExceeded { allocation_size, heap_size } => write!(
-                fmt,
-                "the provided `allocation_size` ({}) was greater than the memory type's heap size ({})",
-                allocation_size, heap_size,
-            ),
-            Self::MemoryTypeIndexOutOfRange { memory_type_index, memory_type_count } => write!(
-                fmt,
-                "the provided `memory_type_index` ({}) was not less than the number of memory types in the physical device ({})",
-                memory_type_index, memory_type_count,
-            ),
-
-            Self::SpecViolation(u) => {
-                write!(fmt, "valid usage ID check {} failed", u)
-            }
-            Self::ImplicitSpecViolation(e) => {
-                write!(fmt, "Implicit spec violation failed {}", e)
-            }
-        }
-    }
-}
-
-impl From<VulkanError> for DeviceMemoryAllocationError {
-    #[inline]
-    fn from(err: VulkanError) -> Self {
-        match err {
-            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
-                Self::OomError(e.into())
-            }
-            VulkanError::TooManyObjects => Self::TooManyObjects,
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<OomError> for DeviceMemoryAllocationError {
-    #[inline]
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
-impl From<MemoryMapError> for DeviceMemoryAllocationError {
-    #[inline]
-    fn from(err: MemoryMapError) -> Self {
-        Self::MemoryMapError(err)
-    }
-}
-
 /// Parameters to allocate a new `DeviceMemory`.
 #[derive(Clone, Debug)]
 pub struct MemoryAllocateInfo<'d> {
@@ -686,7 +701,7 @@ impl Default for MemoryAllocateInfo<'static> {
             allocation_size: 0,
             memory_type_index: u32::MAX,
             dedicated_allocation: None,
-            export_handle_types: ExternalMemoryHandleTypes::none(),
+            export_handle_types: ExternalMemoryHandleTypes::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -699,7 +714,7 @@ impl<'d> MemoryAllocateInfo<'d> {
             allocation_size: 0,
             memory_type_index: u32::MAX,
             dedicated_allocation: Some(dedicated_allocation),
-            export_handle_types: ExternalMemoryHandleTypes::none(),
+            export_handle_types: ExternalMemoryHandleTypes::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -733,130 +748,150 @@ pub enum MemoryImportInfo {
         handle_type: ExternalMemoryHandleType,
         file: File,
     },
+    /// Import memory from a Windows handle.
+    ///
+    /// `handle_type` must be either [`ExternalMemoryHandleType::OpaqueWin32`] or
+    /// [`ExternalMemoryHandleType::OpaqueWin32Kmt`].
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Windows handle.
+    /// - Vulkan will not take ownership of `handle`.
+    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32`], it owns a reference
+    ///   to the underlying resource and must eventually be closed by the caller.
+    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32Kmt`], it does not own a
+    ///   reference to the underlying resource.
+    /// - `handle` must be created by the Vulkan API.
+    /// - [`MemoryAllocateInfo::allocation_size`] and [`MemoryAllocateInfo::memory_type_index`]
+    ///   must match those of the original memory allocation.
+    /// - If the original memory allocation used [`MemoryAllocateInfo::dedicated_allocation`],
+    ///   the imported one must also use it, and the associated buffer or image must be defined
+    ///   identically to the original.
+    Win32 {
+        handle_type: ExternalMemoryHandleType,
+        handle: ash::vk::HANDLE,
+    },
 }
 
-/// Describes a handle type used for Vulkan external memory apis.  This is **not** just a
-/// suggestion.  Check out vkExternalMemoryHandleTypeFlagBits in the Vulkan spec.
-///
-/// If you specify an handle type that doesnt make sense (for example, using a dma-buf handle type
-/// on Windows) when using this handle, a panic will happen.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(u32)]
-pub enum ExternalMemoryHandleType {
-    OpaqueFd = ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD.as_raw(),
-    OpaqueWin32 = ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32.as_raw(),
-    OpaqueWin32Kmt = ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT.as_raw(),
-    D3D11Texture = ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE.as_raw(),
-    D3D11TextureKmt = ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT.as_raw(),
-    D3D12Heap = ash::vk::ExternalMemoryHandleTypeFlags::D3D12_HEAP.as_raw(),
-    D3D12Resource = ash::vk::ExternalMemoryHandleTypeFlags::D3D12_RESOURCE.as_raw(),
-    DmaBuf = ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT.as_raw(),
-    AndroidHardwareBuffer =
-        ash::vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID.as_raw(),
-    HostAllocation = ash::vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT.as_raw(),
-    HostMappedForeignMemory =
-        ash::vk::ExternalMemoryHandleTypeFlags::HOST_MAPPED_FOREIGN_MEMORY_EXT.as_raw(),
+vulkan_enum! {
+    /// Describes a handle type used for Vulkan external memory apis.  This is **not** just a
+    /// suggestion.  Check out vkExternalMemoryHandleTypeFlagBits in the Vulkan spec.
+    ///
+    /// If you specify an handle type that doesnt make sense (for example, using a dma-buf handle type
+    /// on Windows) when using this handle, a panic will happen.
+    #[non_exhaustive]
+    ExternalMemoryHandleType = ExternalMemoryHandleTypeFlags(u32);
+
+    // TODO: document
+    OpaqueFd = OPAQUE_FD,
+
+    // TODO: document
+    OpaqueWin32 = OPAQUE_WIN32,
+
+    // TODO: document
+    OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
+
+    // TODO: document
+    D3D11Texture = D3D11_TEXTURE,
+
+    // TODO: document
+    D3D11TextureKmt = D3D11_TEXTURE_KMT,
+
+    // TODO: document
+    D3D12Heap = D3D12_HEAP,
+
+    // TODO: document
+    D3D12Resource = D3D12_RESOURCE,
+
+    // TODO: document
+    DmaBuf = DMA_BUF_EXT {
+        device_extensions: [ext_external_memory_dma_buf],
+    },
+
+    // TODO: document
+    AndroidHardwareBuffer = ANDROID_HARDWARE_BUFFER_ANDROID {
+        device_extensions: [android_external_memory_android_hardware_buffer],
+    },
+
+    // TODO: document
+    HostAllocation = HOST_ALLOCATION_EXT {
+        device_extensions: [ext_external_memory_host],
+    },
+
+    // TODO: document
+    HostMappedForeignMemory = HOST_MAPPED_FOREIGN_MEMORY_EXT {
+        device_extensions: [ext_external_memory_host],
+    },
+
+    // TODO: document
+    ZirconVmo = ZIRCON_VMO_FUCHSIA {
+        device_extensions: [fuchsia_external_memory],
+    },
+
+    // TODO: document
+    RdmaAddress = RDMA_ADDRESS_NV {
+        device_extensions: [nv_external_memory_rdma],
+    },
 }
 
-impl From<ExternalMemoryHandleType> for ash::vk::ExternalMemoryHandleTypeFlags {
-    fn from(val: ExternalMemoryHandleType) -> Self {
-        Self::from_raw(val as u32)
-    }
-}
+vulkan_bitflags! {
+    /// A mask of multiple handle types.
+    #[non_exhaustive]
+    ExternalMemoryHandleTypes = ExternalMemoryHandleTypeFlags(u32);
 
-/// A mask of multiple handle types.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct ExternalMemoryHandleTypes {
-    pub opaque_fd: bool,
-    pub opaque_win32: bool,
-    pub opaque_win32_kmt: bool,
-    pub d3d11_texture: bool,
-    pub d3d11_texture_kmt: bool,
-    pub d3d12_heap: bool,
-    pub d3d12_resource: bool,
-    pub dma_buf: bool,
-    pub android_hardware_buffer: bool,
-    pub host_allocation: bool,
-    pub host_mapped_foreign_memory: bool,
+    // TODO: document
+    opaque_fd = OPAQUE_FD,
+
+    // TODO: document
+    opaque_win32 = OPAQUE_WIN32,
+
+    // TODO: document
+    opaque_win32_kmt = OPAQUE_WIN32_KMT,
+
+    // TODO: document
+    d3d11_texture = D3D11_TEXTURE,
+
+    // TODO: document
+    d3d11_texture_kmt = D3D11_TEXTURE_KMT,
+
+    // TODO: document
+    d3d12_heap = D3D12_HEAP,
+
+    // TODO: document
+    d3d12_resource = D3D12_RESOURCE,
+
+    // TODO: document
+    dma_buf = DMA_BUF_EXT {
+        device_extensions: [ext_external_memory_dma_buf],
+    },
+
+    // TODO: document
+    android_hardware_buffer = ANDROID_HARDWARE_BUFFER_ANDROID {
+        device_extensions: [android_external_memory_android_hardware_buffer],
+    },
+
+    // TODO: document
+    host_allocation = HOST_ALLOCATION_EXT {
+        device_extensions: [ext_external_memory_host],
+    },
+
+    // TODO: document
+    host_mapped_foreign_memory = HOST_MAPPED_FOREIGN_MEMORY_EXT {
+        device_extensions: [ext_external_memory_host],
+    },
+
+    // TODO: document
+    zircon_vmo = ZIRCON_VMO_FUCHSIA {
+        device_extensions: [fuchsia_external_memory],
+    },
+
+    // TODO: document
+    rdma_address = RDMA_ADDRESS_NV {
+        device_extensions: [nv_external_memory_rdma],
+    },
 }
 
 impl ExternalMemoryHandleTypes {
-    /// Builds a `ExternalMemoryHandleTypes` with all values set to false. Useful as a default value.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use vulkano::memory::ExternalMemoryHandleTypes as ExternalMemoryHandleTypes;
-    ///
-    /// let _handle_type = ExternalMemoryHandleTypes {
-    ///     opaque_fd: true,
-    ///     .. ExternalMemoryHandleTypes::none()
-    /// };
-    /// ```
-    #[inline]
-    pub fn none() -> Self {
-        ExternalMemoryHandleTypes {
-            opaque_fd: false,
-            opaque_win32: false,
-            opaque_win32_kmt: false,
-            d3d11_texture: false,
-            d3d11_texture_kmt: false,
-            d3d12_heap: false,
-            d3d12_resource: false,
-            dma_buf: false,
-            android_hardware_buffer: false,
-            host_allocation: false,
-            host_mapped_foreign_memory: false,
-        }
-    }
-
-    /// Builds an `ExternalMemoryHandleTypes` for a posix file descriptor.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use vulkano::memory::ExternalMemoryHandleTypes as ExternalMemoryHandleTypes;
-    ///
-    /// let _handle_type = ExternalMemoryHandleTypes::posix();
-    /// ```
-    #[inline]
-    pub fn posix() -> ExternalMemoryHandleTypes {
-        ExternalMemoryHandleTypes {
-            opaque_fd: true,
-            ..ExternalMemoryHandleTypes::none()
-        }
-    }
-
-    /// Returns whether any of the fields are set.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        let ExternalMemoryHandleTypes {
-            opaque_fd,
-            opaque_win32,
-            opaque_win32_kmt,
-            d3d11_texture,
-            d3d11_texture_kmt,
-            d3d12_heap,
-            d3d12_resource,
-            dma_buf,
-            android_hardware_buffer,
-            host_allocation,
-            host_mapped_foreign_memory,
-        } = *self;
-
-        !(opaque_fd
-            || opaque_win32
-            || opaque_win32_kmt
-            || d3d11_texture
-            || d3d11_texture_kmt
-            || d3d12_heap
-            || d3d12_resource
-            || dma_buf
-            || android_hardware_buffer
-            || host_allocation
-            || host_mapped_foreign_memory)
-    }
-
     /// Returns an iterator of `ExternalMemoryHandleType` enum values, representing the fields that
     /// are set in `self`.
     #[inline]
@@ -873,162 +908,175 @@ impl ExternalMemoryHandleTypes {
             android_hardware_buffer,
             host_allocation,
             host_mapped_foreign_memory,
+            zircon_vmo,
+            rdma_address,
+            _ne: _,
         } = *self;
 
         [
-            opaque_fd.then(|| ExternalMemoryHandleType::OpaqueFd),
-            opaque_win32.then(|| ExternalMemoryHandleType::OpaqueWin32),
-            opaque_win32_kmt.then(|| ExternalMemoryHandleType::OpaqueWin32Kmt),
-            d3d11_texture.then(|| ExternalMemoryHandleType::D3D11Texture),
-            d3d11_texture_kmt.then(|| ExternalMemoryHandleType::D3D11TextureKmt),
-            d3d12_heap.then(|| ExternalMemoryHandleType::D3D12Heap),
-            d3d12_resource.then(|| ExternalMemoryHandleType::D3D12Resource),
-            dma_buf.then(|| ExternalMemoryHandleType::DmaBuf),
-            android_hardware_buffer.then(|| ExternalMemoryHandleType::AndroidHardwareBuffer),
-            host_allocation.then(|| ExternalMemoryHandleType::HostAllocation),
-            host_mapped_foreign_memory.then(|| ExternalMemoryHandleType::HostMappedForeignMemory),
+            opaque_fd.then_some(ExternalMemoryHandleType::OpaqueFd),
+            opaque_win32.then_some(ExternalMemoryHandleType::OpaqueWin32),
+            opaque_win32_kmt.then_some(ExternalMemoryHandleType::OpaqueWin32Kmt),
+            d3d11_texture.then_some(ExternalMemoryHandleType::D3D11Texture),
+            d3d11_texture_kmt.then_some(ExternalMemoryHandleType::D3D11TextureKmt),
+            d3d12_heap.then_some(ExternalMemoryHandleType::D3D12Heap),
+            d3d12_resource.then_some(ExternalMemoryHandleType::D3D12Resource),
+            dma_buf.then_some(ExternalMemoryHandleType::DmaBuf),
+            android_hardware_buffer.then_some(ExternalMemoryHandleType::AndroidHardwareBuffer),
+            host_allocation.then_some(ExternalMemoryHandleType::HostAllocation),
+            host_mapped_foreign_memory.then_some(ExternalMemoryHandleType::HostMappedForeignMemory),
+            zircon_vmo.then_some(ExternalMemoryHandleType::HostMappedForeignMemory),
+            rdma_address.then_some(ExternalMemoryHandleType::HostMappedForeignMemory),
         ]
         .into_iter()
         .flatten()
     }
 }
 
-impl From<ExternalMemoryHandleTypes> for ash::vk::ExternalMemoryHandleTypeFlags {
-    #[inline]
-    fn from(val: ExternalMemoryHandleTypes) -> Self {
-        let mut result = ash::vk::ExternalMemoryHandleTypeFlags::empty();
-        if val.opaque_fd {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
-        }
-        if val.opaque_win32 {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32;
-        }
-        if val.opaque_win32_kmt {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT;
-        }
-        if val.d3d11_texture {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE;
-        }
-        if val.d3d11_texture_kmt {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT;
-        }
-        if val.d3d12_heap {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D12_HEAP;
-        }
-        if val.d3d12_resource {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D12_RESOURCE;
-        }
-        if val.dma_buf {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
-        }
-        if val.android_hardware_buffer {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID;
-        }
-        if val.host_allocation {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT;
-        }
-        if val.host_mapped_foreign_memory {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::HOST_MAPPED_FOREIGN_MEMORY_EXT
-        }
-        result
-    }
-}
-
-impl From<ash::vk::ExternalMemoryHandleTypeFlags> for ExternalMemoryHandleTypes {
-    fn from(val: ash::vk::ExternalMemoryHandleTypeFlags) -> Self {
-        ExternalMemoryHandleTypes {
-            opaque_fd: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD).is_empty(),
-            opaque_win32: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32).is_empty(),
-            opaque_win32_kmt: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT)
-                .is_empty(),
-            d3d11_texture: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE)
-                .is_empty(),
-            d3d11_texture_kmt: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT)
-                .is_empty(),
-            d3d12_heap: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D12_HEAP).is_empty(),
-            d3d12_resource: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D12_RESOURCE)
-                .is_empty(),
-            dma_buf: !(val & ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT).is_empty(),
-            android_hardware_buffer: !(val
-                & ash::vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID)
-                .is_empty(),
-            host_allocation: !(val & ash::vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT)
-                .is_empty(),
-            host_mapped_foreign_memory: !(val
-                & ash::vk::ExternalMemoryHandleTypeFlags::HOST_MAPPED_FOREIGN_MEMORY_EXT)
-                .is_empty(),
-        }
-    }
-}
-
-impl BitOr for ExternalMemoryHandleTypes {
-    type Output = Self;
-
-    #[inline]
-    fn bitor(self, rhs: Self) -> Self {
-        ExternalMemoryHandleTypes {
-            opaque_fd: self.opaque_fd || rhs.opaque_fd,
-            opaque_win32: self.opaque_win32 || rhs.opaque_win32,
-            opaque_win32_kmt: self.opaque_win32_kmt || rhs.opaque_win32_kmt,
-            d3d11_texture: self.d3d11_texture || rhs.d3d11_texture,
-            d3d11_texture_kmt: self.d3d11_texture_kmt || rhs.d3d11_texture_kmt,
-            d3d12_heap: self.d3d12_heap || rhs.d3d12_heap,
-            d3d12_resource: self.d3d12_resource || rhs.d3d12_resource,
-            dma_buf: self.dma_buf || rhs.dma_buf,
-            android_hardware_buffer: self.android_hardware_buffer || rhs.android_hardware_buffer,
-            host_allocation: self.host_allocation || rhs.host_allocation,
-            host_mapped_foreign_memory: self.host_mapped_foreign_memory
-                || rhs.host_mapped_foreign_memory,
-        }
-    }
-}
-
 /// Error type returned by functions related to `DeviceMemory`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DeviceMemoryExportError {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DeviceMemoryError {
     /// Not enough memory available.
     OomError(OomError),
 
     /// The maximum number of allocations has been exceeded.
     TooManyObjects,
 
+    /// An error occurred when mapping the memory.
+    MemoryMapError(MemoryMapError),
+
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
+    /// `dedicated_allocation` was `Some`, but the provided `allocation_size`  was different from
+    /// the required size of the buffer or image.
+    DedicatedAllocationSizeMismatch {
+        allocation_size: DeviceSize,
+        required_size: DeviceSize,
+    },
+
     /// The requested export handle type is not supported for this operation, or was not provided in
     /// `export_handle_types` when allocating the memory.
     HandleTypeNotSupported {
         handle_type: ExternalMemoryHandleType,
     },
+
+    /// The provided `MemoryImportInfo::Fd::handle_type` is not supported for file descriptors.
+    ImportFdHandleTypeNotSupported {
+        handle_type: ExternalMemoryHandleType,
+    },
+
+    /// The provided `MemoryImportInfo::Win32::handle_type` is not supported.
+    ImportWin32HandleTypeNotSupported {
+        handle_type: ExternalMemoryHandleType,
+    },
+
+    /// The provided `allocation_size` was greater than the memory type's heap size.
+    MemoryTypeHeapSizeExceeded {
+        allocation_size: DeviceSize,
+        heap_size: DeviceSize,
+    },
+
+    /// The provided `memory_type_index` was not less than the number of memory types in the
+    /// physical device.
+    MemoryTypeIndexOutOfRange {
+        memory_type_index: u32,
+        memory_type_count: u32,
+    },
+
+    /// The memory type from which this memory was allocated does not have the
+    /// [`lazily_allocated`](crate::memory::MemoryPropertyFlags::lazily_allocated) flag set.
+    NotLazilyAllocated,
+
+    /// Spec violation, containing the Valid Usage ID (VUID) from the Vulkan spec.
+    // TODO: Remove
+    SpecViolation(u32),
+
+    /// An implicit violation that's convered in the Vulkan spec.
+    // TODO: Remove
+    ImplicitSpecViolation(&'static str),
 }
 
-impl Error for DeviceMemoryExportError {
+impl Error for DeviceMemoryError {
     #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
+            Self::MemoryMapError(ref err) => Some(err),
             _ => None,
         }
     }
 }
 
-impl fmt::Display for DeviceMemoryExportError {
+impl Display for DeviceMemoryError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
+            Self::OomError(_) => write!(f, "not enough memory available"),
             Self::TooManyObjects => {
-                write!(fmt, "the maximum number of allocations has been exceeded")
+                write!(f, "the maximum number of allocations has been exceeded")
             }
+            Self::MemoryMapError(_) => write!(f, "error occurred when mapping the memory"),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+
+            Self::DedicatedAllocationSizeMismatch { allocation_size, required_size } => write!(
+                f,
+                "`dedicated_allocation` was `Some`, but the provided `allocation_size` ({}) was different from the required size of the buffer or image ({})",
+                allocation_size, required_size,
+            ),
             Self::HandleTypeNotSupported {
                 handle_type,
             } => write!(
-                fmt,
+                f,
                 "the requested export handle type ({:?}) is not supported for this operation, or was not provided in `export_handle_types` when allocating the memory",
                 handle_type,
             ),
+            Self::ImportFdHandleTypeNotSupported { handle_type } => write!(
+                f,
+                "the provided `MemoryImportInfo::Fd::handle_type` ({:?}) is not supported for file descriptors",
+                handle_type,
+            ),
+            Self::ImportWin32HandleTypeNotSupported { handle_type } => write!(
+                f,
+                "the provided `MemoryImportInfo::Win32::handle_type` ({:?}) is not supported",
+                handle_type,
+            ),
+            Self::MemoryTypeHeapSizeExceeded { allocation_size, heap_size } => write!(
+                f,
+                "the provided `allocation_size` ({}) was greater than the memory type's heap size ({})",
+                allocation_size, heap_size,
+            ),
+            Self::MemoryTypeIndexOutOfRange { memory_type_index, memory_type_count } => write!(
+                f,
+                "the provided `memory_type_index` ({}) was not less than the number of memory types in the physical device ({})",
+                memory_type_index, memory_type_count,
+            ),
+            Self::NotLazilyAllocated => write!(
+                f,
+                "the memory type from which this memory was allocated does not have the `lazily_allocated` flag set",
+            ),
+
+            Self::SpecViolation(u) => {
+                write!(f, "valid usage ID check {} failed", u)
+            }
+            Self::ImplicitSpecViolation(e) => {
+                write!(f, "Implicit spec violation failed {}", e)
+            }
         }
     }
 }
 
-impl From<VulkanError> for DeviceMemoryExportError {
+impl From<VulkanError> for DeviceMemoryError {
     #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
@@ -1041,10 +1089,27 @@ impl From<VulkanError> for DeviceMemoryExportError {
     }
 }
 
-impl From<OomError> for DeviceMemoryExportError {
+impl From<OomError> for DeviceMemoryError {
     #[inline]
-    fn from(err: OomError) -> DeviceMemoryExportError {
+    fn from(err: OomError) -> Self {
         Self::OomError(err)
+    }
+}
+
+impl From<MemoryMapError> for DeviceMemoryError {
+    #[inline]
+    fn from(err: MemoryMapError) -> Self {
+        Self::MemoryMapError(err)
+    }
+}
+
+impl From<RequirementNotMet> for DeviceMemoryError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
     }
 }
 
@@ -1060,16 +1125,21 @@ impl From<OomError> for DeviceMemoryExportError {
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// // The memory type must be mappable.
-/// let memory_type = device.physical_device().memory_types()
-///                     .filter(|t| t.is_host_visible())
-///                     .next().unwrap();    // Vk specs guarantee that this can't fail
+/// let memory_type_index = device
+///     .physical_device()
+///     .memory_properties()
+///     .memory_types
+///     .iter()
+///     .position(|t| t.property_flags.host_visible)
+///     .map(|i| i as u32)
+///     .unwrap();    // Vk specs guarantee that this can't fail
 ///
 /// // Allocates 1KB of memory.
 /// let memory = DeviceMemory::allocate(
 ///     device.clone(),
 ///     MemoryAllocateInfo {
 ///         allocation_size: 1024,
-///         memory_type_index: memory_type.id(),
+///         memory_type_index,
 ///         ..Default::default()
 ///     },
 /// ).unwrap();
@@ -1129,13 +1199,16 @@ impl MappedDeviceMemory {
             });
         }
 
+        let device = memory.device();
+        let memory_type = &device.physical_device().memory_properties().memory_types
+            [memory.memory_type_index() as usize];
+
         // VUID-vkMapMemory-memory-00682
-        if !memory.memory_type().is_host_visible() {
+        if !memory_type.property_flags.host_visible {
             return Err(MemoryMapError::NotHostVisible);
         }
 
-        let device = memory.device();
-        let coherent = memory.memory_type().is_host_coherent();
+        let coherent = memory_type.property_flags.host_coherent;
         let atom_size = device.physical_device().properties().non_coherent_atom_size;
 
         // Not required for merely mapping, but without this check the user can end up with
@@ -1427,23 +1500,23 @@ impl Error for MemoryMapError {
     }
 }
 
-impl fmt::Display for MemoryMapError {
+impl Display for MemoryMapError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::MemoryMapFailed => write!(fmt, "memory map failed"),
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::MemoryMapFailed => write!(f, "memory map failed"),
             Self::NotHostVisible => write!(
-                fmt,
+                f,
                 "tried to map memory whose type is not host-visible",
             ),
             Self::OutOfRange { ref provided_range, ref allowed_range } => write!(
-                fmt,
+                f,
                 "the specified `range` ({:?}) was not contained within the allocated or mapped memory range ({:?})",
                 provided_range, allowed_range,
             ),
             Self::RangeNotAlignedToAtomSize { ref range, atom_size } => write!(
-                fmt,
+                f,
                 "the memory is not host-coherent, and the specified `range` bounds ({:?}) are not a multiple of the `non_coherent_atom_size` device property ({})",
                 range, atom_size,
             )
@@ -1475,19 +1548,18 @@ impl From<OomError> for MemoryMapError {
 mod tests {
     use super::MemoryAllocateInfo;
     use crate::{
-        memory::{DeviceMemory, DeviceMemoryAllocationError},
+        memory::{DeviceMemory, DeviceMemoryError},
         OomError,
     };
 
     #[test]
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device.physical_device().memory_types().next().unwrap();
         let _ = DeviceMemory::allocate(
-            device.clone(),
+            device,
             MemoryAllocateInfo {
                 allocation_size: 256,
-                memory_type_index: memory_type.id(),
+                memory_type_index: 0,
                 ..Default::default()
             },
         )
@@ -1497,13 +1569,12 @@ mod tests {
     #[test]
     fn zero_size() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device.physical_device().memory_types().next().unwrap();
         assert_should_panic!({
             let _ = DeviceMemory::allocate(
                 device.clone(),
                 MemoryAllocateInfo {
                     allocation_size: 0,
-                    memory_type_index: memory_type.id(),
+                    memory_type_index: 0,
                     ..Default::default()
                 },
             )
@@ -1515,21 +1586,24 @@ mod tests {
     #[cfg(target_pointer_width = "64")]
     fn oom_single() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device
+        let memory_type_index = device
             .physical_device()
-            .memory_types()
-            .find(|m| !m.is_lazily_allocated())
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .find_map(|(i, m)| (!m.property_flags.lazily_allocated).then_some(i as u32))
             .unwrap();
 
         match DeviceMemory::allocate(
-            device.clone(),
+            device,
             MemoryAllocateInfo {
                 allocation_size: 0xffffffffffffffff,
-                memory_type_index: memory_type.id(),
+                memory_type_index,
                 ..Default::default()
             },
         ) {
-            Err(DeviceMemoryAllocationError::MemoryTypeHeapSizeExceeded { .. }) => (),
+            Err(DeviceMemoryError::MemoryTypeHeapSizeExceeded { .. }) => (),
             _ => panic!(),
         }
     }
@@ -1538,12 +1612,17 @@ mod tests {
     #[ignore] // TODO: test fails for now on Mesa+Intel
     fn oom_multi() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device
+        let (memory_type_index, memory_type) = device
             .physical_device()
-            .memory_types()
-            .find(|m| !m.is_lazily_allocated())
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .find_map(|(i, m)| (!m.property_flags.lazily_allocated).then_some((i as u32, m)))
             .unwrap();
-        let heap_size = memory_type.heap().size();
+        let heap_size = device.physical_device().memory_properties().memory_heaps
+            [memory_type.heap_index as usize]
+            .size;
 
         let mut allocs = Vec::new();
 
@@ -1552,11 +1631,11 @@ mod tests {
                 device.clone(),
                 MemoryAllocateInfo {
                     allocation_size: heap_size / 3,
-                    memory_type_index: memory_type.id(),
+                    memory_type_index,
                     ..Default::default()
                 },
             ) {
-                Err(DeviceMemoryAllocationError::OomError(OomError::OutOfDeviceMemory)) => return, // test succeeded
+                Err(DeviceMemoryError::OomError(OomError::OutOfDeviceMemory)) => return, // test succeeded
                 Ok(a) => allocs.push(a),
                 _ => (),
             }
@@ -1568,13 +1647,12 @@ mod tests {
     #[test]
     fn allocation_count() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device.physical_device().memory_types().next().unwrap();
         assert_eq!(*device.allocation_count().lock(), 0);
         let _mem1 = DeviceMemory::allocate(
             device.clone(),
             MemoryAllocateInfo {
                 allocation_size: 256,
-                memory_type_index: memory_type.id(),
+                memory_type_index: 0,
                 ..Default::default()
             },
         )
@@ -1585,7 +1663,7 @@ mod tests {
                 device.clone(),
                 MemoryAllocateInfo {
                     allocation_size: 256,
-                    memory_type_index: memory_type.id(),
+                    memory_type_index: 0,
                     ..Default::default()
                 },
             )

@@ -22,8 +22,8 @@ use vulkano::{
         CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo, SubpassContents,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        QueueCreateInfo,
     },
     format::Format,
     image::{
@@ -55,7 +55,7 @@ fn main() {
         InstanceCreateInfo {
             enabled_extensions: InstanceExtensions {
                 khr_get_physical_device_properties2: true, // required to get multiview limits
-                ..InstanceExtensions::none()
+                ..InstanceExtensions::empty()
             },
             // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
@@ -65,22 +65,22 @@ fn main() {
     .unwrap();
 
     let device_extensions = DeviceExtensions {
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
     let features = Features {
         // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on
         // Vulkan 1.0 and the device feature on Vulkan 1.1+
         multiview: true,
-        ..Features::none()
+        ..Features::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| {
-            p.supported_extensions().is_superset_of(&device_extensions)
+    let (physical_device, queue_family_index) = instance.enumerate_physical_devices().unwrap()
+        .filter(|p| {
+            p.supported_extensions().contains(&device_extensions)
         })
-        .filter(|&p| {
-            p.supported_features().is_superset_of(&features)
+        .filter(|p| {
+            p.supported_features().contains(&features)
         })
-        .filter(|&p| {
+        .filter(|p| {
             // This example renders to two layers of the framebuffer using the multiview
             // extension so we check that at least two views are supported by the device.
             // Not checking this on a device that doesn't support two views
@@ -90,9 +90,10 @@ fn main() {
             p.properties().max_multiview_view_count.unwrap_or(0) >= 2
         })
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics())
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .position(|q| q.queue_flags.graphics)
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -100,6 +101,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         // A real application should probably fall back to rendering the framebuffer layers
         // in multiple passes when multiview isn't supported.
@@ -116,7 +118,10 @@ fn main() {
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
             enabled_features: features,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -135,10 +140,10 @@ fn main() {
         ImageUsage {
             transfer_src: true,
             color_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         },
-        ImageCreateFlags::none(),
-        Some(queue_family),
+        ImageCreateFlags::empty(),
+        Some(queue.queue_family_index()),
     )
     .unwrap();
 
@@ -162,9 +167,16 @@ fn main() {
             position: [0.25, -0.1],
         },
     ];
-    let vertex_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
-            .unwrap();
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        vertices,
+    )
+    .unwrap();
 
     // Note the `#extension GL_EXT_multiview : enable` that enables the multiview extension
     // for the shader and the use of `gl_ViewIndex` which contains a value based on which
@@ -266,12 +278,15 @@ fn main() {
         .unwrap();
 
     let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
 
     let create_buffer = || {
         CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
             false,
             (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),
         )
@@ -283,7 +298,7 @@ fn main() {
 
     let mut builder = AutoCommandBufferBuilder::primary(
         &command_buffer_allocator,
-        queue_family,
+        queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
@@ -375,4 +390,8 @@ fn write_image_buffer_to_file(
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&buffer_content).unwrap();
+
+    if let Ok(path) = path.canonicalize() {
+        println!("Saved to {}", path.display());
+    }
 }

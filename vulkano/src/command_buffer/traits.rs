@@ -8,9 +8,7 @@
 // according to those terms.
 
 use super::{
-    submit::{SubmitAnyBuilder, SubmitCommandBufferBuilder},
-    sys::UnsafeCommandBuffer,
-    CommandBufferInheritanceInfo,
+    sys::UnsafeCommandBuffer, CommandBufferInheritanceInfo, SemaphoreSubmitInfo, SubmitInfo,
 };
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
@@ -18,7 +16,7 @@ use crate::{
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     sync::{
         now, AccessCheckError, AccessError, AccessFlags, FlushError, GpuFuture, NowFuture,
-        PipelineMemoryAccess, PipelineStages,
+        PipelineMemoryAccess, PipelineStages, SubmitAnyBuilder,
     },
     DeviceSize, SafeDeref, VulkanObject,
 };
@@ -26,7 +24,7 @@ use parking_lot::Mutex;
 use std::{
     borrow::Cow,
     error::Error,
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     ops::Range,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -77,7 +75,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
     fn execute(
         self,
         queue: Arc<Queue>,
-    ) -> Result<CommandBufferExecFuture<NowFuture, Self>, CommandBufferExecError>
+    ) -> Result<CommandBufferExecFuture<NowFuture>, CommandBufferExecError>
     where
         Self: Sized + 'static,
     {
@@ -112,7 +110,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
         self,
         future: F,
         queue: Arc<Queue>,
-    ) -> Result<CommandBufferExecFuture<F, Self>, CommandBufferExecError>
+    ) -> Result<CommandBufferExecFuture<F>, CommandBufferExecError>
     where
         Self: Sized + 'static,
         F: GpuFuture,
@@ -130,7 +128,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
 
         Ok(CommandBufferExecFuture {
             previous: future,
-            command_buffer: self,
+            command_buffer: Arc::new(self),
             queue,
             submitted: Mutex::new(false),
             finished: AtomicBool::new(false),
@@ -153,6 +151,12 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
         expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
+}
+
+impl Debug for dyn PrimaryCommandBuffer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        Debug::fmt(self.inner(), f)
+    }
 }
 
 unsafe impl<T> PrimaryCommandBuffer for T
@@ -322,13 +326,12 @@ where
 /// Represents a command buffer being executed by the GPU and the moment when the execution
 /// finishes.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
-pub struct CommandBufferExecFuture<F, Cb>
+pub struct CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     previous: F,
-    command_buffer: Cb,
+    command_buffer: Arc<dyn PrimaryCommandBuffer>,
     queue: Arc<Queue>,
     // True if the command buffer has already been submitted.
     // If flush is called multiple times, we want to block so that only one flushing is executed.
@@ -337,31 +340,51 @@ where
     finished: AtomicBool,
 }
 
-impl<F, Cb> CommandBufferExecFuture<F, Cb>
+impl<F> CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     // Implementation of `build_submission`. Doesn't check whenever the future was already flushed.
     // You must make sure to not submit same command buffer multiple times.
     unsafe fn build_submission_impl(&self) -> Result<SubmitAnyBuilder, FlushError> {
         Ok(match self.previous.build_submission()? {
-            SubmitAnyBuilder::Empty => {
-                let mut builder = SubmitCommandBufferBuilder::new();
-                builder.add_command_buffer(self.command_buffer.inner());
-                SubmitAnyBuilder::CommandBuffer(builder)
+            SubmitAnyBuilder::Empty => SubmitAnyBuilder::CommandBuffer(
+                SubmitInfo {
+                    command_buffers: vec![self.command_buffer.clone()],
+                    ..Default::default()
+                },
+                None,
+            ),
+            SubmitAnyBuilder::SemaphoresWait(semaphores) => {
+                SubmitAnyBuilder::CommandBuffer(
+                    SubmitInfo {
+                        wait_semaphores: semaphores
+                            .into_iter()
+                            .map(|semaphore| {
+                                SemaphoreSubmitInfo {
+                                    stages: PipelineStages {
+                                        // TODO: correct stages ; hard
+                                        all_commands: true,
+                                        ..PipelineStages::empty()
+                                    },
+                                    ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                }
+                            })
+                            .collect(),
+                        command_buffers: vec![self.command_buffer.clone()],
+                        ..Default::default()
+                    },
+                    None,
+                )
             }
-            SubmitAnyBuilder::SemaphoresWait(sem) => {
-                let mut builder: SubmitCommandBufferBuilder = sem.into();
-                builder.add_command_buffer(self.command_buffer.inner());
-                SubmitAnyBuilder::CommandBuffer(builder)
-            }
-            SubmitAnyBuilder::CommandBuffer(mut builder) => {
+            SubmitAnyBuilder::CommandBuffer(mut submit_info, fence) => {
                 // FIXME: add pipeline barrier
-                builder.add_command_buffer(self.command_buffer.inner());
-                SubmitAnyBuilder::CommandBuffer(builder)
+                submit_info
+                    .command_buffers
+                    .push(self.command_buffer.clone());
+                SubmitAnyBuilder::CommandBuffer(submit_info, fence)
             }
-            SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_) => {
+            SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_, _) => {
                 unimplemented!() // TODO:
                                  /*present.submit();     // TODO: wrong
                                  let mut builder = SubmitCommandBufferBuilder::new();
@@ -372,10 +395,9 @@ where
     }
 }
 
-unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
+unsafe impl<F> GpuFuture for CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -402,8 +424,8 @@ where
 
             match self.build_submission_impl()? {
                 SubmitAnyBuilder::Empty => {}
-                SubmitAnyBuilder::CommandBuffer(builder) => {
-                    builder.submit(&queue)?;
+                SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
+                    queue.with(|mut q| q.submit_unchecked([submit_info], fence))?;
                 }
                 _ => unreachable!(),
             };
@@ -416,10 +438,7 @@ where
 
     #[inline]
     unsafe fn signal_finished(&self) {
-        if !self.finished.swap(true, Ordering::SeqCst) {
-            self.command_buffer.unlock();
-        }
-
+        self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
 
@@ -477,12 +496,20 @@ where
             }
         }
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        self.previous.check_swapchain_image_acquired(image, false)
+    }
 }
 
-unsafe impl<F, Cb> DeviceOwned for CommandBufferExecFuture<F, Cb>
+unsafe impl<F> DeviceOwned for CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -490,10 +517,9 @@ where
     }
 }
 
-impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb>
+impl<F> Drop for CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     fn drop(&mut self) {
         unsafe {
@@ -501,8 +527,7 @@ where
                 // TODO: handle errors?
                 self.flush().unwrap();
                 // Block until the queue finished.
-                self.queue.wait().unwrap();
-                self.command_buffer.unlock();
+                self.queue.with(|mut q| q.wait_idle()).unwrap();
                 self.previous.signal_finished();
             }
         }
@@ -540,11 +565,11 @@ impl Error for CommandBufferExecError {
     }
 }
 
-impl fmt::Display for CommandBufferExecError {
+impl Display for CommandBufferExecError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 CommandBufferExecError::AccessError { .. } =>

@@ -103,12 +103,16 @@
 //! TODO: talk about fence + semaphore simultaneously
 //! TODO: talk about using fences to clean up
 
+pub(crate) use self::fence::FenceState;
 pub use self::{
     event::{Event, EventCreateInfo},
-    fence::{Fence, FenceCreateInfo, FenceWaitError},
+    fence::{
+        ExternalFenceHandleType, ExternalFenceHandleTypes, ExternalFenceInfo,
+        ExternalFenceProperties, Fence, FenceCreateInfo, FenceError, FenceImportFlags,
+    },
     future::{
         now, AccessCheckError, AccessError, FenceSignalFuture, FlushError, GpuFuture, JoinFuture,
-        NowFuture, SemaphoreSignalFuture,
+        NowFuture, SemaphoreSignalFuture, SubmitAnyBuilder,
     },
     pipeline::{
         AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier, MemoryBarrier,
@@ -116,7 +120,8 @@ pub use self::{
     },
     semaphore::{
         ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, ExternalSemaphoreInfo,
-        ExternalSemaphoreProperties, Semaphore, SemaphoreCreateInfo, SemaphoreCreationError,
+        ExternalSemaphoreProperties, Semaphore, SemaphoreCreateInfo, SemaphoreError,
+        SemaphoreImportFlags,
     },
 };
 use crate::device::Queue;
@@ -152,7 +157,12 @@ impl<'a> From<&'a Arc<Queue>> for SharingMode {
 impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
     #[inline]
     fn from(queues: &'a [&'a Arc<Queue>]) -> SharingMode {
-        SharingMode::Concurrent(queues.iter().map(|queue| queue.family().id()).collect())
+        SharingMode::Concurrent(
+            queues
+                .iter()
+                .map(|queue| queue.queue_family_index())
+                .collect(),
+        )
     }
 }
 

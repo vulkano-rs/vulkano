@@ -84,7 +84,13 @@ use crate::{
     },
     DeviceSize,
 };
-use std::{borrow::Cow, collections::HashMap, ops::Range, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    fmt::{Debug, Error as FmtError, Formatter},
+    ops::Range,
+    sync::Arc,
+};
 
 mod builder;
 
@@ -323,7 +329,7 @@ impl SyncCommandBuffer {
         range_map
             .range(&range)
             .try_fold(
-                (PipelineStages::none(), AccessFlags::none()),
+                (PipelineStages::empty(), AccessFlags::empty()),
                 |(stages, access), (_range, state)| {
                     if !state.exclusive && exclusive {
                         Err(AccessCheckError::Unknown)
@@ -357,7 +363,7 @@ impl SyncCommandBuffer {
         range_map
             .range(&range)
             .try_fold(
-                (PipelineStages::none(), AccessFlags::none()),
+                (PipelineStages::empty(), AccessFlags::empty()),
                 |(stages, access), (_range, state)| {
                     if expected_layout != ImageLayout::Undefined
                         && state.final_layout != expected_layout
@@ -513,8 +519,8 @@ pub(super) trait Command: Send + Sync {
     unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder);
 }
 
-impl std::fmt::Debug for dyn Command {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for dyn Command {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.write_str(self.name())
     }
 }
@@ -549,7 +555,8 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
+            let allocator =
+                StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
 
             let builder_alloc = allocator
                 .allocate(CommandBufferLevel::Primary, 1)
@@ -574,12 +581,16 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             let allocator =
-                StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+                StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
+                    .unwrap();
 
             // Create a tiny test buffer
             let (buf, future) = DeviceLocalBuffer::from_data(
                 0u32,
-                BufferUsage::transfer_dst(),
+                BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
                 &allocator,
                 queue.clone(),
             )
@@ -595,7 +606,7 @@ mod tests {
                 .map(|_| {
                     let mut builder = AutoCommandBufferBuilder::secondary(
                         &allocator,
-                        queue.family(),
+                        queue.queue_family_index(),
                         CommandBufferUsage::SimultaneousUse,
                         Default::default(),
                     )
@@ -670,7 +681,8 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             let allocator =
-                StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+                StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
+                    .unwrap();
 
             let builder_alloc = allocator
                 .allocate(CommandBufferLevel::Primary, 1)
@@ -685,8 +697,16 @@ mod tests {
                 },
             )
             .unwrap();
-            let buf =
-                CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, 0u32).unwrap();
+            let buf = CpuAccessibleBuffer::from_data(
+                device,
+                BufferUsage {
+                    vertex_buffer: true,
+                    ..BufferUsage::empty()
+                },
+                false,
+                0u32,
+            )
+            .unwrap();
             let mut buf_builder = sync.bind_vertex_buffers();
             buf_builder.add(buf);
             buf_builder.submit(1);
@@ -703,7 +723,8 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             let cb_allocator =
-                StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+                StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
+                    .unwrap();
             let builder_alloc = cb_allocator
                 .allocate(CommandBufferLevel::Primary, 1)
                 .unwrap()
@@ -723,7 +744,7 @@ mod tests {
                     bindings: [(
                         0,
                         DescriptorSetLayoutBinding {
-                            stages: ShaderStages::all(),
+                            stages: ShaderStages::all_graphics(),
                             ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::Sampler)
                         },
                     )]

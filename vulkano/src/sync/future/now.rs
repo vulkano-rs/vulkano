@@ -7,10 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{AccessCheckError, FlushError, GpuFuture};
+use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
 use crate::{
     buffer::sys::UnsafeBuffer,
-    command_buffer::submit::SubmitAnyBuilder,
     device::{Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
     sync::{AccessFlags, PipelineStages},
@@ -76,6 +75,15 @@ unsafe impl GpuFuture for NowFuture {
         _expected_layout: ImageLayout,
         _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+        Err(AccessCheckError::Unknown)
+    }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        _image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 }

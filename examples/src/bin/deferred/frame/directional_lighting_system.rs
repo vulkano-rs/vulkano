@@ -67,7 +67,10 @@ impl DirectionalLightingSystem {
         let vertex_buffer = {
             CpuAccessibleBuffer::from_iter(
                 gfx_queue.device().clone(),
-                BufferUsage::all(),
+                BufferUsage {
+                    vertex_buffer: true,
+                    ..BufferUsage::empty()
+                },
                 false,
                 vertices,
             )
@@ -163,7 +166,7 @@ impl DirectionalLightingSystem {
 
         let mut builder = AutoCommandBufferBuilder::secondary(
             &self.command_buffer_allocator,
-            self.gfx_queue.family(),
+            self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
                 render_pass: Some(self.subpass.clone().into()),
@@ -241,6 +244,11 @@ void main() {
     vec3 in_diffuse = subpassLoad(u_diffuse).rgb;
     f_color.rgb = light_percent * push_constants.color.rgb * in_diffuse;
     f_color.a = 1.0;
-}"
+}",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }

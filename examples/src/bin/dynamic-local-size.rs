@@ -25,8 +25,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     format::Format,
     image::{view::ImageView, ImageDimensions, StorageImage},
@@ -46,7 +45,7 @@ fn main() {
                 // about the device workgroup size limits
                 khr_get_physical_device_properties2: true,
 
-                ..InstanceExtensions::none()
+                ..InstanceExtensions::empty()
             },
             // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
@@ -56,14 +55,17 @@ fn main() {
     .unwrap();
 
     let device_extensions = DeviceExtensions {
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_compute())
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .position(|q| q.queue_flags.compute)
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -71,6 +73,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -84,7 +87,10 @@ fn main() {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -156,7 +162,7 @@ fn main() {
     // In this case we can find appropriate value in this table: https://vulkan.gpuinfo.org/
     // or just use fallback constant for simplicity, but failure to set proper
     // local size can lead to significant performance penalty.
-    let (local_size_x, local_size_y) = match physical_device.properties().subgroup_size {
+    let (local_size_x, local_size_y) = match device.physical_device().properties().subgroup_size {
         Some(subgroup_size) => {
             println!("Subgroup size is {}", subgroup_size);
 
@@ -194,7 +200,7 @@ fn main() {
 
     let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
 
     let image = StorageImage::new(
         device.clone(),
@@ -204,7 +210,7 @@ fn main() {
             array_layers: 1,
         },
         Format::R8G8B8A8_UNORM,
-        Some(queue.family()),
+        Some(queue.queue_family_index()),
     )
     .unwrap();
     let view = ImageView::new_default(image.clone()).unwrap();
@@ -219,7 +225,10 @@ fn main() {
 
     let buf = CpuAccessibleBuffer::from_iter(
         device.clone(),
-        BufferUsage::all(),
+        BufferUsage {
+            transfer_dst: true,
+            ..BufferUsage::empty()
+        },
         false,
         (0..1024 * 1024 * 4).map(|_| 0u8),
     )
@@ -227,7 +236,7 @@ fn main() {
 
     let mut builder = AutoCommandBufferBuilder::primary(
         &command_buffer_allocator,
-        queue.family(),
+        queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();

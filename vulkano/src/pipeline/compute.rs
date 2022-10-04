@@ -36,7 +36,15 @@ use crate::{
     shader::{DescriptorRequirements, EntryPoint, SpecializationConstants},
     DeviceSize, OomError, VulkanError, VulkanObject,
 };
-use std::{collections::HashMap, error::Error, fmt, mem, mem::MaybeUninit, ptr, sync::Arc};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
+    mem,
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -62,7 +70,7 @@ impl ComputePipeline {
     /// to add dynamic buffers or immutable samplers.
     pub fn new<Css, F>(
         device: Arc<Device>,
-        shader: EntryPoint,
+        shader: EntryPoint<'_>,
         specialization_constants: &Css,
         cache: Option<Arc<PipelineCache>>,
         func: F,
@@ -109,7 +117,7 @@ impl ComputePipeline {
     /// uses.
     pub fn with_pipeline_layout<Css>(
         device: Arc<Device>,
-        shader: EntryPoint,
+        shader: EntryPoint<'_>,
         specialization_constants: &Css,
         layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
@@ -150,7 +158,7 @@ impl ComputePipeline {
     /// superset of what the shader expects.
     pub unsafe fn with_unchecked_pipeline_layout<Css>(
         device: Arc<Device>,
-        shader: EntryPoint,
+        shader: EntryPoint<'_>,
         specialization_constants: &Css,
         layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
@@ -264,10 +272,10 @@ impl Pipeline for ComputePipeline {
     }
 }
 
-impl fmt::Debug for ComputePipeline {
+impl Debug for ComputePipeline {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan compute pipeline {:?}>", self.handle)
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "<Vulkan compute pipeline {:?}>", self.handle)
     }
 }
 
@@ -334,11 +342,11 @@ impl Error for ComputePipelineCreationError {
     }
 }
 
-impl fmt::Display for ComputePipelineCreationError {
+impl Display for ComputePipelineCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 ComputePipelineCreationError::OomError(_) => "not enough memory available",
@@ -490,8 +498,16 @@ mod tests {
         )
         .unwrap();
 
-        let data_buffer =
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
+        let data_buffer = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            0,
+        )
+        .unwrap();
 
         let mut ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
         let set = PersistentDescriptorSet::new(
@@ -502,10 +518,11 @@ mod tests {
         .unwrap();
 
         let cb_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+            StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
+                .unwrap();
         let mut cbb = AutoCommandBufferBuilder::primary(
             &cb_allocator,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();

@@ -36,11 +36,11 @@
 //! - A [`CpuBufferPool`](crate::buffer::cpu_pool::CpuBufferPool) is a ring buffer that can be used to
 //!   transfer data between the CPU and the GPU at a high rate.
 //! - A [`CpuAccessibleBuffer`](crate::buffer::cpu_access::CpuAccessibleBuffer) is a simple buffer that
-//!   can be used to prototype. It may be removed from vulkano in the far future.
+//!   can be used to prototype.
 //!
 //! Here is a quick way to choose which buffer to use. Do you often need to read or write
-//! the content of the buffer? If so, use a `CpuBufferPool`. Otherwise, do you need to be able to
-//! modify the content of the buffer after its initialization? If so, use a `DeviceLocalBuffer`.
+//! the content of the buffer? If so, use a `CpuBufferPool`. Otherwise, do you need to have access
+//! to the buffer on the CPU? Then use `CpuAccessibleBuffer`. Otherwise, use a `DeviceLocalBuffer`.
 //!
 //! Another example: if a buffer is under constant access by the GPU but you need to
 //! read its content on the CPU from time to time, it may be a good idea to use a
@@ -173,7 +173,7 @@ where
 
 /// The buffer configuration to query in
 /// [`PhysicalDevice::external_buffer_properties`](crate::device::physical::PhysicalDevice::external_buffer_properties).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalBufferInfo {
     /// The external handle type that will be used with the buffer.
     pub handle_type: ExternalMemoryHandleType,
@@ -193,7 +193,7 @@ impl ExternalBufferInfo {
     pub fn handle_type(handle_type: ExternalMemoryHandleType) -> Self {
         Self {
             handle_type,
-            usage: BufferUsage::none(),
+            usage: BufferUsage::empty(),
             sparse: None,
             _ne: crate::NonExhaustive(()),
         }

@@ -22,8 +22,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     instance::{Instance, InstanceCreateInfo},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
@@ -47,16 +46,19 @@ fn main() {
     // Choose which physical device to use.
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
             // The Vulkan specs guarantee that a compliant implementation must provide at least one queue
             // that supports compute operations.
-            p.queue_families()
-                .find(|&q| q.supports_compute())
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .position(|q| q.queue_flags.compute)
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -64,6 +66,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -78,7 +81,10 @@ fn main() {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -140,7 +146,7 @@ fn main() {
 
     let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
 
     // We start by creating the buffer that will store the data.
     let data_buffer = {
@@ -151,7 +157,7 @@ fn main() {
             device.clone(),
             BufferUsage {
                 storage_buffer: true,
-                ..BufferUsage::none()
+                ..BufferUsage::empty()
             },
             false,
             data_iter,
@@ -178,7 +184,7 @@ fn main() {
     // In order to execute our operation, we have to build a command buffer.
     let mut builder = AutoCommandBufferBuilder::primary(
         &command_buffer_allocator,
-        queue.family(),
+        queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
@@ -235,4 +241,6 @@ fn main() {
     for n in 0..65536u32 {
         assert_eq!(data_buffer_content[n as usize], n * 12);
     }
+
+    println!("Success");
 }

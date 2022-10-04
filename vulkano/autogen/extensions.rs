@@ -43,16 +43,16 @@ struct ExtensionsMember {
     doc: String,
     raw: String,
     required_if_supported: bool,
-    requires: Vec<OneOfDependencies>,
+    requires: Vec<RequiresOneOf>,
     conflicts_device_extensions: Vec<Ident>,
     status: Option<ExtensionStatus>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-struct OneOfDependencies {
-    api_version: Option<(String, String)>,
-    device_extensions: Vec<Ident>,
-    instance_extensions: Vec<Ident>,
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RequiresOneOf {
+    pub api_version: Option<(String, String)>,
+    pub device_extensions: Vec<Ident>,
+    pub instance_extensions: Vec<Ident>,
 }
 
 #[derive(Clone, Debug)]
@@ -105,7 +105,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
         let requires_items = requires.iter().map(|require| {
             let require_items = require.api_version.iter().map(|version| {
                 let version = format_ident!("V{}_{}", version.0, version.1);
-                quote! { api_version >= Version::#version }
+                quote! { api_version >= crate::Version::#version }
             }).chain(require.instance_extensions.iter().map(|ext| {
                 quote! { instance_extensions.#ext }
             })).chain(require.device_extensions.iter().map(|ext| {
@@ -114,19 +114,20 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
 
             let api_version_items = require.api_version.as_ref().map(|version| {
                 let version = format_ident!("V{}_{}", version.0, version.1);
-                quote! { Some(Version::#version) }
+                quote! { Some(crate::Version::#version) }
             }).unwrap_or_else(|| quote!{ None });
             let device_extensions_items = require.device_extensions.iter().map(|ext| ext.to_string());
             let instance_extensions_items = require.instance_extensions.iter().map(|ext| ext.to_string());
 
             quote! {
                 if !(#(#require_items)||*) {
-                    return Err(ExtensionRestrictionError {
+                    return Err(crate::device::ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: ExtensionRestriction::Requires(OneOfRequirements {
+                        restriction: crate::device::ExtensionRestriction::Requires(crate::RequiresOneOf {
                             api_version: #api_version_items,
                             device_extensions: &[#(#device_extensions_items),*],
                             instance_extensions: &[#(#instance_extensions_items),*],
+                            ..Default::default()
                         }),
                     })
                 }
@@ -136,9 +137,9 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             let string = extension.to_string();
             quote! {
                 if self.#extension {
-                    return Err(ExtensionRestrictionError {
+                    return Err(crate::device::ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: ExtensionRestriction::ConflictsDeviceExtension(#string),
+                        restriction: crate::device::ExtensionRestriction::ConflictsDeviceExtension(#string),
                     });
                 }
             }
@@ -146,9 +147,9 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
         let required_if_supported = if *required_if_supported {
             quote! {
                 if supported.#name {
-                    return Err(ExtensionRestrictionError {
+                    return Err(crate::device::ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: ExtensionRestriction::RequiredIfSupported,
+                        restriction: crate::device::ExtensionRestriction::RequiredIfSupported,
                     });
                 }
             }
@@ -159,9 +160,9 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
         quote! {
             if self.#name {
                 if !supported.#name {
-                    return Err(ExtensionRestrictionError {
+                    return Err(crate::device::ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: ExtensionRestriction::NotSupported,
+                        restriction: crate::device::ExtensionRestriction::NotSupported,
                     });
                 }
 
@@ -181,9 +182,9 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &DeviceExtensions,
-                api_version: Version,
-                instance_extensions: &InstanceExtensions,
-            ) -> Result<(), ExtensionRestrictionError> {
+                api_version: crate::Version,
+                instance_extensions: &crate::instance::InstanceExtensions,
+            ) -> Result<(), crate::device::ExtensionRestrictionError> {
                 let device_extensions = self;
                 #(#check_requirements_items)*
                 Ok(())
@@ -207,7 +208,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                         .iter()
                         .map(|version| {
                             let version = format_ident!("V{}_{}", version.0, version.1);
-                            quote! { api_version >= Version::#version }
+                            quote! { api_version >= crate::Version::#version }
                         })
                         .chain(require.instance_extensions.iter().map(|ext| {
                             quote! { instance_extensions.#ext }
@@ -221,7 +222,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                         .as_ref()
                         .map(|version| {
                             let version = format_ident!("V{}_{}", version.0, version.1);
-                            quote! { Some(Version::#version) }
+                            quote! { Some(crate::Version::#version) }
                         })
                         .unwrap_or_else(|| quote! { None });
                     let device_extensions_items =
@@ -233,12 +234,13 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
 
                     quote! {
                         if !(#(#require_items)||*) {
-                            return Err(ExtensionRestrictionError {
+                            return Err(crate::instance::ExtensionRestrictionError {
                                 extension: #name_string,
-                                restriction: ExtensionRestriction::Requires(OneOfRequirements {
+                                restriction: crate::instance::ExtensionRestriction::Requires(crate::RequiresOneOf {
                                     api_version: #api_version_items,
                                     device_extensions: &[#(#device_extensions_items),*],
                                     instance_extensions: &[#(#instance_extensions_items),*],
+                                    ..Default::default()
                                 }),
                             })
                         }
@@ -248,9 +250,9 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 quote! {
                     if self.#name {
                         if !supported.#name {
-                            return Err(ExtensionRestrictionError {
+                            return Err(crate::instance::ExtensionRestrictionError {
                                 extension: #name_string,
-                                restriction: ExtensionRestriction::NotSupported,
+                                restriction: crate::instance::ExtensionRestriction::NotSupported,
                             });
                         }
 
@@ -267,8 +269,8 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &InstanceExtensions,
-                api_version: Version,
-            ) -> Result<(), ExtensionRestrictionError> {
+                api_version: crate::Version,
+            ) -> Result<(), crate::instance::ExtensionRestrictionError> {
                 let instance_extensions = self;
                 #(#check_requirements_items)*
                 Ok(())
@@ -285,13 +287,19 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         }
     });
 
-    let none_items = members.iter().map(|ExtensionsMember { name, .. }| {
+    let empty_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             #name: false,
         }
     });
 
-    let is_superset_of_items = members.iter().map(|ExtensionsMember { name, .. }| {
+    let intersects_items = members.iter().map(|ExtensionsMember { name, .. }| {
+        quote! {
+            (self.#name && other.#name)
+        }
+    });
+
+    let contains_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             (self.#name || !other.#name)
         }
@@ -315,6 +323,12 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         }
     });
 
+    let symmetric_difference_items = members.iter().map(|ExtensionsMember { name, .. }| {
+        quote! {
+            #name: self.#name ^ other.#name,
+        }
+    });
+
     let debug_items = members.iter().map(|ExtensionsMember { name, raw, .. }| {
         quote! {
             if self.#name {
@@ -325,9 +339,9 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         }
     });
 
-    let from_cstr_for_extensions_items =
+    let from_str_for_extensions_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
-            let raw = Literal::byte_string(raw.as_bytes());
+            let raw = Literal::string(raw);
             quote! {
                 #raw => { extensions.#name = true; }
             }
@@ -336,7 +350,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
     let from_extensions_for_vec_cstring_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
             quote! {
-                if x.#name { data.push(CString::new(#raw).unwrap()); }
+                if x.#name { data.push(std::ffi::CString::new(#raw).unwrap()); }
             }
         });
 
@@ -349,25 +363,50 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub _ne: crate::NonExhaustive,
         }
 
-        impl #struct_name {
-            /// Returns an `Extensions` object with all members set to `false`.
+        impl Default for #struct_name {
             #[inline]
-            pub const fn none() -> Self {
+            fn default() -> Self {
+                Self::empty()
+            }
+        }
+
+        impl #struct_name {
+            /// Returns an `Extensions` object with none of the members set.
+            #[inline]
+            pub const fn empty() -> Self {
                 Self {
-                    #(#none_items)*
+                    #(#empty_items)*
                     _ne: crate::NonExhaustive(()),
                 }
             }
 
-            /// Returns true if `self` is a superset of the parameter.
-            ///
-            /// That is, for each extension of the parameter that is true, the corresponding value
-            /// in self is true as well.
-            pub fn is_superset_of(&self, other: &Self) -> bool {
-                #(#is_superset_of_items)&&*
+            /// Returns an `Extensions` object with none of the members set.
+            #[deprecated(since = "0.31.0", note = "Use `empty` instead.")]
+            #[inline]
+            pub const fn none() -> Self {
+                Self::empty()
             }
 
-            /// Returns the union of this list and another list.
+            /// Returns whether any members are set in both `self` and `other`.
+            #[inline]
+            pub const fn intersects(&self, other: &Self) -> bool {
+                #(#intersects_items)||*
+            }
+
+            /// Returns whether all members in `other` are set in `self`.
+            #[inline]
+            pub const fn contains(&self, other: &Self) -> bool {
+                #(#contains_items)&&*
+            }
+
+            /// Returns whether all members in `other` are set in `self`.
+            #[deprecated(since = "0.31.0", note = "Use `contains` instead.")]
+            #[inline]
+            pub const fn is_superset_of(&self, other: &Self) -> bool {
+                self.contains(other)
+            }
+
+            /// Returns the union of `self` and `other`.
             #[inline]
             pub const fn union(&self, other: &Self) -> Self {
                 Self {
@@ -376,7 +415,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                 }
             }
 
-            /// Returns the intersection of this list and another list.
+            /// Returns the intersection of `self` and `other`.
             #[inline]
             pub const fn intersection(&self, other: &Self) -> Self {
                 Self {
@@ -385,7 +424,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                 }
             }
 
-            /// Returns the difference of another list from this list.
+            /// Returns `self` without the members set in `other`.
             #[inline]
             pub const fn difference(&self, other: &Self) -> Self {
                 Self {
@@ -393,11 +432,84 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                     _ne: crate::NonExhaustive(()),
                 }
             }
+
+            /// Returns the members set in `self` or `other`, but not both.
+            #[inline]
+            pub const fn symmetric_difference(&self, other: &Self) -> Self {
+                Self {
+                    #(#symmetric_difference_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
+            }
+        }
+
+        impl std::ops::BitAnd for #struct_name {
+            type Output = #struct_name;
+
+            #[inline]
+            fn bitand(self, rhs: Self) -> Self::Output {
+                self.union(&rhs)
+            }
+        }
+
+        impl std::ops::BitAndAssign for #struct_name {
+            #[inline]
+            fn bitand_assign(&mut self, rhs: Self) {
+                *self = self.union(&rhs);
+            }
+        }
+
+        impl std::ops::BitOr for #struct_name {
+            type Output = #struct_name;
+
+            #[inline]
+            fn bitor(self, rhs: Self) -> Self::Output {
+                self.intersection(&rhs)
+            }
+        }
+
+        impl std::ops::BitOrAssign for #struct_name {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: Self) {
+                *self = self.intersection(&rhs);
+            }
+        }
+
+        impl std::ops::BitXor for #struct_name {
+            type Output = #struct_name;
+
+            #[inline]
+            fn bitxor(self, rhs: Self) -> Self::Output {
+                self.symmetric_difference(&rhs)
+            }
+        }
+
+        impl std::ops::BitXorAssign for #struct_name {
+            #[inline]
+            fn bitxor_assign(&mut self, rhs: Self) {
+                *self = self.symmetric_difference(&rhs);
+            }
+        }
+
+        impl std::ops::Sub for #struct_name {
+            type Output = #struct_name;
+
+            #[inline]
+            fn sub(self, rhs: Self) -> Self::Output {
+                self.difference(&rhs)
+            }
+        }
+
+        impl std::ops::SubAssign for #struct_name {
+            #[inline]
+            fn sub_assign(&mut self, rhs: Self) {
+                *self = self.difference(&rhs);
+            }
         }
 
         impl std::fmt::Debug for #struct_name {
             #[allow(unused_assignments)]
-            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
                 write!(f, "[")?;
 
                 let mut first = true;
@@ -407,12 +519,14 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl<'a, I> From<I> for #struct_name where I: IntoIterator<Item = &'a CStr> {
-            fn from(names: I) -> Self {
-                let mut extensions = Self::none();
-                for name in names {
-                    match name.to_bytes() {
-                        #(#from_cstr_for_extensions_items)*
+        impl<'a> FromIterator<&'a str> for #struct_name {
+            fn from_iter<I>(iter: I) -> Self
+                where I: IntoIterator<Item = &'a str>
+            {
+                let mut extensions = Self::empty();
+                for name in iter {
+                    match name {
+                        #(#from_str_for_extensions_items)*
                         _ => (),
                     }
                 }
@@ -420,7 +534,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl<'a> From<&'a #struct_name> for Vec<CString> {
+        impl<'a> From<&'a #struct_name> for Vec<std::ffi::CString> {
             fn from(x: &'a #struct_name) -> Self {
                 let mut data = Self::new();
                 #(#from_extensions_for_vec_cstring_items)*
@@ -442,7 +556,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
 
             if let Some(core) = ext.requires_core.as_ref() {
                 let (major, minor) = core.split_once('.').unwrap();
-                requires.push(OneOfDependencies {
+                requires.push(RequiresOneOf {
                     api_version: Some((major.to_owned(), minor.to_owned())),
                     ..Default::default()
                 });
@@ -450,7 +564,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
 
             if let Some(req) = ext.requires.as_ref() {
                 requires.extend(req.split(',').map(|mut vk_name| {
-                    let mut dependencies = OneOfDependencies::default();
+                    let mut dependencies = RequiresOneOf::default();
 
                     loop {
                         if let Some(version) = vk_name.strip_prefix("VK_VERSION_") {
@@ -554,7 +668,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
 
 fn make_doc(ext: &mut ExtensionsMember) {
     let writer = &mut ext.doc;
-    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/{}.html)", ext.raw).unwrap();
+    write!(writer, "- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/{}.html)", ext.raw).unwrap();
 
     if ext.required_if_supported {
         write!(

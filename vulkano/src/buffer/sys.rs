@@ -30,17 +30,18 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    memory::{DeviceMemory, DeviceMemoryAllocationError, MemoryRequirements},
+    macros::vulkan_bitflags,
+    memory::{DeviceMemory, DeviceMemoryError, ExternalMemoryHandleTypes, MemoryRequirements},
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
-    DeviceSize, OomError, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -56,6 +57,7 @@ pub struct UnsafeBuffer {
 
     size: DeviceSize,
     usage: BufferUsage,
+    external_memory_handle_types: ExternalMemoryHandleTypes,
 
     state: Mutex<BufferState>,
 }
@@ -69,75 +71,106 @@ impl UnsafeBuffer {
     ///   items.
     /// - Panics if `create_info.size` is zero.
     /// - Panics if `create_info.usage` is empty.
+    #[inline]
     pub fn new(
         device: Arc<Device>,
-        create_info: UnsafeBufferCreateInfo,
-    ) -> Result<Arc<UnsafeBuffer>, BufferCreationError> {
-        let UnsafeBufferCreateInfo {
-            mut sharing,
+        mut create_info: UnsafeBufferCreateInfo,
+    ) -> Result<Arc<Self>, BufferCreationError> {
+        match &mut create_info.sharing {
+            Sharing::Exclusive => (),
+            Sharing::Concurrent(queue_family_indices) => {
+                // VUID-VkBufferCreateInfo-sharingMode-01419
+                queue_family_indices.sort_unstable();
+                queue_family_indices.dedup();
+            }
+        }
+
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &UnsafeBufferCreateInfo,
+    ) -> Result<(), BufferCreationError> {
+        let &UnsafeBufferCreateInfo {
+            ref sharing,
             size,
             sparse,
             usage,
+            external_memory_handle_types,
             _ne: _,
         } = create_info;
+
+        // VUID-VkBufferCreateInfo-usage-parameter
+        usage.validate_device(device)?;
+
+        // VUID-VkBufferCreateInfo-usage-requiredbitmask
+        assert!(!usage.is_empty());
 
         // VUID-VkBufferCreateInfo-size-00912
         assert!(size != 0);
 
-        // VUID-VkBufferCreateInfo-usage-requiredbitmask
-        assert!(usage != BufferUsage::none());
-
-        let mut flags = ash::vk::BufferCreateFlags::empty();
-
-        // Check sparse features
         if let Some(sparse_level) = sparse {
             // VUID-VkBufferCreateInfo-flags-00915
             if !device.enabled_features().sparse_binding {
-                return Err(BufferCreationError::FeatureNotEnabled {
-                    feature: "sparse_binding",
-                    reason: "sparse was `Some`",
+                return Err(BufferCreationError::RequirementNotMet {
+                    required_for: "`create_info.sparse` is `Some`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sparse_binding"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-VkBufferCreateInfo-flags-00916
             if sparse_level.sparse_residency && !device.enabled_features().sparse_residency_buffer {
-                return Err(BufferCreationError::FeatureNotEnabled {
-                    feature: "sparse_residency_buffer",
-                    reason: "sparse was `Some` and `sparse_residency` was set",
+                return Err(BufferCreationError::RequirementNotMet {
+                    required_for: "`create_info.sparse` is `Some(sparse_level)`, where `sparse_level.sparse_residency` is set",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sparse_residency_buffer"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-VkBufferCreateInfo-flags-00917
             if sparse_level.sparse_aliased && !device.enabled_features().sparse_residency_aliased {
-                return Err(BufferCreationError::FeatureNotEnabled {
-                    feature: "sparse_residency_aliased",
-                    reason: "sparse was `Some` and `sparse_aliased` was set",
+                return Err(BufferCreationError::RequirementNotMet {
+                    required_for: "`create_info.sparse` is `Some(sparse_level)`, where `sparse_level.sparse_aliased` is set",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sparse_residency_aliased"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-VkBufferCreateInfo-flags-00918
-            flags |= sparse_level.into();
         }
 
-        // Check sharing mode and queue families
-        let (sharing_mode, queue_family_indices) = match &mut sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, &[] as _),
-            Sharing::Concurrent(ids) => {
+        match sharing {
+            Sharing::Exclusive => (),
+            Sharing::Concurrent(queue_family_indices) => {
                 // VUID-VkBufferCreateInfo-sharingMode-00914
-                ids.sort_unstable();
-                ids.dedup();
-                assert!(ids.len() >= 2);
+                assert!(queue_family_indices.len() >= 2);
 
-                for &id in ids.iter() {
+                for &queue_family_index in queue_family_indices.iter() {
                     // VUID-VkBufferCreateInfo-sharingMode-01419
-                    if device.physical_device().queue_family_by_id(id).is_none() {
-                        return Err(BufferCreationError::SharingInvalidQueueFamilyId { id });
+                    if queue_family_index
+                        >= device.physical_device().queue_family_properties().len() as u32
+                    {
+                        return Err(BufferCreationError::SharingQueueFamilyIndexOutOfRange {
+                            queue_family_index,
+                            queue_family_count: device
+                                .physical_device()
+                                .queue_family_properties()
+                                .len() as u32,
+                        });
                     }
                 }
-
-                (ash::vk::SharingMode::CONCURRENT, ids.as_slice())
             }
-        };
+        }
 
         if let Some(max_buffer_size) = device.physical_device().properties().max_buffer_size {
             // VUID-VkBufferCreateInfo-size-06409
@@ -149,20 +182,86 @@ impl UnsafeBuffer {
             }
         }
 
-        // Everything now ok. Creating the buffer.
-        let create_info = ash::vk::BufferCreateInfo::builder()
-            .flags(flags)
-            .size(size)
-            .usage(usage.into())
-            .sharing_mode(sharing_mode)
-            .queue_family_indices(queue_family_indices);
+        if !external_memory_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_external_memory)
+            {
+                return Err(BufferCreationError::RequirementNotMet {
+                    required_for: "`create_info.external_memory_handle_types` is not empty",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        device_extensions: &["khr_external_memory"],
+                        ..Default::default()
+                    },
+                });
+            }
 
-        let handle = unsafe {
+            // VUID-VkExternalMemoryBufferCreateInfo-handleTypes-parameter
+            external_memory_handle_types.validate_device(device)?;
+
+            // VUID-VkBufferCreateInfo-pNext-00920
+            // TODO:
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: UnsafeBufferCreateInfo,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let &UnsafeBufferCreateInfo {
+            ref sharing,
+            size,
+            sparse,
+            usage,
+            external_memory_handle_types,
+            _ne: _,
+        } = &create_info;
+
+        let mut flags = ash::vk::BufferCreateFlags::empty();
+
+        if let Some(sparse_level) = sparse {
+            flags |= sparse_level.into();
+        }
+
+        let (sharing_mode, p_queue_family_indices) = match sharing {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, &[] as _),
+            Sharing::Concurrent(queue_family_indices) => (
+                ash::vk::SharingMode::CONCURRENT,
+                queue_family_indices.as_ptr(),
+            ),
+        };
+
+        let mut create_info_vk = ash::vk::BufferCreateInfo {
+            flags,
+            size,
+            usage: usage.into(),
+            sharing_mode,
+            p_queue_family_indices,
+            ..Default::default()
+        };
+        let mut external_memory_info_vk = None;
+
+        if !external_memory_handle_types.is_empty() {
+            let _ = external_memory_info_vk.insert(ash::vk::ExternalMemoryBufferCreateInfo {
+                handle_types: external_memory_handle_types.into(),
+                ..Default::default()
+            });
+        }
+
+        if let Some(next) = external_memory_info_vk.as_mut() {
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_buffer)(
                 device.internal_object(),
-                &create_info.build(),
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -171,29 +270,28 @@ impl UnsafeBuffer {
             output.assume_init()
         };
 
-        let buffer = UnsafeBuffer {
-            handle,
-            device,
-
-            size,
-            usage,
-
-            state: Mutex::new(BufferState::new(size)),
-        };
-
-        Ok(Arc::new(buffer))
+        Ok(Self::from_handle(device, handle, create_info))
     }
 
-    /// Creates a new `UnsafeBuffer` from an ash-handle
+    /// Creates a new `UnsafeBuffer` from a raw object handle.
+    ///
     /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
+        device: Arc<Device>,
         handle: ash::vk::Buffer,
         create_info: UnsafeBufferCreateInfo,
-        device: Arc<Device>,
-    ) -> Arc<UnsafeBuffer> {
-        let UnsafeBufferCreateInfo { size, usage, .. } = create_info;
+    ) -> Arc<Self> {
+        let UnsafeBufferCreateInfo {
+            size,
+            usage,
+            sharing: _,
+            sparse: _,
+            external_memory_handle_types,
+            _ne: _,
+        } = create_info;
 
         Arc::new(UnsafeBuffer {
             handle,
@@ -201,6 +299,7 @@ impl UnsafeBuffer {
 
             size,
             usage,
+            external_memory_handle_types,
 
             state: Mutex::new(BufferState::new(size)),
         })
@@ -319,7 +418,7 @@ impl UnsafeBuffer {
             let mem_reqs = mem_reqs.assume_init();
             mem_reqs.size <= (memory.allocation_size() - offset)
                 && (offset % mem_reqs.alignment) == 0
-                && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
+                && mem_reqs.memory_type_bits & (1 << memory.memory_type_index()) != 0
         });
 
         // Check for alignment correctness.
@@ -347,7 +446,7 @@ impl UnsafeBuffer {
         Ok(())
     }
 
-    pub(crate) fn state(&self) -> MutexGuard<BufferState> {
+    pub(crate) fn state(&self) -> MutexGuard<'_, BufferState> {
         self.state.lock()
     }
 
@@ -361,6 +460,12 @@ impl UnsafeBuffer {
     #[inline]
     pub fn usage(&self) -> &BufferUsage {
         &self.usage
+    }
+
+    /// Returns the external memory handle types that are supported with this buffer.
+    #[inline]
+    pub fn external_memory_handle_types(&self) -> ExternalMemoryHandleTypes {
+        self.external_memory_handle_types
     }
 
     /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
@@ -433,8 +538,17 @@ pub struct UnsafeBufferCreateInfo {
 
     /// How the buffer is going to be used.
     ///
-    /// The default value is [`BufferUsage::none()`], which must be overridden.
+    /// The default value is [`BufferUsage::empty()`], which must be overridden.
     pub usage: BufferUsage,
+
+    /// The external memory handle types that are going to be used with the buffer.
+    ///
+    /// If any of the fields in this value are set, the device must either support API version 1.1
+    /// or the [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
+    /// extension must be enabled.
+    ///
+    /// The default value is [`ExternalMemoryHandleTypes::empty()`].
+    pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -446,7 +560,8 @@ impl Default for UnsafeBufferCreateInfo {
             sharing: Sharing::Exclusive,
             size: 0,
             sparse: None,
-            usage: BufferUsage::none(),
+            usage: BufferUsage::empty(),
+            external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -456,23 +571,22 @@ impl Default for UnsafeBufferCreateInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BufferCreationError {
     /// Allocating memory failed.
-    AllocError(DeviceMemoryAllocationError),
+    AllocError(DeviceMemoryError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The specified size exceeded the value of the `max_buffer_size` limit.
     MaxBufferSizeExceeded { size: DeviceSize, max: DeviceSize },
 
-    /// The sharing mode was set to `Concurrent`, but one of the specified queue family ids was not
-    /// valid.
-    SharingInvalidQueueFamilyId { id: u32 },
+    /// The sharing mode was set to `Concurrent`, but one of the specified queue family indices was
+    /// out of range.
+    SharingQueueFamilyIndexOutOfRange {
+        queue_family_index: u32,
+        queue_family_count: u32,
+    },
 }
 
 impl Error for BufferCreationError {
@@ -485,25 +599,25 @@ impl Error for BufferCreationError {
     }
 }
 
-impl fmt::Display for BufferCreationError {
+impl Display for BufferCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            Self::AllocError(_) => write!(fmt, "allocating memory failed"),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::AllocError(_) => write!(f, "allocating memory failed"),
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
             Self::MaxBufferSizeExceeded { .. } => write!(
-                fmt,
+                f,
                 "the specified size exceeded the value of the `max_buffer_size` limit"
             ),
-            Self::SharingInvalidQueueFamilyId { .. } => {
-                write!(fmt, "the sharing mode was set to `Concurrent`, but one of the specified queue family ids was not valid")
+            Self::SharingQueueFamilyIndexOutOfRange { .. } => {
+                write!(f, "the sharing mode was set to `Concurrent`, but one of the specified queue family indices was out of range")
             }
         }
     }
@@ -521,58 +635,36 @@ impl From<VulkanError> for BufferCreationError {
     fn from(err: VulkanError) -> BufferCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => {
-                BufferCreationError::AllocError(DeviceMemoryAllocationError::from(err))
+                BufferCreationError::AllocError(DeviceMemoryError::from(err))
             }
             err @ VulkanError::OutOfDeviceMemory => {
-                BufferCreationError::AllocError(DeviceMemoryAllocationError::from(err))
+                BufferCreationError::AllocError(DeviceMemoryError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
 
-/// The level of sparse binding that a buffer should be created with.
-#[derive(Clone, Copy, Debug)]
-pub struct SparseLevel {
-    pub sparse_residency: bool,
-    pub sparse_aliased: bool,
-    pub _ne: crate::NonExhaustive,
-}
-
-impl Default for SparseLevel {
+impl From<RequirementNotMet> for BufferCreationError {
     #[inline]
-    fn default() -> Self {
-        Self {
-            sparse_residency: false,
-            sparse_aliased: false,
-            _ne: crate::NonExhaustive(()),
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
 
-impl SparseLevel {
-    #[inline]
-    pub fn none() -> SparseLevel {
-        SparseLevel {
-            sparse_residency: false,
-            sparse_aliased: false,
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
+vulkan_bitflags! {
+    /// The level of sparse binding that a buffer should be created with.
+    #[non_exhaustive]
+    SparseLevel = BufferCreateFlags(u32);
 
-impl From<SparseLevel> for ash::vk::BufferCreateFlags {
-    #[inline]
-    fn from(val: SparseLevel) -> Self {
-        let mut result = ash::vk::BufferCreateFlags::SPARSE_BINDING;
-        if val.sparse_residency {
-            result |= ash::vk::BufferCreateFlags::SPARSE_RESIDENCY;
-        }
-        if val.sparse_aliased {
-            result |= ash::vk::BufferCreateFlags::SPARSE_ALIASED;
-        }
-        result
-    }
+    // TODO: document
+    sparse_residency = SPARSE_ALIASED,
+
+    // TODO: document
+    sparse_aliased = SPARSE_ALIASED,
 }
 
 /// The current state of a buffer.
@@ -789,7 +881,10 @@ mod tests {
     use super::{
         BufferCreationError, BufferUsage, SparseLevel, UnsafeBuffer, UnsafeBufferCreateInfo,
     };
-    use crate::device::{Device, DeviceOwned};
+    use crate::{
+        device::{Device, DeviceOwned},
+        RequiresOneOf,
+    };
 
     #[test]
     fn create() {
@@ -798,7 +893,10 @@ mod tests {
             device.clone(),
             UnsafeBufferCreateInfo {
                 size: 128,
-                usage: BufferUsage::all(),
+                usage: BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
                 ..Default::default()
             },
         )
@@ -817,15 +915,18 @@ mod tests {
             device,
             UnsafeBufferCreateInfo {
                 size: 128,
-                sparse: Some(SparseLevel::none()),
-                usage: BufferUsage::all(),
+                sparse: Some(SparseLevel::empty()),
+                usage: BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
                 ..Default::default()
             },
         ) {
-            Err(BufferCreationError::FeatureNotEnabled {
-                feature: "sparse_binding",
+            Err(BufferCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"sparse_binding") => (),
             _ => panic!(),
         }
     }
@@ -842,14 +943,17 @@ mod tests {
                     sparse_aliased: false,
                     ..Default::default()
                 }),
-                usage: BufferUsage::all(),
+                usage: BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
                 ..Default::default()
             },
         ) {
-            Err(BufferCreationError::FeatureNotEnabled {
-                feature: "sparse_residency_buffer",
+            Err(BufferCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"sparse_residency_buffer") => (),
             _ => panic!(),
         }
     }
@@ -866,14 +970,17 @@ mod tests {
                     sparse_aliased: true,
                     ..Default::default()
                 }),
-                usage: BufferUsage::all(),
+                usage: BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
                 ..Default::default()
             },
         ) {
-            Err(BufferCreationError::FeatureNotEnabled {
-                feature: "sparse_residency_aliased",
+            Err(BufferCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"sparse_residency_aliased") => (),
             _ => panic!(),
         }
     }
@@ -887,7 +994,10 @@ mod tests {
                 device,
                 UnsafeBufferCreateInfo {
                     size: 0,
-                    usage: BufferUsage::all(),
+                    usage: BufferUsage {
+                        transfer_dst: true,
+                        ..BufferUsage::empty()
+                    },
                     ..Default::default()
                 },
             )

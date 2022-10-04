@@ -12,7 +12,7 @@ use super::{
     ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage,
 };
 use crate::{
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned, Queue},
     format::Format,
     image::{sys::UnsafeImageCreateInfo, view::ImageView},
     memory::{
@@ -20,7 +20,7 @@ use crate::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
             MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StandardMemoryPool,
         },
-        DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
     },
     sync::Sharing,
@@ -53,15 +53,12 @@ where
 impl StorageImage {
     /// Creates a new image with the given dimensions and format.
     #[inline]
-    pub fn new<'a, I>(
+    pub fn new(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
-        queue_families: I,
-    ) -> Result<Arc<StorageImage>, ImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<StorageImage>, ImageCreationError> {
         let aspects = format.aspects();
         let is_depth = aspects.depth || aspects.stencil;
 
@@ -77,29 +74,30 @@ impl StorageImage {
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
             input_attachment: true,
-            transient_attachment: false,
+            ..ImageUsage::empty()
         };
-        let flags = ImageCreateFlags::none();
+        let flags = ImageCreateFlags::empty();
 
-        StorageImage::with_usage(device, dimensions, format, usage, flags, queue_families)
+        StorageImage::with_usage(
+            device,
+            dimensions,
+            format,
+            usage,
+            flags,
+            queue_family_indices,
+        )
     }
 
     /// Same as `new`, but allows specifying the usage.
-    pub fn with_usage<'a, I>(
+    pub fn with_usage(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
         usage: ImageUsage,
         flags: ImageCreateFlags,
-        queue_families: I,
-    ) -> Result<Arc<StorageImage>, ImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<StorageImage>, ImageCreationError> {
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let image = UnsafeImage::new(
             device.clone(),
@@ -107,8 +105,8 @@ impl StorageImage {
                 dimensions,
                 format: Some(format),
                 usage,
-                sharing: if queue_families.len() >= 2 {
-                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
                 } else {
                     Sharing::Exclusive
                 },
@@ -122,13 +120,13 @@ impl StorageImage {
 
         let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
-            device.standard_memory_pool(),
+            &device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,
             Some(DedicatedAllocation::Image(&image)),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -147,21 +145,15 @@ impl StorageImage {
         }))
     }
 
-    pub fn new_with_exportable_fd<'a, I>(
+    pub fn new_with_exportable_fd(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
         usage: ImageUsage,
         flags: ImageCreateFlags,
-        queue_families: I,
-    ) -> Result<Arc<StorageImage>, ImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<StorageImage>, ImageCreationError> {
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let image = UnsafeImage::new(
             device.clone(),
@@ -169,14 +161,14 @@ impl StorageImage {
                 dimensions,
                 format: Some(format),
                 usage,
-                sharing: if queue_families.len() >= 2 {
-                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
                 } else {
                     Sharing::Exclusive
                 },
                 external_memory_handle_types: ExternalMemoryHandleTypes {
                     opaque_fd: true,
-                    ..ExternalMemoryHandleTypes::none()
+                    ..ExternalMemoryHandleTypes::empty()
                 },
                 mutable_format: flags.mutable_format,
                 cube_compatible: flags.cube_compatible,
@@ -194,7 +186,7 @@ impl StorageImage {
             MappingRequirement::DoNotMap,
             DedicatedAllocation::Image(&image),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -225,14 +217,14 @@ impl StorageImage {
             height: size[1],
             array_layers: 1,
         };
-        let flags = ImageCreateFlags::none();
+        let flags = ImageCreateFlags::empty();
         let image_result = StorageImage::with_usage(
             queue.device().clone(),
             dims,
             format,
             usage,
             flags,
-            Some(queue.family()),
+            Some(queue.queue_family_index()),
         );
         match image_result {
             Ok(image) => {
@@ -248,7 +240,7 @@ impl StorageImage {
 
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryExportError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
@@ -274,7 +266,7 @@ where
     A: MemoryPool,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         ImageInner {
             image: &self.image,
             first_layer: 0,
@@ -359,7 +351,7 @@ mod tests {
                 array_layers: 1,
             },
             Format::R8G8B8A8_UNORM,
-            Some(queue.family()),
+            Some(queue.queue_family_index()),
         )
         .unwrap();
     }
@@ -371,7 +363,7 @@ mod tests {
             transfer_src: true,
             transfer_dst: true,
             color_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
         let img_view = StorageImage::general_purpose_image_view(
             queue,
@@ -389,7 +381,7 @@ mod tests {
         // Not valid for image view...
         let usage = ImageUsage {
             transfer_src: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
         let img_result = StorageImage::general_purpose_image_view(
             queue,

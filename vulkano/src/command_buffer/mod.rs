@@ -64,7 +64,7 @@
 //! # let cb_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 //! let cb = AutoCommandBufferBuilder::primary(
 //!     &cb_allocator,
-//!     queue.family(),
+//!     queue.queue_family_index(),
 //!     CommandBufferUsage::MultipleSubmit
 //! ).unwrap()
 //! .begin_render_pass(render_pass_begin_info, SubpassContents::Inline).unwrap()
@@ -92,9 +92,7 @@
 
 pub use self::{
     auto::{
-        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BuildError,
-        CommandBufferBeginError, DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
-        DrawIndexedIndirectError, DrawIndirectError, PrimaryAutoCommandBuffer,
+        AutoCommandBufferBuilder, BuildError, CommandBufferBeginError, PrimaryAutoCommandBuffer,
         SecondaryAutoCommandBuffer,
     },
     commands::{
@@ -103,11 +101,7 @@ pub use self::{
             BlitImageInfo, ClearColorImageInfo, ClearDepthStencilImageInfo, ImageBlit,
             ImageResolve, ResolveImageInfo,
         },
-        pipeline::{
-            CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
-            CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
-            CheckPushConstantsValidityError, CheckVertexBufferError,
-        },
+        pipeline::PipelineExecutionError,
         query::QueryError,
         render_pass::{
             ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError,
@@ -128,8 +122,10 @@ pub use self::{
 use crate::{
     format::Format,
     image::SampleCount,
+    macros::vulkan_enum,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     render_pass::{Framebuffer, Subpass},
+    sync::{PipelineStages, Semaphore},
 };
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
@@ -138,7 +134,6 @@ pub mod allocator;
 mod auto;
 mod commands;
 pub mod pool;
-pub mod submit;
 pub mod synced;
 pub mod sys;
 mod traits;
@@ -170,21 +165,16 @@ pub struct DispatchIndirectCommand {
     pub z: u32,
 }
 
-/// Describes what a subpass in a command buffer will contain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(i32)]
-pub enum SubpassContents {
-    /// The subpass will only directly contain commands.
-    Inline = ash::vk::SubpassContents::INLINE.as_raw(),
-    /// The subpass will only contain secondary command buffers invocations.
-    SecondaryCommandBuffers = ash::vk::SubpassContents::SECONDARY_COMMAND_BUFFERS.as_raw(),
-}
+vulkan_enum! {
+    /// Describes what a subpass in a command buffer will contain.
+    #[non_exhaustive]
+    SubpassContents = SubpassContents(i32);
 
-impl From<SubpassContents> for ash::vk::SubpassContents {
-    #[inline]
-    fn from(val: SubpassContents) -> Self {
-        Self::from_raw(val as i32)
-    }
+    /// The subpass will only directly contain commands.
+    Inline = INLINE,
+
+    /// The subpass will only contain secondary command buffers invocations.
+    SecondaryCommandBuffers = SECONDARY_COMMAND_BUFFERS,
 }
 
 impl From<SubpassContents> for ash::vk::RenderingFlags {
@@ -197,24 +187,17 @@ impl From<SubpassContents> for ash::vk::RenderingFlags {
     }
 }
 
-/// Determines the kind of command buffer to create.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum CommandBufferLevel {
+vulkan_enum! {
+    /// Determines the kind of command buffer to create.
+    CommandBufferLevel = CommandBufferLevel(i32);
+
     /// Primary command buffers can be executed on a queue, and can call secondary command buffers.
     /// Render passes must begin and end within the same primary command buffer.
-    Primary = ash::vk::CommandBufferLevel::PRIMARY.as_raw(),
+    Primary = PRIMARY,
 
     /// Secondary command buffers cannot be executed on a queue, but can be executed by a primary
     /// command buffer. If created for a render pass, they must fit within a single render subpass.
-    Secondary = ash::vk::CommandBufferLevel::SECONDARY.as_raw(),
-}
-
-impl From<CommandBufferLevel> for ash::vk::CommandBufferLevel {
-    #[inline]
-    fn from(val: CommandBufferLevel) -> Self {
-        Self::from_raw(val as i32)
-    }
+    Secondary = SECONDARY,
 }
 
 /// The context that a secondary command buffer can inherit from the primary command
@@ -246,7 +229,7 @@ pub struct CommandBufferInheritanceInfo {
     /// The `pipeline_statistics_query` feature must be enabled if any of the flags of this value
     /// are set.
     ///
-    /// The default value is [`QueryPipelineStatisticFlags::none()`].
+    /// The default value is [`QueryPipelineStatisticFlags::empty()`].
     pub query_statistics_flags: QueryPipelineStatisticFlags,
 
     pub _ne: crate::NonExhaustive,
@@ -258,7 +241,7 @@ impl Default for CommandBufferInheritanceInfo {
         Self {
             render_pass: None,
             occlusion_query: None,
-            query_statistics_flags: QueryPipelineStatisticFlags::none(),
+            query_statistics_flags: QueryPipelineStatisticFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -412,5 +395,78 @@ impl From<CommandBufferUsage> for ash::vk::CommandBufferUsageFlags {
     #[inline]
     fn from(val: CommandBufferUsage) -> Self {
         Self::from_raw(val as u32)
+    }
+}
+
+/// Parameters to submit command buffers to a queue.
+#[derive(Clone, Debug)]
+pub struct SubmitInfo {
+    /// The semaphores to wait for before beginning the execution of this batch of
+    /// command buffer operations.
+    ///
+    /// The default value is empty.
+    pub wait_semaphores: Vec<SemaphoreSubmitInfo>,
+
+    /// The command buffers to execute.
+    ///
+    /// The default value is empty.
+    pub command_buffers: Vec<Arc<dyn PrimaryCommandBuffer>>,
+
+    /// The semaphores to signal after the execution of this batch of command buffer operations
+    /// has completed.
+    ///
+    /// The default value is empty.
+    pub signal_semaphores: Vec<SemaphoreSubmitInfo>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SubmitInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            wait_semaphores: Vec::new(),
+            command_buffers: Vec::new(),
+            signal_semaphores: Vec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters for a semaphore signal or wait operation in a command buffer submission.
+#[derive(Clone, Debug)]
+pub struct SemaphoreSubmitInfo {
+    /// The semaphore to signal or wait for.
+    pub semaphore: Arc<Semaphore>,
+
+    /// For a semaphore wait operation, specifies the pipeline stages in the second synchronization
+    /// scope: stages of queue operations following the wait operation that can start executing
+    /// after the semaphore is signalled.
+    ///
+    /// For a semaphore signal operation, specifies the pipeline stages in the first synchronization
+    /// scope: stages of queue operations preceding the signal operation that must complete before
+    /// the semaphore is signalled.
+    /// If not set to `all_commands` only, the
+    /// [`synchronization2`](crate::device::Features::synchronization2) feature must be enabled
+    /// on the device.
+    ///
+    /// The default value has only `all_commands` set.
+    pub stages: PipelineStages,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl SemaphoreSubmitInfo {
+    /// Returns a `SemaphoreSubmitInfo` with the specified `semaphore`.
+    #[inline]
+    pub fn semaphore(semaphore: Arc<Semaphore>) -> Self {
+        Self {
+            semaphore,
+            stages: PipelineStages {
+                all_commands: true,
+                ..PipelineStages::empty()
+            },
+            _ne: crate::NonExhaustive(()),
+        }
     }
 }

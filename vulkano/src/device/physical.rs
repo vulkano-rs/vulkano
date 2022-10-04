@@ -7,287 +7,42 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::QueueFamilyProperties;
 use crate::{
-    buffer::{BufferUsage, ExternalBufferInfo, ExternalBufferProperties},
-    device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi},
+    buffer::{ExternalBufferInfo, ExternalBufferProperties},
+    device::{properties::Properties, DeviceExtensions, Features, FeaturesFfi, PropertiesFfi},
     format::{Format, FormatProperties},
-    image::{ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage},
-    instance::{Instance, InstanceCreationError},
+    image::{
+        ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage,
+        SparseImageFormatInfo, SparseImageFormatProperties,
+    },
+    instance::Instance,
+    macros::{vulkan_bitflags, vulkan_enum},
+    memory::MemoryProperties,
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface,
         SurfaceApi, SurfaceCapabilities, SurfaceInfo,
     },
-    sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, PipelineStage},
-    DeviceSize, OomError, Version, VulkanError, VulkanObject,
+    sync::{
+        ExternalFenceInfo, ExternalFenceProperties, ExternalSemaphoreInfo,
+        ExternalSemaphoreProperties,
+    },
+    ExtensionProperties, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
-use std::{error::Error, ffi::CStr, fmt, hash::Hash, mem::MaybeUninit, ptr, sync::Arc};
+use bytemuck::cast_slice;
+use parking_lot::RwLock;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    convert::Infallible,
+    error::Error,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
-#[derive(Clone, Debug)]
-pub(crate) struct PhysicalDeviceInfo {
-    handle: ash::vk::PhysicalDevice,
-    api_version: Version,
-    supported_extensions: DeviceExtensions,
-    supported_features: Features,
-    properties: Properties,
-    memory_properties: ash::vk::PhysicalDeviceMemoryProperties,
-    queue_families: Vec<ash::vk::QueueFamilyProperties>,
-}
-
-pub(crate) fn init_physical_devices(
-    instance: &Instance,
-) -> Result<Vec<PhysicalDeviceInfo>, InstanceCreationError> {
-    let fns = instance.fns();
-    let instance_extensions = instance.enabled_extensions();
-
-    let handles = unsafe {
-        loop {
-            let mut count = 0;
-            (fns.v1_0.enumerate_physical_devices)(
-                instance.internal_object(),
-                &mut count,
-                ptr::null_mut(),
-            )
-            .result()
-            .map_err(VulkanError::from)?;
-
-            let mut handles = Vec::with_capacity(count as usize);
-            let result = (fns.v1_0.enumerate_physical_devices)(
-                instance.internal_object(),
-                &mut count,
-                handles.as_mut_ptr(),
-            );
-
-            match result {
-                ash::vk::Result::SUCCESS => {
-                    handles.set_len(count as usize);
-                    break handles;
-                }
-                ash::vk::Result::INCOMPLETE => (),
-                err => return Err(VulkanError::from(err).into()),
-            }
-        }
-    };
-
-    handles
-        .into_iter()
-        .enumerate()
-        .map(|(_index, handle)| -> Result<_, InstanceCreationError> {
-            let api_version = unsafe {
-                let mut output = MaybeUninit::uninit();
-                (fns.v1_0.get_physical_device_properties)(handle, output.as_mut_ptr());
-                let api_version = Version::try_from(output.assume_init().api_version).unwrap();
-                std::cmp::min(instance.max_api_version(), api_version)
-            };
-
-            let extension_properties = unsafe {
-                loop {
-                    let mut count = 0;
-                    (fns.v1_0.enumerate_device_extension_properties)(
-                        handle,
-                        ptr::null(),
-                        &mut count,
-                        ptr::null_mut(),
-                    )
-                    .result()
-                    .map_err(VulkanError::from)?;
-
-                    let mut properties = Vec::with_capacity(count as usize);
-                    let result = (fns.v1_0.enumerate_device_extension_properties)(
-                        handle,
-                        ptr::null(),
-                        &mut count,
-                        properties.as_mut_ptr(),
-                    );
-
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            properties.set_len(count as usize);
-                            break properties;
-                        }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err).into()),
-                    }
-                }
-            };
-
-            let supported_extensions = DeviceExtensions::from(
-                extension_properties
-                    .iter()
-                    .map(|property| unsafe { CStr::from_ptr(property.extension_name.as_ptr()) }),
-            );
-
-            let mut info = PhysicalDeviceInfo {
-                handle,
-                api_version,
-                supported_extensions,
-                supported_features: Default::default(),
-                properties: Default::default(),
-                memory_properties: Default::default(),
-                queue_families: Default::default(),
-            };
-
-            // Get the remaining infos.
-            // If possible, we use VK_KHR_get_physical_device_properties2.
-            if api_version >= Version::V1_1
-                || instance_extensions.khr_get_physical_device_properties2
-            {
-                init_info2(instance, &mut info)
-            } else {
-                init_info(instance, &mut info)
-            };
-
-            Ok(info)
-        })
-        .collect::<Result<_, _>>()
-}
-
-fn init_info(instance: &Instance, info: &mut PhysicalDeviceInfo) {
-    let fns = instance.fns();
-
-    info.supported_features = unsafe {
-        let mut output = FeaturesFfi::default();
-        (fns.v1_0.get_physical_device_features)(info.handle, &mut output.head_as_mut().features);
-        Features::from(&output)
-    };
-
-    info.properties = unsafe {
-        let mut output = PropertiesFfi::default();
-        output.make_chain(
-            info.api_version,
-            &info.supported_extensions,
-            instance.enabled_extensions(),
-        );
-        (fns.v1_0.get_physical_device_properties)(
-            info.handle,
-            &mut output.head_as_mut().properties,
-        );
-        Properties::from(&output)
-    };
-
-    info.memory_properties = unsafe {
-        let mut output = MaybeUninit::uninit();
-        (fns.v1_0.get_physical_device_memory_properties)(info.handle, output.as_mut_ptr());
-        output.assume_init()
-    };
-
-    info.queue_families = unsafe {
-        let mut num = 0;
-        (fns.v1_0.get_physical_device_queue_family_properties)(
-            info.handle,
-            &mut num,
-            ptr::null_mut(),
-        );
-
-        let mut families = Vec::with_capacity(num as usize);
-        (fns.v1_0.get_physical_device_queue_family_properties)(
-            info.handle,
-            &mut num,
-            families.as_mut_ptr(),
-        );
-        families.set_len(num as usize);
-        families
-    };
-}
-
-// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
-fn init_info2(instance: &Instance, info: &mut PhysicalDeviceInfo) {
-    let fns = instance.fns();
-
-    info.supported_features = unsafe {
-        let mut output = FeaturesFfi::default();
-        output.make_chain(
-            info.api_version,
-            &info.supported_extensions,
-            instance.enabled_extensions(),
-        );
-
-        if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_features2)(info.handle, output.head_as_mut());
-        } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_features2_khr)(info.handle, output.head_as_mut());
-        }
-
-        Features::from(&output)
-    };
-
-    info.properties = unsafe {
-        let mut output = PropertiesFfi::default();
-        output.make_chain(
-            info.api_version,
-            &info.supported_extensions,
-            instance.enabled_extensions(),
-        );
-
-        if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_properties2)(info.handle, output.head_as_mut());
-        } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_properties2_khr)(info.handle, output.head_as_mut());
-        }
-
-        Properties::from(&output)
-    };
-
-    info.memory_properties = unsafe {
-        let mut output = ash::vk::PhysicalDeviceMemoryProperties2KHR::default();
-
-        if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_memory_properties2)(info.handle, &mut output);
-        } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_memory_properties2_khr)(info.handle, &mut output);
-        }
-
-        output.memory_properties
-    };
-
-    info.queue_families = unsafe {
-        let mut num = 0;
-
-        if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_queue_family_properties2)(
-                info.handle,
-                &mut num,
-                ptr::null_mut(),
-            );
-        } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_queue_family_properties2_khr)(
-                info.handle,
-                &mut num,
-                ptr::null_mut(),
-            );
-        }
-
-        let mut families = vec![ash::vk::QueueFamilyProperties2::default(); num as usize];
-
-        if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_queue_family_properties2)(
-                info.handle,
-                &mut num,
-                families.as_mut_ptr(),
-            );
-        } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_queue_family_properties2_khr)(
-                info.handle,
-                &mut num,
-                families.as_mut_ptr(),
-            );
-        }
-
-        families
-            .into_iter()
-            .map(|family| family.queue_family_properties)
-            .collect()
-    };
-}
-
-/// Represents one of the available devices on this machine.
-///
-/// This struct simply contains a pointer to an instance and a number representing the physical
-/// device. You are therefore encouraged to pass this around by value instead of by reference.
+/// Represents one of the available physical devices on this machine.
 ///
 /// # Example
 ///
@@ -300,227 +55,803 @@ fn init_info2(instance: &Instance, info: &mut PhysicalDeviceInfo) {
 ///
 /// # let library = VulkanLibrary::new().unwrap();
 /// # let instance = Instance::new(library, Default::default()).unwrap();
-/// for physical_device in PhysicalDevice::enumerate(&instance) {
-///     print_infos(physical_device);
+/// for physical_device in instance.enumerate_physical_devices().unwrap() {
+///     print_infos(&physical_device);
 /// }
 ///
-/// fn print_infos(dev: PhysicalDevice) {
+/// fn print_infos(dev: &PhysicalDevice) {
 ///     println!("Name: {}", dev.properties().device_name);
 /// }
 /// ```
-#[derive(Clone, Copy, Debug)]
-pub struct PhysicalDevice<'a> {
-    instance: &'a Arc<Instance>,
-    index: usize,
-    info: &'a PhysicalDeviceInfo,
+#[derive(Debug)]
+pub struct PhysicalDevice {
+    handle: ash::vk::PhysicalDevice,
+    instance: Arc<Instance>,
+
+    // Data queried at `PhysicalDevice` creation.
+    api_version: Version,
+    supported_extensions: DeviceExtensions,
+    supported_features: Features,
+    properties: Properties,
+    extension_properties: Vec<ExtensionProperties>,
+    memory_properties: MemoryProperties,
+    queue_family_properties: Vec<QueueFamilyProperties>,
+
+    // Data queried by the user at runtime, cached for faster lookups.
+    external_buffer_properties: RwLock<HashMap<ExternalBufferInfo, ExternalBufferProperties>>,
+    external_fence_properties: RwLock<HashMap<ExternalFenceInfo, ExternalFenceProperties>>,
+    external_semaphore_properties:
+        RwLock<HashMap<ExternalSemaphoreInfo, ExternalSemaphoreProperties>>,
+    format_properties: RwLock<HashMap<Format, FormatProperties>>,
+    image_format_properties: RwLock<HashMap<ImageFormatInfo, Option<ImageFormatProperties>>>,
+    sparse_image_format_properties:
+        RwLock<HashMap<SparseImageFormatInfo, Vec<SparseImageFormatProperties>>>,
 }
 
-impl<'a> PhysicalDevice<'a> {
-    /// Returns an iterator that enumerates the physical devices available.
+impl PhysicalDevice {
+    /// Creates a new `PhysicalDevice` from a raw object handle.
     ///
-    /// # Example
+    /// # Safety
     ///
-    /// ```no_run
-    /// # use vulkano::{
-    /// #     instance::{Instance, InstanceExtensions},
-    /// #     Version, VulkanLibrary,
-    /// # };
-    /// use vulkano::device::physical::PhysicalDevice;
-    ///
-    /// # let library = VulkanLibrary::new().unwrap();
-    /// # let instance = Instance::new(library, Default::default()).unwrap();
-    /// for physical_device in PhysicalDevice::enumerate(&instance) {
-    ///     println!("Available device: {}", physical_device.properties().device_name);
-    /// }
-    /// ```
-    #[inline]
-    pub fn enumerate(
-        instance: &'a Arc<Instance>,
-    ) -> impl ExactSizeIterator<Item = PhysicalDevice<'a>> {
-        instance
-            .physical_device_infos
+    /// - `handle` must be a valid Vulkan object handle created from `instance`.
+    pub unsafe fn from_handle(
+        instance: Arc<Instance>,
+        handle: ash::vk::PhysicalDevice,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let api_version = Self::get_api_version(handle, &instance);
+        let extension_properties = Self::get_extension_properties(handle, &instance)?;
+        let supported_extensions: DeviceExtensions = extension_properties
             .iter()
-            .enumerate()
-            .map(move |(index, info)| PhysicalDevice {
-                instance,
-                index,
-                info,
-            })
+            .map(|property| property.extension_name.as_str())
+            .collect();
+
+        let supported_features;
+        let properties;
+        let memory_properties;
+        let queue_family_properties;
+
+        // Get the remaining infos.
+        // If possible, we use VK_KHR_get_physical_device_properties2.
+        if api_version >= Version::V1_1
+            || instance
+                .enabled_extensions()
+                .khr_get_physical_device_properties2
+        {
+            supported_features =
+                Self::get_features2(handle, &instance, api_version, &supported_extensions);
+            properties =
+                Self::get_properties2(handle, &instance, api_version, &supported_extensions);
+            memory_properties = Self::get_memory_properties2(handle, &instance);
+            queue_family_properties = Self::get_queue_family_properties2(handle, &instance);
+        } else {
+            supported_features = Self::get_features(handle, &instance);
+            properties =
+                Self::get_properties(handle, &instance, api_version, &supported_extensions);
+            memory_properties = Self::get_memory_properties(handle, &instance);
+            queue_family_properties = Self::get_queue_family_properties(handle, &instance);
+        };
+
+        Ok(Arc::new(PhysicalDevice {
+            handle,
+            instance,
+
+            api_version,
+            supported_extensions,
+            supported_features,
+            properties,
+            extension_properties,
+            memory_properties,
+            queue_family_properties,
+
+            external_buffer_properties: RwLock::new(HashMap::new()),
+            external_fence_properties: RwLock::new(HashMap::new()),
+            external_semaphore_properties: RwLock::new(HashMap::new()),
+            format_properties: RwLock::new(HashMap::new()),
+            image_format_properties: RwLock::new(HashMap::new()),
+            sparse_image_format_properties: RwLock::new(HashMap::new()),
+        }))
     }
 
-    /// Returns a physical device from its index. Returns `None` if out of range.
-    ///
-    /// Indices range from 0 to the number of devices.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use vulkano::{
-    /// #     instance::{Instance, InstanceExtensions},
-    /// #     Version, VulkanLibrary,
-    /// # };
-    /// use vulkano::device::physical::PhysicalDevice;
-    ///
-    /// # let library = VulkanLibrary::new().unwrap();
-    /// # let instance = Instance::new(library, Default::default()).unwrap();
-    /// let first_physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
-    /// ```
+    unsafe fn get_api_version(handle: ash::vk::PhysicalDevice, instance: &Instance) -> Version {
+        let fns = instance.fns();
+        let mut output = MaybeUninit::uninit();
+        (fns.v1_0.get_physical_device_properties)(handle, output.as_mut_ptr());
+        let api_version = Version::try_from(output.assume_init().api_version).unwrap();
+        std::cmp::min(instance.max_api_version(), api_version)
+    }
+
+    unsafe fn get_extension_properties(
+        handle: ash::vk::PhysicalDevice,
+        instance: &Instance,
+    ) -> Result<Vec<ExtensionProperties>, VulkanError> {
+        let fns = instance.fns();
+
+        loop {
+            let mut count = 0;
+            (fns.v1_0.enumerate_device_extension_properties)(
+                handle,
+                ptr::null(),
+                &mut count,
+                ptr::null_mut(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+
+            let mut output = Vec::with_capacity(count as usize);
+            let result = (fns.v1_0.enumerate_device_extension_properties)(
+                handle,
+                ptr::null(),
+                &mut count,
+                output.as_mut_ptr(),
+            );
+
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    output.set_len(count as usize);
+                    return Ok(output.into_iter().map(Into::into).collect());
+                }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
+            }
+        }
+    }
+
+    unsafe fn get_features(handle: ash::vk::PhysicalDevice, instance: &Instance) -> Features {
+        let mut output = FeaturesFfi::default();
+
+        let fns = instance.fns();
+        (fns.v1_0.get_physical_device_features)(handle, &mut output.head_as_mut().features);
+
+        Features::from(&output)
+    }
+
+    unsafe fn get_features2(
+        handle: ash::vk::PhysicalDevice,
+        instance: &Instance,
+        api_version: Version,
+        supported_extensions: &DeviceExtensions,
+    ) -> Features {
+        let mut output = FeaturesFfi::default();
+        output.make_chain(
+            api_version,
+            supported_extensions,
+            instance.enabled_extensions(),
+        );
+
+        let fns = instance.fns();
+
+        if instance.api_version() >= Version::V1_1 {
+            (fns.v1_1.get_physical_device_features2)(handle, output.head_as_mut());
+        } else {
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_features2_khr)(handle, output.head_as_mut());
+        }
+
+        Features::from(&output)
+    }
+
+    unsafe fn get_properties(
+        handle: ash::vk::PhysicalDevice,
+        instance: &Instance,
+        api_version: Version,
+        supported_extensions: &DeviceExtensions,
+    ) -> Properties {
+        let mut output = PropertiesFfi::default();
+        output.make_chain(
+            api_version,
+            supported_extensions,
+            instance.enabled_extensions(),
+        );
+
+        let fns = instance.fns();
+        (fns.v1_0.get_physical_device_properties)(handle, &mut output.head_as_mut().properties);
+
+        Properties::from(&output)
+    }
+
+    unsafe fn get_properties2(
+        handle: ash::vk::PhysicalDevice,
+        instance: &Instance,
+        api_version: Version,
+        supported_extensions: &DeviceExtensions,
+    ) -> Properties {
+        let mut output = PropertiesFfi::default();
+        output.make_chain(
+            api_version,
+            supported_extensions,
+            instance.enabled_extensions(),
+        );
+
+        let fns = instance.fns();
+
+        if instance.api_version() >= Version::V1_1 {
+            (fns.v1_1.get_physical_device_properties2)(handle, output.head_as_mut());
+        } else {
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_properties2_khr)(handle, output.head_as_mut());
+        }
+
+        Properties::from(&output)
+    }
+
+    unsafe fn get_memory_properties(
+        handle: ash::vk::PhysicalDevice,
+        instance: &Instance,
+    ) -> MemoryProperties {
+        let mut output = MaybeUninit::uninit();
+
+        let fns = instance.fns();
+        (fns.v1_0.get_physical_device_memory_properties)(handle, output.as_mut_ptr());
+
+        output.assume_init().into()
+    }
+
+    unsafe fn get_memory_properties2(
+        handle: ash::vk::PhysicalDevice,
+        instance: &Instance,
+    ) -> MemoryProperties {
+        let mut output = ash::vk::PhysicalDeviceMemoryProperties2KHR::default();
+
+        let fns = instance.fns();
+
+        if instance.api_version() >= Version::V1_1 {
+            (fns.v1_1.get_physical_device_memory_properties2)(handle, &mut output);
+        } else {
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_memory_properties2_khr)(handle, &mut output);
+        }
+
+        output.memory_properties.into()
+    }
+
+    unsafe fn get_queue_family_properties(
+        handle: ash::vk::PhysicalDevice,
+        instance: &Instance,
+    ) -> Vec<QueueFamilyProperties> {
+        let fns = instance.fns();
+
+        let mut num = 0;
+        (fns.v1_0.get_physical_device_queue_family_properties)(handle, &mut num, ptr::null_mut());
+
+        let mut output = Vec::with_capacity(num as usize);
+        (fns.v1_0.get_physical_device_queue_family_properties)(
+            handle,
+            &mut num,
+            output.as_mut_ptr(),
+        );
+        output.set_len(num as usize);
+
+        output.into_iter().map(Into::into).collect()
+    }
+
+    unsafe fn get_queue_family_properties2(
+        handle: ash::vk::PhysicalDevice,
+        instance: &Instance,
+    ) -> Vec<QueueFamilyProperties> {
+        let mut num = 0;
+        let fns = instance.fns();
+
+        if instance.api_version() >= Version::V1_1 {
+            (fns.v1_1.get_physical_device_queue_family_properties2)(
+                handle,
+                &mut num,
+                ptr::null_mut(),
+            );
+        } else {
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_queue_family_properties2_khr)(
+                handle,
+                &mut num,
+                ptr::null_mut(),
+            );
+        }
+
+        let mut output = vec![ash::vk::QueueFamilyProperties2::default(); num as usize];
+
+        if instance.api_version() >= Version::V1_1 {
+            (fns.v1_1.get_physical_device_queue_family_properties2)(
+                handle,
+                &mut num,
+                output.as_mut_ptr(),
+            );
+        } else {
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_queue_family_properties2_khr)(
+                handle,
+                &mut num,
+                output.as_mut_ptr(),
+            );
+        }
+
+        output
+            .into_iter()
+            .map(|family| family.queue_family_properties.into())
+            .collect()
+    }
+
+    /// Returns the instance that owns the physical device.
     #[inline]
-    pub fn from_index(instance: &'a Arc<Instance>, index: usize) -> Option<PhysicalDevice<'a>> {
-        instance
-            .physical_device_infos
-            .get(index)
-            .map(|info| PhysicalDevice {
-                instance,
-                index,
-                info,
-            })
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
     }
 
-    /// Returns the instance corresponding to this physical device.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use vulkano::device::physical::PhysicalDevice;
-    ///
-    /// fn do_something(physical_device: PhysicalDevice) {
-    ///     let _loaded_extensions = physical_device.instance().enabled_extensions();
-    ///     // ...
-    /// }
-    /// ```
-    #[inline]
-    pub fn instance(&self) -> &'a Arc<Instance> {
-        self.instance
-    }
-
-    /// Returns the index of the physical device in the physical devices list.
-    ///
-    /// This index never changes and can be used later to retrieve a `PhysicalDevice` from an
-    /// instance and an index.
-    #[inline]
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
-    /// Returns the version of Vulkan supported by this device.
+    /// Returns the version of Vulkan supported by the physical device.
     ///
     /// Unlike the `api_version` property, which is the version reported by the device directly,
     /// this function returns the version the device can actually support, based on the instance's
     /// `max_api_version`.
     #[inline]
     pub fn api_version(&self) -> Version {
-        self.info.api_version
+        self.api_version
     }
 
-    /// Returns the extensions that are supported by this physical device.
+    /// Returns the properties reported by the physical device.
     #[inline]
-    pub fn supported_extensions(&self) -> &'a DeviceExtensions {
-        &self.info.supported_extensions
+    pub fn properties(&self) -> &Properties {
+        &self.properties
     }
 
-    /// Returns the properties reported by the device.
+    /// Returns the extension properties reported by the physical device.
     #[inline]
-    pub fn properties(&self) -> &'a Properties {
-        &self.info.properties
+    pub fn extension_properties(&self) -> &[ExtensionProperties] {
+        &self.extension_properties
     }
 
-    /// Returns the features that are supported by this physical device.
+    /// Returns the extensions that are supported by the physical device.
     #[inline]
-    pub fn supported_features(&self) -> &'a Features {
-        &self.info.supported_features
+    pub fn supported_extensions(&self) -> &DeviceExtensions {
+        &self.supported_extensions
+    }
+
+    /// Returns the features that are supported by the physical device.
+    #[inline]
+    pub fn supported_features(&self) -> &Features {
+        &self.supported_features
+    }
+
+    /// Returns the memory properties reported by the physical device.
+    #[inline]
+    pub fn memory_properties(&self) -> &MemoryProperties {
+        &self.memory_properties
+    }
+
+    /// Returns the queue family properties reported by the physical device.
+    #[inline]
+    pub fn queue_family_properties(&self) -> &[QueueFamilyProperties] {
+        &self.queue_family_properties
+    }
+
+    /// Queries whether the physical device supports presenting to DirectFB surfaces from queues of
+    /// the given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
+    #[inline]
+    pub unsafe fn directfb_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        dfb: *const D,
+    ) -> Result<bool, PhysicalDeviceError> {
+        self.validate_directfb_presentation_support(queue_family_index, dfb)?;
+
+        Ok(self.directfb_presentation_support_unchecked(queue_family_index, dfb))
+    }
+
+    fn validate_directfb_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        _dfb: *const D,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !self.instance.enabled_extensions().ext_directfb_surface {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`directfb_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_directfb_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-queueFamilyIndex-04119
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(PhysicalDeviceError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-dfb-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn directfb_presentation_support_unchecked<D>(
+        &self,
+        queue_family_index: u32,
+        dfb: *const D,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.ext_directfb_surface
+            .get_physical_device_direct_fb_presentation_support_ext)(
+            self.handle,
+            queue_family_index,
+            dfb as *mut _,
+        ) != 0
     }
 
     /// Retrieves the external memory properties supported for buffers with a given configuration.
     ///
-    /// Returns `None` if the instance API version is less than 1.1 and the
+    /// Instance API version must be at least 1.1, or the
     /// [`khr_external_memory_capabilities`](crate::instance::InstanceExtensions::khr_external_memory_capabilities)
-    /// extension is not enabled on the instance.
+    /// extension must be enabled on the instance.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    #[inline]
     pub fn external_buffer_properties(
         &self,
         info: ExternalBufferInfo,
-    ) -> Option<ExternalBufferProperties> {
+    ) -> Result<ExternalBufferProperties, PhysicalDeviceError> {
+        self.validate_external_buffer_properties(&info)?;
+
+        unsafe { Ok(self.external_buffer_properties_unchecked(info)) }
+    }
+
+    fn validate_external_buffer_properties(
+        &self,
+        info: &ExternalBufferInfo,
+    ) -> Result<(), PhysicalDeviceError> {
         if !(self.instance.api_version() >= Version::V1_1
             || self
                 .instance
                 .enabled_extensions()
                 .khr_external_memory_capabilities)
         {
-            return None;
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`external_buffer_properties`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_1),
+                    instance_extensions: &["khr_external_memory_capabilities"],
+                    ..Default::default()
+                },
+            });
         }
 
-        /* Input */
-
-        let ExternalBufferInfo {
+        let &ExternalBufferInfo {
             handle_type,
             usage,
-            sparse,
+            sparse: _,
             _ne: _,
         } = info;
 
-        assert!(usage != BufferUsage::none());
+        // VUID-VkPhysicalDeviceExternalBufferInfo-usage-parameter
+        usage.validate_physical_device(self)?;
 
-        let external_buffer_info = ash::vk::PhysicalDeviceExternalBufferInfo {
-            flags: sparse.map(Into::into).unwrap_or_default(),
-            usage: usage.into(),
-            handle_type: handle_type.into(),
-            ..Default::default()
-        };
+        // VUID-VkPhysicalDeviceExternalBufferInfo-usage-requiredbitmask
+        assert!(!usage.is_empty());
 
-        /* Output */
+        // VUID-VkPhysicalDeviceExternalBufferInfo-handleType-parameter
+        handle_type.validate_physical_device(self)?;
 
-        let mut external_buffer_properties = ash::vk::ExternalBufferProperties::default();
+        Ok(())
+    }
 
-        /* Call */
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn external_buffer_properties_unchecked(
+        &self,
+        info: ExternalBufferInfo,
+    ) -> ExternalBufferProperties {
+        get_cached(&self.external_buffer_properties, info, |info| {
+            /* Input */
 
-        unsafe {
+            let &ExternalBufferInfo {
+                handle_type,
+                usage,
+                sparse,
+                _ne: _,
+            } = info;
+
+            let external_buffer_info = ash::vk::PhysicalDeviceExternalBufferInfo {
+                flags: sparse.map(Into::into).unwrap_or_default(),
+                usage: usage.into(),
+                handle_type: handle_type.into(),
+                ..Default::default()
+            };
+
+            /* Output */
+
+            let mut external_buffer_properties = ash::vk::ExternalBufferProperties::default();
+
+            /* Call */
+
             let fns = self.instance.fns();
 
             if self.instance.api_version() >= Version::V1_1 {
                 (fns.v1_1.get_physical_device_external_buffer_properties)(
-                    self.info.handle,
+                    self.handle,
                     &external_buffer_info,
                     &mut external_buffer_properties,
                 )
             } else {
                 (fns.khr_external_memory_capabilities
                     .get_physical_device_external_buffer_properties_khr)(
-                    self.info.handle,
+                    self.handle,
                     &external_buffer_info,
                     &mut external_buffer_properties,
                 );
             }
+
+            Ok::<_, Infallible>(ExternalBufferProperties {
+                external_memory_properties: external_buffer_properties
+                    .external_memory_properties
+                    .into(),
+            })
+        })
+        .unwrap()
+    }
+
+    /// Retrieves the external handle properties supported for fences with a given
+    /// configuration.
+    ///
+    /// The instance API version must be at least 1.1, or the
+    /// [`khr_external_fence_capabilities`](crate::instance::InstanceExtensions::khr_external_fence_capabilities)
+    /// extension must be enabled on the instance.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    #[inline]
+    pub fn external_fence_properties(
+        &self,
+        info: ExternalFenceInfo,
+    ) -> Result<ExternalFenceProperties, PhysicalDeviceError> {
+        self.validate_external_fence_properties(&info)?;
+
+        unsafe { Ok(self.external_fence_properties_unchecked(info)) }
+    }
+
+    fn validate_external_fence_properties(
+        &self,
+        info: &ExternalFenceInfo,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !(self.instance.api_version() >= Version::V1_1
+            || self
+                .instance
+                .enabled_extensions()
+                .khr_external_fence_capabilities)
+        {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`external_fence_properties`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_1),
+                    instance_extensions: &["khr_external_fence_capabilities"],
+                    ..Default::default()
+                },
+            });
         }
 
-        Some(ExternalBufferProperties {
-            external_memory_properties: external_buffer_properties
-                .external_memory_properties
-                .into(),
+        let &ExternalFenceInfo {
+            handle_type,
+            _ne: _,
+        } = info;
+
+        // VUID-VkPhysicalDeviceExternalFenceInfo-handleType-parameter
+        handle_type.validate_physical_device(self)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn external_fence_properties_unchecked(
+        &self,
+        info: ExternalFenceInfo,
+    ) -> ExternalFenceProperties {
+        get_cached(&self.external_fence_properties, info, |info| {
+            /* Input */
+
+            let &ExternalFenceInfo {
+                handle_type,
+                _ne: _,
+            } = info;
+
+            let external_fence_info = ash::vk::PhysicalDeviceExternalFenceInfo {
+                handle_type: handle_type.into(),
+                ..Default::default()
+            };
+
+            /* Output */
+
+            let mut external_fence_properties = ash::vk::ExternalFenceProperties::default();
+
+            /* Call */
+
+            let fns = self.instance.fns();
+
+            if self.instance.api_version() >= Version::V1_1 {
+                (fns.v1_1.get_physical_device_external_fence_properties)(
+                    self.handle,
+                    &external_fence_info,
+                    &mut external_fence_properties,
+                )
+            } else {
+                (fns.khr_external_fence_capabilities
+                    .get_physical_device_external_fence_properties_khr)(
+                    self.handle,
+                    &external_fence_info,
+                    &mut external_fence_properties,
+                );
+            }
+
+            Ok::<_, Infallible>(ExternalFenceProperties {
+                exportable: external_fence_properties
+                    .external_fence_features
+                    .intersects(ash::vk::ExternalFenceFeatureFlags::EXPORTABLE),
+                importable: external_fence_properties
+                    .external_fence_features
+                    .intersects(ash::vk::ExternalFenceFeatureFlags::IMPORTABLE),
+                export_from_imported_handle_types: external_fence_properties
+                    .export_from_imported_handle_types
+                    .into(),
+                compatible_handle_types: external_fence_properties.compatible_handle_types.into(),
+            })
         })
+        .unwrap()
+    }
+
+    /// Retrieves the external handle properties supported for semaphores with a given
+    /// configuration.
+    ///
+    /// The instance API version must be at least 1.1, or the
+    /// [`khr_external_semaphore_capabilities`](crate::instance::InstanceExtensions::khr_external_semaphore_capabilities)
+    /// extension must be enabled on the instance.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    #[inline]
+    pub fn external_semaphore_properties(
+        &self,
+        info: ExternalSemaphoreInfo,
+    ) -> Result<ExternalSemaphoreProperties, PhysicalDeviceError> {
+        self.validate_external_semaphore_properties(&info)?;
+
+        unsafe { Ok(self.external_semaphore_properties_unchecked(info)) }
+    }
+
+    fn validate_external_semaphore_properties(
+        &self,
+        info: &ExternalSemaphoreInfo,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !(self.instance.api_version() >= Version::V1_1
+            || self
+                .instance
+                .enabled_extensions()
+                .khr_external_semaphore_capabilities)
+        {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`external_semaphore_properties`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_1),
+                    instance_extensions: &["khr_external_semaphore_capabilities"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        let &ExternalSemaphoreInfo {
+            handle_type,
+            _ne: _,
+        } = info;
+
+        // VUID-VkPhysicalDeviceExternalSemaphoreInfo-handleType-parameter
+        handle_type.validate_physical_device(self)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn external_semaphore_properties_unchecked(
+        &self,
+        info: ExternalSemaphoreInfo,
+    ) -> ExternalSemaphoreProperties {
+        get_cached(&self.external_semaphore_properties, info, |info| {
+            /* Input */
+
+            let &ExternalSemaphoreInfo {
+                handle_type,
+                _ne: _,
+            } = info;
+
+            let external_semaphore_info = ash::vk::PhysicalDeviceExternalSemaphoreInfo {
+                handle_type: handle_type.into(),
+                ..Default::default()
+            };
+
+            /* Output */
+
+            let mut external_semaphore_properties = ash::vk::ExternalSemaphoreProperties::default();
+
+            /* Call */
+
+            let fns = self.instance.fns();
+
+            if self.instance.api_version() >= Version::V1_1 {
+                (fns.v1_1.get_physical_device_external_semaphore_properties)(
+                    self.handle,
+                    &external_semaphore_info,
+                    &mut external_semaphore_properties,
+                )
+            } else {
+                (fns.khr_external_semaphore_capabilities
+                    .get_physical_device_external_semaphore_properties_khr)(
+                    self.handle,
+                    &external_semaphore_info,
+                    &mut external_semaphore_properties,
+                );
+            }
+
+            Ok::<_, Infallible>(ExternalSemaphoreProperties {
+                exportable: external_semaphore_properties
+                    .external_semaphore_features
+                    .intersects(ash::vk::ExternalSemaphoreFeatureFlags::EXPORTABLE),
+                importable: external_semaphore_properties
+                    .external_semaphore_features
+                    .intersects(ash::vk::ExternalSemaphoreFeatureFlags::IMPORTABLE),
+                export_from_imported_handle_types: external_semaphore_properties
+                    .export_from_imported_handle_types
+                    .into(),
+                compatible_handle_types: external_semaphore_properties
+                    .compatible_handle_types
+                    .into(),
+            })
+        })
+        .unwrap()
     }
 
     /// Retrieves the properties of a format when used by this physical device.
-    pub fn format_properties(&self, format: Format) -> FormatProperties {
-        let mut format_properties2 = ash::vk::FormatProperties2::default();
-        let mut format_properties3 = if self.api_version() >= Version::V1_3
-            || self.supported_extensions().khr_format_feature_flags2
-        {
-            Some(ash::vk::FormatProperties3KHR::default())
-        } else {
-            None
-        };
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    #[inline]
+    pub fn format_properties(
+        &self,
+        format: Format,
+    ) -> Result<FormatProperties, PhysicalDeviceError> {
+        self.validate_format_properties(format)?;
 
-        if let Some(next) = format_properties3.as_mut() {
-            next.p_next = format_properties2.p_next;
-            format_properties2.p_next = next as *mut _ as *mut _;
-        }
+        unsafe { Ok(self.format_properties_unchecked(format)) }
+    }
 
-        unsafe {
+    fn validate_format_properties(&self, format: Format) -> Result<(), PhysicalDeviceError> {
+        // VUID-vkGetPhysicalDeviceFormatProperties2-format-parameter
+        format.validate_physical_device(self)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn format_properties_unchecked(&self, format: Format) -> FormatProperties {
+        get_cached(&self.format_properties, format, |&format| {
+            let mut format_properties2 = ash::vk::FormatProperties2::default();
+            let mut format_properties3 = if self.api_version() >= Version::V1_3
+                || self.supported_extensions().khr_format_feature_flags2
+            {
+                Some(ash::vk::FormatProperties3KHR::default())
+            } else {
+                None
+            };
+
+            if let Some(next) = format_properties3.as_mut() {
+                next.p_next = format_properties2.p_next;
+                format_properties2.p_next = next as *mut _ as *mut _;
+            }
+
             let fns = self.instance.fns();
 
             if self.api_version() >= Version::V1_1 {
                 (fns.v1_1.get_physical_device_format_properties2)(
-                    self.info.handle,
+                    self.handle,
                     format.into(),
                     &mut format_properties2,
                 );
@@ -531,7 +862,7 @@ impl<'a> PhysicalDevice<'a> {
             {
                 (fns.khr_get_physical_device_properties2
                     .get_physical_device_format_properties2_khr)(
-                    self.info.handle,
+                    self.handle,
                     format.into(),
                     &mut format_properties2,
                 );
@@ -542,756 +873,1129 @@ impl<'a> PhysicalDevice<'a> {
                     &mut format_properties2.format_properties,
                 );
             }
-        }
 
-        match format_properties3 {
-            Some(format_properties3) => FormatProperties {
-                linear_tiling_features: format_properties3.linear_tiling_features.into(),
-                optimal_tiling_features: format_properties3.optimal_tiling_features.into(),
-                buffer_features: format_properties3.buffer_features.into(),
-                _ne: crate::NonExhaustive(()),
-            },
-            None => FormatProperties {
-                linear_tiling_features: format_properties2
-                    .format_properties
-                    .linear_tiling_features
-                    .into(),
-                optimal_tiling_features: format_properties2
-                    .format_properties
-                    .optimal_tiling_features
-                    .into(),
-                buffer_features: format_properties2.format_properties.buffer_features.into(),
-                _ne: crate::NonExhaustive(()),
-            },
-        }
-    }
-
-    /// Retrieves the external handle properties supported for semaphores with a given
-    /// configuration.
-    ///
-    /// Returns `None` if the instance API version is less than 1.1 and the
-    /// [`khr_external_semaphore_capabilities`](crate::instance::InstanceExtensions::khr_external_semaphore_capabilities)
-    /// extension is not enabled on the instance.
-    pub fn external_semaphore_properties(
-        &self,
-        info: ExternalSemaphoreInfo,
-    ) -> Option<ExternalSemaphoreProperties> {
-        if !(self.instance.api_version() >= Version::V1_1
-            || self
-                .instance
-                .enabled_extensions()
-                .khr_external_semaphore_capabilities)
-        {
-            return None;
-        }
-
-        /* Input */
-
-        let ExternalSemaphoreInfo {
-            handle_type,
-            _ne: _,
-        } = info;
-
-        let external_semaphore_info = ash::vk::PhysicalDeviceExternalSemaphoreInfo {
-            handle_type: handle_type.into(),
-            ..Default::default()
-        };
-
-        /* Output */
-
-        let mut external_semaphore_properties = ash::vk::ExternalSemaphoreProperties::default();
-
-        /* Call */
-
-        unsafe {
-            let fns = self.instance.fns();
-
-            if self.instance.api_version() >= Version::V1_1 {
-                (fns.v1_1.get_physical_device_external_semaphore_properties)(
-                    self.info.handle,
-                    &external_semaphore_info,
-                    &mut external_semaphore_properties,
-                )
-            } else {
-                (fns.khr_external_semaphore_capabilities
-                    .get_physical_device_external_semaphore_properties_khr)(
-                    self.info.handle,
-                    &external_semaphore_info,
-                    &mut external_semaphore_properties,
-                );
-            }
-        }
-
-        Some(ExternalSemaphoreProperties {
-            exportable: external_semaphore_properties
-                .external_semaphore_features
-                .intersects(ash::vk::ExternalSemaphoreFeatureFlags::EXPORTABLE),
-            importable: external_semaphore_properties
-                .external_semaphore_features
-                .intersects(ash::vk::ExternalSemaphoreFeatureFlags::IMPORTABLE),
-            export_from_imported_handle_types: external_semaphore_properties
-                .export_from_imported_handle_types
-                .into(),
-            compatible_handle_types: external_semaphore_properties.compatible_handle_types.into(),
+            Ok::<_, Infallible>(match format_properties3 {
+                Some(format_properties3) => FormatProperties {
+                    linear_tiling_features: format_properties3.linear_tiling_features.into(),
+                    optimal_tiling_features: format_properties3.optimal_tiling_features.into(),
+                    buffer_features: format_properties3.buffer_features.into(),
+                    _ne: crate::NonExhaustive(()),
+                },
+                None => FormatProperties {
+                    linear_tiling_features: format_properties2
+                        .format_properties
+                        .linear_tiling_features
+                        .into(),
+                    optimal_tiling_features: format_properties2
+                        .format_properties
+                        .optimal_tiling_features
+                        .into(),
+                    buffer_features: format_properties2.format_properties.buffer_features.into(),
+                    _ne: crate::NonExhaustive(()),
+                },
+            })
         })
+        .unwrap()
     }
 
     /// Returns the properties supported for images with a given image configuration.
     ///
     /// `Some` is returned if the configuration is supported, `None` if it is not.
     ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
     /// # Panics
     ///
     /// - Panics if `image_format_info.format` is `None`.
+    #[inline]
     pub fn image_format_properties(
         &self,
         image_format_info: ImageFormatInfo,
-    ) -> Result<Option<ImageFormatProperties>, OomError> {
-        /* Input */
-        let ImageFormatInfo {
+    ) -> Result<Option<ImageFormatProperties>, PhysicalDeviceError> {
+        self.validate_image_format_properties(&image_format_info)?;
+
+        unsafe { Ok(self.image_format_properties_unchecked(image_format_info)?) }
+    }
+
+    pub fn validate_image_format_properties(
+        &self,
+        image_format_info: &ImageFormatInfo,
+    ) -> Result<(), PhysicalDeviceError> {
+        let &ImageFormatInfo {
             format,
             image_type,
             tiling,
             usage,
+            mut stencil_usage,
             external_memory_handle_type,
             image_view_type,
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
+            mutable_format: _,
+            cube_compatible: _,
+            array_2d_compatible: _,
+            block_texel_view_compatible: _,
             _ne: _,
         } = image_format_info;
 
-        let flags = ImageCreateFlags {
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
-            ..ImageCreateFlags::none()
-        };
+        let format = format.unwrap();
+        let aspects = format.aspects();
 
-        let mut format_info2 = ash::vk::PhysicalDeviceImageFormatInfo2::builder()
-            .format(format.unwrap().into())
-            .ty(image_type.into())
-            .tiling(tiling.into())
-            .usage(usage.into())
-            .flags(flags.into());
+        let has_separate_stencil_usage =
+            if stencil_usage.is_empty() || !(aspects.depth && aspects.stencil) {
+                stencil_usage = usage;
+                false
+            } else {
+                stencil_usage == usage
+            };
 
-        let mut external_image_format_info = if let Some(handle_type) = external_memory_handle_type
-        {
+        // VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter
+        format.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceImageFormatInfo2-imageType-parameter
+        image_type.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceImageFormatInfo2-tiling-parameter
+        tiling.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceImageFormatInfo2-usage-parameter
+        usage.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceImageFormatInfo2-usage-requiredbitmask
+        assert!(!usage.is_empty());
+
+        if has_separate_stencil_usage {
+            if !(self.api_version() >= Version::V1_2
+                || self.supported_extensions().ext_separate_stencil_usage)
+            {
+                return Err(PhysicalDeviceError::RequirementNotMet {
+                    required_for: "`image_format_info.stencil_usage` is `Some` and `image_format_info.format` has both a depth and a stencil aspect",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_2),
+                        device_extensions: &["ext_separate_stencil_usage"],
+                        ..Default::default()
+                    },
+                });
+            }
+
+            // VUID-VkImageStencilUsageCreateInfo-stencilUsage-parameter
+            stencil_usage.validate_physical_device(self)?;
+
+            // VUID-VkImageStencilUsageCreateInfo-usage-requiredbitmask
+            assert!(!stencil_usage.is_empty());
+        }
+
+        if let Some(handle_type) = external_memory_handle_type {
             if !(self.api_version() >= Version::V1_1
                 || self
                     .instance()
                     .enabled_extensions()
                     .khr_external_memory_capabilities)
             {
-                // Can't query this, return unsupported
-                return Ok(None);
+                return Err(PhysicalDeviceError::RequirementNotMet {
+                    required_for: "`image_format_info.external_memory_handle_type` is `Some`",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        instance_extensions: &["khr_external_memory_capabilities"],
+                        ..Default::default()
+                    },
+                });
             }
 
-            Some(
-                ash::vk::PhysicalDeviceExternalImageFormatInfo::builder()
-                    .handle_type(handle_type.into()),
-            )
-        } else {
-            None
-        };
-
-        if let Some(next) = external_image_format_info.as_mut() {
-            format_info2 = format_info2.push_next(next);
+            // VUID-VkPhysicalDeviceExternalImageFormatInfo-handleType-parameter
+            handle_type.validate_physical_device(self)?;
         }
 
-        let mut image_view_image_format_info = if let Some(image_view_type) = image_view_type {
+        if let Some(image_view_type) = image_view_type {
             if !self.supported_extensions().ext_filter_cubic {
-                // Can't query this, return unsupported
-                return Ok(None);
+                return Err(PhysicalDeviceError::RequirementNotMet {
+                    required_for: "`image_format_info.image_view_type` is `Some`",
+                    requires_one_of: RequiresOneOf {
+                        device_extensions: &["ext_filter_cubic"],
+                        ..Default::default()
+                    },
+                });
             }
 
-            if !image_view_type.is_compatible_with(image_type) {
-                return Ok(None);
+            // VUID-VkPhysicalDeviceImageViewImageFormatInfoEXT-imageViewType-parameter
+            image_view_type.validate_physical_device(self)?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn image_format_properties_unchecked(
+        &self,
+        mut image_format_info: ImageFormatInfo,
+    ) -> Result<Option<ImageFormatProperties>, VulkanError> {
+        {
+            let ImageFormatInfo {
+                format,
+                usage,
+                stencil_usage,
+                ..
+            } = &mut image_format_info;
+
+            let aspects = format.unwrap().aspects();
+
+            if stencil_usage.is_empty() || !(aspects.depth && aspects.stencil) {
+                *stencil_usage = *usage;
             }
-
-            Some(
-                ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT::builder()
-                    .image_view_type(image_view_type.into()),
-            )
-        } else {
-            None
-        };
-
-        if let Some(next) = image_view_image_format_info.as_mut() {
-            format_info2 = format_info2.push_next(next);
         }
 
-        /* Output */
+        get_cached(
+            &self.image_format_properties,
+            image_format_info,
+            |image_format_info| {
+                /* Input */
+                let &ImageFormatInfo {
+                    format,
+                    image_type,
+                    tiling,
+                    usage,
+                    stencil_usage,
+                    external_memory_handle_type,
+                    image_view_type,
+                    mutable_format,
+                    cube_compatible,
+                    array_2d_compatible,
+                    block_texel_view_compatible,
+                    _ne: _,
+                } = image_format_info;
 
-        let mut image_format_properties2 = ash::vk::ImageFormatProperties2::default();
+                let has_separate_stencil_usage = stencil_usage == usage;
 
-        let mut external_image_format_properties = if external_memory_handle_type.is_some() {
-            Some(ash::vk::ExternalImageFormatProperties::default())
-        } else {
-            None
-        };
+                let flags = ImageCreateFlags {
+                    mutable_format,
+                    cube_compatible,
+                    array_2d_compatible,
+                    block_texel_view_compatible,
+                    ..ImageCreateFlags::empty()
+                };
 
-        if let Some(next) = external_image_format_properties.as_mut() {
-            next.p_next = image_format_properties2.p_next;
-            image_format_properties2.p_next = next as *mut _ as *mut _;
-        }
+                let mut info2_vk = ash::vk::PhysicalDeviceImageFormatInfo2 {
+                    format: format.unwrap().into(),
+                    ty: image_type.into(),
+                    tiling: tiling.into(),
+                    usage: usage.into(),
+                    flags: flags.into(),
+                    ..Default::default()
+                };
+                let mut external_info_vk = None;
+                let mut image_view_info_vk = None;
+                let mut stencil_usage_info_vk = None;
 
-        let mut filter_cubic_image_view_image_format_properties = if image_view_type.is_some() {
-            Some(ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default())
-        } else {
-            None
-        };
+                if let Some(handle_type) = external_memory_handle_type {
+                    let next =
+                        external_info_vk.insert(ash::vk::PhysicalDeviceExternalImageFormatInfo {
+                            handle_type: handle_type.into(),
+                            ..Default::default()
+                        });
 
-        if let Some(next) = filter_cubic_image_view_image_format_properties.as_mut() {
-            next.p_next = image_format_properties2.p_next;
-            image_format_properties2.p_next = next as *mut _ as *mut _;
-        }
-
-        let result = unsafe {
-            let fns = self.instance.fns();
-
-            if self.api_version() >= Version::V1_1 {
-                (fns.v1_1.get_physical_device_image_format_properties2)(
-                    self.info.handle,
-                    &format_info2.build(),
-                    &mut image_format_properties2,
-                )
-            } else if self
-                .instance
-                .enabled_extensions()
-                .khr_get_physical_device_properties2
-            {
-                (fns.khr_get_physical_device_properties2
-                    .get_physical_device_image_format_properties2_khr)(
-                    self.info.handle,
-                    &format_info2.build(),
-                    &mut image_format_properties2,
-                )
-            } else {
-                // Can't query this, return unsupported
-                if !format_info2.p_next.is_null() {
-                    return Ok(None);
+                    next.p_next = info2_vk.p_next;
+                    info2_vk.p_next = next as *const _ as *const _;
                 }
 
-                (fns.v1_0.get_physical_device_image_format_properties)(
-                    self.info.handle,
-                    format_info2.format,
-                    format_info2.ty,
-                    format_info2.tiling,
-                    format_info2.usage,
-                    format_info2.flags,
-                    &mut image_format_properties2.image_format_properties,
-                )
-            }
-            .result()
-            .map_err(VulkanError::from)
-        };
+                if let Some(image_view_type) = image_view_type {
+                    let next = image_view_info_vk.insert(
+                        ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT {
+                            image_view_type: image_view_type.into(),
+                            ..Default::default()
+                        },
+                    );
 
-        match result {
-            Ok(_) => Ok(Some(ImageFormatProperties {
-                external_memory_properties: external_image_format_properties
-                    .map(|properties| properties.external_memory_properties.into())
-                    .unwrap_or_default(),
-                filter_cubic: filter_cubic_image_view_image_format_properties
-                    .map_or(false, |properties| {
-                        properties.filter_cubic != ash::vk::FALSE
+                    next.p_next = info2_vk.p_next as *mut _;
+                    info2_vk.p_next = next as *const _ as *const _;
+                }
+
+                if has_separate_stencil_usage {
+                    let next = stencil_usage_info_vk.insert(ash::vk::ImageStencilUsageCreateInfo {
+                        stencil_usage: stencil_usage.into(),
+                        ..Default::default()
+                    });
+
+                    next.p_next = info2_vk.p_next as *mut _;
+                    info2_vk.p_next = next as *const _ as *const _;
+                }
+
+                /* Output */
+
+                let mut properties2_vk = ash::vk::ImageFormatProperties2::default();
+                let mut external_properties_vk = None;
+                let mut filter_cubic_image_view_properties_vk = None;
+
+                if external_info_vk.is_some() {
+                    let next = external_properties_vk
+                        .insert(ash::vk::ExternalImageFormatProperties::default());
+
+                    next.p_next = properties2_vk.p_next;
+                    properties2_vk.p_next = next as *mut _ as *mut _;
+                }
+
+                if image_view_info_vk.is_some() {
+                    let next = filter_cubic_image_view_properties_vk
+                        .insert(ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default());
+
+                    next.p_next = properties2_vk.p_next;
+                    properties2_vk.p_next = next as *mut _ as *mut _;
+                }
+
+                let result = {
+                    let fns = self.instance.fns();
+
+                    if self.api_version() >= Version::V1_1 {
+                        (fns.v1_1.get_physical_device_image_format_properties2)(
+                            self.handle,
+                            &info2_vk,
+                            &mut properties2_vk,
+                        )
+                    } else if self
+                        .instance
+                        .enabled_extensions()
+                        .khr_get_physical_device_properties2
+                    {
+                        (fns.khr_get_physical_device_properties2
+                            .get_physical_device_image_format_properties2_khr)(
+                            self.handle,
+                            &info2_vk,
+                            &mut properties2_vk,
+                        )
+                    } else {
+                        // Can't query this, return unsupported
+                        if !info2_vk.p_next.is_null() {
+                            return Ok(None);
+                        }
+
+                        (fns.v1_0.get_physical_device_image_format_properties)(
+                            self.handle,
+                            info2_vk.format,
+                            info2_vk.ty,
+                            info2_vk.tiling,
+                            info2_vk.usage,
+                            info2_vk.flags,
+                            &mut properties2_vk.image_format_properties,
+                        )
+                    }
+                    .result()
+                    .map_err(VulkanError::from)
+                };
+
+                Ok(match result {
+                    Ok(_) => Some(ImageFormatProperties {
+                        external_memory_properties: external_properties_vk
+                            .map(|properties| properties.external_memory_properties.into())
+                            .unwrap_or_default(),
+                        filter_cubic: filter_cubic_image_view_properties_vk
+                            .map_or(false, |properties| {
+                                properties.filter_cubic != ash::vk::FALSE
+                            }),
+                        filter_cubic_minmax: filter_cubic_image_view_properties_vk
+                            .map_or(false, |properties| {
+                                properties.filter_cubic_minmax != ash::vk::FALSE
+                            }),
+                        ..properties2_vk.image_format_properties.into()
                     }),
-                filter_cubic_minmax: filter_cubic_image_view_image_format_properties
-                    .map_or(false, |properties| {
-                        properties.filter_cubic_minmax != ash::vk::FALSE
-                    }),
-                ..image_format_properties2.image_format_properties.into()
-            })),
-            Err(VulkanError::FormatNotSupported) => Ok(None),
-            Err(err) => Err(err.into()),
+                    Err(VulkanError::FormatNotSupported) => None,
+                    Err(err) => return Err(err),
+                })
+            },
+        )
+    }
+
+    /// Queries whether the physical device supports presenting to QNX Screen surfaces from queues
+    /// of the given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `window` must be a valid QNX Screen `_screen_window` handle.
+    #[inline]
+    pub unsafe fn qnx_screen_presentation_support<W>(
+        &self,
+        queue_family_index: u32,
+        window: *const W,
+    ) -> Result<bool, PhysicalDeviceError> {
+        self.validate_qnx_screen_presentation_support(queue_family_index, window)?;
+
+        Ok(self.qnx_screen_presentation_support_unchecked(queue_family_index, window))
+    }
+
+    fn validate_qnx_screen_presentation_support<W>(
+        &self,
+        queue_family_index: u32,
+        _window: *const W,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !self.instance.enabled_extensions().qnx_screen_surface {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`qnx_screen_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["qnx_screen_surface"],
+                    ..Default::default()
+                },
+            });
         }
-    }
 
-    /// Builds an iterator that enumerates all the memory types on this physical device.
-    #[inline]
-    pub fn memory_types(&self) -> impl ExactSizeIterator<Item = MemoryType<'a>> {
-        let physical_device = *self;
-        self.info.memory_properties.memory_types
-            [0..self.info.memory_properties.memory_type_count as usize]
-            .iter()
-            .enumerate()
-            .map(move |(id, info)| MemoryType {
-                physical_device,
-                id: id as u32,
-                info,
-            })
-    }
-
-    /// Returns the memory type with the given index, or `None` if out of range.
-    #[inline]
-    pub fn memory_type_by_id(&self, id: u32) -> Option<MemoryType<'a>> {
-        if id < self.info.memory_properties.memory_type_count {
-            Some(MemoryType {
-                physical_device: *self,
-                id,
-                info: &self.info.memory_properties.memory_types[id as usize],
-            })
-        } else {
-            None
+        // VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-queueFamilyIndex-04743
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(PhysicalDeviceError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
         }
+
+        // VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-window-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
     }
 
-    /// Builds an iterator that enumerates all the memory heaps on this physical device.
-    #[inline]
-    pub fn memory_heaps(&self) -> impl ExactSizeIterator<Item = MemoryHeap<'a>> {
-        let physical_device = *self;
-        self.info.memory_properties.memory_heaps
-            [0..self.info.memory_properties.memory_heap_count as usize]
-            .iter()
-            .enumerate()
-            .map(move |(id, info)| MemoryHeap {
-                physical_device,
-                id: id as u32,
-                info,
-            })
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn qnx_screen_presentation_support_unchecked<W>(
+        &self,
+        queue_family_index: u32,
+        window: *const W,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.qnx_screen_surface
+            .get_physical_device_screen_presentation_support_qnx)(
+            self.handle,
+            queue_family_index,
+            window as *mut _,
+        ) != 0
     }
 
-    /// Returns the memory heap with the given index, or `None` if out of range.
+    /// Returns the properties of sparse images with a given image configuration.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `format_info.format` is `None`.
     #[inline]
-    pub fn memory_heap_by_id(&self, id: u32) -> Option<MemoryHeap<'a>> {
-        if id < self.info.memory_properties.memory_heap_count {
-            Some(MemoryHeap {
-                physical_device: *self,
-                id,
-                info: &self.info.memory_properties.memory_heaps[id as usize],
-            })
-        } else {
-            None
-        }
+    pub fn sparse_image_format_properties(
+        &self,
+        format_info: SparseImageFormatInfo,
+    ) -> Result<Vec<SparseImageFormatProperties>, PhysicalDeviceError> {
+        self.validate_sparse_image_format_properties(&format_info)?;
+
+        unsafe { Ok(self.sparse_image_format_properties_unchecked(format_info)) }
     }
 
-    /// Builds an iterator that enumerates all the queue families on this physical device.
-    #[inline]
-    pub fn queue_families(&self) -> impl ExactSizeIterator<Item = QueueFamily<'a>> {
-        let physical_device = *self;
-        self.info
-            .queue_families
-            .iter()
-            .enumerate()
-            .map(move |(id, properties)| QueueFamily {
-                physical_device,
-                id: id as u32,
-                properties,
-            })
+    fn validate_sparse_image_format_properties(
+        &self,
+        format_info: &SparseImageFormatInfo,
+    ) -> Result<(), PhysicalDeviceError> {
+        let &SparseImageFormatInfo {
+            format,
+            image_type,
+            samples,
+            usage,
+            tiling,
+            _ne: _,
+        } = format_info;
+
+        let format = format.unwrap();
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-format-parameter
+        format.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-type-parameter
+        image_type.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-samples-parameter
+        samples.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-usage-parameter
+        usage.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-usage-requiredbitmask
+        assert!(!usage.is_empty());
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-tiling-parameter
+        tiling.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-samples-01095
+        // TODO:
+
+        Ok(())
     }
 
-    /// Returns the queue family with the given index, or `None` if out of range.
-    #[inline]
-    pub fn queue_family_by_id(&self, id: u32) -> Option<QueueFamily<'a>> {
-        if (id as usize) < self.info.queue_families.len() {
-            Some(QueueFamily {
-                physical_device: *self,
-                id,
-                properties: &self.info.queue_families[id as usize],
-            })
-        } else {
-            None
-        }
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn sparse_image_format_properties_unchecked(
+        &self,
+        format_info: SparseImageFormatInfo,
+    ) -> Vec<SparseImageFormatProperties> {
+        get_cached(
+            &self.sparse_image_format_properties,
+            format_info,
+            |format_info| {
+                let &SparseImageFormatInfo {
+                    format,
+                    image_type,
+                    samples,
+                    usage,
+                    tiling,
+                    _ne: _,
+                } = format_info;
+
+                let format_info2 = ash::vk::PhysicalDeviceSparseImageFormatInfo2 {
+                    format: format.unwrap().into(),
+                    ty: image_type.into(),
+                    samples: samples.into(),
+                    usage: usage.into(),
+                    tiling: tiling.into(),
+                    ..Default::default()
+                };
+
+                let fns = self.instance.fns();
+
+                if self.api_version() >= Version::V1_1
+                    || self
+                        .instance
+                        .enabled_extensions()
+                        .khr_get_physical_device_properties2
+                {
+                    let mut count = 0;
+
+                    if self.api_version() >= Version::V1_1 {
+                        (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
+                            self.handle,
+                            &format_info2,
+                            &mut count,
+                            ptr::null_mut(),
+                        );
+                    } else {
+                        (fns.khr_get_physical_device_properties2
+                            .get_physical_device_sparse_image_format_properties2_khr)(
+                            self.handle,
+                            &format_info2,
+                            &mut count,
+                            ptr::null_mut(),
+                        );
+                    }
+
+                    let mut sparse_image_format_properties2 =
+                        vec![ash::vk::SparseImageFormatProperties2::default(); count as usize];
+
+                    if self.api_version() >= Version::V1_1 {
+                        (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
+                            self.handle,
+                            &format_info2,
+                            &mut count,
+                            sparse_image_format_properties2.as_mut_ptr(),
+                        );
+                    } else {
+                        (fns.khr_get_physical_device_properties2
+                            .get_physical_device_sparse_image_format_properties2_khr)(
+                            self.handle,
+                            &format_info2,
+                            &mut count,
+                            sparse_image_format_properties2.as_mut_ptr(),
+                        );
+                    }
+
+                    sparse_image_format_properties2.set_len(count as usize);
+
+                    Ok::<_, Infallible>(
+                        sparse_image_format_properties2
+                            .into_iter()
+                            .map(
+                                |sparse_image_format_properties2| SparseImageFormatProperties {
+                                    aspects: sparse_image_format_properties2
+                                        .properties
+                                        .aspect_mask
+                                        .into(),
+                                    image_granularity: [
+                                        sparse_image_format_properties2
+                                            .properties
+                                            .image_granularity
+                                            .width,
+                                        sparse_image_format_properties2
+                                            .properties
+                                            .image_granularity
+                                            .height,
+                                        sparse_image_format_properties2
+                                            .properties
+                                            .image_granularity
+                                            .depth,
+                                    ],
+                                    flags: sparse_image_format_properties2.properties.flags.into(),
+                                },
+                            )
+                            .collect(),
+                    )
+                } else {
+                    let mut count = 0;
+
+                    (fns.v1_0.get_physical_device_sparse_image_format_properties)(
+                        self.handle,
+                        format_info2.format,
+                        format_info2.ty,
+                        format_info2.samples,
+                        format_info2.usage,
+                        format_info2.tiling,
+                        &mut count,
+                        ptr::null_mut(),
+                    );
+
+                    let mut sparse_image_format_properties =
+                        vec![ash::vk::SparseImageFormatProperties::default(); count as usize];
+
+                    (fns.v1_0.get_physical_device_sparse_image_format_properties)(
+                        self.handle,
+                        format_info2.format,
+                        format_info2.ty,
+                        format_info2.samples,
+                        format_info2.usage,
+                        format_info2.tiling,
+                        &mut count,
+                        sparse_image_format_properties.as_mut_ptr(),
+                    );
+
+                    sparse_image_format_properties.set_len(count as usize);
+
+                    Ok::<_, Infallible>(
+                        sparse_image_format_properties
+                            .into_iter()
+                            .map(
+                                |sparse_image_format_properties| SparseImageFormatProperties {
+                                    aspects: sparse_image_format_properties.aspect_mask.into(),
+                                    image_granularity: [
+                                        sparse_image_format_properties.image_granularity.width,
+                                        sparse_image_format_properties.image_granularity.height,
+                                        sparse_image_format_properties.image_granularity.depth,
+                                    ],
+                                    flags: sparse_image_format_properties.flags.into(),
+                                },
+                            )
+                            .collect(),
+                    )
+                }
+            },
+        )
+        .unwrap()
     }
 
     /// Returns the capabilities that are supported by the physical device for the given surface.
     ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
     /// # Panic
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
+    #[inline]
     pub fn surface_capabilities<W>(
         &self,
         surface: &Surface<W>,
         surface_info: SurfaceInfo,
-    ) -> Result<SurfaceCapabilities, SurfacePropertiesError> {
-        assert_eq!(
-            self.instance.internal_object(),
-            surface.instance().internal_object(),
-        );
+    ) -> Result<SurfaceCapabilities, PhysicalDeviceError> {
+        self.validate_surface_capabilities(surface, &surface_info)?;
 
-        /* Input */
+        unsafe { Ok(self.surface_capabilities_unchecked(surface, surface_info)?) }
+    }
 
-        let SurfaceInfo {
+    fn validate_surface_capabilities<W>(
+        &self,
+        surface: &Surface<W>,
+        surface_info: &SurfaceInfo,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !(self
+            .instance
+            .enabled_extensions()
+            .khr_get_surface_capabilities2
+            || self.instance.enabled_extensions().khr_surface)
+        {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`surface_capabilities`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-commonparent
+        assert_eq!(self.instance(), surface.instance());
+
+        // VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pSurfaceInfo-06210
+        if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
+            self.surface_support_unchecked(index, surface)
+                .unwrap_or_default()
+        }) {
+            return Err(PhysicalDeviceError::SurfaceNotSupported);
+        }
+
+        let &SurfaceInfo {
             full_screen_exclusive,
             win32_monitor,
             _ne: _,
         } = surface_info;
 
-        let mut surface_full_screen_exclusive_info =
-            if self.supported_extensions().ext_full_screen_exclusive {
-                Some(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                    full_screen_exclusive: full_screen_exclusive.into(),
+        if !self.supported_extensions().ext_full_screen_exclusive
+            && full_screen_exclusive != FullScreenExclusive::Default
+        {
+            return Err(PhysicalDeviceError::NotSupported);
+        }
+
+        // VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-02672
+        if (surface.api() == SurfaceApi::Win32
+            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled)
+            != win32_monitor.is_some()
+        {
+            return Err(PhysicalDeviceError::NotSupported);
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn surface_capabilities_unchecked<W>(
+        &self,
+        surface: &Surface<W>,
+        surface_info: SurfaceInfo,
+    ) -> Result<SurfaceCapabilities, VulkanError> {
+        get_cached(
+            &surface.surface_capabilities,
+            (self.handle, surface_info),
+            |(_, surface_info)| {
+                /* Input */
+
+                let &SurfaceInfo {
+                    full_screen_exclusive,
+                    win32_monitor,
+                    _ne: _,
+                } = surface_info;
+
+                let mut info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
+                    surface: surface.internal_object(),
                     ..Default::default()
-                })
-            } else {
-                if full_screen_exclusive != FullScreenExclusive::Default {
-                    return Err(SurfacePropertiesError::NotSupported);
+                };
+                let mut full_screen_exclusive_info = None;
+                let mut full_screen_exclusive_win32_info = None;
+
+                if self.supported_extensions().ext_full_screen_exclusive {
+                    let next = full_screen_exclusive_info.insert(
+                        ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                            full_screen_exclusive: full_screen_exclusive.into(),
+                            ..Default::default()
+                        },
+                    );
+
+                    next.p_next = info2.p_next as *mut _;
+                    info2.p_next = next as *const _ as *const _;
                 }
 
-                None
-            };
+                if let Some(win32_monitor) = win32_monitor {
+                    let next = full_screen_exclusive_win32_info.insert(
+                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                            hmonitor: win32_monitor.0,
+                            ..Default::default()
+                        },
+                    );
 
-        let mut surface_full_screen_exclusive_win32_info = if surface.api() == SurfaceApi::Win32
-            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
-        {
-            if let Some(win32_monitor) = win32_monitor {
-                Some(ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                    hmonitor: win32_monitor.0,
-                    ..Default::default()
+                    next.p_next = info2.p_next as *mut _;
+                    info2.p_next = next as *const _ as *const _;
+                }
+
+                /* Output */
+
+                let mut capabilities2 = ash::vk::SurfaceCapabilities2KHR::default();
+                let mut capabilities_full_screen_exclusive = None;
+                let mut protected_capabilities = None;
+
+                if full_screen_exclusive_info.is_some() {
+                    let next = capabilities_full_screen_exclusive
+                        .insert(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default());
+
+                    next.p_next = info2.p_next as *mut _;
+                    info2.p_next = next as *const _ as *const _;
+                }
+
+                if self
+                    .instance
+                    .enabled_extensions()
+                    .khr_surface_protected_capabilities
+                {
+                    let next = protected_capabilities
+                        .insert(ash::vk::SurfaceProtectedCapabilitiesKHR::default());
+
+                    next.p_next = info2.p_next as *mut _;
+                    info2.p_next = next as *const _ as *const _;
+                }
+
+                let fns = self.instance.fns();
+
+                if self
+                    .instance
+                    .enabled_extensions()
+                    .khr_get_surface_capabilities2
+                {
+                    (fns.khr_get_surface_capabilities2
+                        .get_physical_device_surface_capabilities2_khr)(
+                        self.internal_object(),
+                        &info2,
+                        &mut capabilities2,
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
+                } else {
+                    (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
+                        self.internal_object(),
+                        info2.surface,
+                        &mut capabilities2.surface_capabilities,
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
+                };
+
+                Ok(SurfaceCapabilities {
+                    min_image_count: capabilities2.surface_capabilities.min_image_count,
+                    max_image_count: if capabilities2.surface_capabilities.max_image_count == 0 {
+                        None
+                    } else {
+                        Some(capabilities2.surface_capabilities.max_image_count)
+                    },
+                    current_extent: if capabilities2.surface_capabilities.current_extent.width
+                        == 0xffffffff
+                        && capabilities2.surface_capabilities.current_extent.height == 0xffffffff
+                    {
+                        None
+                    } else {
+                        Some([
+                            capabilities2.surface_capabilities.current_extent.width,
+                            capabilities2.surface_capabilities.current_extent.height,
+                        ])
+                    },
+                    min_image_extent: [
+                        capabilities2.surface_capabilities.min_image_extent.width,
+                        capabilities2.surface_capabilities.min_image_extent.height,
+                    ],
+                    max_image_extent: [
+                        capabilities2.surface_capabilities.max_image_extent.width,
+                        capabilities2.surface_capabilities.max_image_extent.height,
+                    ],
+                    max_image_array_layers: capabilities2
+                        .surface_capabilities
+                        .max_image_array_layers,
+                    supported_transforms: capabilities2
+                        .surface_capabilities
+                        .supported_transforms
+                        .into(),
+
+                    current_transform: SupportedSurfaceTransforms::from(
+                        capabilities2.surface_capabilities.current_transform,
+                    )
+                    .iter()
+                    .next()
+                    .unwrap(), // TODO:
+                    supported_composite_alpha: capabilities2
+                        .surface_capabilities
+                        .supported_composite_alpha
+                        .into(),
+                    supported_usage_flags: {
+                        let usage = ImageUsage::from(
+                            capabilities2.surface_capabilities.supported_usage_flags,
+                        );
+                        debug_assert!(usage.color_attachment); // specs say that this must be true
+                        usage
+                    },
+
+                    supports_protected: protected_capabilities
+                        .map_or(false, |c| c.supports_protected != 0),
+
+                    full_screen_exclusive_supported: capabilities_full_screen_exclusive
+                        .map_or(false, |c| c.full_screen_exclusive_supported != 0),
                 })
-            } else {
-                return Err(SurfacePropertiesError::NotSupported);
-            }
-        } else {
-            if win32_monitor.is_some() {
-                return Err(SurfacePropertiesError::NotSupported);
-            } else {
-                None
-            }
-        };
-
-        let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-            surface: surface.internal_object(),
-            ..Default::default()
-        };
-
-        if let Some(surface_full_screen_exclusive_info) =
-            surface_full_screen_exclusive_info.as_mut()
-        {
-            surface_full_screen_exclusive_info.p_next = surface_info2.p_next as *mut _;
-            surface_info2.p_next = surface_full_screen_exclusive_info as *const _ as *const _;
-        }
-
-        if let Some(surface_full_screen_exclusive_win32_info) =
-            surface_full_screen_exclusive_win32_info.as_mut()
-        {
-            surface_full_screen_exclusive_win32_info.p_next = surface_info2.p_next as *mut _;
-            surface_info2.p_next = surface_full_screen_exclusive_win32_info as *const _ as *const _;
-        }
-
-        /* Output */
-
-        let mut surface_capabilities2 = ash::vk::SurfaceCapabilities2KHR::default();
-
-        let mut surface_capabilities_full_screen_exclusive =
-            if surface_full_screen_exclusive_info.is_some() {
-                Some(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default())
-            } else {
-                None
-            };
-
-        if let Some(surface_capabilities_full_screen_exclusive) =
-            surface_capabilities_full_screen_exclusive.as_mut()
-        {
-            surface_capabilities_full_screen_exclusive.p_next =
-                surface_capabilities2.p_next as *mut _;
-            surface_capabilities2.p_next =
-                surface_capabilities_full_screen_exclusive as *mut _ as *mut _;
-        }
-
-        unsafe {
-            let fns = self.instance.fns();
-
-            if self
-                .instance
-                .enabled_extensions()
-                .khr_get_surface_capabilities2
-            {
-                (fns.khr_get_surface_capabilities2
-                    .get_physical_device_surface_capabilities2_khr)(
-                    self.internal_object(),
-                    &surface_info2,
-                    &mut surface_capabilities2,
-                )
-                .result()
-                .map_err(VulkanError::from)?;
-            } else {
-                (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
-                    self.internal_object(),
-                    surface_info2.surface,
-                    &mut surface_capabilities2.surface_capabilities,
-                )
-                .result()
-                .map_err(VulkanError::from)?;
-            };
-        }
-
-        Ok(SurfaceCapabilities {
-            min_image_count: surface_capabilities2.surface_capabilities.min_image_count,
-            max_image_count: if surface_capabilities2.surface_capabilities.max_image_count == 0 {
-                None
-            } else {
-                Some(surface_capabilities2.surface_capabilities.max_image_count)
             },
-            current_extent: if surface_capabilities2
-                .surface_capabilities
-                .current_extent
-                .width
-                == 0xffffffff
-                && surface_capabilities2
-                    .surface_capabilities
-                    .current_extent
-                    .height
-                    == 0xffffffff
-            {
-                None
-            } else {
-                Some([
-                    surface_capabilities2
-                        .surface_capabilities
-                        .current_extent
-                        .width,
-                    surface_capabilities2
-                        .surface_capabilities
-                        .current_extent
-                        .height,
-                ])
-            },
-            min_image_extent: [
-                surface_capabilities2
-                    .surface_capabilities
-                    .min_image_extent
-                    .width,
-                surface_capabilities2
-                    .surface_capabilities
-                    .min_image_extent
-                    .height,
-            ],
-            max_image_extent: [
-                surface_capabilities2
-                    .surface_capabilities
-                    .max_image_extent
-                    .width,
-                surface_capabilities2
-                    .surface_capabilities
-                    .max_image_extent
-                    .height,
-            ],
-            max_image_array_layers: surface_capabilities2
-                .surface_capabilities
-                .max_image_array_layers,
-            supported_transforms: surface_capabilities2
-                .surface_capabilities
-                .supported_transforms
-                .into(),
-
-            current_transform: SupportedSurfaceTransforms::from(
-                surface_capabilities2.surface_capabilities.current_transform,
-            )
-            .iter()
-            .next()
-            .unwrap(), // TODO:
-            supported_composite_alpha: surface_capabilities2
-                .surface_capabilities
-                .supported_composite_alpha
-                .into(),
-            supported_usage_flags: {
-                let usage = ImageUsage::from(
-                    surface_capabilities2
-                        .surface_capabilities
-                        .supported_usage_flags,
-                );
-                debug_assert!(usage.color_attachment); // specs say that this must be true
-                usage
-            },
-
-            full_screen_exclusive_supported: surface_capabilities_full_screen_exclusive
-                .map_or(false, |c| c.full_screen_exclusive_supported != 0),
-        })
+        )
     }
 
     /// Returns the combinations of format and color space that are supported by the physical device
     /// for the given surface.
     ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
     /// # Panic
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
+    #[inline]
     pub fn surface_formats<W>(
         &self,
         surface: &Surface<W>,
         surface_info: SurfaceInfo,
-    ) -> Result<Vec<(Format, ColorSpace)>, SurfacePropertiesError> {
-        assert_eq!(
-            self.instance.internal_object(),
-            surface.instance().internal_object(),
-        );
+    ) -> Result<Vec<(Format, ColorSpace)>, PhysicalDeviceError> {
+        self.validate_surface_formats(surface, &surface_info)?;
+
+        unsafe { Ok(self.surface_formats_unchecked(surface, surface_info)?) }
+    }
+
+    fn validate_surface_formats<W>(
+        &self,
+        surface: &Surface<W>,
+        surface_info: &SurfaceInfo,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !(self
+            .instance
+            .enabled_extensions()
+            .khr_get_surface_capabilities2
+            || self.instance.enabled_extensions().khr_surface)
+        {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`surface_formats`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceSurfaceFormats2KHR-commonparent
+        assert_eq!(self.instance(), surface.instance());
+
+        // VUID-vkGetPhysicalDeviceSurfaceFormats2KHR-pSurfaceInfo-06522
+        if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
+            self.surface_support_unchecked(index, surface)
+                .unwrap_or_default()
+        }) {
+            return Err(PhysicalDeviceError::SurfaceNotSupported);
+        }
+
+        let &SurfaceInfo {
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = surface_info;
 
         if self
             .instance
             .enabled_extensions()
             .khr_get_surface_capabilities2
         {
-            let SurfaceInfo {
-                full_screen_exclusive,
-                win32_monitor,
-                _ne: _,
-            } = surface_info;
+            if !self.supported_extensions().ext_full_screen_exclusive
+                && full_screen_exclusive != FullScreenExclusive::Default
+            {
+                return Err(PhysicalDeviceError::NotSupported);
+            }
 
-            let mut surface_full_screen_exclusive_info =
-                if full_screen_exclusive != FullScreenExclusive::Default {
-                    if !self.supported_extensions().ext_full_screen_exclusive {
-                        return Err(SurfacePropertiesError::NotSupported);
-                    }
+            // VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-02672
+            if (surface.api() == SurfaceApi::Win32
+                && full_screen_exclusive == FullScreenExclusive::ApplicationControlled)
+                != win32_monitor.is_some()
+            {
+                return Err(PhysicalDeviceError::NotSupported);
+            }
+        } else {
+            if full_screen_exclusive != FullScreenExclusive::Default {
+                return Err(PhysicalDeviceError::NotSupported);
+            }
 
-                    Some(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+            if win32_monitor.is_some() {
+                return Err(PhysicalDeviceError::NotSupported);
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn surface_formats_unchecked<W>(
+        &self,
+        surface: &Surface<W>,
+        surface_info: SurfaceInfo,
+    ) -> Result<Vec<(Format, ColorSpace)>, VulkanError> {
+        get_cached(
+            &surface.surface_formats,
+            (self.handle, surface_info),
+            |(_, surface_info)| {
+                let &SurfaceInfo {
+                    full_screen_exclusive,
+                    win32_monitor,
+                    _ne: _,
+                } = surface_info;
+
+                let mut surface_full_screen_exclusive_info = (full_screen_exclusive
+                    != FullScreenExclusive::Default)
+                    .then(|| ash::vk::SurfaceFullScreenExclusiveInfoEXT {
                         full_screen_exclusive: full_screen_exclusive.into(),
                         ..Default::default()
-                    })
-                } else {
-                    None
+                    });
+
+                let mut surface_full_screen_exclusive_win32_info =
+                    win32_monitor.map(|win32_monitor| {
+                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                            hmonitor: win32_monitor.0,
+                            ..Default::default()
+                        }
+                    });
+
+                let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
+                    surface: surface.internal_object(),
+                    ..Default::default()
                 };
 
-            let mut surface_full_screen_exclusive_win32_info = if surface.api() == SurfaceApi::Win32
-                && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
-            {
-                if let Some(win32_monitor) = win32_monitor {
-                    Some(ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                        hmonitor: win32_monitor.0,
-                        ..Default::default()
-                    })
-                } else {
-                    return Err(SurfacePropertiesError::NotSupported);
+                if let Some(surface_full_screen_exclusive_info) =
+                    surface_full_screen_exclusive_info.as_mut()
+                {
+                    surface_full_screen_exclusive_info.p_next = surface_info2.p_next as *mut _;
+                    surface_info2.p_next =
+                        surface_full_screen_exclusive_info as *const _ as *const _;
                 }
-            } else {
-                if win32_monitor.is_some() {
-                    return Err(SurfacePropertiesError::NotSupported);
-                } else {
-                    None
+
+                if let Some(surface_full_screen_exclusive_win32_info) =
+                    surface_full_screen_exclusive_win32_info.as_mut()
+                {
+                    surface_full_screen_exclusive_win32_info.p_next =
+                        surface_info2.p_next as *mut _;
+                    surface_info2.p_next =
+                        surface_full_screen_exclusive_win32_info as *const _ as *const _;
                 }
-            };
 
-            let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-                surface: surface.internal_object(),
-                ..Default::default()
-            };
+                let fns = self.instance.fns();
 
-            if let Some(surface_full_screen_exclusive_info) =
-                surface_full_screen_exclusive_info.as_mut()
-            {
-                surface_full_screen_exclusive_info.p_next = surface_info2.p_next as *mut _;
-                surface_info2.p_next = surface_full_screen_exclusive_info as *const _ as *const _;
-            }
+                if self
+                    .instance
+                    .enabled_extensions()
+                    .khr_get_surface_capabilities2
+                {
+                    let surface_format2s = loop {
+                        let mut count = 0;
+                        (fns.khr_get_surface_capabilities2
+                            .get_physical_device_surface_formats2_khr)(
+                            self.internal_object(),
+                            &surface_info2,
+                            &mut count,
+                            ptr::null_mut(),
+                        )
+                        .result()
+                        .map_err(VulkanError::from)?;
 
-            if let Some(surface_full_screen_exclusive_win32_info) =
-                surface_full_screen_exclusive_win32_info.as_mut()
-            {
-                surface_full_screen_exclusive_win32_info.p_next = surface_info2.p_next as *mut _;
-                surface_info2.p_next =
-                    surface_full_screen_exclusive_win32_info as *const _ as *const _;
-            }
+                        let mut surface_format2s =
+                            vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
+                        let result = (fns
+                            .khr_get_surface_capabilities2
+                            .get_physical_device_surface_formats2_khr)(
+                            self.internal_object(),
+                            &surface_info2,
+                            &mut count,
+                            surface_format2s.as_mut_ptr(),
+                        );
 
-            let fns = self.instance.fns();
-
-            let surface_format2s = unsafe {
-                loop {
-                    let mut count = 0;
-                    (fns.khr_get_surface_capabilities2
-                        .get_physical_device_surface_formats2_khr)(
-                        self.internal_object(),
-                        &surface_info2,
-                        &mut count,
-                        ptr::null_mut(),
-                    )
-                    .result()
-                    .map_err(VulkanError::from)?;
-
-                    let mut surface_format2s =
-                        vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
-                    let result = (fns
-                        .khr_get_surface_capabilities2
-                        .get_physical_device_surface_formats2_khr)(
-                        self.internal_object(),
-                        &surface_info2,
-                        &mut count,
-                        surface_format2s.as_mut_ptr(),
-                    );
-
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            surface_format2s.set_len(count as usize);
-                            break surface_format2s;
+                        match result {
+                            ash::vk::Result::SUCCESS => {
+                                surface_format2s.set_len(count as usize);
+                                break surface_format2s;
+                            }
+                            ash::vk::Result::INCOMPLETE => (),
+                            err => return Err(VulkanError::from(err)),
                         }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err).into()),
-                    }
-                }
-            };
+                    };
 
-            Ok(surface_format2s
-                .into_iter()
-                .filter_map(|surface_format2| {
-                    (surface_format2.surface_format.format.try_into().ok())
-                        .zip(surface_format2.surface_format.color_space.try_into().ok())
-                })
-                .collect())
-        } else {
-            if surface_info != SurfaceInfo::default() {
-                return Ok(Vec::new());
-            }
+                    Ok(surface_format2s
+                        .into_iter()
+                        .filter_map(|surface_format2| {
+                            (surface_format2.surface_format.format.try_into().ok())
+                                .zip(surface_format2.surface_format.color_space.try_into().ok())
+                        })
+                        .collect())
+                } else {
+                    let surface_formats = loop {
+                        let mut count = 0;
+                        (fns.khr_surface.get_physical_device_surface_formats_khr)(
+                            self.internal_object(),
+                            surface.internal_object(),
+                            &mut count,
+                            ptr::null_mut(),
+                        )
+                        .result()
+                        .map_err(VulkanError::from)?;
 
-            let fns = self.instance.fns();
+                        let mut surface_formats = Vec::with_capacity(count as usize);
+                        let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
+                            self.internal_object(),
+                            surface.internal_object(),
+                            &mut count,
+                            surface_formats.as_mut_ptr(),
+                        );
 
-            let surface_formats = unsafe {
-                loop {
-                    let mut count = 0;
-                    (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                        self.internal_object(),
-                        surface.internal_object(),
-                        &mut count,
-                        ptr::null_mut(),
-                    )
-                    .result()
-                    .map_err(VulkanError::from)?;
-
-                    let mut surface_formats = Vec::with_capacity(count as usize);
-                    let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                        self.internal_object(),
-                        surface.internal_object(),
-                        &mut count,
-                        surface_formats.as_mut_ptr(),
-                    );
-
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            surface_formats.set_len(count as usize);
-                            break surface_formats;
+                        match result {
+                            ash::vk::Result::SUCCESS => {
+                                surface_formats.set_len(count as usize);
+                                break surface_formats;
+                            }
+                            ash::vk::Result::INCOMPLETE => (),
+                            err => return Err(VulkanError::from(err)),
                         }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err).into()),
-                    }
-                }
-            };
+                    };
 
-            Ok(surface_formats
-                .into_iter()
-                .filter_map(|surface_format| {
-                    (surface_format.format.try_into().ok())
-                        .zip(surface_format.color_space.try_into().ok())
-                })
-                .collect())
-        }
+                    Ok(surface_formats
+                        .into_iter()
+                        .filter_map(|surface_format| {
+                            (surface_format.format.try_into().ok())
+                                .zip(surface_format.color_space.try_into().ok())
+                        })
+                        .collect())
+                }
+            },
+        )
     }
 
     /// Returns the present modes that are supported by the physical device for the given surface.
     ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    ///
     /// # Panic
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
+    #[inline]
     pub fn surface_present_modes<W>(
         &self,
         surface: &Surface<W>,
-    ) -> Result<impl Iterator<Item = PresentMode>, SurfacePropertiesError> {
-        assert_eq!(
-            self.instance.internal_object(),
-            surface.instance().internal_object(),
-        );
+    ) -> Result<impl Iterator<Item = PresentMode>, PhysicalDeviceError> {
+        self.validate_surface_present_modes(surface)?;
 
-        let fns = self.instance.fns();
+        unsafe { Ok(self.surface_present_modes_unchecked(surface)?) }
+    }
 
-        let modes = unsafe {
-            loop {
+    fn validate_surface_present_modes<W>(
+        &self,
+        surface: &Surface<W>,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !self.instance.enabled_extensions().khr_surface {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`surface_present_modes`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceSurfacePresentModesKHR-commonparent
+        assert_eq!(self.instance(), surface.instance());
+
+        // VUID-vkGetPhysicalDeviceSurfacePresentModesKHR-surface-06525
+        if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
+            self.surface_support_unchecked(index, surface)
+                .unwrap_or_default()
+        }) {
+            return Err(PhysicalDeviceError::SurfaceNotSupported);
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn surface_present_modes_unchecked<W>(
+        &self,
+        surface: &Surface<W>,
+    ) -> Result<impl Iterator<Item = PresentMode>, VulkanError> {
+        get_cached(&surface.surface_present_modes, self.handle, |_| {
+            let fns = self.instance.fns();
+
+            let modes = loop {
                 let mut count = 0;
                 (fns.khr_surface
                     .get_physical_device_surface_present_modes_khr)(
@@ -1319,326 +2023,513 @@ impl<'a> PhysicalDevice<'a> {
                         break modes;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err).into()),
+                    err => return Err(VulkanError::from(err)),
                 }
+            };
+
+            Ok(modes
+                .into_iter()
+                .filter_map(|mode_vk| mode_vk.try_into().ok())
+                .collect())
+        })
+        .map(IntoIterator::into_iter)
+    }
+
+    /// Returns whether queues of the given queue family can draw on the given surface.
+    ///
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
+    #[inline]
+    pub fn surface_support<W>(
+        &self,
+        queue_family_index: u32,
+        surface: &Surface<W>,
+    ) -> Result<bool, PhysicalDeviceError> {
+        self.validate_surface_support(queue_family_index, surface)?;
+
+        unsafe { Ok(self.surface_support_unchecked(queue_family_index, surface)?) }
+    }
+
+    fn validate_surface_support<W>(
+        &self,
+        queue_family_index: u32,
+        _surface: &Surface<W>,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !self.instance.enabled_extensions().khr_surface {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`surface_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceSurfaceSupportKHR-queueFamilyIndex-01269
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(PhysicalDeviceError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn surface_support_unchecked<W>(
+        &self,
+        queue_family_index: u32,
+        surface: &Surface<W>,
+    ) -> Result<bool, VulkanError> {
+        get_cached(
+            &surface.surface_support,
+            (self.handle, queue_family_index),
+            |_| {
+                let fns = self.instance.fns();
+
+                let mut output = MaybeUninit::uninit();
+                (fns.khr_surface.get_physical_device_surface_support_khr)(
+                    self.handle,
+                    queue_family_index,
+                    surface.internal_object(),
+                    output.as_mut_ptr(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
+
+                Ok(output.assume_init() != 0)
+            },
+        )
+    }
+
+    /// Retrieves the properties of tools that are currently active on the physical device.
+    ///
+    /// These properties may change during runtime, so the result only reflects the current
+    /// situation and is not cached.
+    ///
+    /// The physical device API version must be at least 1.3, or the
+    /// [`ext_tooling_info`](crate::device::DeviceExtensions::ext_tooling_info)
+    /// extension must be supported by the physical device.
+    #[inline]
+    pub fn tool_properties(&self) -> Result<Vec<ToolProperties>, PhysicalDeviceError> {
+        self.validate_tool_properties()?;
+
+        unsafe { Ok(self.tool_properties_unchecked()?) }
+    }
+
+    fn validate_tool_properties(&self) -> Result<(), PhysicalDeviceError> {
+        if !(self.api_version() >= Version::V1_3 || self.supported_extensions().ext_tooling_info) {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`tooling_properties`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    device_extensions: &["ext_tooling_info"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn tool_properties_unchecked(&self) -> Result<Vec<ToolProperties>, VulkanError> {
+        let fns = self.instance.fns();
+
+        loop {
+            let mut count = 0;
+
+            if self.api_version() >= Version::V1_3 {
+                (fns.v1_3.get_physical_device_tool_properties)(
+                    self.internal_object(),
+                    &mut count,
+                    ptr::null_mut(),
+                )
+            } else {
+                (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
+                    self.internal_object(),
+                    &mut count,
+                    ptr::null_mut(),
+                )
             }
-        };
+            .result()
+            .map_err(VulkanError::from)?;
 
-        debug_assert!(!modes.is_empty());
-        debug_assert!(modes.iter().any(|&m| m == ash::vk::PresentModeKHR::FIFO));
+            let mut tool_properties = Vec::with_capacity(count as usize);
+            let result = if self.api_version() >= Version::V1_3 {
+                (fns.v1_3.get_physical_device_tool_properties)(
+                    self.internal_object(),
+                    &mut count,
+                    tool_properties.as_mut_ptr(),
+                )
+            } else {
+                (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
+                    self.internal_object(),
+                    &mut count,
+                    tool_properties.as_mut_ptr(),
+                )
+            };
 
-        Ok(modes
-            .into_iter()
-            .filter_map(|mode_vk| mode_vk.try_into().ok()))
+            match result {
+                ash::vk::Result::INCOMPLETE => (),
+                ash::vk::Result::SUCCESS => {
+                    tool_properties.set_len(count as usize);
+
+                    return Ok(tool_properties
+                        .into_iter()
+                        .map(|tool_properties| ToolProperties {
+                            name: {
+                                let bytes = cast_slice(tool_properties.name.as_slice());
+                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                                String::from_utf8_lossy(&bytes[0..end]).into()
+                            },
+                            version: {
+                                let bytes = cast_slice(tool_properties.version.as_slice());
+                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                                String::from_utf8_lossy(&bytes[0..end]).into()
+                            },
+                            purposes: tool_properties.purposes.into(),
+                            description: {
+                                let bytes = cast_slice(tool_properties.description.as_slice());
+                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                                String::from_utf8_lossy(&bytes[0..end]).into()
+                            },
+                            layer: {
+                                let bytes = cast_slice(tool_properties.layer.as_slice());
+                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                                String::from_utf8_lossy(&bytes[0..end]).into()
+                            },
+                        })
+                        .collect());
+                }
+                err => return Err(VulkanError::from(err)),
+            }
+        }
+    }
+
+    /// Queries whether the physical device supports presenting to Wayland surfaces from queues of the
+    /// given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Wayland `wl_display` handle.
+    #[inline]
+    pub unsafe fn wayland_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+    ) -> Result<bool, PhysicalDeviceError> {
+        self.validate_wayland_presentation_support(queue_family_index, display)?;
+
+        Ok(self.wayland_presentation_support_unchecked(queue_family_index, display))
+    }
+
+    fn validate_wayland_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        _display: *const D,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !self.instance.enabled_extensions().khr_wayland_surface {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`wayland_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_wayland_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceWaylandPresentationSupportKHR-queueFamilyIndex-01306
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(PhysicalDeviceError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceWaylandPresentationSupportKHR-display-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn wayland_presentation_support_unchecked<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_wayland_surface
+            .get_physical_device_wayland_presentation_support_khr)(
+            self.handle,
+            queue_family_index,
+            display as *mut _,
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to Win32 surfaces from queues of the
+    /// given queue family.
+    #[inline]
+    pub fn win32_presentation_support(
+        &self,
+        queue_family_index: u32,
+    ) -> Result<bool, PhysicalDeviceError> {
+        self.validate_win32_presentation_support(queue_family_index)?;
+
+        unsafe { Ok(self.win32_presentation_support_unchecked(queue_family_index)) }
+    }
+
+    fn validate_win32_presentation_support(
+        &self,
+        queue_family_index: u32,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !self.instance.enabled_extensions().khr_win32_surface {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`win32_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_win32_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceWin32PresentationSupportKHR-queueFamilyIndex-01309
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(PhysicalDeviceError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn win32_presentation_support_unchecked(&self, queue_family_index: u32) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_win32_surface
+            .get_physical_device_win32_presentation_support_khr)(
+            self.handle, queue_family_index
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to XCB surfaces from queues of the
+    /// given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `connection` must be a valid X11 `xcb_connection_t` handle.
+    #[inline]
+    pub unsafe fn xcb_presentation_support<C>(
+        &self,
+        queue_family_index: u32,
+        connection: *const C,
+        visual_id: ash::vk::xcb_visualid_t,
+    ) -> Result<bool, PhysicalDeviceError> {
+        self.validate_xcb_presentation_support(queue_family_index, connection, visual_id)?;
+
+        Ok(self.xcb_presentation_support_unchecked(queue_family_index, connection, visual_id))
+    }
+
+    fn validate_xcb_presentation_support<C>(
+        &self,
+        queue_family_index: u32,
+        _connection: *const C,
+        _visual_id: ash::vk::xcb_visualid_t,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !self.instance.enabled_extensions().khr_xcb_surface {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`xcb_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xcb_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXcbPresentationSupportKHR-queueFamilyIndex-01312
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(PhysicalDeviceError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXcbPresentationSupportKHR-connection-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn xcb_presentation_support_unchecked<C>(
+        &self,
+        queue_family_index: u32,
+        connection: *const C,
+        visual_id: ash::vk::VisualID,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_xcb_surface
+            .get_physical_device_xcb_presentation_support_khr)(
+            self.handle,
+            queue_family_index,
+            connection as *mut _,
+            visual_id,
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to Xlib surfaces from queues of the
+    /// given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Xlib `Display` handle.
+    #[inline]
+    pub unsafe fn xlib_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+        visual_id: ash::vk::VisualID,
+    ) -> Result<bool, PhysicalDeviceError> {
+        self.validate_xlib_presentation_support(queue_family_index, display, visual_id)?;
+
+        Ok(self.xlib_presentation_support_unchecked(queue_family_index, display, visual_id))
+    }
+
+    fn validate_xlib_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        _display: *const D,
+        _visual_id: ash::vk::VisualID,
+    ) -> Result<(), PhysicalDeviceError> {
+        if !self.instance.enabled_extensions().khr_xlib_surface {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`xlib_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xlib_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXlibPresentationSupportKHR-queueFamilyIndex-01315
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(PhysicalDeviceError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXlibPresentationSupportKHR-dpy-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn xlib_presentation_support_unchecked<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+        visual_id: ash::vk::VisualID,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_xlib_surface
+            .get_physical_device_xlib_presentation_support_khr)(
+            self.handle,
+            queue_family_index,
+            display as *mut _,
+            visual_id,
+        ) != 0
     }
 }
 
-unsafe impl<'a> VulkanObject for PhysicalDevice<'a> {
+unsafe impl VulkanObject for PhysicalDevice {
     type Object = ash::vk::PhysicalDevice;
 
     #[inline]
     fn internal_object(&self) -> ash::vk::PhysicalDevice {
-        self.info.handle
+        self.handle
     }
 }
 
-/// Type of a physical device.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
-#[repr(i32)]
-pub enum PhysicalDeviceType {
-    /// The device is an integrated GPU.
-    IntegratedGpu = ash::vk::PhysicalDeviceType::INTEGRATED_GPU.as_raw(),
-    /// The device is a discrete GPU.
-    DiscreteGpu = ash::vk::PhysicalDeviceType::DISCRETE_GPU.as_raw(),
-    /// The device is a virtual GPU.
-    VirtualGpu = ash::vk::PhysicalDeviceType::VIRTUAL_GPU.as_raw(),
-    /// The device is a CPU.
-    Cpu = ash::vk::PhysicalDeviceType::CPU.as_raw(),
-    /// The device is something else.
-    Other = ash::vk::PhysicalDeviceType::OTHER.as_raw(),
+impl PartialEq for PhysicalDevice {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.instance == other.instance
+    }
 }
 
-/// VkPhysicalDeviceType::Other is represented as 0
+impl Eq for PhysicalDevice {}
+
+impl Hash for PhysicalDevice {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.instance.hash(state);
+    }
+}
+
+unsafe fn get_cached<K, V, E>(
+    cache: &RwLock<HashMap<K, V>>,
+    key: K,
+    func: impl FnOnce(&K) -> Result<V, E>,
+) -> Result<V, E>
+where
+    K: Eq + Hash,
+    V: Clone,
+{
+    {
+        let read_lock = cache.read();
+        if let Some(result) = read_lock.get(&key) {
+            return Ok(result.clone());
+        }
+    }
+
+    let mut write_lock = cache.write();
+    match write_lock.entry(key) {
+        Entry::Occupied(entry) => {
+            // This can happen if someone else inserted an entry between when we released
+            // the read lock and acquired the write lock.
+            Ok(entry.get().clone())
+        }
+        Entry::Vacant(entry) => {
+            let result = func(entry.key())?;
+            entry.insert(result.clone());
+            Ok(result)
+        }
+    }
+}
+
+vulkan_enum! {
+    /// Type of a physical device.
+    #[non_exhaustive]
+    PhysicalDeviceType = PhysicalDeviceType(i32);
+
+    /// The device is an integrated GPU.
+    IntegratedGpu = INTEGRATED_GPU,
+
+    /// The device is a discrete GPU.
+    DiscreteGpu = DISCRETE_GPU,
+
+    /// The device is a virtual GPU.
+    VirtualGpu = VIRTUAL_GPU,
+
+    /// The device is a CPU.
+    Cpu = CPU,
+
+    /// The device is something else.
+    Other = OTHER,
+}
+
 impl Default for PhysicalDeviceType {
+    #[inline]
     fn default() -> Self {
         PhysicalDeviceType::Other
     }
 }
-
-impl TryFrom<ash::vk::PhysicalDeviceType> for PhysicalDeviceType {
-    type Error = ();
-
-    #[inline]
-    fn try_from(val: ash::vk::PhysicalDeviceType) -> Result<Self, Self::Error> {
-        match val {
-            ash::vk::PhysicalDeviceType::INTEGRATED_GPU => Ok(Self::IntegratedGpu),
-            ash::vk::PhysicalDeviceType::DISCRETE_GPU => Ok(Self::DiscreteGpu),
-            ash::vk::PhysicalDeviceType::VIRTUAL_GPU => Ok(Self::VirtualGpu),
-            ash::vk::PhysicalDeviceType::CPU => Ok(Self::Cpu),
-            ash::vk::PhysicalDeviceType::OTHER => Ok(Self::Other),
-            _ => Err(()),
-        }
-    }
-}
-
-/// Represents a memory type in a physical device.
-#[derive(Debug, Copy, Clone)]
-pub struct MemoryType<'a> {
-    physical_device: PhysicalDevice<'a>,
-    id: u32,
-    info: &'a ash::vk::MemoryType,
-}
-
-impl<'a> MemoryType<'a> {
-    /// Returns the physical device associated to this memory type.
-    #[inline]
-    pub fn physical_device(&self) -> PhysicalDevice<'a> {
-        self.physical_device
-    }
-
-    /// Returns the identifier of this memory type within the physical device.
-    #[inline]
-    pub fn id(&self) -> u32 {
-        self.id
-    }
-
-    /// Returns the heap that corresponds to this memory type.
-    #[inline]
-    pub fn heap(&self) -> MemoryHeap<'a> {
-        self.physical_device
-            .memory_heap_by_id(self.info.heap_index)
-            .unwrap()
-    }
-
-    /// Returns true if the memory type is located on the device, which means that it's the most
-    /// efficient for GPU accesses.
-    #[inline]
-    pub fn is_device_local(&self) -> bool {
-        self.info
-            .property_flags
-            .intersects(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
-    }
-
-    /// Returns true if the memory type can be accessed by the host.
-    #[inline]
-    pub fn is_host_visible(&self) -> bool {
-        self.info
-            .property_flags
-            .intersects(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
-    }
-
-    /// Returns true if modifications made by the host or the GPU on this memory type are
-    /// instantaneously visible to the other party. False means that changes have to be flushed.
-    ///
-    /// You don't need to worry about this, as this library handles that for you.
-    #[inline]
-    pub fn is_host_coherent(&self) -> bool {
-        self.info
-            .property_flags
-            .intersects(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
-    }
-
-    /// Returns true if memory of this memory type is cached by the host. Host memory accesses to
-    /// cached memory is faster than for uncached memory. However you are not guaranteed that it
-    /// is coherent.
-    #[inline]
-    pub fn is_host_cached(&self) -> bool {
-        self.info
-            .property_flags
-            .intersects(ash::vk::MemoryPropertyFlags::HOST_CACHED)
-    }
-
-    /// Returns true if allocations made to this memory type is lazy.
-    ///
-    /// This means that no actual allocation is performed. Instead memory is automatically
-    /// allocated by the Vulkan implementation.
-    ///
-    /// Memory of this type can only be used on images created with a certain flag. Memory of this
-    /// type is never host-visible.
-    #[inline]
-    pub fn is_lazily_allocated(&self) -> bool {
-        self.info
-            .property_flags
-            .intersects(ash::vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
-    }
-
-    /// Returns whether the memory type is protected.
-    #[inline]
-    pub fn is_protected(&self) -> bool {
-        self.info
-            .property_flags
-            .intersects(ash::vk::MemoryPropertyFlags::PROTECTED)
-    }
-}
-
-/// Represents a memory heap in a physical device.
-#[derive(Debug, Copy, Clone)]
-pub struct MemoryHeap<'a> {
-    physical_device: PhysicalDevice<'a>,
-    id: u32,
-    info: &'a ash::vk::MemoryHeap,
-}
-
-impl<'a> MemoryHeap<'a> {
-    /// Returns the physical device associated to this memory heap.
-    #[inline]
-    pub fn physical_device(&self) -> PhysicalDevice<'a> {
-        self.physical_device
-    }
-
-    /// Returns the identifier of this memory heap within the physical device.
-    #[inline]
-    pub fn id(&self) -> u32 {
-        self.id
-    }
-
-    /// Returns the size in bytes on this heap.
-    #[inline]
-    pub fn size(&self) -> DeviceSize {
-        self.info.size
-    }
-
-    /// Returns true if the heap is local to the GPU.
-    #[inline]
-    pub fn is_device_local(&self) -> bool {
-        !(self.info.flags & ash::vk::MemoryHeapFlags::DEVICE_LOCAL).is_empty()
-    }
-
-    /// Returns true if the heap is multi-instance enabled, that is allocation from such
-    /// heap will replicate to each physical-device's instance of heap.
-    #[inline]
-    pub fn is_multi_instance(&self) -> bool {
-        !(self.info.flags & ash::vk::MemoryHeapFlags::MULTI_INSTANCE).is_empty()
-    }
-}
-
-/// Represents a queue family in a physical device.
-///
-/// A queue family is group of one or multiple queues. All queues of one family have the same
-/// characteristics.
-#[derive(Debug, Copy, Clone)]
-pub struct QueueFamily<'a> {
-    physical_device: PhysicalDevice<'a>,
-    id: u32,
-    properties: &'a ash::vk::QueueFamilyProperties,
-}
-
-impl<'a> QueueFamily<'a> {
-    /// Returns the physical device associated to this queue family.
-    #[inline]
-    pub fn physical_device(&self) -> PhysicalDevice<'a> {
-        self.physical_device
-    }
-
-    /// Returns the identifier of this queue family within the physical device.
-    #[inline]
-    pub fn id(&self) -> u32 {
-        self.id
-    }
-
-    /// Returns the number of queues that belong to this family.
-    ///
-    /// Guaranteed to be at least 1 (or else that family wouldn't exist).
-    #[inline]
-    pub fn queues_count(&self) -> usize {
-        self.properties.queue_count as usize
-    }
-
-    /// If timestamps are supported, returns the number of bits supported by timestamp operations.
-    /// The returned value will be in the range 36..64.
-    /// If timestamps are not supported, returns None.
-    #[inline]
-    pub fn timestamp_valid_bits(&self) -> Option<u32> {
-        let value = self.properties.timestamp_valid_bits;
-        if value == 0 {
-            None
-        } else {
-            Some(value)
-        }
-    }
-
-    /// Returns the minimum granularity supported for image transfers in terms
-    /// of `[width, height, depth]`
-    #[inline]
-    pub fn min_image_transfer_granularity(&self) -> [u32; 3] {
-        let granularity = &self.properties.min_image_transfer_granularity;
-        [granularity.width, granularity.height, granularity.depth]
-    }
-
-    /// Returns `true` if queues of this family can execute graphics operations.
-    #[inline]
-    pub fn supports_graphics(&self) -> bool {
-        self.properties
-            .queue_flags
-            .contains(ash::vk::QueueFlags::GRAPHICS)
-    }
-
-    /// Returns `true` if queues of this family can execute compute operations.
-    #[inline]
-    pub fn supports_compute(&self) -> bool {
-        self.properties
-            .queue_flags
-            .contains(ash::vk::QueueFlags::COMPUTE)
-    }
-
-    /// Returns `true` if queues of this family can execute transfer operations.
-    /// > **Note**: While all queues that can perform graphics or compute operations can implicitly perform
-    /// > transfer operations, graphics & compute queues only optionally indicate support for tranfers.
-    /// > Many discrete cards will have one queue family that exclusively sets the VK_QUEUE_TRANSFER_BIT
-    /// > to indicate a special relationship with the DMA module and more efficient transfers.
-    #[inline]
-    pub fn explicitly_supports_transfers(&self) -> bool {
-        self.properties
-            .queue_flags
-            .contains(ash::vk::QueueFlags::TRANSFER)
-    }
-
-    /// Returns `true` if queues of this family can execute sparse resources binding operations.
-    #[inline]
-    pub fn supports_sparse_binding(&self) -> bool {
-        self.properties
-            .queue_flags
-            .contains(ash::vk::QueueFlags::SPARSE_BINDING)
-    }
-
-    /// Returns `true` if the queues of this family support a particular pipeline stage.
-    #[inline]
-    pub fn supports_stage(&self, stage: PipelineStage) -> bool {
-        self.properties
-            .queue_flags
-            .contains(stage.required_queue_flags())
-    }
-
-    /// Returns whether queues of this family can draw on the given surface.
-    pub fn supports_surface<W>(
-        &self,
-        surface: &Surface<W>,
-    ) -> Result<bool, SurfacePropertiesError> {
-        unsafe {
-            let fns = self.physical_device.instance.fns();
-
-            let mut output = MaybeUninit::uninit();
-            (fns.khr_surface.get_physical_device_surface_support_khr)(
-                self.physical_device.internal_object(),
-                self.id,
-                surface.internal_object(),
-                output.as_mut_ptr(),
-            )
-            .result()
-            .map_err(VulkanError::from)?;
-            Ok(output.assume_init() != 0)
-        }
-    }
-}
-
-impl<'a> PartialEq for QueueFamily<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-            && self.physical_device.internal_object() == other.physical_device.internal_object()
-    }
-}
-
-impl<'a> Eq for QueueFamily<'a> {}
 
 /// The version of the Vulkan conformance test that a driver is conformant against.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -1661,143 +2552,181 @@ impl From<ash::vk::ConformanceVersion> for ConformanceVersion {
     }
 }
 
-impl fmt::Debug for ConformanceVersion {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+impl Debug for ConformanceVersion {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
-impl fmt::Display for ConformanceVersion {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, formatter)
+impl Display for ConformanceVersion {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
+        Debug::fmt(self, formatter)
     }
 }
 
-/// An identifier for the driver of a physical device.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum DriverId {
-    AMDProprietary = ash::vk::DriverId::AMD_PROPRIETARY.as_raw(),
-    AMDOpenSource = ash::vk::DriverId::AMD_OPEN_SOURCE.as_raw(),
-    MesaRADV = ash::vk::DriverId::MESA_RADV.as_raw(),
-    NvidiaProprietary = ash::vk::DriverId::NVIDIA_PROPRIETARY.as_raw(),
-    IntelProprietaryWindows = ash::vk::DriverId::INTEL_PROPRIETARY_WINDOWS.as_raw(),
-    IntelOpenSourceMesa = ash::vk::DriverId::INTEL_OPEN_SOURCE_MESA.as_raw(),
-    ImaginationProprietary = ash::vk::DriverId::IMAGINATION_PROPRIETARY.as_raw(),
-    QualcommProprietary = ash::vk::DriverId::QUALCOMM_PROPRIETARY.as_raw(),
-    ARMProprietary = ash::vk::DriverId::ARM_PROPRIETARY.as_raw(),
-    GoogleSwiftshader = ash::vk::DriverId::GOOGLE_SWIFTSHADER.as_raw(),
-    GGPProprietary = ash::vk::DriverId::GGP_PROPRIETARY.as_raw(),
-    BroadcomProprietary = ash::vk::DriverId::BROADCOM_PROPRIETARY.as_raw(),
-    MesaLLVMpipe = ash::vk::DriverId::MESA_LLVMPIPE.as_raw(),
-    MoltenVK = ash::vk::DriverId::MOLTENVK.as_raw(),
+vulkan_enum! {
+    /// An identifier for the driver of a physical device.
+    #[non_exhaustive]
+    DriverId = DriverId(i32);
+
+    // TODO: document
+    AMDProprietary = AMD_PROPRIETARY,
+
+    // TODO: document
+    AMDOpenSource = AMD_OPEN_SOURCE,
+
+    // TODO: document
+    MesaRADV = MESA_RADV,
+
+    // TODO: document
+    NvidiaProprietary = NVIDIA_PROPRIETARY,
+
+    // TODO: document
+    IntelProprietaryWindows = INTEL_PROPRIETARY_WINDOWS,
+
+    // TODO: document
+    IntelOpenSourceMesa = INTEL_OPEN_SOURCE_MESA,
+
+    // TODO: document
+    ImaginationProprietary = IMAGINATION_PROPRIETARY,
+
+    // TODO: document
+    QualcommProprietary = QUALCOMM_PROPRIETARY,
+
+    // TODO: document
+    ARMProprietary = ARM_PROPRIETARY,
+
+    // TODO: document
+    GoogleSwiftshader = GOOGLE_SWIFTSHADER,
+
+    // TODO: document
+    GGPProprietary = GGP_PROPRIETARY,
+
+    // TODO: document
+    BroadcomProprietary = BROADCOM_PROPRIETARY,
+
+    // TODO: document
+    MesaLLVMpipe = MESA_LLVMPIPE,
+
+    // TODO: document
+    MoltenVK = MOLTENVK,
 }
 
-impl TryFrom<ash::vk::DriverId> for DriverId {
-    type Error = ();
+/// Information provided about an active tool.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ToolProperties {
+    /// The name of the tool.
+    pub name: String,
 
-    #[inline]
-    fn try_from(val: ash::vk::DriverId) -> Result<Self, Self::Error> {
-        match val {
-            ash::vk::DriverId::AMD_PROPRIETARY => Ok(Self::AMDProprietary),
-            ash::vk::DriverId::AMD_OPEN_SOURCE => Ok(Self::AMDOpenSource),
-            ash::vk::DriverId::MESA_RADV => Ok(Self::MesaRADV),
-            ash::vk::DriverId::NVIDIA_PROPRIETARY => Ok(Self::NvidiaProprietary),
-            ash::vk::DriverId::INTEL_PROPRIETARY_WINDOWS => Ok(Self::IntelProprietaryWindows),
-            ash::vk::DriverId::INTEL_OPEN_SOURCE_MESA => Ok(Self::IntelOpenSourceMesa),
-            ash::vk::DriverId::IMAGINATION_PROPRIETARY => Ok(Self::ImaginationProprietary),
-            ash::vk::DriverId::QUALCOMM_PROPRIETARY => Ok(Self::QualcommProprietary),
-            ash::vk::DriverId::ARM_PROPRIETARY => Ok(Self::ARMProprietary),
-            ash::vk::DriverId::GOOGLE_SWIFTSHADER => Ok(Self::GoogleSwiftshader),
-            ash::vk::DriverId::GGP_PROPRIETARY => Ok(Self::GGPProprietary),
-            ash::vk::DriverId::BROADCOM_PROPRIETARY => Ok(Self::BroadcomProprietary),
-            ash::vk::DriverId::MESA_LLVMPIPE => Ok(Self::MesaLLVMpipe),
-            ash::vk::DriverId::MOLTENVK => Ok(Self::MoltenVK),
-            _ => Err(()),
-        }
-    }
+    /// The version of the tool.
+    pub version: String,
+
+    /// The purposes supported by the tool.
+    pub purposes: ToolPurposes,
+
+    /// A description of the tool.
+    pub description: String,
+
+    /// The layer implementing the tool, or empty if it is not implemented by a layer.
+    pub layer: String,
 }
 
-/// Specifies which subgroup operations are supported.
-#[derive(Clone, Copy, Debug)]
-pub struct SubgroupFeatures {
-    pub basic: bool,
-    pub vote: bool,
-    pub arithmetic: bool,
-    pub ballot: bool,
-    pub shuffle: bool,
-    pub shuffle_relative: bool,
-    pub clustered: bool,
-    pub quad: bool,
-    pub partitioned: bool,
+vulkan_bitflags! {
+    /// The purpose of an active tool.
+    #[non_exhaustive]
+    ToolPurposes = ToolPurposeFlags(u32);
 
-    pub _ne: crate::NonExhaustive,
+    /// The tool provides validation of API usage.
+    validation = VALIDATION,
+
+    /// The tool provides profiling of API usage.
+    profiling = PROFILING,
+
+    /// The tool is capturing data about the application's API usage.
+    tracing = TRACING,
+
+    /// The tool provides additional API features or extensions on top of the underlying
+    /// implementation.
+    additional_features = ADDITIONAL_FEATURES,
+
+    /// The tool modifies the API features, limits or extensions presented to the application.
+    modifying_features = MODIFYING_FEATURES,
+
+    /// The tool reports information to the user via a [`DebugUtilsMessenger`].
+    debug_reporting = DEBUG_REPORTING_EXT {
+        instance_extensions: [ext_debug_utils, ext_debug_report],
+    },
+
+    /// The tool consumes debug markers or object debug annotation, queue labels or command buffer
+    /// labels.
+    debug_markers = DEBUG_MARKERS_EXT {
+        device_extensions: [ext_debug_marker],
+        instance_extensions: [ext_debug_utils],
+    },
 }
 
-impl From<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
-    #[inline]
-    fn from(val: ash::vk::SubgroupFeatureFlags) -> Self {
-        Self {
-            basic: val.intersects(ash::vk::SubgroupFeatureFlags::BASIC),
-            vote: val.intersects(ash::vk::SubgroupFeatureFlags::VOTE),
-            arithmetic: val.intersects(ash::vk::SubgroupFeatureFlags::ARITHMETIC),
-            ballot: val.intersects(ash::vk::SubgroupFeatureFlags::BALLOT),
-            shuffle: val.intersects(ash::vk::SubgroupFeatureFlags::SHUFFLE),
-            shuffle_relative: val.intersects(ash::vk::SubgroupFeatureFlags::SHUFFLE_RELATIVE),
-            clustered: val.intersects(ash::vk::SubgroupFeatureFlags::CLUSTERED),
-            quad: val.intersects(ash::vk::SubgroupFeatureFlags::QUAD),
-            partitioned: val.intersects(ash::vk::SubgroupFeatureFlags::PARTITIONED_NV),
+vulkan_bitflags! {
+    /// Specifies which subgroup operations are supported.
+    #[non_exhaustive]
+    SubgroupFeatures = SubgroupFeatureFlags(u32);
 
-            _ne: crate::NonExhaustive(()),
-        }
-    }
+    // TODO: document
+    basic = BASIC,
+
+    // TODO: document
+    vote = VOTE,
+
+    // TODO: document
+    arithmetic = ARITHMETIC,
+
+    // TODO: document
+    ballot = BALLOT,
+
+    // TODO: document
+    shuffle = SHUFFLE,
+
+    // TODO: document
+    shuffle_relative = SHUFFLE_RELATIVE,
+
+    // TODO: document
+    clustered = CLUSTERED,
+
+    // TODO: document
+    quad = QUAD,
+
+    // TODO: document
+    partitioned = PARTITIONED_NV {
+        device_extensions: [nv_shader_subgroup_partitioned],
+    },
 }
 
-/// Specifies how the device clips single point primitives.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum PointClippingBehavior {
+vulkan_enum! {
+    /// Specifies how the device clips single point primitives.
+    #[non_exhaustive]
+    PointClippingBehavior = PointClippingBehavior(i32);
+
     /// Points are clipped if they lie outside any clip plane, both those bounding the view volume
     /// and user-defined clip planes.
-    AllClipPlanes = ash::vk::PointClippingBehavior::ALL_CLIP_PLANES.as_raw(),
+    AllClipPlanes = ALL_CLIP_PLANES,
+
     /// Points are clipped only if they lie outside a user-defined clip plane.
-    UserClipPlanesOnly = ash::vk::PointClippingBehavior::USER_CLIP_PLANES_ONLY.as_raw(),
+    UserClipPlanesOnly = USER_CLIP_PLANES_ONLY,
 }
 
-impl TryFrom<ash::vk::PointClippingBehavior> for PointClippingBehavior {
-    type Error = ();
+vulkan_enum! {
+    /// Specifies whether, and how, shader float controls can be set independently.
+    #[non_exhaustive]
+    ShaderFloatControlsIndependence = ShaderFloatControlsIndependence(i32);
 
-    #[inline]
-    fn try_from(val: ash::vk::PointClippingBehavior) -> Result<Self, Self::Error> {
-        match val {
-            ash::vk::PointClippingBehavior::ALL_CLIP_PLANES => Ok(Self::AllClipPlanes),
-            ash::vk::PointClippingBehavior::USER_CLIP_PLANES_ONLY => Ok(Self::UserClipPlanesOnly),
-            _ => Err(()),
-        }
-    }
-}
+    // TODO: document
+    Float32Only = TYPE_32_ONLY,
 
-/// Specifies whether, and how, shader float controls can be set independently.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum ShaderFloatControlsIndependence {
-    Float32Only = ash::vk::ShaderFloatControlsIndependence::TYPE_32_ONLY.as_raw(),
-    All = ash::vk::ShaderFloatControlsIndependence::ALL.as_raw(),
-    None = ash::vk::ShaderFloatControlsIndependence::NONE.as_raw(),
-}
+    // TODO: document
+    All = ALL,
 
-impl TryFrom<ash::vk::ShaderFloatControlsIndependence> for ShaderFloatControlsIndependence {
-    type Error = ();
-
-    #[inline]
-    fn try_from(val: ash::vk::ShaderFloatControlsIndependence) -> Result<Self, Self::Error> {
-        match val {
-            ash::vk::ShaderFloatControlsIndependence::TYPE_32_ONLY => Ok(Self::Float32Only),
-            ash::vk::ShaderFloatControlsIndependence::ALL => Ok(Self::All),
-            ash::vk::ShaderFloatControlsIndependence::NONE => Ok(Self::None),
-            _ => Err(()),
-        }
-    }
+    // TODO: document
+    None = NONE,
 }
 
 /// Specifies shader core properties.
@@ -1811,60 +2740,91 @@ impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     }
 }
 
-/// Error that can happen when retrieving properties of a surface.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum SurfacePropertiesError {
-    /// Not enough memory.
-    OomError(OomError),
+/// Error that can happen when using a physical device.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PhysicalDeviceError {
+    VulkanError(VulkanError),
 
-    /// The surface is no longer accessible and must be recreated.
-    SurfaceLost,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
 
     // The given `SurfaceInfo` values are not supported for the surface by the physical device.
     NotSupported,
+
+    /// The provided `queue_family_index` was not less than the number of queue families in the
+    /// physical device.
+    QueueFamilyIndexOutOfRange {
+        queue_family_index: u32,
+        queue_family_count: u32,
+    },
+
+    // The provided `surface` is not supported by any of the physical device's queue families.
+    SurfaceNotSupported,
 }
 
-impl Error for SurfacePropertiesError {
+impl Error for PhysicalDeviceError {
     #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
-            Self::OomError(ref err) => Some(err),
+            Self::VulkanError(ref err) => Some(err),
             _ => None,
         }
     }
 }
 
-impl fmt::Display for SurfacePropertiesError {
+impl Display for PhysicalDeviceError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::OomError(_) => "not enough memory",
-                Self::SurfaceLost => "the surface is no longer valid",
-                Self::NotSupported => "the given `SurfaceInfo` values are not supported for the surface by the physical device",
-            }
-        )
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::VulkanError(_) => write!(
+                f,
+                "a runtime error occurred",
+            ),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+
+            Self::NotSupported => write!(
+                f,
+                "the given `SurfaceInfo` values are not supported for the surface by the physical device",
+            ),
+            Self::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count,
+            } => write!(
+                f,
+                "the provided `queue_family_index` ({}) was not less than the number of queue families in the physical device ({})",
+                queue_family_index, queue_family_count,
+            ),
+            Self::SurfaceNotSupported => write!(
+                f,
+                "the provided `surface` is not supported by any of the physical device's queue families",
+            ),
+        }
     }
 }
 
-impl From<OomError> for SurfacePropertiesError {
+impl From<VulkanError> for PhysicalDeviceError {
     #[inline]
-    fn from(err: OomError) -> SurfacePropertiesError {
-        Self::OomError(err)
+    fn from(err: VulkanError) -> Self {
+        Self::VulkanError(err)
     }
 }
 
-impl From<VulkanError> for SurfacePropertiesError {
+impl From<RequirementNotMet> for PhysicalDeviceError {
     #[inline]
-    fn from(err: VulkanError) -> SurfacePropertiesError {
-        match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            VulkanError::SurfaceLost => Self::SurfaceLost,
-            _ => panic!("unexpected error: {:?}", err),
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }

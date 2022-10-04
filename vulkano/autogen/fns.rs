@@ -21,12 +21,12 @@ pub fn write(vk_data: &VkRegistryData) {
         "Raw Vulkan global entry point-level functions.\n\nTo use these, you need to include the Ash crate, using the same version Vulkano uses.",
     );
     let instance_fns_output = fns_output(
-        &extension_fns_members("instance", &vk_data.extensions),
+        &instance_extension_fns_members(&vk_data.extensions),
         "Instance",
         "Raw Vulkan instance-level functions.\n\nTo use these, you need to include the Ash crate, using the same version Vulkano uses.",
     );
     let device_fns_output = fns_output(
-        &extension_fns_members("device", &vk_data.extensions),
+        &device_extension_fns_members(&vk_data.extensions),
         "Device",
         "Raw Vulkan device-level functions.\n\nTo use these, you need to include the Ash crate, using the same version Vulkano uses.",
     );
@@ -97,11 +97,11 @@ fn fns_output(extension_members: &[FnsMember], fns_level: &str, doc: &str) -> To
     }
 }
 
-fn extension_fns_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<FnsMember> {
+fn device_extension_fns_members(extensions: &IndexMap<&str, &Extension>) -> Vec<FnsMember> {
     extensions
         .values()
-        .filter(|ext| ext.ext_type.as_ref().unwrap() == ty)
-        // Filter only extensions that have functions
+        // Include any device extensions that have functions.
+        .filter(|ext| ext.ext_type.as_ref().unwrap() == "device")
         .filter(|ext| {
             ext.children.iter().any(|ch| {
                 if let ExtensionChild::Require { items, .. } = ch {
@@ -112,6 +112,44 @@ fn extension_fns_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> V
                     false
                 }
             })
+        })
+        .map(|ext| {
+            let base = ext.name.strip_prefix("VK_").unwrap().to_snake_case();
+            let name = format_ident!("{}", base);
+            let fn_struct = format_ident!("{}Fn", base.to_upper_camel_case());
+            FnsMember { name, fn_struct }
+        })
+        .collect()
+}
+
+fn instance_extension_fns_members(extensions: &IndexMap<&str, &Extension>) -> Vec<FnsMember> {
+    extensions
+        .values()
+        .filter(|ext| {
+            match ext.ext_type.as_deref().unwrap() {
+                // Include any instance extensions that have functions.
+                "instance" => ext.children.iter().any(|ch| {
+                    if let ExtensionChild::Require { items, .. } = ch {
+                        items
+                            .iter()
+                            .any(|i| matches!(i, InterfaceItem::Command { .. }))
+                    } else {
+                        false
+                    }
+                }),
+                // Include device extensions that have functions containing "PhysicalDevice".
+                // Note: this test might not be sufficient in the long run...
+                "device" => ext.children.iter().any(|ch| {
+                    if let ExtensionChild::Require { items, .. } = ch {
+                        items
+                            .iter()
+                            .any(|i| matches!(i, InterfaceItem::Command { name, .. } if name.contains("PhysicalDevice")))
+                    } else {
+                        false
+                    }
+                }),
+                _ => unreachable!(),
+            }
         })
         .map(|ext| {
             let base = ext.name.strip_prefix("VK_").unwrap().to_snake_case();

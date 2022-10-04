@@ -25,8 +25,7 @@ use vulkano::{
         RenderPassBeginInfo, SubpassContents,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
@@ -41,7 +40,8 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -96,17 +96,19 @@ fn main() {
     // `khr_swapchain` extension.
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
 
     // We then choose which physical device to use. First, we enumerate all the available physical
     // devices, then apply filters to narrow them down to those that can support our needs.
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| {
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| {
             // Some devices may not support the extensions or features that your application, or
             // report properties and limits that are not sufficient for your application. These
             // should be filtered out here.
-            p.supported_extensions().is_superset_of(&device_extensions)
+            p.supported_extensions().contains(&device_extensions)
         })
         .filter_map(|p| {
             // For each physical device, we try to find a suitable queue family that will execute
@@ -121,17 +123,19 @@ fn main() {
             // real-life application, you may want to use a separate dedicated transfer queue to
             // handle data transfers in parallel with graphics operations. You may also need a
             // separate queue for compute operations, if your application uses those.
-            p.queue_families()
-                .find(|&q| {
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
                     // We select a queue family that supports graphics operations. When drawing to
                     // a window surface, as we do in this example, we also need to check that queues
                     // in this queue family are capable of presenting images to the surface.
-                    q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false)
+                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
                 })
                 // The code here searches for the first queue family that is suitable. If none is
                 // found, `None` is returned to `filter_map`, which disqualifies this physical
                 // device.
-                .map(|q| (p, q))
+                .map(|i| (p, i as u32))
         })
         // All the physical devices that pass the filters above are suitable for the application.
         // However, not every device is equal, some are preferred over others. Now, we assign
@@ -149,6 +153,7 @@ fn main() {
                 PhysicalDeviceType::VirtualGpu => 2,
                 PhysicalDeviceType::Cpu => 3,
                 PhysicalDeviceType::Other => 4,
+                _ => 5,
             }
         })
         .expect("No suitable physical device found");
@@ -175,7 +180,10 @@ fn main() {
 
             // The list of queues that we are going to use. Here we only use one queue, from the
             // previously chosen queue family.
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
 
             ..Default::default()
         },
@@ -193,13 +201,15 @@ fn main() {
     let (mut swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
-        let surface_capabilities = physical_device
+        let surface_capabilities = device
+            .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
 
         // Choosing the internal format that the images will have.
         let image_format = Some(
-            physical_device
+            device
+                .physical_device()
                 .surface_formats(&surface, Default::default())
                 .unwrap()[0]
                 .0,
@@ -229,7 +239,10 @@ fn main() {
                 // use that.
                 image_extent: surface.window().inner_size().into(),
 
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
 
                 // The alpha mode indicates how the alpha value of the final image will behave. For
                 // example, you can choose whether the window will be opaque or transparent.
@@ -266,9 +279,16 @@ fn main() {
             position: [0.25, -0.1],
         },
     ];
-    let vertex_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
-            .unwrap();
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        vertices,
+    )
+    .unwrap();
 
     // The next step is to create the shaders.
     //
@@ -400,7 +420,7 @@ fn main() {
     // A Vulkan command pool only works for one queue family, and vulkano's command buffer allocator
     // reflects that, therefore we need to pass the queue family during creation.
     let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
 
     // Initialization is finally finished!
 
@@ -486,7 +506,7 @@ fn main() {
                 //
                 // This function can block if no image is available. The parameter is an optional timeout
                 // after which the function call will return an error.
-                let (image_num, suboptimal, acquire_future) =
+                let (image_index, suboptimal, acquire_future) =
                     match acquire_next_image(swapchain.clone(), None) {
                         Ok(r) => r,
                         Err(AcquireError::OutOfDate) => {
@@ -514,7 +534,7 @@ fn main() {
                 // buffer will only be executable on that given queue family.
                 let mut builder = AutoCommandBufferBuilder::primary(
                     &command_buffer_allocator,
-                    queue.family(),
+                    queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
@@ -530,7 +550,9 @@ fn main() {
                             // Only attachments that have `LoadOp::Clear` are provided with clear
                             // values, any others should use `ClearValue::None` as the clear value.
                             clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                            ..RenderPassBeginInfo::framebuffer(
+                                framebuffers[image_index as usize].clone(),
+                            )
                         },
                         // The contents of the first (and only) subpass. This can be either
                         // `Inline` or `SecondaryCommandBuffers`. The latter is a bit more advanced
@@ -567,7 +589,10 @@ fn main() {
                     // This function does not actually present the image immediately. Instead it submits a
                     // present command at the end of the queue. This means that it will only be presented once
                     // the GPU has finished executing the command buffer that draws the triangle.
-                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                    .then_swapchain_present(
+                        queue.clone(),
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                    )
                     .then_signal_fence_and_flush();
 
                 match future {
@@ -579,8 +604,8 @@ fn main() {
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                     Err(e) => {
-                        println!("Failed to flush future: {:?}", e);
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        panic!("Failed to flush future: {:?}", e);
+                        // previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }
             }

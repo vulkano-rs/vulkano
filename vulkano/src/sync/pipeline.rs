@@ -10,104 +10,270 @@
 use crate::{
     buffer::sys::UnsafeBuffer,
     image::{sys::UnsafeImage, ImageAspects, ImageLayout, ImageSubresourceRange},
+    macros::{vulkan_bitflags, vulkan_enum},
     DeviceSize,
 };
 use smallvec::SmallVec;
-use std::{
-    ops::{self, Range},
-    sync::Arc,
-};
+use std::{ops::Range, sync::Arc};
 
-macro_rules! pipeline_stages {
-    ($($elem:ident, $var:ident => $val:ident, $queue:expr;)+) => (
-        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-        pub struct PipelineStages {
-            $(
-                pub $elem: bool,
-            )+
-        }
+vulkan_enum! {
+    // TODO: document
+    #[non_exhaustive]
+    PipelineStage = PipelineStageFlags2(u64);
 
-        impl PipelineStages {
-            /// Builds an `PipelineStages` struct with none of the stages set.
-            pub fn none() -> PipelineStages {
-                PipelineStages {
-                    $(
-                        $elem: false,
-                    )+
-                }
+    // TODO: document
+    TopOfPipe = TOP_OF_PIPE,
+
+    // TODO: document
+    DrawIndirect = DRAW_INDIRECT,
+
+    // TODO: document
+    VertexInput = VERTEX_INPUT,
+
+    // TODO: document
+    VertexShader = VERTEX_SHADER,
+
+    // TODO: document
+    TessellationControlShader = TESSELLATION_CONTROL_SHADER,
+
+    // TODO: document
+    TessellationEvaluationShader = TESSELLATION_EVALUATION_SHADER,
+
+    // TODO: document
+    GeometryShader = GEOMETRY_SHADER,
+
+    // TODO: document
+    FragmentShader = FRAGMENT_SHADER,
+
+    // TODO: document
+    EarlyFragmentTests = EARLY_FRAGMENT_TESTS,
+
+    // TODO: document
+    LateFragmentTests = LATE_FRAGMENT_TESTS,
+
+    // TODO: document
+    ColorAttachmentOutput = COLOR_ATTACHMENT_OUTPUT,
+
+    // TODO: document
+    ComputeShader = COMPUTE_SHADER,
+
+    // TODO: document
+    Transfer = TRANSFER,
+
+    // TODO: document
+    BottomOfPipe = BOTTOM_OF_PIPE,
+
+    // TODO: document
+    Host = HOST,
+
+    // TODO: document
+    AllGraphics = ALL_GRAPHICS,
+
+    // TODO: document
+    AllCommands = ALL_COMMANDS,
+
+    /*
+    // TODO: document
+    TransformFeedback = TRANSFORM_FEEDBACK_EXT {
+        device_extensions: [ext_transform_feedback],
+    },
+
+    // TODO: document
+    ConditionalRendering = CONDITIONAL_RENDERING_EXT {
+        device_extensions: [ext_conditional_rendering],
+    },
+
+    // TODO: document
+    AccelerationStructureBuild = ACCELERATION_STRUCTURE_BUILD_KHR {
+        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
+    },
+    */
+
+    // TODO: document
+    RayTracingShader = RAY_TRACING_SHADER_KHR {
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+    },
+
+    /*
+    // TODO: document
+    FragmentDensityProcess = FRAGMENT_DENSITY_PROCESS_EXT {
+        device_extensions: [ext_fragment_density_map],
+    },
+
+    // TODO: document
+    FragmentShadingRateAttachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
+        device_extensions: [khr_fragment_shading_rate],
+    },
+
+    // TODO: document
+    CommandPreprocess = COMMAND_PREPROCESS_NV {
+        device_extensions: [nv_device_generated_commands],
+    },
+
+    // TODO: document
+    TaskShader = TASK_SHADER_NV {
+        device_extensions: [nv_mesh_shader],
+    },
+
+    // TODO: document
+    MeshShader = MESH_SHADER_NV {
+        device_extensions: [nv_mesh_shader],
+    },
+     */
+}
+
+impl PipelineStage {
+    #[inline]
+    pub fn required_queue_flags(&self) -> ash::vk::QueueFlags {
+        match self {
+            Self::TopOfPipe => ash::vk::QueueFlags::empty(),
+            Self::DrawIndirect => ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE,
+            Self::VertexInput => ash::vk::QueueFlags::GRAPHICS,
+            Self::VertexShader => ash::vk::QueueFlags::GRAPHICS,
+            Self::TessellationControlShader => ash::vk::QueueFlags::GRAPHICS,
+            Self::TessellationEvaluationShader => ash::vk::QueueFlags::GRAPHICS,
+            Self::GeometryShader => ash::vk::QueueFlags::GRAPHICS,
+            Self::FragmentShader => ash::vk::QueueFlags::GRAPHICS,
+            Self::EarlyFragmentTests => ash::vk::QueueFlags::GRAPHICS,
+            Self::LateFragmentTests => ash::vk::QueueFlags::GRAPHICS,
+            Self::ColorAttachmentOutput => ash::vk::QueueFlags::GRAPHICS,
+            Self::ComputeShader => ash::vk::QueueFlags::COMPUTE,
+            Self::Transfer => {
+                ash::vk::QueueFlags::GRAPHICS
+                    | ash::vk::QueueFlags::COMPUTE
+                    | ash::vk::QueueFlags::TRANSFER
+            }
+            Self::BottomOfPipe => ash::vk::QueueFlags::empty(),
+            Self::Host => ash::vk::QueueFlags::empty(),
+            Self::AllGraphics => ash::vk::QueueFlags::GRAPHICS,
+            Self::AllCommands => ash::vk::QueueFlags::empty(),
+            Self::RayTracingShader => {
+                ash::vk::QueueFlags::GRAPHICS
+                    | ash::vk::QueueFlags::COMPUTE
+                    | ash::vk::QueueFlags::TRANSFER
             }
         }
+    }
+}
 
-        impl From<PipelineStages> for ash::vk::PipelineStageFlags {
-            #[inline]
-            fn from(val: PipelineStages) -> Self {
-                let mut result = ash::vk::PipelineStageFlags::empty();
-                $(
-                    if val.$elem { result |= ash::vk::PipelineStageFlags::$val }
-                )+
-                result
-            }
-        }
+impl From<PipelineStage> for ash::vk::PipelineStageFlags {
+    #[inline]
+    fn from(val: PipelineStage) -> Self {
+        Self::from_raw(val as u32)
+    }
+}
 
-        impl From<PipelineStages> for ash::vk::PipelineStageFlags2 {
-            #[inline]
-            fn from(val: PipelineStages) -> Self {
-                let mut result = ash::vk::PipelineStageFlags2::empty();
-                $(
-                    if val.$elem { result |= ash::vk::PipelineStageFlags2::$val }
-                )+
-                result
-            }
-        }
+vulkan_bitflags! {
+    // TODO: document
+    #[non_exhaustive]
+    PipelineStages = PipelineStageFlags2(u64);
 
-        impl ops::BitOr for PipelineStages {
-            type Output = PipelineStages;
+    // TODO: document
+    top_of_pipe = TOP_OF_PIPE,
 
-            #[inline]
-            fn bitor(self, rhs: PipelineStages) -> PipelineStages {
-                PipelineStages {
-                    $(
-                        $elem: self.$elem || rhs.$elem,
-                    )+
-                }
-            }
-        }
+    // TODO: document
+    draw_indirect = DRAW_INDIRECT,
 
-        impl ops::BitOrAssign for PipelineStages {
-            #[inline]
-            fn bitor_assign(&mut self, rhs: PipelineStages) {
-                $(
-                    self.$elem = self.$elem || rhs.$elem;
-                )+
-            }
-        }
+    // TODO: document
+    vertex_input = VERTEX_INPUT,
 
-        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-        #[repr(u64)]
-        pub enum PipelineStage {
-            $(
-                $var = ash::vk::PipelineStageFlags2::$val.as_raw(),
-            )+
-        }
+    // TODO: document
+    vertex_shader = VERTEX_SHADER,
 
-        impl PipelineStage {
-            #[inline]
-            pub fn required_queue_flags(&self) -> ash::vk::QueueFlags {
-                match self {
-                    $(
-                        Self::$var => $queue,
-                    )+
-                }
-            }
-        }
-    );
+    // TODO: document
+    tessellation_control_shader = TESSELLATION_CONTROL_SHADER,
+
+    // TODO: document
+    tessellation_evaluation_shader = TESSELLATION_EVALUATION_SHADER,
+
+    // TODO: document
+    geometry_shader = GEOMETRY_SHADER,
+
+    // TODO: document
+    fragment_shader = FRAGMENT_SHADER,
+
+    // TODO: document
+    early_fragment_tests = EARLY_FRAGMENT_TESTS,
+
+    // TODO: document
+    late_fragment_tests = LATE_FRAGMENT_TESTS,
+
+    // TODO: document
+    color_attachment_output = COLOR_ATTACHMENT_OUTPUT,
+
+    // TODO: document
+    compute_shader = COMPUTE_SHADER,
+
+    // TODO: document
+    transfer = TRANSFER,
+
+    // TODO: document
+    bottom_of_pipe = BOTTOM_OF_PIPE,
+
+    // TODO: document
+    host = HOST,
+
+    // TODO: document
+    all_graphics = ALL_GRAPHICS,
+
+    // TODO: document
+    all_commands = ALL_COMMANDS,
+
+    /*
+    // TODO: document
+    transform_feedback = TRANSFORM_FEEDBACK_EXT {
+        device_extensions: [ext_transform_feedback],
+    },
+
+    // TODO: document
+    conditional_rendering = CONDITIONAL_RENDERING_EXT {
+        device_extensions: [ext_conditional_rendering],
+    },
+
+    // TODO: document
+    acceleration_structure_build = ACCELERATION_STRUCTURE_BUILD_KHR {
+        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
+    },
+     */
+
+    // TODO: document
+    ray_tracing_shader = RAY_TRACING_SHADER_KHR {
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+    },
+
+    /*
+    // TODO: document
+    fragment_density_process = FRAGMENT_DENSITY_PROCESS_EXT {
+        device_extensions: [ext_fragment_density_map],
+    },
+
+    // TODO: document
+    fragment_shading_rate_attachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
+        device_extensions: [khr_fragment_shading_rate],
+    },
+
+    // TODO: document
+    command_preprocess = COMMAND_PREPROCESS_NV {
+        device_extensions: [nv_device_generated_commands],
+    },
+
+    // TODO: document
+    task_shader = TASK_SHADER_NV {
+        device_extensions: [nv_mesh_shader],
+    },
+
+    // TODO: document
+    mesh_shader = MESH_SHADER_NV {
+        device_extensions: [nv_mesh_shader],
+    },
+     */
 }
 
 impl PipelineStages {
     /// Returns the access types that are supported with the given pipeline stages.
     ///
     /// Corresponds to the table
-    /// "[Supported access types](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported)"
+    /// "[Supported access types](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported)"
     /// in the Vulkan specification.
     #[inline]
     pub fn supported_access(&self) -> AccessFlags {
@@ -134,6 +300,7 @@ impl PipelineStages {
             all_graphics,
             all_commands: _,
             ray_tracing_shader,
+            _ne: _,
         } = *self;
 
         if all_graphics {
@@ -220,146 +387,163 @@ impl PipelineStages {
             acceleration_structure_write: acceleration_structure_build,
             fragment_density_map_read: fragment_density_process,
             */
+
+            ..AccessFlags::empty()
         }
     }
 }
 
-impl From<PipelineStage> for ash::vk::PipelineStageFlags {
+impl From<PipelineStages> for ash::vk::PipelineStageFlags {
     #[inline]
-    fn from(val: PipelineStage) -> Self {
-        Self::from_raw(val as u32)
+    fn from(val: PipelineStages) -> Self {
+        Self::from_raw(ash::vk::PipelineStageFlags2::from(val).as_raw() as u32)
     }
 }
 
-impl From<PipelineStage> for ash::vk::PipelineStageFlags2 {
+vulkan_bitflags! {
+    // TODO: document
+    #[non_exhaustive]
+    AccessFlags = AccessFlags2(u64);
+
+    // TODO: document
+    indirect_command_read = INDIRECT_COMMAND_READ,
+
+    // TODO: document
+    index_read = INDEX_READ,
+
+    // TODO: document
+    vertex_attribute_read = VERTEX_ATTRIBUTE_READ,
+
+    // TODO: document
+    uniform_read = UNIFORM_READ,
+
+    // TODO: document
+    input_attachment_read = INPUT_ATTACHMENT_READ,
+
+    // TODO: document
+    shader_read = SHADER_READ,
+
+    // TODO: document
+    shader_write = SHADER_WRITE,
+
+    // TODO: document
+    color_attachment_read = COLOR_ATTACHMENT_READ,
+
+    // TODO: document
+    color_attachment_write = COLOR_ATTACHMENT_WRITE,
+
+    // TODO: document
+    depth_stencil_attachment_read = DEPTH_STENCIL_ATTACHMENT_READ,
+
+    // TODO: document
+    depth_stencil_attachment_write = DEPTH_STENCIL_ATTACHMENT_WRITE,
+
+    // TODO: document
+    transfer_read = TRANSFER_READ,
+
+    // TODO: document
+    transfer_write = TRANSFER_WRITE,
+
+    // TODO: document
+    host_read = HOST_READ,
+
+    // TODO: document
+    host_write = HOST_WRITE,
+
+    // TODO: document
+    memory_read = MEMORY_READ,
+
+    // TODO: document
+    memory_write = MEMORY_WRITE,
+
+    /*
+    // Provided by VK_EXT_transform_feedback
+    transform_feedback_write = TRANSFORM_FEEDBACK_WRITE_EXT {
+        device_extensions: [ext_transform_feedback],
+    },
+
+    // Provided by VK_EXT_transform_feedback
+    transform_feedback_counter_read = TRANSFORM_FEEDBACK_COUNTER_READ_EXT {
+        device_extensions: [ext_transform_feedback],
+    },
+
+    // Provided by VK_EXT_transform_feedback
+    transform_feedback_counter_write = TRANSFORM_FEEDBACK_COUNTER_WRITE_EXT {
+        device_extensions: [ext_transform_feedback],
+    },
+
+    // Provided by VK_EXT_conditional_rendering
+    conditional_rendering_read = CONDITIONAL_RENDERING_READ_EXT {
+        device_extensions: [ext_conditional_rendering],
+    },
+
+    // Provided by VK_EXT_blend_operation_advanced
+    color_attachment_read_noncoherent = COLOR_ATTACHMENT_READ_NONCOHERENT_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // Provided by VK_KHR_acceleration_structure
+    acceleration_structure_read = ACCELERATION_STRUCTURE_READ_KHR {
+        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
+    },
+
+    // Provided by VK_KHR_acceleration_structure
+    acceleration_structure_write = ACCELERATION_STRUCTURE_WRITE_KHR {
+        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
+    },
+
+    // Provided by VK_EXT_fragment_density_map
+    fragment_density_map_read = FRAGMENT_DENSITY_MAP_READ_EXT {
+        device_extensions: [ext_fragment_density_map],
+    },
+
+    // Provided by VK_KHR_fragment_shading_rate
+    fragment_shading_rate_attachment_read = FRAGMENT_SHADING_RATE_ATTACHMENT_READ_KHR {
+        device_extensions: [khr_fragment_shading_rate],
+    },
+
+    // Provided by VK_NV_device_generated_commands
+    command_preprocess_read = COMMAND_PREPROCESS_READ_NV {
+        device_extensions: [nv_device_generated_commands],
+    },
+
+    // Provided by VK_NV_device_generated_commands
+    command_preprocess_write = COMMAND_PREPROCESS_WRITE_NV {
+        device_extensions: [nv_device_generated_commands],
+    },
+     */
+}
+
+impl AccessFlags {
+    pub(crate) fn all() -> AccessFlags {
+        AccessFlags {
+            indirect_command_read: true,
+            index_read: true,
+            vertex_attribute_read: true,
+            uniform_read: true,
+            input_attachment_read: true,
+            shader_read: true,
+            shader_write: true,
+            color_attachment_read: true,
+            color_attachment_write: true,
+            depth_stencil_attachment_read: true,
+            depth_stencil_attachment_write: true,
+            transfer_read: true,
+            transfer_write: true,
+            host_read: true,
+            host_write: true,
+            memory_read: true,
+            memory_write: true,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl From<AccessFlags> for ash::vk::AccessFlags {
     #[inline]
-    fn from(val: PipelineStage) -> Self {
-        Self::from_raw(val as u64)
+    fn from(val: AccessFlags) -> Self {
+        Self::from_raw(ash::vk::AccessFlags2::from(val).as_raw() as u32)
     }
-}
-
-pipeline_stages! {
-    top_of_pipe, TopOfPipe => TOP_OF_PIPE, ash::vk::QueueFlags::empty();
-    draw_indirect, DrawIndirect => DRAW_INDIRECT, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE;
-    vertex_input, VertexInput => VERTEX_INPUT, ash::vk::QueueFlags::GRAPHICS;
-    vertex_shader, VertexShader => VERTEX_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    tessellation_control_shader, TessellationControlShader => TESSELLATION_CONTROL_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    tessellation_evaluation_shader, TessellationEvaluationShader => TESSELLATION_EVALUATION_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    geometry_shader, GeometryShader => GEOMETRY_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    fragment_shader, FragmentShader => FRAGMENT_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    early_fragment_tests, EarlyFragmentTests => EARLY_FRAGMENT_TESTS, ash::vk::QueueFlags::GRAPHICS;
-    late_fragment_tests, LateFragmentTests => LATE_FRAGMENT_TESTS, ash::vk::QueueFlags::GRAPHICS;
-    color_attachment_output, ColorAttachmentOutput => COLOR_ATTACHMENT_OUTPUT, ash::vk::QueueFlags::GRAPHICS;
-    compute_shader, ComputeShader => COMPUTE_SHADER, ash::vk::QueueFlags::COMPUTE;
-    transfer, Transfer => TRANSFER, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE | ash::vk::QueueFlags::TRANSFER;
-    bottom_of_pipe, BottomOfPipe => BOTTOM_OF_PIPE, ash::vk::QueueFlags::empty();
-    host, Host => HOST, ash::vk::QueueFlags::empty();
-    all_graphics, AllGraphics => ALL_GRAPHICS, ash::vk::QueueFlags::GRAPHICS;
-    all_commands, AllCommands => ALL_COMMANDS, ash::vk::QueueFlags::empty();
-    ray_tracing_shader, RayTracingShader => RAY_TRACING_SHADER_KHR, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE | ash::vk::QueueFlags::TRANSFER;
-}
-
-macro_rules! access_flags {
-    ($($elem:ident => $val:ident,)+) => (
-        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-        #[allow(missing_docs)]
-        pub struct AccessFlags {
-            $(
-                pub $elem: bool,
-            )+
-        }
-
-        impl AccessFlags {
-            /// Builds an `AccessFlags` struct with all bits set.
-            pub fn all() -> AccessFlags {
-                AccessFlags {
-                    $(
-                        $elem: true,
-                    )+
-                }
-            }
-
-            /// Builds an `AccessFlags` struct with none of the bits set.
-            pub fn none() -> AccessFlags {
-                AccessFlags {
-                    $(
-                        $elem: false,
-                    )+
-                }
-            }
-
-            /// Returns whether all flags in `other` are also set in `self`.
-            pub const fn contains(&self, other: &Self) -> bool {
-                $(
-                    (self.$elem || !other.$elem)
-                )&&+
-            }
-        }
-
-        impl From<AccessFlags> for ash::vk::AccessFlags {
-            #[inline]
-            fn from(val: AccessFlags) -> Self {
-                let mut result = ash::vk::AccessFlags::empty();
-                $(
-                    if val.$elem { result |= ash::vk::AccessFlags::$val }
-                )+
-                result
-            }
-        }
-
-        impl From<AccessFlags> for ash::vk::AccessFlags2 {
-            #[inline]
-            fn from(val: AccessFlags) -> Self {
-                let mut result = ash::vk::AccessFlags2::empty();
-                $(
-                    if val.$elem { result |= ash::vk::AccessFlags2::$val }
-                )+
-                result
-            }
-        }
-
-        impl ops::BitOr for AccessFlags {
-            type Output = AccessFlags;
-
-            #[inline]
-            fn bitor(self, rhs: AccessFlags) -> AccessFlags {
-                AccessFlags {
-                    $(
-                        $elem: self.$elem || rhs.$elem,
-                    )+
-                }
-            }
-        }
-
-        impl ops::BitOrAssign for AccessFlags {
-            #[inline]
-            fn bitor_assign(&mut self, rhs: AccessFlags) {
-                $(
-                    self.$elem = self.$elem || rhs.$elem;
-                )+
-            }
-        }
-    );
-}
-
-access_flags! {
-    indirect_command_read => INDIRECT_COMMAND_READ,
-    index_read => INDEX_READ,
-    vertex_attribute_read => VERTEX_ATTRIBUTE_READ,
-    uniform_read => UNIFORM_READ,
-    input_attachment_read => INPUT_ATTACHMENT_READ,
-    shader_read => SHADER_READ,
-    shader_write => SHADER_WRITE,
-    color_attachment_read => COLOR_ATTACHMENT_READ,
-    color_attachment_write => COLOR_ATTACHMENT_WRITE,
-    depth_stencil_attachment_read => DEPTH_STENCIL_ATTACHMENT_READ,
-    depth_stencil_attachment_write => DEPTH_STENCIL_ATTACHMENT_WRITE,
-    transfer_read => TRANSFER_READ,
-    transfer_write => TRANSFER_WRITE,
-    host_read => HOST_READ,
-    host_write => HOST_WRITE,
-    memory_read => MEMORY_READ,
-    memory_write => MEMORY_WRITE,
 }
 
 /// The full specification of memory access by the pipeline for a particular resource.
@@ -436,17 +620,17 @@ impl Default for DependencyInfo {
 pub struct MemoryBarrier {
     /// The pipeline stages in the source scope to wait for.
     ///
-    /// The default value is [`PipelineStages::none()`].
+    /// The default value is [`PipelineStages::empty()`].
     pub source_stages: PipelineStages,
 
     /// The memory accesses in the source scope to make available and visible.
     ///
-    /// The default value is [`AccessFlags::none()`].
+    /// The default value is [`AccessFlags::empty()`].
     pub source_access: AccessFlags,
 
     /// The pipeline stages in the destination scope that must wait for `source_stages`.
     ///
-    /// The default value is [`PipelineStages::none()`].
+    /// The default value is [`PipelineStages::empty()`].
     pub destination_stages: PipelineStages,
 
     /// The memory accesses in the destination scope that must wait for `source_access` to be made
@@ -460,10 +644,10 @@ impl Default for MemoryBarrier {
     #[inline]
     fn default() -> Self {
         Self {
-            source_stages: PipelineStages::none(),
-            source_access: AccessFlags::none(),
-            destination_stages: PipelineStages::none(),
-            destination_access: AccessFlags::none(),
+            source_stages: PipelineStages::empty(),
+            source_access: AccessFlags::empty(),
+            destination_stages: PipelineStages::empty(),
+            destination_access: AccessFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -474,17 +658,17 @@ impl Default for MemoryBarrier {
 pub struct BufferMemoryBarrier {
     /// The pipeline stages in the source scope to wait for.
     ///
-    /// The default value is [`PipelineStages::none()`].
+    /// The default value is [`PipelineStages::empty()`].
     pub source_stages: PipelineStages,
 
     /// The memory accesses in the source scope to make available and visible.
     ///
-    /// The default value is [`AccessFlags::none()`].
+    /// The default value is [`AccessFlags::empty()`].
     pub source_access: AccessFlags,
 
     /// The pipeline stages in the destination scope that must wait for `source_stages`.
     ///
-    /// The default value is [`PipelineStages::none()`].
+    /// The default value is [`PipelineStages::empty()`].
     pub destination_stages: PipelineStages,
 
     /// The memory accesses in the destination scope that must wait for `source_access` to be made
@@ -508,10 +692,10 @@ impl BufferMemoryBarrier {
     #[inline]
     pub fn buffer(buffer: Arc<UnsafeBuffer>) -> Self {
         Self {
-            source_stages: PipelineStages::none(),
-            source_access: AccessFlags::none(),
-            destination_stages: PipelineStages::none(),
-            destination_access: AccessFlags::none(),
+            source_stages: PipelineStages::empty(),
+            source_access: AccessFlags::empty(),
+            destination_stages: PipelineStages::empty(),
+            destination_access: AccessFlags::empty(),
             queue_family_transfer: None,
             buffer,
             range: 0..0,
@@ -525,17 +709,17 @@ impl BufferMemoryBarrier {
 pub struct ImageMemoryBarrier {
     /// The pipeline stages in the source scope to wait for.
     ///
-    /// The default value is [`PipelineStages::none()`].
+    /// The default value is [`PipelineStages::empty()`].
     pub source_stages: PipelineStages,
 
     /// The memory accesses in the source scope to make available and visible.
     ///
-    /// The default value is [`AccessFlags::none()`].
+    /// The default value is [`AccessFlags::empty()`].
     pub source_access: AccessFlags,
 
     /// The pipeline stages in the destination scope that must wait for `source_stages`.
     ///
-    /// The default value is [`PipelineStages::none()`].
+    /// The default value is [`PipelineStages::empty()`].
     pub destination_stages: PipelineStages,
 
     /// The memory accesses in the destination scope that must wait for `source_access` to be made
@@ -567,16 +751,16 @@ impl ImageMemoryBarrier {
     #[inline]
     pub fn image(image: Arc<UnsafeImage>) -> Self {
         Self {
-            source_stages: PipelineStages::none(),
-            source_access: AccessFlags::none(),
-            destination_stages: PipelineStages::none(),
-            destination_access: AccessFlags::none(),
+            source_stages: PipelineStages::empty(),
+            source_access: AccessFlags::empty(),
+            destination_stages: PipelineStages::empty(),
+            destination_access: AccessFlags::empty(),
             old_layout: ImageLayout::Undefined,
             new_layout: ImageLayout::Undefined,
             queue_family_transfer: None,
             image,
             subresource_range: ImageSubresourceRange {
-                aspects: ImageAspects::none(), // Can't use image format aspects because `color` can't be specified with `planeN`.
+                aspects: ImageAspects::empty(), // Can't use image format aspects because `color` can't be specified with `planeN`.
                 mip_levels: 0..0,
                 array_layers: 0..0,
             },

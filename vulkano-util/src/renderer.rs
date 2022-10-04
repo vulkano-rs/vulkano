@@ -14,6 +14,7 @@ use crate::context::VulkanoContext;
 use crate::window::WindowDescriptor;
 use vulkano::device::Device;
 use vulkano::image::{ImageUsage, StorageImage, SwapchainImage};
+use vulkano::swapchain::SwapchainPresentInfo;
 use vulkano::{
     device::Queue,
     format::Format,
@@ -45,14 +46,14 @@ pub struct VulkanoWindowRenderer {
     surface: Arc<Surface<Window>>,
     graphics_queue: Arc<Queue>,
     compute_queue: Arc<Queue>,
-    swap_chain: Arc<Swapchain<Window>>,
+    swapchain: Arc<Swapchain<Window>>,
     final_views: Vec<SwapchainImageView>,
     /// Additional image views that you can add which are resized with the window.
     /// Use associated functions to get access to these.
     additional_image_views: HashMap<usize, DeviceImageView>,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
-    image_index: usize,
+    image_index: u32,
     present_mode: vulkano::swapchain::PresentMode,
 }
 
@@ -83,7 +84,7 @@ impl VulkanoWindowRenderer {
             surface,
             graphics_queue: vulkano_context.graphics_queue().clone(),
             compute_queue: vulkano_context.compute_queue().clone(),
-            swap_chain,
+            swapchain: swap_chain,
             final_views,
             additional_image_views: HashMap::default(),
             recreate_swapchain: false,
@@ -118,7 +119,10 @@ impl VulkanoWindowRenderer {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent,
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()
@@ -149,11 +153,13 @@ impl VulkanoWindowRenderer {
 
     /// Return swapchain image format
     pub fn swapchain_format(&self) -> Format {
-        self.final_views[self.image_index].format().unwrap()
+        self.final_views[self.image_index as usize]
+            .format()
+            .unwrap()
     }
 
     /// Returns the index of last swapchain image that is the next render target
-    pub fn image_index(&self) -> usize {
+    pub fn image_index(&self) -> u32 {
         self.image_index
     }
 
@@ -190,7 +196,7 @@ impl VulkanoWindowRenderer {
 
     /// Return the current swapchain image view
     pub fn swapchain_image_view(&self) -> SwapchainImageView {
-        self.final_views[self.image_index].clone()
+        self.final_views[self.image_index as usize].clone()
     }
 
     /// Return scale factor accounted window size
@@ -248,8 +254,8 @@ impl VulkanoWindowRenderer {
         }
 
         // Acquire next image in the swapchain
-        let (image_num, suboptimal, acquire_future) =
-            match swapchain::acquire_next_image(self.swap_chain.clone(), None) {
+        let (image_index, suboptimal, acquire_future) =
+            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
                     self.recreate_swapchain = true;
@@ -261,7 +267,7 @@ impl VulkanoWindowRenderer {
             self.recreate_swapchain = true;
         }
         // Update our image index
-        self.image_index = image_num;
+        self.image_index = image_index;
 
         let future = self.previous_frame_end.take().unwrap().join(acquire_future);
 
@@ -276,8 +282,10 @@ impl VulkanoWindowRenderer {
         let future = after_future
             .then_swapchain_present(
                 self.graphics_queue.clone(),
-                self.swap_chain.clone(),
-                self.image_index,
+                SwapchainPresentInfo::swapchain_image_index(
+                    self.swapchain.clone(),
+                    self.image_index,
+                ),
             )
             .then_signal_fence_and_flush();
         match future {
@@ -310,18 +318,18 @@ impl VulkanoWindowRenderer {
     /// Recreates swapchain images and image views which follow the window size
     fn recreate_swapchain_and_views(&mut self) {
         let dimensions: [u32; 2] = self.window().inner_size().into();
-        let (new_swapchain, new_images) = match self.swap_chain.recreate(SwapchainCreateInfo {
+        let (new_swapchain, new_images) = match self.swapchain.recreate(SwapchainCreateInfo {
             image_extent: dimensions,
             // Use present mode from current state
             present_mode: self.present_mode,
-            ..self.swap_chain.create_info()
+            ..self.swapchain.create_info()
         }) {
             Ok(r) => r,
             Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
             Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
         };
 
-        self.swap_chain = new_swapchain;
+        self.swapchain = new_swapchain;
         let new_images = new_images
             .into_iter()
             .map(|image| ImageView::new_default(image).unwrap())

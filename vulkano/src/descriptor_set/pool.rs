@@ -19,7 +19,7 @@ use smallvec::SmallVec;
 use std::{
     collections::HashMap,
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -118,14 +118,16 @@ impl DescriptorPool {
         })
     }
 
-    /// Creates a new `UnsafeDescriptorPool` from an ash-handle
+    /// Creates a new `UnsafeDescriptorPool` from a raw object handle.
+    ///
     /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
+        device: Arc<Device>,
         handle: ash::vk::DescriptorPool,
         create_info: DescriptorPoolCreateInfo,
-        device: Arc<Device>,
     ) -> DescriptorPool {
         let DescriptorPoolCreateInfo {
             max_sets,
@@ -426,11 +428,11 @@ pub enum DescriptorPoolAllocError {
 
 impl Error for DescriptorPoolAllocError {}
 
-impl fmt::Display for DescriptorPoolAllocError {
+impl Display for DescriptorPoolAllocError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 DescriptorPoolAllocError::OutOfHostMemory => "no memory available on the host",

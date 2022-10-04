@@ -10,10 +10,10 @@
 use super::{AccessCheckError, FlushError, GpuFuture};
 use crate::{
     buffer::sys::UnsafeBuffer,
-    command_buffer::submit::{SubmitAnyBuilder, SubmitCommandBufferBuilder},
+    command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
     device::{Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    sync::{AccessFlags, Fence, PipelineStages},
+    sync::{AccessError, AccessFlags, Fence, PipelineStages, SubmitAnyBuilder},
     DeviceSize, OomError,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -29,7 +29,7 @@ where
 
     assert!(future.queue().is_some()); // TODO: document
 
-    let fence = Fence::from_pool(device.clone()).unwrap();
+    let fence = Arc::new(Fence::from_pool(device.clone()).unwrap());
     FenceSignalFuture {
         device,
         state: Mutex::new(FenceSignalFutureState::Pending(future, fence)),
@@ -98,17 +98,17 @@ where
 // been dropped).
 enum FenceSignalFutureState<F> {
     // Newly-created. Not submitted yet.
-    Pending(F, Fence),
+    Pending(F, Arc<Fence>),
 
     // Partially submitted to the queue. Only happens in situations where submitting requires two
     // steps, and when the first step succeeded while the second step failed.
     //
     // Note that if there's ever a submit operation that needs three steps we will need to rework
     // this code, as it was designed for two-step operations only.
-    PartiallyFlushed(F, Fence),
+    PartiallyFlushed(F, Arc<Fence>),
 
     // Submitted to the queue.
-    Flushed(F, Fence),
+    Flushed(F, Arc<Fence>),
 
     // The submission is finished. The previous future and the fence have been cleaned.
     Cleaned,
@@ -174,33 +174,29 @@ where
         match *state {
             FenceSignalFutureState::Flushed(ref mut prev, ref fence) => {
                 match fence.wait(Some(Duration::from_secs(0))) {
-                    Ok(()) => unsafe { prev.signal_finished() },
+                    Ok(()) => {
+                        unsafe { prev.signal_finished() }
+                        *state = FenceSignalFutureState::Cleaned;
+                    }
                     Err(_) => {
                         prev.cleanup_finished();
-                        return;
                     }
                 }
             }
             FenceSignalFutureState::Pending(ref mut prev, _) => {
                 prev.cleanup_finished();
-                return;
             }
             FenceSignalFutureState::PartiallyFlushed(ref mut prev, _) => {
                 prev.cleanup_finished();
-                return;
             }
-            _ => return,
-        };
-
-        // This code can only be reached if we're already flushed and waiting on the fence
-        // succeeded.
-        *state = FenceSignalFutureState::Cleaned;
+            _ => (),
+        }
     }
 
     // Implementation of `flush`. You must lock the state and pass the mutex guard here.
     fn flush_impl(
         &self,
-        state: &mut MutexGuard<FenceSignalFutureState<F>>,
+        state: &mut MutexGuard<'_, FenceSignalFutureState<F>>,
     ) -> Result<(), FlushError> {
         unsafe {
             // In this function we temporarily replace the current state with `Poisoned` at the
@@ -208,7 +204,7 @@ where
             // returning (even in case of error).
             let old_state = replace(&mut **state, FenceSignalFutureState::Poisoned);
 
-            let (previous, fence, partially_flushed) = match old_state {
+            let (previous, new_fence, partially_flushed) = match old_state {
                 FenceSignalFutureState::Pending(prev, fence) => (prev, fence, false),
                 FenceSignalFutureState::PartiallyFlushed(prev, fence) => (prev, fence, true),
                 other => {
@@ -232,51 +228,106 @@ where
             let result = match previous.build_submission()? {
                 SubmitAnyBuilder::Empty => {
                     debug_assert!(!partially_flushed);
-                    let mut b = SubmitCommandBufferBuilder::new();
-                    b.set_fence_signal(&fence);
-                    b.submit(&queue).map_err(|err| OutcomeErr::Full(err.into()))
+
+                    queue
+                        .with(|mut q| {
+                            q.submit_unchecked([Default::default()], Some(new_fence.clone()))
+                        })
+                        .map_err(|err| OutcomeErr::Full(err.into()))
                 }
-                SubmitAnyBuilder::SemaphoresWait(sem) => {
+                SubmitAnyBuilder::SemaphoresWait(semaphores) => {
                     debug_assert!(!partially_flushed);
-                    let b: SubmitCommandBufferBuilder = sem.into();
-                    debug_assert!(!b.has_fence());
-                    b.submit(&queue).map_err(|err| OutcomeErr::Full(err.into()))
+
+                    queue
+                        .with(|mut q| {
+                            q.submit_unchecked(
+                                [SubmitInfo {
+                                    wait_semaphores: semaphores
+                                        .into_iter()
+                                        .map(|semaphore| {
+                                            SemaphoreSubmitInfo {
+                                                stages: PipelineStages {
+                                                    // TODO: correct stages ; hard
+                                                    all_commands: true,
+                                                    ..PipelineStages::empty()
+                                                },
+                                                ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                            }
+                                        })
+                                        .collect(),
+                                    ..Default::default()
+                                }],
+                                None,
+                            )
+                        })
+                        .map_err(|err| OutcomeErr::Full(err.into()))
                 }
-                SubmitAnyBuilder::CommandBuffer(mut cb_builder) => {
+                SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
                     debug_assert!(!partially_flushed);
                     // The assert below could technically be a debug assertion as it is part of the
                     // safety contract of the trait. However it is easy to get this wrong if you
                     // write a custom implementation, and if so the consequences would be
                     // disastrous and hard to debug. Therefore we prefer to just use a regular
                     // assertion.
-                    assert!(!cb_builder.has_fence());
-                    cb_builder.set_fence_signal(&fence);
-                    cb_builder
-                        .submit(&queue)
+                    assert!(fence.is_none());
+
+                    queue
+                        .with(|mut q| q.submit_unchecked([submit_info], Some(new_fence.clone())))
                         .map_err(|err| OutcomeErr::Full(err.into()))
                 }
-                SubmitAnyBuilder::BindSparse(mut sparse) => {
+                SubmitAnyBuilder::BindSparse(bind_infos, fence) => {
                     debug_assert!(!partially_flushed);
                     // Same remark as `CommandBuffer`.
-                    assert!(!sparse.has_fence());
-                    sparse.set_fence_signal(&fence);
-                    sparse
-                        .submit(&queue)
+                    assert!(fence.is_none());
+                    debug_assert!(
+                        queue.device().physical_device().queue_family_properties()
+                            [queue.queue_family_index() as usize]
+                            .queue_flags
+                            .sparse_binding
+                    );
+
+                    queue
+                        .with(|mut q| q.bind_sparse_unchecked(bind_infos, Some(new_fence.clone())))
                         .map_err(|err| OutcomeErr::Full(err.into()))
                 }
-                SubmitAnyBuilder::QueuePresent(present) => {
+                SubmitAnyBuilder::QueuePresent(present_info) => {
                     let intermediary_result = if partially_flushed {
                         Ok(())
                     } else {
-                        present.submit(&queue)
-                    };
-                    match intermediary_result {
-                        Ok(()) => {
-                            let mut b = SubmitCommandBufferBuilder::new();
-                            b.set_fence_signal(&fence);
-                            b.submit(&queue)
-                                .map_err(|err| OutcomeErr::Partial(err.into()))
+                        // VUID-VkPresentIdKHR-presentIds-04999
+                        for swapchain_info in &present_info.swapchain_infos {
+                            if swapchain_info.present_id.map_or(false, |present_id| {
+                                !swapchain_info.swapchain.try_claim_present_id(present_id)
+                            }) {
+                                return Err(FlushError::PresentIdLessThanOrEqual);
+                            }
+
+                            match previous.check_swapchain_image_acquired(
+                                swapchain_info
+                                    .swapchain
+                                    .raw_image(swapchain_info.image_index)
+                                    .unwrap()
+                                    .image,
+                                true,
+                            ) {
+                                Ok(_) => (),
+                                Err(AccessCheckError::Unknown) => return Err(AccessError::SwapchainImageNotAcquired.into()),
+                                Err(AccessCheckError::Denied(e)) => return Err(e.into()),
+                            }
                         }
+
+                        queue
+                            .with(|mut q| q.present_unchecked(present_info))
+                            .map(|r| r.map(|_| ()))
+                            .fold(Ok(()), Result::and)
+                    };
+
+                    match intermediary_result {
+                        Ok(()) => queue
+                            .with(|mut q| {
+                                q.submit_unchecked([Default::default()], Some(new_fence.clone()))
+                            })
+                            .map_err(|err| OutcomeErr::Partial(err.into())),
                         Err(err) => Err(OutcomeErr::Full(err.into())),
                     }
                 }
@@ -285,15 +336,15 @@ where
             // Restore the state before returning.
             match result {
                 Ok(()) => {
-                    **state = FenceSignalFutureState::Flushed(previous, fence);
+                    **state = FenceSignalFutureState::Flushed(previous, new_fence);
                     Ok(())
                 }
                 Err(OutcomeErr::Partial(err)) => {
-                    **state = FenceSignalFutureState::PartiallyFlushed(previous, fence);
+                    **state = FenceSignalFutureState::PartiallyFlushed(previous, new_fence);
                     Err(err)
                 }
                 Err(OutcomeErr::Full(err)) => {
-                    **state = FenceSignalFutureState::Pending(previous, fence);
+                    **state = FenceSignalFutureState::Pending(previous, new_fence);
                     Err(err)
                 }
             }
@@ -414,6 +465,19 @@ where
             Err(AccessCheckError::Unknown)
         }
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        if let Some(previous) = self.state.lock().get_prev() {
+            previous.check_swapchain_image_acquired(image, false)
+        } else {
+            Err(AccessCheckError::Unknown)
+        }
+    }
 }
 
 unsafe impl<F> DeviceOwned for FenceSignalFuture<F>
@@ -517,5 +581,14 @@ where
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         (**self).check_image_access(image, range, exclusive, expected_layout, queue)
+    }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError> {
+        (**self).check_swapchain_image_acquired(image, before)
     }
 }

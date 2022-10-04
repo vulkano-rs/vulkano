@@ -29,7 +29,7 @@
 //! # let cb_allocator: Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 //! let usage = BufferUsage {
 //!     storage_texel_buffer: true,
-//!     .. BufferUsage::none()
+//!     .. BufferUsage::empty()
 //! };
 //!
 //! let (buffer, _future) = DeviceLocalBuffer::<[u32]>::from_iter(
@@ -51,11 +51,11 @@ use super::{BufferAccess, BufferAccessObject, BufferInner};
 use crate::{
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
-    DeviceSize, OomError, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -100,16 +100,22 @@ where
         // No VUID, but seems sensible?
         let format = format.unwrap();
 
+        // VUID-VkBufferViewCreateInfo-format-parameter
+        format.validate_device(device)?;
+
         // VUID-VkBufferViewCreateInfo-buffer-00932
         if !(inner_buffer.usage().uniform_texel_buffer || inner_buffer.usage().storage_texel_buffer)
         {
             return Err(BufferViewCreationError::BufferMissingUsage);
         }
 
-        let format_features = device
-            .physical_device()
-            .format_properties(format)
-            .buffer_features;
+        // Use unchecked, because all validation has been done above.
+        let format_features = unsafe {
+            device
+                .physical_device()
+                .format_properties_unchecked(format)
+                .buffer_features
+        };
 
         // VUID-VkBufferViewCreateInfo-buffer-00933
         if inner_buffer.usage().uniform_texel_buffer && !format_features.uniform_texel_buffer {
@@ -329,6 +335,11 @@ pub enum BufferViewCreationError {
     /// Out of memory.
     OomError(OomError),
 
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
     /// The buffer was not created with one of the `storage_texel_buffer` or
     /// `uniform_texel_buffer` usages.
     BufferMissingUsage,
@@ -362,32 +373,42 @@ impl Error for BufferViewCreationError {
     }
 }
 
-impl fmt::Display for BufferViewCreationError {
+impl Display for BufferViewCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            BufferViewCreationError::OomError(_) => write!(
-                fmt,
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::OomError(_) => write!(
+                f,
                 "out of memory when creating buffer view",
             ),
-            BufferViewCreationError::BufferMissingUsage => write!(
-                fmt,
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+
+            Self::BufferMissingUsage => write!(
+                f,
                 "the buffer was not created with one of the `storage_texel_buffer` or `uniform_texel_buffer` usages",
             ),
-            BufferViewCreationError::OffsetNotAligned { .. } => write!(
-                fmt,
+            Self::OffsetNotAligned { .. } => write!(
+                f,
                 "the offset within the buffer is not a multiple of the required alignment",
             ),
-            BufferViewCreationError::RangeNotAligned { .. } => write!(
-                fmt,
+            Self::RangeNotAligned { .. } => write!(
+                f,
                 "the range within the buffer is not a multiple of the required alignment",
             ),
-            BufferViewCreationError::UnsupportedFormat => write!(
-                fmt,
+            Self::UnsupportedFormat => write!(
+                f,
                 "the requested format is not supported for this usage",
             ),
-            BufferViewCreationError::MaxTexelBufferElementsExceeded => write!(
-                fmt,
+            Self::MaxTexelBufferElementsExceeded => write!(
+                f,
                 "the `max_texel_buffer_elements` limit has been exceeded",
             ),
         }
@@ -396,15 +417,25 @@ impl fmt::Display for BufferViewCreationError {
 
 impl From<OomError> for BufferViewCreationError {
     #[inline]
-    fn from(err: OomError) -> BufferViewCreationError {
-        BufferViewCreationError::OomError(err)
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
     }
 }
 
 impl From<VulkanError> for BufferViewCreationError {
     #[inline]
-    fn from(err: VulkanError) -> BufferViewCreationError {
+    fn from(err: VulkanError) -> Self {
         OomError::from(err).into()
+    }
+}
+
+impl From<RequirementNotMet> for BufferViewCreationError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
     }
 }
 
@@ -485,10 +516,11 @@ mod tests {
 
         let usage = BufferUsage {
             uniform_texel_buffer: true,
-            ..BufferUsage::none()
+            ..BufferUsage::empty()
         };
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
+        let cb_allocator =
+            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
 
         let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
@@ -514,10 +546,11 @@ mod tests {
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
-            ..BufferUsage::none()
+            ..BufferUsage::empty()
         };
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
+        let cb_allocator =
+            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
 
         let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
@@ -543,10 +576,11 @@ mod tests {
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
-            ..BufferUsage::none()
+            ..BufferUsage::empty()
         };
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
+        let cb_allocator =
+            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
 
         let (buffer, _) =
             DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, &cb_allocator, queue)
@@ -566,11 +600,12 @@ mod tests {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
+        let cb_allocator =
+            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
 
         let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
-            BufferUsage::none(),
+            BufferUsage::empty(),
             &cb_allocator,
             queue,
         )
@@ -595,10 +630,11 @@ mod tests {
         let usage = BufferUsage {
             uniform_texel_buffer: true,
             storage_texel_buffer: true,
-            ..BufferUsage::none()
+            ..BufferUsage::empty()
         };
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
+        let cb_allocator =
+            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
 
         let (buffer, _) = DeviceLocalBuffer::<[[f64; 4]]>::from_iter(
             (0..128).map(|_| [0.0; 4]),

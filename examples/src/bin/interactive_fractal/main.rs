@@ -44,7 +44,7 @@ fn main() {
         &context,
         &WindowDescriptor {
             title: "Fractal".to_string(),
-            present_mode: PresentMode::Immediate,
+            present_mode: PresentMode::Fifo,
             ..Default::default()
         },
         |_| {},
@@ -62,7 +62,7 @@ fn main() {
             storage: true,
             color_attachment: true,
             transfer_dst: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         },
     );
 

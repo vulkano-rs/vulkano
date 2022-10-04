@@ -17,8 +17,8 @@ use crate::{
         },
         CommandBufferLevel,
     },
-    device::{physical::QueueFamily, Device, DeviceOwned},
-    OomError, VulkanObject,
+    device::{Device, DeviceOwned},
+    OomError,
 };
 use crossbeam_queue::SegQueue;
 use std::{marker::PhantomData, mem::ManuallyDrop, ptr, sync::Arc, vec::IntoIter as VecIntoIter};
@@ -49,17 +49,16 @@ impl StandardCommandBufferAllocator {
     /// - Panics if the device and the queue family don't belong to the same physical device.
     pub fn new(
         device: Arc<Device>,
-        queue_family: QueueFamily,
+        queue_family_index: u32,
     ) -> Result<Arc<StandardCommandBufferAllocator>, OomError> {
-        assert_eq!(
-            device.physical_device().internal_object(),
-            queue_family.physical_device().internal_object()
+        assert!(
+            queue_family_index < device.physical_device().queue_family_properties().len() as u32
         );
 
         let inner = CommandPool::new(
             device,
             CommandPoolCreateInfo {
-                queue_family_index: queue_family.id(),
+                queue_family_index,
                 reset_command_buffer: true,
                 ..Default::default()
             },
@@ -139,8 +138,8 @@ unsafe impl CommandBufferAllocator for Arc<StandardCommandBufferAllocator> {
     }
 
     #[inline]
-    fn queue_family(&self) -> QueueFamily {
-        self.inner.queue_family()
+    fn queue_family_index(&self) -> u32 {
+        self.inner.queue_family_index()
     }
 }
 
@@ -176,8 +175,8 @@ unsafe impl CommandBufferBuilderAlloc for StandardCommandBufferBuilderAlloc {
     }
 
     #[inline]
-    fn queue_family(&self) -> QueueFamily {
-        self.inner.queue_family()
+    fn queue_family_index(&self) -> u32 {
+        self.inner.queue_family_index()
     }
 }
 
@@ -206,8 +205,8 @@ unsafe impl CommandBufferAlloc for StandardCommandBufferAlloc {
     }
 
     #[inline]
-    fn queue_family(&self) -> QueueFamily {
-        self.pool.queue_family()
+    fn queue_family_index(&self) -> u32 {
+        self.pool.queue_family_index()
     }
 }
 
@@ -243,7 +242,8 @@ mod tests {
     fn reuse_command_buffers() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
+        let allocator =
+            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
 
         let cb = allocator
             .allocate(CommandBufferLevel::Primary, 1)

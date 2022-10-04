@@ -1,4 +1,10 @@
-use std::{borrow::Borrow, error::Error, fmt, rc::Rc, sync::Arc};
+use std::{
+    borrow::Borrow,
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    rc::Rc,
+    sync::Arc,
+};
 use vulkano::{
     instance::{Instance, InstanceExtensions},
     swapchain::{Surface, SurfaceCreationError},
@@ -22,7 +28,7 @@ pub fn required_extensions(library: &VulkanLibrary) -> InstanceExtensions {
         mvk_macos_surface: true,
         khr_get_physical_device_properties2: true,
         khr_get_surface_capabilities2: true,
-        ..InstanceExtensions::none()
+        ..InstanceExtensions::empty()
     };
 
     library.supported_extensions().intersection(&ideal)
@@ -80,11 +86,11 @@ impl Error for CreationError {
     }
 }
 
-impl fmt::Display for CreationError {
+impl Display for CreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 CreationError::SurfaceCreationError(_) => "error while creating the surface",

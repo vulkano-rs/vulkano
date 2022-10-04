@@ -86,14 +86,20 @@ impl PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let vertex_buffer = CpuAccessibleBuffer::<[TexturedVertex]>::from_iter(
             gfx_queue.device().clone(),
-            BufferUsage::vertex_buffer(),
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             vertices,
         )
         .unwrap();
         let index_buffer = CpuAccessibleBuffer::<[u32]>::from_iter(
             gfx_queue.device().clone(),
-            BufferUsage::index_buffer(),
+            BufferUsage {
+                index_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             indices,
         )
@@ -164,7 +170,7 @@ impl PixelsDrawPipeline {
     ) -> SecondaryAutoCommandBuffer {
         let mut builder = AutoCommandBufferBuilder::secondary(
             &self.command_buffer_allocator,
-            self.gfx_queue.family(),
+            self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
                 render_pass: Some(self.subpass.clone().into()),

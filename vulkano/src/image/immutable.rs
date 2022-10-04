@@ -17,9 +17,9 @@ use crate::{
     command_buffer::{
         allocator::CommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
         CommandBufferBeginError, CommandBufferExecFuture, CommandBufferUsage,
-        CopyBufferToImageInfo, ImageBlit, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        CopyBufferToImageInfo, ImageBlit, PrimaryCommandBuffer,
     },
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned, Queue},
     format::Format,
     image::sys::UnsafeImageCreateInfo,
     memory::{
@@ -27,7 +27,7 @@ use crate::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
             PotentialDedicatedAllocation, StandardMemoryPoolAlloc,
         },
-        DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
+        DedicatedAllocation, DeviceMemoryError, MemoryPool,
     },
     sampler::Filter,
     sync::{NowFuture, Sharing},
@@ -36,7 +36,7 @@ use crate::{
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     sync::Arc,
 };
@@ -104,24 +104,18 @@ impl ImmutableImage {
     /// Builds an uninitialized immutable image.
     ///
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
-    pub fn uninitialized<'a, I, M>(
+    pub fn uninitialized(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
-        mip_levels: M,
+        mip_levels: impl Into<MipmapsCount>,
         usage: ImageUsage,
         flags: ImageCreateFlags,
         layout: ImageLayout,
-        queue_families: I,
+        queue_family_indices: impl IntoIterator<Item = u32>,
     ) -> Result<(Arc<ImmutableImage>, Arc<ImmutableImageInitialization>), ImmutableImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-        M: Into<MipmapsCount>,
     {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let image = UnsafeImage::new(
             device.clone(),
@@ -134,8 +128,8 @@ impl ImmutableImage {
                     MipmapsCount::One => 1,
                 },
                 usage,
-                sharing: if queue_families.len() >= 2 {
-                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
                 } else {
                     Sharing::Exclusive
                 },
@@ -149,13 +143,13 @@ impl ImmutableImage {
 
         let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
-            device.standard_memory_pool(),
+            &device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,
             Some(DedicatedAllocation::Image(&image)),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -183,29 +177,25 @@ impl ImmutableImage {
 
     /// Construct an ImmutableImage from the contents of `iter`.
     #[inline]
-    pub fn from_iter<Px, I, Cba>(
+    pub fn from_iter<Px, I>(
         iter: I,
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
-        command_buffer_allocator: &Cba,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
-    ) -> Result<
-        (
-            Arc<Self>,
-            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer<Cba::Alloc>>,
-        ),
-        ImmutableImageCreationError,
-    >
+    ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError>
     where
         [Px]: BufferContents,
         I: IntoIterator<Item = Px>,
         I::IntoIter: ExactSizeIterator,
-        Cba: CommandBufferAllocator,
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
-            BufferUsage::transfer_src(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             false,
             iter,
         )?;
@@ -220,31 +210,22 @@ impl ImmutableImage {
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
-    pub fn from_buffer<Cba>(
+    pub fn from_buffer(
         source: Arc<dyn BufferAccess>,
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
-        command_buffer_allocator: &Cba,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
-    ) -> Result<
-        (
-            Arc<Self>,
-            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer<Cba::Alloc>>,
-        ),
-        ImmutableImageCreationError,
-    >
-    where
-        Cba: CommandBufferAllocator,
-    {
+    ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError> {
         let need_to_generate_mipmaps = has_mipmaps(mip_levels);
         let usage = ImageUsage {
             transfer_dst: true,
             transfer_src: need_to_generate_mipmaps,
             sampled: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
-        let flags = ImageCreateFlags::none();
+        let flags = ImageCreateFlags::empty();
         let layout = ImageLayout::ShaderReadOnlyOptimal;
 
         let (image, initializer) = ImmutableImage::uninitialized(
@@ -255,12 +236,16 @@ impl ImmutableImage {
             usage,
             flags,
             layout,
-            source.device().active_queue_families(),
+            source
+                .device()
+                .active_queue_family_indices()
+                .iter()
+                .copied(),
         )?;
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             command_buffer_allocator,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )?;
         cbb.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(source, initializer))
@@ -297,7 +282,7 @@ where
     A: MemoryPoolAlloc,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         ImageInner {
             image: &self.image,
             first_layer: 0,
@@ -381,7 +366,7 @@ where
     A: MemoryPoolAlloc,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         self.image.inner()
     }
 
@@ -426,7 +411,7 @@ where
 #[derive(Clone, Debug)]
 pub enum ImmutableImageCreationError {
     ImageCreationError(ImageCreationError),
-    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    DeviceMemoryAllocationError(DeviceMemoryError),
     CommandBufferBeginError(CommandBufferBeginError),
 }
 
@@ -441,9 +426,9 @@ impl Error for ImmutableImageCreationError {
     }
 }
 
-impl fmt::Display for ImmutableImageCreationError {
+impl Display for ImmutableImageCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::ImageCreationError(err) => err.fmt(f),
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),
@@ -459,9 +444,9 @@ impl From<ImageCreationError> for ImmutableImageCreationError {
     }
 }
 
-impl From<DeviceMemoryAllocationError> for ImmutableImageCreationError {
+impl From<DeviceMemoryError> for ImmutableImageCreationError {
     #[inline]
-    fn from(err: DeviceMemoryAllocationError) -> Self {
+    fn from(err: DeviceMemoryError) -> Self {
         Self::DeviceMemoryAllocationError(err)
     }
 }

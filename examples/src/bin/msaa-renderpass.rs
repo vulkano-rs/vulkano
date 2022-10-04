@@ -73,8 +73,7 @@ use vulkano::{
         CopyImageToBufferInfo, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage},
@@ -110,14 +109,17 @@ fn main() {
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics())
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .position(|q| q.queue_flags.graphics)
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -125,6 +127,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -138,7 +141,10 @@ fn main() {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -169,7 +175,7 @@ fn main() {
             array_layers: 1,
         },
         Format::R8G8B8A8_UNORM,
-        Some(queue.family()),
+        Some(queue.queue_family_index()),
     )
     .unwrap();
     let view = ImageView::new_default(image.clone()).unwrap();
@@ -277,9 +283,16 @@ fn main() {
             position: [0.5, -0.25],
         },
     ];
-    let vertex_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
-            .unwrap();
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        vertices,
+    )
+    .unwrap();
 
     let subpass = Subpass::from(render_pass, 0).unwrap();
     let pipeline = GraphicsPipeline::start()
@@ -302,11 +315,14 @@ fn main() {
     };
 
     let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
 
     let buf = CpuAccessibleBuffer::from_iter(
         device.clone(),
-        BufferUsage::all(),
+        BufferUsage {
+            transfer_dst: true,
+            ..BufferUsage::empty()
+        },
         false,
         (0..1024 * 1024 * 4).map(|_| 0u8),
     )
@@ -314,7 +330,7 @@ fn main() {
 
     let mut builder = AutoCommandBufferBuilder::primary(
         &command_buffer_allocator,
-        queue.family(),
+        queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
@@ -354,4 +370,8 @@ fn main() {
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&buffer_content).unwrap();
+
+    if let Ok(path) = path.canonicalize() {
+        println!("Saved to {}", path.display());
+    }
 }

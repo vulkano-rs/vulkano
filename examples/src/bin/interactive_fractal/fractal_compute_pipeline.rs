@@ -50,7 +50,10 @@ impl FractalComputePipeline {
         let palette_size = colors.len() as i32;
         let palette = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             colors,
         )
@@ -71,7 +74,8 @@ impl FractalComputePipeline {
 
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(queue.device().clone());
         let command_buffer_allocator =
-            StandardCommandBufferAllocator::new(queue.device().clone(), queue.family()).unwrap();
+            StandardCommandBufferAllocator::new(queue.device().clone(), queue.queue_family_index())
+                .unwrap();
 
         FractalComputePipeline {
             queue,
@@ -96,7 +100,10 @@ impl FractalComputePipeline {
         }
         self.palette = CpuAccessibleBuffer::from_iter(
             self.queue.device().clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             colors.into_iter(),
         )
@@ -127,7 +134,7 @@ impl FractalComputePipeline {
         .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
-            self.queue.family(),
+            self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
@@ -252,6 +259,11 @@ void main() {
         len_z
     );
     imageStore(img, ivec2(gl_GlobalInvocationID.xy), write_color);
-}"
+}",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }

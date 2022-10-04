@@ -43,18 +43,18 @@
 //!
 
 use super::Instance;
-use crate::{VulkanError, VulkanObject};
+use crate::{macros::vulkan_bitflags, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject};
 use std::{
     error::Error,
     ffi::{c_void, CStr},
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     mem::MaybeUninit,
     panic::{catch_unwind, AssertUnwindSafe, RefUnwindSafe},
     ptr,
     sync::Arc,
 };
 
-pub(super) type UserCallback = Arc<dyn Fn(&Message) + RefUnwindSafe + Send + Sync>;
+pub(super) type UserCallback = Arc<dyn Fn(&Message<'_>) + RefUnwindSafe + Send + Sync>;
 
 /// Registration of a callback called by validation layers.
 ///
@@ -102,17 +102,26 @@ impl DebugUtilsMessenger {
         } = create_info;
 
         if !instance.enabled_extensions().ext_debug_utils {
-            return Err(DebugUtilsMessengerCreationError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to create a DebugUtilsMessenger",
+            return Err(DebugUtilsMessengerCreationError::RequirementNotMet {
+                required_for: "`DebugUtilsMessenger`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_debug_utils"],
+                    ..Default::default()
+                },
             });
         }
 
+        // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-parameter
+        message_severity.validate_instance(instance)?;
+
         // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-requiredbitmask
-        assert!(message_severity != DebugUtilsMessageSeverity::none());
+        assert!(!message_severity.is_empty());
+
+        // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-parameter
+        message_type.validate_instance(instance)?;
 
         // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-requiredbitmask
-        assert!(message_type != DebugUtilsMessageType::none());
+        assert!(!message_type.is_empty());
 
         // VUID-PFN_vkDebugUtilsMessengerCallbackEXT-None-04769
         // Can't be checked, creation is unsafe.
@@ -180,8 +189,8 @@ impl Drop for DebugUtilsMessenger {
     }
 }
 
-impl fmt::Debug for DebugUtilsMessenger {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl Debug for DebugUtilsMessenger {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             instance,
@@ -236,21 +245,26 @@ pub(super) unsafe extern "system" fn trampoline(
 /// Error that can happen when creating a `DebugUtilsMessenger`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DebugUtilsMessengerCreationError {
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 }
 
 impl Error for DebugUtilsMessengerCreationError {}
 
-impl fmt::Display for DebugUtilsMessengerCreationError {
+impl Display for DebugUtilsMessengerCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
         }
     }
 }
@@ -259,6 +273,16 @@ impl From<VulkanError> for DebugUtilsMessengerCreationError {
     #[inline]
     fn from(err: VulkanError) -> DebugUtilsMessengerCreationError {
         panic!("unexpected error: {:?}", err)
+    }
+}
+
+impl From<RequirementNotMet> for DebugUtilsMessengerCreationError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
     }
 }
 
@@ -296,16 +320,23 @@ impl DebugUtilsMessengerCreateInfo {
     #[inline]
     pub fn user_callback(user_callback: UserCallback) -> Self {
         Self {
-            message_severity: DebugUtilsMessageSeverity::errors_and_warnings(),
-            message_type: DebugUtilsMessageType::general(),
+            message_severity: DebugUtilsMessageSeverity {
+                error: true,
+                warning: true,
+                ..DebugUtilsMessageSeverity::empty()
+            },
+            message_type: DebugUtilsMessageType {
+                general: true,
+                ..DebugUtilsMessageType::empty()
+            },
             user_callback,
             _ne: crate::NonExhaustive(()),
         }
     }
 }
 
-impl fmt::Debug for DebugUtilsMessengerCreateInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl Debug for DebugUtilsMessengerCreateInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             message_severity,
             message_type,
@@ -332,234 +363,37 @@ pub struct Message<'a> {
     pub description: &'a str,
 }
 
-/// Severity of message.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct DebugUtilsMessageSeverity {
+vulkan_bitflags! {
+    /// Severity of message.
+    #[non_exhaustive]
+    DebugUtilsMessageSeverity = DebugUtilsMessageSeverityFlagsEXT(u32);
+
     /// An error that may cause undefined results, including an application crash.
-    pub error: bool,
+    error = ERROR,
+
     /// An unexpected use.
-    pub warning: bool,
+    warning = WARNING,
+
     /// An informational message that may be handy when debugging an application.
-    pub information: bool,
+    information = INFO,
+
     /// Diagnostic information from the loader and layers.
-    pub verbose: bool,
+    verbose = VERBOSE,
 }
 
-impl DebugUtilsMessageSeverity {
-    /// Builds a `MessageSeverity` with all fields set to `false` expect `error`.
-    #[inline]
-    pub const fn errors() -> DebugUtilsMessageSeverity {
-        DebugUtilsMessageSeverity {
-            error: true,
-            ..DebugUtilsMessageSeverity::none()
-        }
-    }
+vulkan_bitflags! {
+    /// Type of message.
+    #[non_exhaustive]
+    DebugUtilsMessageType = DebugUtilsMessageTypeFlagsEXT(u32);
 
-    /// Builds a `MessageSeverity` with all fields set to `false` expect `warning`.
-    #[inline]
-    pub const fn warnings() -> DebugUtilsMessageSeverity {
-        DebugUtilsMessageSeverity {
-            warning: true,
-            ..DebugUtilsMessageSeverity::none()
-        }
-    }
-
-    /// Builds a `MessageSeverity` with all fields set to `false` expect `information`.
-    #[inline]
-    pub const fn information() -> DebugUtilsMessageSeverity {
-        DebugUtilsMessageSeverity {
-            information: true,
-            ..DebugUtilsMessageSeverity::none()
-        }
-    }
-
-    /// Builds a `MessageSeverity` with all fields set to `false` expect `verbose`.
-    #[inline]
-    pub const fn verbose() -> DebugUtilsMessageSeverity {
-        DebugUtilsMessageSeverity {
-            verbose: true,
-            ..DebugUtilsMessageSeverity::none()
-        }
-    }
-
-    /// Builds a `MessageSeverity` with all fields set to `false` expect `error`, `warning`
-    /// and `performance_warning`.
-    #[inline]
-    pub const fn errors_and_warnings() -> DebugUtilsMessageSeverity {
-        DebugUtilsMessageSeverity {
-            error: true,
-            warning: true,
-            ..DebugUtilsMessageSeverity::none()
-        }
-    }
-
-    /// Builds a `MessageSeverity` with all fields set to `false`.
-    #[inline]
-    pub const fn none() -> DebugUtilsMessageSeverity {
-        DebugUtilsMessageSeverity {
-            error: false,
-            warning: false,
-            information: false,
-            verbose: false,
-        }
-    }
-
-    /// Builds a `MessageSeverity` with all fields set to `true`.
-    #[inline]
-    pub const fn all() -> DebugUtilsMessageSeverity {
-        DebugUtilsMessageSeverity {
-            error: true,
-            warning: true,
-            information: true,
-            verbose: true,
-        }
-    }
-}
-
-impl std::ops::BitOr for DebugUtilsMessageSeverity {
-    type Output = Self;
-    fn bitor(self, rhs: Self) -> Self::Output {
-        DebugUtilsMessageSeverity {
-            error: self.error | rhs.error,
-            warning: self.warning | rhs.warning,
-            information: self.information | rhs.information,
-            verbose: self.verbose | rhs.verbose,
-        }
-    }
-}
-
-impl From<DebugUtilsMessageSeverity> for ash::vk::DebugUtilsMessageSeverityFlagsEXT {
-    #[inline]
-    fn from(val: DebugUtilsMessageSeverity) -> Self {
-        let mut result = Self::empty();
-        if val.information {
-            result |= Self::INFO;
-        }
-        if val.warning {
-            result |= Self::WARNING;
-        }
-        if val.error {
-            result |= Self::ERROR;
-        }
-        if val.verbose {
-            result |= Self::VERBOSE;
-        }
-        result
-    }
-}
-
-impl From<ash::vk::DebugUtilsMessageSeverityFlagsEXT> for DebugUtilsMessageSeverity {
-    #[inline]
-    fn from(val: ash::vk::DebugUtilsMessageSeverityFlagsEXT) -> Self {
-        Self {
-            information: val.intersects(ash::vk::DebugUtilsMessageSeverityFlagsEXT::INFO),
-            warning: val.intersects(ash::vk::DebugUtilsMessageSeverityFlagsEXT::WARNING),
-            error: val.intersects(ash::vk::DebugUtilsMessageSeverityFlagsEXT::ERROR),
-            verbose: val.intersects(ash::vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE),
-        }
-    }
-}
-
-/// Type of message.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct DebugUtilsMessageType {
     /// Specifies that some general event has occurred.
-    pub general: bool,
+    general = GENERAL,
+
     /// Specifies that something has occurred during validation against the vulkan specification
-    pub validation: bool,
+    validation = VALIDATION,
+
     /// Specifies a potentially non-optimal use of Vulkan
-    pub performance: bool,
-}
-
-impl DebugUtilsMessageType {
-    /// Builds a `MessageType` with general field set to `true`.
-    #[inline]
-    pub const fn general() -> DebugUtilsMessageType {
-        DebugUtilsMessageType {
-            general: true,
-            validation: false,
-            performance: false,
-        }
-    }
-
-    /// Builds a `MessageType` with validation field set to `true`.
-    #[inline]
-    pub const fn validation() -> DebugUtilsMessageType {
-        DebugUtilsMessageType {
-            general: false,
-            validation: true,
-            performance: false,
-        }
-    }
-
-    /// Builds a `MessageType` with performance field set to `true`.
-    #[inline]
-    pub const fn performance() -> DebugUtilsMessageType {
-        DebugUtilsMessageType {
-            general: false,
-            validation: false,
-            performance: true,
-        }
-    }
-
-    /// Builds a `MessageType` with all fields set to `true`.
-    #[inline]
-    pub const fn all() -> DebugUtilsMessageType {
-        DebugUtilsMessageType {
-            general: true,
-            validation: true,
-            performance: true,
-        }
-    }
-
-    /// Builds a `MessageType` with all fields set to `false`.
-    #[inline]
-    pub const fn none() -> DebugUtilsMessageType {
-        DebugUtilsMessageType {
-            general: false,
-            validation: false,
-            performance: false,
-        }
-    }
-}
-
-impl std::ops::BitOr for DebugUtilsMessageType {
-    type Output = Self;
-    fn bitor(self, rhs: Self) -> Self::Output {
-        DebugUtilsMessageType {
-            general: self.general | rhs.general,
-            validation: self.validation | rhs.validation,
-            performance: self.performance | rhs.performance,
-        }
-    }
-}
-
-impl From<DebugUtilsMessageType> for ash::vk::DebugUtilsMessageTypeFlagsEXT {
-    #[inline]
-    fn from(val: DebugUtilsMessageType) -> Self {
-        let mut result = Self::empty();
-        if val.general {
-            result |= Self::GENERAL;
-        }
-        if val.validation {
-            result |= Self::VALIDATION;
-        }
-        if val.performance {
-            result |= Self::PERFORMANCE;
-        }
-        result
-    }
-}
-
-impl From<ash::vk::DebugUtilsMessageTypeFlagsEXT> for DebugUtilsMessageType {
-    #[inline]
-    fn from(val: ash::vk::DebugUtilsMessageTypeFlagsEXT) -> Self {
-        Self {
-            general: val.intersects(ash::vk::DebugUtilsMessageTypeFlagsEXT::GENERAL),
-            validation: val.intersects(ash::vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION),
-            performance: val.intersects(ash::vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE),
-        }
-    }
+    performance = PERFORMANCE,
 }
 
 /// A label to associate with a span of work in a queue.
@@ -597,25 +431,58 @@ impl Default for DebugUtilsLabel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        instance::{InstanceCreateInfo, InstanceExtensions},
+        VulkanLibrary,
+    };
     use std::thread;
 
     #[test]
     fn ensure_sendable() {
         // It's useful to be able to initialize a DebugUtilsMessenger on one thread
         // and keep it alive on another thread.
-        let instance = instance!();
+        let instance = {
+            let library = match VulkanLibrary::new() {
+                Ok(x) => x,
+                Err(_) => return,
+            };
+
+            match Instance::new(
+                library,
+                InstanceCreateInfo {
+                    enabled_extensions: InstanceExtensions {
+                        ext_debug_utils: true,
+                        ..InstanceExtensions::empty()
+                    },
+                    ..Default::default()
+                },
+            ) {
+                Ok(x) => x,
+                Err(_) => return,
+            }
+        };
+
         let callback = unsafe {
             DebugUtilsMessenger::new(
                 instance,
                 DebugUtilsMessengerCreateInfo {
-                    message_severity: DebugUtilsMessageSeverity::none(),
-                    message_type: DebugUtilsMessageType::all(),
+                    message_severity: DebugUtilsMessageSeverity {
+                        error: true,
+                        ..DebugUtilsMessageSeverity::empty()
+                    },
+                    message_type: DebugUtilsMessageType {
+                        general: true,
+                        validation: true,
+                        performance: true,
+                        ..DebugUtilsMessageType::empty()
+                    },
                     ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|_| {}))
                 },
             )
-        };
+        }
+        .unwrap();
         thread::spawn(move || {
-            let _ = callback;
+            drop(callback);
         });
     }
 }

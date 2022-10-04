@@ -13,21 +13,25 @@ pub use self::{
     now::{now, NowFuture},
     semaphore_signal::SemaphoreSignalFuture,
 };
-use super::{AccessFlags, FenceWaitError, PipelineStages};
+use super::{AccessFlags, Fence, FenceError, PipelineStages, Semaphore};
 use crate::{
     buffer::sys::UnsafeBuffer,
     command_buffer::{
-        submit::{
-            SubmitAnyBuilder, SubmitBindSparseError, SubmitCommandBufferError, SubmitPresentError,
-        },
-        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    swapchain::{self, PresentFuture, PresentRegion, Swapchain},
-    DeviceSize, OomError,
+    memory::BindSparseInfo,
+    swapchain::{self, PresentFuture, PresentInfo, SwapchainPresentInfo},
+    DeviceSize, OomError, VulkanError,
 };
-use std::{error::Error, fmt, ops::Range, sync::Arc};
+use smallvec::SmallVec;
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    ops::Range,
+    sync::Arc,
+};
 
 mod fence_signal;
 mod join;
@@ -138,6 +142,16 @@ pub unsafe trait GpuFuture: DeviceOwned {
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
 
+    /// Checks whether accessing a swapchain image is permitted.
+    ///
+    /// > **Note**: Setting `before` to `true` should skip checking the current future and always
+    /// > forward the call to the future before. 
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError>;
+
     /// Joins this future with another one, representing the moment when both events have happened.
     // TODO: handle errors
     fn join<F>(self, other: F) -> JoinFuture<Self, F>
@@ -157,7 +171,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
         self,
         queue: Arc<Queue>,
         command_buffer: Cb,
-    ) -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
+    ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
         Cb: PrimaryCommandBuffer + 'static,
@@ -173,7 +187,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     fn then_execute_same_queue<Cb>(
         self,
         command_buffer: Cb,
-    ) -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
+    ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
         Cb: PrimaryCommandBuffer + 'static,
@@ -249,33 +263,15 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut for the `Swapchain::present()` function.
     #[inline]
-    fn then_swapchain_present<W>(
+    fn then_swapchain_present(
         self,
         queue: Arc<Queue>,
-        swapchain: Arc<Swapchain<W>>,
-        image_index: usize,
-    ) -> PresentFuture<Self, W>
+        swapchain_info: SwapchainPresentInfo,
+    ) -> PresentFuture<Self>
     where
         Self: Sized,
     {
-        swapchain::present(swapchain, self, queue, image_index)
-    }
-
-    /// Same as `then_swapchain_present`, except it allows specifying a present region.
-    ///
-    /// > **Note**: This is just a shortcut for the `Swapchain::present_incremental()` function.
-    #[inline]
-    fn then_swapchain_present_incremental<W>(
-        self,
-        queue: Arc<Queue>,
-        swapchain: Arc<Swapchain<W>>,
-        image_index: usize,
-        present_region: PresentRegion,
-    ) -> PresentFuture<Self, W>
-    where
-        Self: Sized,
-    {
-        swapchain::present_incremental(swapchain, self, queue, image_index, present_region)
+        swapchain::present(self, queue, swapchain_info)
     }
 
     /// Turn the current future into a `Box<dyn GpuFuture>`.
@@ -375,6 +371,33 @@ where
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         (**self).check_image_access(image, range, exclusive, expected_layout, queue)
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError> {
+        (**self).check_swapchain_image_acquired(image, before)
+    }
+}
+
+/// Contains all the possible submission builders.
+#[derive(Debug)]
+pub enum SubmitAnyBuilder {
+    Empty,
+    SemaphoresWait(SmallVec<[Arc<Semaphore>; 8]>),
+    CommandBuffer(SubmitInfo, Option<Arc<Fence>>),
+    QueuePresent(PresentInfo),
+    BindSparse(SmallVec<[BindSparseInfo; 1]>, Option<Arc<Fence>>),
+}
+
+impl SubmitAnyBuilder {
+    /// Returns true if equal to `SubmitAnyBuilder::Empty`.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        matches!(self, SubmitAnyBuilder::Empty)
+    }
 }
 
 /// Access to a resource was denied.
@@ -402,16 +425,16 @@ pub enum AccessError {
     BufferNotInitialized,
 
     /// Trying to use a swapchain image without depending on a corresponding acquire image future.
-    SwapchainImageAcquireOnly,
+    SwapchainImageNotAcquired,
 }
 
 impl Error for AccessError {}
 
-impl fmt::Display for AccessError {
+impl Display for AccessError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 AccessError::ExclusiveDenied => "only shared access is allowed for this resource",
@@ -428,7 +451,7 @@ impl fmt::Display for AccessError {
                 AccessError::BufferNotInitialized => {
                     "trying to use a buffer that still contains garbage data"
                 }
-                AccessError::SwapchainImageAcquireOnly => {
+                AccessError::SwapchainImageNotAcquired => {
                     "trying to use a swapchain image without depending on a corresponding acquire \
                  image future"
                 }
@@ -448,11 +471,11 @@ pub enum AccessCheckError {
 
 impl Error for AccessCheckError {}
 
-impl fmt::Display for AccessCheckError {
+impl Display for AccessCheckError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 AccessCheckError::Denied(_) => "access to the resource has been denied",
@@ -494,6 +517,10 @@ pub enum FlushError {
 
     /// The flush operation needed to block, but the timeout has elapsed.
     Timeout,
+
+    /// A non-zero present_id must be greater than any non-zero present_id passed previously
+    /// for the same swapchain.
+    PresentIdLessThanOrEqual,
 }
 
 impl Error for FlushError {
@@ -507,11 +534,11 @@ impl Error for FlushError {
     }
 }
 
-impl fmt::Display for FlushError {
+impl Display for FlushError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 FlushError::AccessError(_) => "access to a resource has been denied",
@@ -526,6 +553,9 @@ impl fmt::Display for FlushError {
                     "the flush operation needed to block, but the timeout has \
                                     elapsed"
                 }
+                FlushError::PresentIdLessThanOrEqual => {
+                    "present id is less than or equal to previous"
+                }
             }
         )
     }
@@ -538,48 +568,30 @@ impl From<AccessError> for FlushError {
     }
 }
 
-impl From<SubmitPresentError> for FlushError {
+impl From<VulkanError> for FlushError {
     #[inline]
-    fn from(err: SubmitPresentError) -> FlushError {
+    fn from(err: VulkanError) -> Self {
         match err {
-            SubmitPresentError::OomError(err) => FlushError::OomError(err),
-            SubmitPresentError::DeviceLost => FlushError::DeviceLost,
-            SubmitPresentError::SurfaceLost => FlushError::SurfaceLost,
-            SubmitPresentError::OutOfDate => FlushError::OutOfDate,
-            SubmitPresentError::FullScreenExclusiveModeLost => {
-                FlushError::FullScreenExclusiveModeLost
+            VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
+                Self::OomError(err.into())
             }
+            VulkanError::DeviceLost => Self::DeviceLost,
+            VulkanError::SurfaceLost => Self::SurfaceLost,
+            VulkanError::OutOfDate => Self::OutOfDate,
+            VulkanError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
 
-impl From<SubmitCommandBufferError> for FlushError {
+impl From<FenceError> for FlushError {
     #[inline]
-    fn from(err: SubmitCommandBufferError) -> FlushError {
+    fn from(err: FenceError) -> FlushError {
         match err {
-            SubmitCommandBufferError::OomError(err) => FlushError::OomError(err),
-            SubmitCommandBufferError::DeviceLost => FlushError::DeviceLost,
-        }
-    }
-}
-
-impl From<SubmitBindSparseError> for FlushError {
-    #[inline]
-    fn from(err: SubmitBindSparseError) -> FlushError {
-        match err {
-            SubmitBindSparseError::OomError(err) => FlushError::OomError(err),
-            SubmitBindSparseError::DeviceLost => FlushError::DeviceLost,
-        }
-    }
-}
-
-impl From<FenceWaitError> for FlushError {
-    #[inline]
-    fn from(err: FenceWaitError) -> FlushError {
-        match err {
-            FenceWaitError::OomError(err) => FlushError::OomError(err),
-            FenceWaitError::Timeout => FlushError::Timeout,
-            FenceWaitError::DeviceLostError => FlushError::DeviceLost,
+            FenceError::OomError(err) => FlushError::OomError(err),
+            FenceError::Timeout => FlushError::Timeout,
+            FenceError::DeviceLost => FlushError::DeviceLost,
+            FenceError::RequirementNotMet { .. } | FenceError::InUse => unreachable!(),
         }
     }
 }

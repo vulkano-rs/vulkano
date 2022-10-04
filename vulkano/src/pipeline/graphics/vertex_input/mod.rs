@@ -200,7 +200,7 @@ pub struct VertexInputAttributeDescription {
 }
 
 /// How the vertex source should be unrolled.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VertexInputRate {
     /// Each element of the source corresponds to a vertex.
     Vertex,

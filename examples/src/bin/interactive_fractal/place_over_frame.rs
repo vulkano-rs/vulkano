@@ -48,9 +48,11 @@ impl RenderPassPlaceOverFrame {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-        let command_buffer_allocator =
-            StandardCommandBufferAllocator::new(gfx_queue.device().clone(), gfx_queue.family())
-                .unwrap();
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(
+            gfx_queue.device().clone(),
+            gfx_queue.queue_family_index(),
+        )
+        .unwrap();
         let pixels_draw_pipeline =
             PixelsDrawPipeline::new(gfx_queue.clone(), subpass, command_buffer_allocator.clone());
 
@@ -87,7 +89,7 @@ impl RenderPassPlaceOverFrame {
         // Create primary command buffer builder
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
-            self.gfx_queue.family(),
+            self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();

@@ -33,8 +33,7 @@ use std::{
 };
 use vulkano::{
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     instance::{Instance, InstanceCreateInfo},
     pipeline::{cache::PipelineCache, ComputePipeline},
@@ -57,14 +56,17 @@ fn main() {
     // Choose which physical device to use.
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_compute())
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .position(|q| q.queue_flags.compute)
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -72,6 +74,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -86,7 +89,10 @@ fn main() {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -185,6 +191,9 @@ fn main() {
     // in the byte blob here, but it should still work.
     // If it doesn't, please check if there is an issue describing this problem, and if
     // not open a new one, on the GitHub page.
-    println!("first : {:?}", pipeline_cache.get_data().unwrap());
-    println!("second: {:?}", second_cache.get_data().unwrap());
+    assert_eq!(
+        pipeline_cache.get_data().unwrap(),
+        second_cache.get_data().unwrap()
+    );
+    println!("Success");
 }

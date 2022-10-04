@@ -21,7 +21,10 @@
 //! formats, the logic operation is applied. For normalized integer formats, the logic operation
 //! will take precedence if it is activated, otherwise the blending operation is applied.
 
-use crate::pipeline::StateMode;
+use crate::{
+    macros::{vulkan_bitflags, vulkan_enum},
+    pipeline::StateMode,
+};
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
@@ -140,55 +143,65 @@ impl Default for ColorBlendState {
     }
 }
 
-/// Which logical operation to apply to the output values.
-///
-/// The operation is applied individually for each channel (red, green, blue and alpha).
-///
-/// Only relevant for integer or unsigned attachments.
-///
-/// Also note that some implementations don't support logic operations.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum LogicOp {
-    /// Returns `0`.
-    Clear = ash::vk::LogicOp::CLEAR.as_raw(),
-    /// Returns `source & destination`.
-    And = ash::vk::LogicOp::AND.as_raw(),
-    /// Returns `source & !destination`.
-    AndReverse = ash::vk::LogicOp::AND_REVERSE.as_raw(),
-    /// Returns `source`.
-    Copy = ash::vk::LogicOp::COPY.as_raw(),
-    /// Returns `!source & destination`.
-    AndInverted = ash::vk::LogicOp::AND_INVERTED.as_raw(),
-    /// Returns `destination`.
-    Noop = ash::vk::LogicOp::NO_OP.as_raw(),
-    /// Returns `source ^ destination`.
-    Xor = ash::vk::LogicOp::XOR.as_raw(),
-    /// Returns `source | destination`.
-    Or = ash::vk::LogicOp::OR.as_raw(),
-    /// Returns `!(source | destination)`.
-    Nor = ash::vk::LogicOp::NOR.as_raw(),
-    /// Returns `!(source ^ destination)`.
-    Equivalent = ash::vk::LogicOp::EQUIVALENT.as_raw(),
-    /// Returns `!destination`.
-    Invert = ash::vk::LogicOp::INVERT.as_raw(),
-    /// Returns `source | !destination.
-    OrReverse = ash::vk::LogicOp::OR_REVERSE.as_raw(),
-    /// Returns `!source`.
-    CopyInverted = ash::vk::LogicOp::COPY_INVERTED.as_raw(),
-    /// Returns `!source | destination`.
-    OrInverted = ash::vk::LogicOp::OR_INVERTED.as_raw(),
-    /// Returns `!(source & destination)`.
-    Nand = ash::vk::LogicOp::NAND.as_raw(),
-    /// Returns `!0` (all bits set to 1).
-    Set = ash::vk::LogicOp::SET.as_raw(),
-}
+vulkan_enum! {
+    /// Which logical operation to apply to the output values.
+    ///
+    /// The operation is applied individually for each channel (red, green, blue and alpha).
+    ///
+    /// Only relevant for integer or unsigned attachments.
+    ///
+    /// Also note that some implementations don't support logic operations.
+    #[non_exhaustive]
+    LogicOp = LogicOp(i32);
 
-impl From<LogicOp> for ash::vk::LogicOp {
-    #[inline]
-    fn from(val: LogicOp) -> Self {
-        Self::from_raw(val as i32)
-    }
+    /// Returns `0`.
+    Clear = CLEAR,
+
+    /// Returns `source & destination`.
+    And = AND,
+
+    /// Returns `source & !destination`.
+    AndReverse = AND_REVERSE,
+
+    /// Returns `source`.
+    Copy = COPY,
+
+    /// Returns `!source & destination`.
+    AndInverted = AND_INVERTED,
+
+    /// Returns `destination`.
+    Noop = NO_OP,
+
+    /// Returns `source ^ destination`.
+    Xor = XOR,
+
+    /// Returns `source | destination`.
+    Or = OR,
+
+    /// Returns `!(source | destination)`.
+    Nor = NOR,
+
+    /// Returns `!(source ^ destination)`.
+    Equivalent = EQUIVALENT,
+
+    /// Returns `!destination`.
+    Invert = INVERT,
+
+    /// Returns `source | !destination.
+    OrReverse = OR_REVERSE,
+
+    /// Returns `!source`.
+    CopyInverted = COPY_INVERTED,
+
+    /// Returns `!source | destination`.
+    OrInverted = OR_INVERTED,
+
+    /// Returns `!(source & destination)`.
+    Nand = NAND,
+
+    /// Returns `!0` (all bits set to 1).
+    Set = SET,
+
 }
 
 impl Default for LogicOp {
@@ -304,162 +317,343 @@ impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
     }
 }
 
-/// The operation that takes `source` (output from the fragment shader), `destination` (value
-/// currently in the framebuffer attachment) and `blend_constant` input values,
-/// and produces new inputs to be fed to `BlendOp`.
-///
-/// Some operations take `source1` as an input, representing the second source value. The
-/// [`dual_src_blend`](crate::device::Features::dual_src_blend) feature must be enabled on the
-/// device when these are used.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum BlendFactor {
+vulkan_enum! {
+    /// The operation that takes `source` (output from the fragment shader), `destination` (value
+    /// currently in the framebuffer attachment) and `blend_constant` input values,
+    /// and produces new inputs to be fed to `BlendOp`.
+    ///
+    /// Some operations take `source1` as an input, representing the second source value. The
+    /// [`dual_src_blend`](crate::device::Features::dual_src_blend) feature must be enabled on the
+    /// device when these are used.
+    #[non_exhaustive]
+    BlendFactor = BlendFactor(i32);
+
     /// Always `0`.
-    Zero = ash::vk::BlendFactor::ZERO.as_raw(),
+    Zero = ZERO,
 
     /// Always `1`.
-    One = ash::vk::BlendFactor::ONE.as_raw(),
+    One = ONE,
 
     /// `source` component-wise.
-    SrcColor = ash::vk::BlendFactor::SRC_COLOR.as_raw(),
+    SrcColor = SRC_COLOR,
 
     /// `1 - source` component-wise.
-    OneMinusSrcColor = ash::vk::BlendFactor::ONE_MINUS_SRC_COLOR.as_raw(),
+    OneMinusSrcColor = ONE_MINUS_SRC_COLOR,
 
     /// `destination` component-wise.
-    DstColor = ash::vk::BlendFactor::DST_COLOR.as_raw(),
+    DstColor = DST_COLOR,
 
     /// `1 - destination` component-wise.
-    OneMinusDstColor = ash::vk::BlendFactor::ONE_MINUS_DST_COLOR.as_raw(),
+    OneMinusDstColor = ONE_MINUS_DST_COLOR,
 
     /// `source.a` for all components.
-    SrcAlpha = ash::vk::BlendFactor::SRC_ALPHA.as_raw(),
+    SrcAlpha = SRC_ALPHA,
 
     /// `1 - source.a` for all components.
-    OneMinusSrcAlpha = ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA.as_raw(),
+    OneMinusSrcAlpha = ONE_MINUS_SRC_ALPHA,
 
     /// `destination.a` for all components.
-    DstAlpha = ash::vk::BlendFactor::DST_ALPHA.as_raw(),
+    DstAlpha = DST_ALPHA,
 
     /// `1 - destination.a` for all components.
-    OneMinusDstAlpha = ash::vk::BlendFactor::ONE_MINUS_DST_ALPHA.as_raw(),
+    OneMinusDstAlpha = ONE_MINUS_DST_ALPHA,
 
     /// `blend_constants` component-wise.
-    ConstantColor = ash::vk::BlendFactor::CONSTANT_COLOR.as_raw(),
+    ConstantColor = CONSTANT_COLOR,
 
     /// `1 - blend_constants` component-wise.
-    OneMinusConstantColor = ash::vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR.as_raw(),
+    OneMinusConstantColor = ONE_MINUS_CONSTANT_COLOR,
 
     /// `blend_constants.a` for all components.
-    ConstantAlpha = ash::vk::BlendFactor::CONSTANT_ALPHA.as_raw(),
+    ConstantAlpha = CONSTANT_ALPHA,
 
     /// `1 - blend_constants.a` for all components.
-    OneMinusConstantAlpha = ash::vk::BlendFactor::ONE_MINUS_CONSTANT_ALPHA.as_raw(),
+    OneMinusConstantAlpha = ONE_MINUS_CONSTANT_ALPHA,
 
     /// For the alpha component, always `1`. For the color components,
     /// `min(source.a, 1 - destination.a)` for all components.
-    SrcAlphaSaturate = ash::vk::BlendFactor::SRC_ALPHA_SATURATE.as_raw(),
+    SrcAlphaSaturate = SRC_ALPHA_SATURATE,
 
     /// `source1` component-wise.
-    Src1Color = ash::vk::BlendFactor::SRC1_COLOR.as_raw(),
+    Src1Color = SRC1_COLOR,
 
     /// `1 - source1` component-wise.
-    OneMinusSrc1Color = ash::vk::BlendFactor::ONE_MINUS_SRC1_COLOR.as_raw(),
+    OneMinusSrc1Color = ONE_MINUS_SRC1_COLOR,
 
     /// `source1.a` for all components.
-    Src1Alpha = ash::vk::BlendFactor::SRC1_ALPHA.as_raw(),
+    Src1Alpha = SRC1_ALPHA,
 
     /// `1 - source1.a` for all components.
-    OneMinusSrc1Alpha = ash::vk::BlendFactor::ONE_MINUS_SRC1_ALPHA.as_raw(),
+    OneMinusSrc1Alpha = ONE_MINUS_SRC1_ALPHA,
 }
 
-impl From<BlendFactor> for ash::vk::BlendFactor {
-    #[inline]
-    fn from(val: BlendFactor) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// The arithmetic operation that is applied between the `source` and `destination` component
+    /// values, after the appropriate `BlendFactor` is applied to both.
+    #[non_exhaustive]
+    BlendOp = BlendOp(i32);
 
-/// The arithmetic operation that is applied between the `source` and `destination` component
-/// values, after the appropriate `BlendFactor` is applied to both.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum BlendOp {
     /// `source + destination`.
-    Add = ash::vk::BlendOp::ADD.as_raw(),
+    Add = ADD,
 
     /// `source - destination`.
-    Subtract = ash::vk::BlendOp::SUBTRACT.as_raw(),
+    Subtract = SUBTRACT,
 
     /// `destination - source`.
-    ReverseSubtract = ash::vk::BlendOp::REVERSE_SUBTRACT.as_raw(),
+    ReverseSubtract = REVERSE_SUBTRACT,
 
     /// `min(source, destination)`.
-    Min = ash::vk::BlendOp::MIN.as_raw(),
+    Min = MIN,
 
     /// `max(source, destination)`.
-    Max = ash::vk::BlendOp::MAX.as_raw(),
+    Max = MAX,
+
+    /*
+    // TODO: document
+    Zero = ZERO_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Src = SRC_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Dst = DST_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    SrcOver = SRC_OVER_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    DstOver = DST_OVER_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    SrcIn = SRC_IN_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    DstIn = DST_IN_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    SrcOut = SRC_OUT_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    DstOut = DST_OUT_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    SrcAtop = SRC_ATOP_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    DstAtop = DST_ATOP_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Xor = XOR_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Multiply = MULTIPLY_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Screen = SCREEN_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Overlay = OVERLAY_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Darken = DARKEN_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Lighten = LIGHTEN_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Colordodge = COLORDODGE_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Colorburn = COLORBURN_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Hardlight = HARDLIGHT_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Softlight = SOFTLIGHT_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Difference = DIFFERENCE_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Exclusion = EXCLUSION_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Invert = INVERT_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    InvertRgb = INVERT_RGB_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Lineardodge = LINEARDODGE_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Linearburn = LINEARBURN_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Vividlight = VIVIDLIGHT_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Linearlight = LINEARLIGHT_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Pinlight = PINLIGHT_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Hardmix = HARDMIX_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    HslHue = HSL_HUE_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    HslSaturation = HSL_SATURATION_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    HslColor = HSL_COLOR_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    HslLuminosity = HSL_LUMINOSITY_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Plus = PLUS_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    PlusClamped = PLUS_CLAMPED_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    PlusClampedAlpha = PLUS_CLAMPED_ALPHA_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    PlusDarker = PLUS_DARKER_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Minus = MINUS_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    MinusClamped = MINUS_CLAMPED_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Contrast = CONTRAST_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    InvertOvg = INVERT_OVG_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Red = RED_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Green = GREEN_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+
+    // TODO: document
+    Blue = BLUE_EXT {
+        device_extensions: [ext_blend_operation_advanced],
+    },
+     */
 }
 
-impl From<BlendOp> for ash::vk::BlendOp {
-    #[inline]
-    fn from(val: BlendOp) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_bitflags! {
+    /// A mask specifying color components that can be written to a framebuffer attachment.
+    ColorComponents = ColorComponentFlags(u32);
 
-/// A mask specifying color components that can be written to a framebuffer attachment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ColorComponents {
-    #[allow(missing_docs)]
-    pub r: bool,
-    #[allow(missing_docs)]
-    pub g: bool,
-    #[allow(missing_docs)]
-    pub b: bool,
-    #[allow(missing_docs)]
-    pub a: bool,
-}
+    /// The red component.
+    r = R,
 
-impl ColorComponents {
-    /// Returns a mask that specifies no components.
-    #[inline]
-    pub fn none() -> Self {
-        Self {
-            r: false,
-            g: false,
-            b: false,
-            a: false,
-        }
-    }
+    /// The green component.
+    g = G,
 
-    /// Returns a mask that specifies all components.
-    #[inline]
-    pub fn all() -> Self {
-        Self {
-            r: true,
-            g: true,
-            b: true,
-            a: true,
-        }
-    }
-}
+    /// The blue component.
+    b = B,
 
-impl From<ColorComponents> for ash::vk::ColorComponentFlags {
-    fn from(val: ColorComponents) -> Self {
-        let mut result = Self::empty();
-        if val.r {
-            result |= ash::vk::ColorComponentFlags::R;
-        }
-        if val.g {
-            result |= ash::vk::ColorComponentFlags::G;
-        }
-        if val.b {
-            result |= ash::vk::ColorComponentFlags::B;
-        }
-        if val.a {
-            result |= ash::vk::ColorComponentFlags::A;
-        }
-        result
-    }
+    /// The alpha component.
+    a = A,
 }

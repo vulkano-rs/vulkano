@@ -22,26 +22,25 @@ use super::{
 use crate::{
     command_buffer::{
         allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferBeginError,
-        CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo, PrimaryAutoCommandBuffer,
-        PrimaryCommandBuffer,
+        CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo, PrimaryCommandBuffer,
     },
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned, Queue},
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
             MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation,
             StandardMemoryPoolAlloc,
         },
-        DedicatedAllocation, DeviceMemoryAllocationError, DeviceMemoryExportError,
-        ExternalMemoryHandleType, MemoryPool, MemoryRequirements,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType, MemoryPool,
+        MemoryRequirements,
     },
     sync::{NowFuture, Sharing},
     DeviceSize,
 };
-use core::fmt;
 use smallvec::SmallVec;
 use std::{
     error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
     fs::File,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -86,7 +85,7 @@ use std::{
 /// // Create a CPU accessible buffer initialized with the data.
 /// let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
 ///     device.clone(),
-///     BufferUsage::transfer_src(), // Specify this buffer will be used as a transfer source.
+///     BufferUsage { transfer_src: true, ..BufferUsage::empty() }, // Specify this buffer will be used as a transfer source.
 ///     false,
 ///     data,
 /// )
@@ -96,15 +95,19 @@ use std::{
 /// let device_local_buffer = DeviceLocalBuffer::<[f32]>::array(
 ///     device.clone(),
 ///     10_000 as vulkano::DeviceSize,
-///     BufferUsage::storage_buffer() | BufferUsage::transfer_dst(), // Specify use as a storage buffer and transfer destination.
-///     device.active_queue_families(),
+///     BufferUsage {
+///         storage_buffer: true,
+///         transfer_dst: true,
+///         ..BufferUsage::empty()
+///     }, // Specify use as a storage buffer and transfer destination.
+///     device.active_queue_family_indices().iter().copied(),
 /// )
 /// .unwrap();
 ///
 /// // Create a one-time command to copy between the buffers.
 /// let mut cbb = AutoCommandBufferBuilder::primary(
 ///     &cb_allocator,
-///     queue.family(),
+///     queue.queue_family_index(),
 ///     CommandBufferUsage::OneTimeSubmit,
 /// )
 /// .unwrap();
@@ -136,7 +139,7 @@ where
     memory: A,
 
     // Queue families allowed to access this buffer.
-    queue_families: SmallVec<[u32; 4]>,
+    queue_family_indices: SmallVec<[u32; 4]>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -152,16 +155,18 @@ where
     ///
     /// - Panics if `T` has zero size.
     #[inline]
-    pub fn new<'a, I>(
+    pub fn new(
         device: Arc<Device>,
         usage: BufferUsage,
-        queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryError> {
         unsafe {
-            DeviceLocalBuffer::raw(device, size_of::<T>() as DeviceSize, usage, queue_families)
+            DeviceLocalBuffer::raw(
+                device,
+                size_of::<T>() as DeviceSize,
+                usage,
+                queue_family_indices,
+            )
         }
     }
 }
@@ -176,21 +181,20 @@ where
     /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you must
     /// either submit your operation after this future, or execute this future and wait for it to
     /// be finished before submitting your own operation.
-    pub fn from_buffer<B, Cba>(
+    pub fn from_buffer<B>(
         source: Arc<B>,
         usage: BufferUsage,
-        command_buffer_allocator: &Cba,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<
         (
             Arc<DeviceLocalBuffer<T>>,
-            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer<Cba::Alloc>>,
+            CommandBufferExecFuture<NowFuture>,
         ),
         DeviceLocalBufferCreationError,
     >
     where
         B: TypedBufferAccess<Content = T> + 'static,
-        Cba: CommandBufferAllocator,
     {
         unsafe {
             // We automatically set `transfer_dst` to true in order to avoid annoying errors.
@@ -203,12 +207,16 @@ where
                 source.device().clone(),
                 source.size(),
                 actual_usage,
-                source.device().active_queue_families(),
+                source
+                    .device()
+                    .active_queue_family_indices()
+                    .iter()
+                    .copied(),
             )?;
 
             let mut cbb = AutoCommandBufferBuilder::primary(
                 command_buffer_allocator,
-                queue.family(),
+                queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )?;
             cbb.copy_buffer(CopyBufferInfo::buffers(source, buffer.clone()))
@@ -243,24 +251,24 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    pub fn from_data<Cba>(
+    pub fn from_data(
         data: T,
         usage: BufferUsage,
-        command_buffer_allocator: &Cba,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<
         (
             Arc<DeviceLocalBuffer<T>>,
-            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer<Cba::Alloc>>,
+            CommandBufferExecFuture<NowFuture>,
         ),
         DeviceLocalBufferCreationError,
-    >
-    where
-        Cba: CommandBufferAllocator,
-    {
+    > {
         let source = CpuAccessibleBuffer::from_data(
             queue.device().clone(),
-            BufferUsage::transfer_src(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             false,
             data,
         )?;
@@ -276,26 +284,28 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `data` is empty.
-    pub fn from_iter<D, Cba>(
+    pub fn from_iter<D>(
         data: D,
         usage: BufferUsage,
-        command_buffer_allocator: &Cba,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<
         (
             Arc<DeviceLocalBuffer<[T]>>,
-            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer<Cba::Alloc>>,
+            CommandBufferExecFuture<NowFuture>,
         ),
         DeviceLocalBufferCreationError,
     >
     where
         D: IntoIterator<Item = T>,
         D::IntoIter: ExactSizeIterator,
-        Cba: CommandBufferAllocator,
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
-            BufferUsage::transfer_src(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             false,
             data,
         )?;
@@ -314,21 +324,18 @@ where
     /// - Panics if `T` has zero size.
     /// - Panics if `len` is zero.
     #[inline]
-    pub fn array<'a, I>(
+    pub fn array(
         device: Arc<Device>,
         len: DeviceSize,
         usage: BufferUsage,
-        queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryError> {
         unsafe {
             DeviceLocalBuffer::raw(
                 device,
                 len * size_of::<T>() as DeviceSize,
                 usage,
-                queue_families,
+                queue_family_indices,
             )
         }
     }
@@ -347,30 +354,24 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    pub unsafe fn raw<'a, I>(
+    pub unsafe fn raw(
         device: Arc<Device>,
         size: DeviceSize,
         usage: BufferUsage,
-        queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryError> {
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
+        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_family_indices)?;
 
         let memory = MemoryPool::alloc_from_requirements(
-            device.standard_memory_pool(),
+            &device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::DoNotMap,
             Some(DedicatedAllocation::Buffer(&buffer)),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -383,7 +384,7 @@ where
         Ok(Arc::new(DeviceLocalBuffer {
             inner: buffer,
             memory,
-            queue_families,
+            queue_family_indices,
             marker: PhantomData,
         }))
     }
@@ -393,24 +394,18 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    pub unsafe fn raw_with_exportable_fd<'a, I>(
+    pub unsafe fn raw_with_exportable_fd(
         device: Arc<Device>,
         size: DeviceSize,
         usage: BufferUsage,
-        queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryError> {
         assert!(device.enabled_extensions().khr_external_memory_fd);
         assert!(device.enabled_extensions().khr_external_memory);
 
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
+        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_family_indices)?;
 
         let memory = alloc_dedicated_with_exportable_fd(
             device,
@@ -419,7 +414,7 @@ where
             MappingRequirement::DoNotMap,
             DedicatedAllocation::Buffer(&buffer),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -433,7 +428,7 @@ where
         Ok(Arc::new(DeviceLocalBuffer {
             inner: buffer,
             memory,
-            queue_families,
+            queue_family_indices,
             marker: PhantomData,
         }))
     }
@@ -442,14 +437,14 @@ where
         device: &Arc<Device>,
         size: DeviceSize,
         usage: BufferUsage,
-        queue_families: &SmallVec<[u32; 4]>,
-    ) -> Result<(Arc<UnsafeBuffer>, MemoryRequirements), DeviceMemoryAllocationError> {
+        queue_family_indices: &SmallVec<[u32; 4]>,
+    ) -> Result<(Arc<UnsafeBuffer>, MemoryRequirements), DeviceMemoryError> {
         let buffer = {
             match UnsafeBuffer::new(
                 device.clone(),
                 UnsafeBufferCreateInfo {
-                    sharing: if queue_families.len() >= 2 {
-                        Sharing::Concurrent(queue_families.clone())
+                    sharing: if queue_family_indices.len() >= 2 {
+                        Sharing::Concurrent(queue_family_indices.clone())
                     } else {
                         Sharing::Exclusive
                     },
@@ -471,7 +466,7 @@ where
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
     /// Only works on Linux/BSD.
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryExportError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
@@ -483,18 +478,9 @@ where
     T: BufferContents + ?Sized,
 {
     /// Returns the queue families this buffer can be used on.
-    // TODO: use a custom iterator
     #[inline]
-    pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families
-            .iter()
-            .map(|&num| {
-                self.device()
-                    .physical_device()
-                    .queue_family_by_id(num)
-                    .unwrap()
-            })
-            .collect()
+    pub fn queue_family_indices(&self) -> &[u32] {
+        &self.queue_family_indices
     }
 }
 
@@ -514,7 +500,7 @@ where
     A: Send + Sync,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.inner,
             offset: 0,
@@ -578,7 +564,7 @@ where
 
 #[derive(Clone, Debug)]
 pub enum DeviceLocalBufferCreationError {
-    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    DeviceMemoryAllocationError(DeviceMemoryError),
     CommandBufferBeginError(CommandBufferBeginError),
 }
 
@@ -592,9 +578,9 @@ impl Error for DeviceLocalBufferCreationError {
     }
 }
 
-impl fmt::Display for DeviceLocalBufferCreationError {
+impl Display for DeviceLocalBufferCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),
             Self::CommandBufferBeginError(err) => err.fmt(f),
@@ -602,9 +588,9 @@ impl fmt::Display for DeviceLocalBufferCreationError {
     }
 }
 
-impl From<DeviceMemoryAllocationError> for DeviceLocalBufferCreationError {
+impl From<DeviceMemoryError> for DeviceLocalBufferCreationError {
     #[inline]
-    fn from(e: DeviceMemoryAllocationError) -> Self {
+    fn from(e: DeviceMemoryError) -> Self {
         Self::DeviceMemoryAllocationError(e)
     }
 }
@@ -626,18 +612,34 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let cb_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
-
-        let (buffer, _) =
-            DeviceLocalBuffer::from_data(12u32, BufferUsage::all(), &cb_allocator, queue.clone())
+            StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
                 .unwrap();
 
-        let destination =
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
+        let (buffer, _) = DeviceLocalBuffer::from_data(
+            12u32,
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
+            &cb_allocator,
+            queue.clone(),
+        )
+        .unwrap();
+
+        let destination = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage {
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            0,
+        )
+        .unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             &cb_allocator,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();
@@ -660,11 +662,15 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let cb_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+            StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
+                .unwrap();
 
         let (buffer, _) = DeviceLocalBuffer::from_iter(
             (0..512u32).map(|n| n * 2),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             &cb_allocator,
             queue.clone(),
         )
@@ -672,7 +678,10 @@ mod tests {
 
         let destination = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
             false,
             (0..512).map(|_| 0u32),
         )
@@ -680,7 +689,7 @@ mod tests {
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             &cb_allocator,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();
@@ -705,11 +714,20 @@ mod tests {
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
+        let cb_allocator =
+            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
 
         assert_should_panic!({
-            DeviceLocalBuffer::from_data((), BufferUsage::all(), &cb_allocator, queue.clone())
-                .unwrap();
+            DeviceLocalBuffer::from_data(
+                (),
+                BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
+                &cb_allocator,
+                queue.clone(),
+            )
+            .unwrap();
         });
     }
 

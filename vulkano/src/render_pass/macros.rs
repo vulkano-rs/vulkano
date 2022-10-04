@@ -156,11 +156,11 @@ macro_rules! ordered_passes_renderpass {
                     // TODO: correct values
                     let source_stages = $crate::sync::PipelineStages {
                         all_graphics: true,
-                        ..$crate::sync::PipelineStages::none()
+                        ..$crate::sync::PipelineStages::empty()
                     };
                     let destination_stages = $crate::sync::PipelineStages {
                         all_graphics: true,
-                        ..$crate::sync::PipelineStages::none()
+                        ..$crate::sync::PipelineStages::empty()
                     };
                     let source_access = source_stages.supported_access();
                     let destination_access = destination_stages.supported_access();

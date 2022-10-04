@@ -13,13 +13,13 @@
 //! validation, but you should not assume that code that is read successfully is valid.
 //!
 //! For more information about SPIR-V modules, instructions and types, see the
-//! [SPIR-V specification](https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.html).
+//! [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html).
 
 use crate::Version;
 use std::{
     collections::HashMap,
     error::Error,
-    fmt::{self, Display, Formatter},
+    fmt::{Display, Error as FmtError, Formatter},
     ops::Range,
     string::FromUtf8Error,
 };
@@ -396,7 +396,7 @@ impl Spirv {
     /// - Panics if `id` is not defined in this module. This can in theory only happpen if you are
     ///   mixing `Id`s from different modules.
     #[inline]
-    pub fn id(&self, id: Id) -> IdInfo {
+    pub fn id(&self, id: Id) -> IdInfo<'_> {
         IdInfo {
             data_indices: &self.ids[&id],
             instructions: &self.instructions,
@@ -571,7 +571,7 @@ impl From<Id> for u32 {
 }
 
 impl Display for Id {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(f, "%{}", self.0)
     }
 }
@@ -687,7 +687,7 @@ pub enum SpirvError {
 
 impl Display for SpirvError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::BadLayout { index } => write!(
                 f,
@@ -746,7 +746,7 @@ pub struct ParseError {
 
 impl Display for ParseError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "at instruction {}, word {}: {}",
@@ -771,7 +771,7 @@ pub enum ParseErrors {
 
 impl Display for ParseErrors {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::FromUtf8Error(_) => write!(f, "invalid UTF-8 in string literal"),
             Self::LeftoverOperands => write!(f, "unparsed operands remaining"),

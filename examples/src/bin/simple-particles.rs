@@ -25,8 +25,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     image::{view::ImageView, ImageUsage},
     impl_vertex,
@@ -40,7 +39,9 @@ use vulkano::{
         GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    swapchain::{PresentMode, Swapchain, SwapchainCreateInfo},
+    swapchain::{
+        PresentMode, Swapchain, SwapchainAbstract, SwapchainCreateInfo, SwapchainPresentInfo,
+    },
     sync::{FenceSignalFuture, GpuFuture},
     VulkanLibrary,
 };
@@ -82,14 +83,20 @@ fn main() {
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
+                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                })
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -97,6 +104,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -109,7 +117,10 @@ fn main() {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -117,12 +128,14 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (swapchain, images) = {
-        let surface_capabilities = physical_device
+        let surface_capabilities = device
+            .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
 
         let image_format = Some(
-            physical_device
+            device
+                .physical_device()
                 .surface_formats(&surface, Default::default())
                 .unwrap()[0]
                 .0,
@@ -135,7 +148,10 @@ fn main() {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent: [WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32],
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()
@@ -248,7 +264,12 @@ fn main() {
                     verticies[index].pos = pos;
 	                verticies[index].vel = vel * exp(friction * push.delta_time);
                 }
-            "
+            ",
+            types_meta: {
+                use bytemuck::{Pod, Zeroable};
+
+                #[derive(Clone, Copy, Zeroable, Pod)]
+            },
         }
     }
     // Vertex shader determines color and is run once per particle.
@@ -300,7 +321,7 @@ fn main() {
 
     let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
 
     #[repr(C)]
     #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
@@ -324,7 +345,10 @@ fn main() {
         // Create a CPU accessible buffer initialized with the vertex data.
         let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::transfer_src(), // Specify this buffer will be used as a transfer source.
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            }, // Specify this buffer will be used as a transfer source.
             false,
             vertices,
         )
@@ -334,15 +358,22 @@ fn main() {
         let device_local_buffer = DeviceLocalBuffer::<[Vertex]>::array(
             device.clone(),
             PARTICLE_COUNT as vulkano::DeviceSize,
-            BufferUsage::storage_buffer() | BufferUsage::vertex_buffer_transfer_dst(), // Specify use as a storage buffer, vertex buffer, and transfer destination.
-            device.active_queue_families(),
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            } | BufferUsage {
+                transfer_dst: true,
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            }, // Specify use as a storage buffer, vertex buffer, and transfer destination.
+            device.active_queue_family_indices().iter().copied(),
         )
         .unwrap();
 
         // Create one-time command to copy between the buffers.
         let mut cbb = AutoCommandBufferBuilder::primary(
             &command_buffer_allocator,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
@@ -410,7 +441,7 @@ fn main() {
         .unwrap();
 
     let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; framebuffers.len()];
-    let mut previous_fence_index = 0;
+    let mut previous_fence_index = 0u32;
 
     let start_time = SystemTime::now();
     let mut last_frame_time = start_time;
@@ -459,12 +490,12 @@ fn main() {
 
                 // If this image buffer already has a future then attempt to cleanup fence resources.
                 // Usually the future for this index will have completed by the time we are rendering it again.
-                if let Some(image_fence) = &mut fences[image_index] {
+                if let Some(image_fence) = &mut fences[image_index as usize] {
                     image_fence.cleanup_finished()
                 }
 
                 // If the previous image has a fence then use it for synchronization, else create a new one.
-                let previous_future = match fences[previous_fence_index].clone() {
+                let previous_future = match fences[previous_fence_index as usize].clone() {
                     // Ensure current frame is synchronized with previous.
                     Some(fence) => fence.boxed(),
 
@@ -474,7 +505,7 @@ fn main() {
 
                 let mut builder = AutoCommandBufferBuilder::primary(
                     &command_buffer_allocator,
-                    queue.family(),
+                    queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
@@ -495,7 +526,9 @@ fn main() {
                     .begin_render_pass(
                         RenderPassBeginInfo {
                             clear_values: vec![Some([0., 0., 0., 1.].into())],
-                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_index].clone())
+                            ..RenderPassBeginInfo::framebuffer(
+                                framebuffers[image_index as usize].clone(),
+                            )
                         },
                         SubpassContents::Inline,
                     )
@@ -512,11 +545,14 @@ fn main() {
                     .join(acquire_future)
                     .then_execute(queue.clone(), command_buffer)
                     .unwrap()
-                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_index)
+                    .then_swapchain_present(
+                        queue.clone(),
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                    )
                     .then_signal_fence_and_flush();
 
                 // Update this frame's future with current fence.
-                fences[image_index] = match future {
+                fences[image_index as usize] = match future {
                     // Success, store result into vector.
                     Ok(future) => Some(Arc::new(future)),
 

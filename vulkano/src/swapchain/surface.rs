@@ -9,24 +9,27 @@
 
 use super::{FullScreenExclusive, Win32Monitor};
 use crate::{
+    format::Format,
     image::ImageUsage,
     instance::Instance,
+    macros::{vulkan_bitflags, vulkan_enum},
     swapchain::{
         display::{DisplayMode, DisplayPlane},
         SurfaceSwapchainLock,
     },
-    OomError, VulkanError, VulkanObject,
+    OomError, RequiresOneOf, VulkanError, VulkanObject,
 };
 
 #[cfg(target_os = "ios")]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
 
+use parking_lot::RwLock;
 use std::{
+    collections::HashMap,
     error::Error,
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
-    os::raw::c_ulong,
     ptr,
     sync::{atomic::AtomicBool, Arc},
 };
@@ -44,23 +47,34 @@ pub struct Surface<W> {
     has_swapchain: AtomicBool,
     #[cfg(target_os = "ios")]
     metal_layer: IOSMetalLayer,
+
+    // Data queried by the user at runtime, cached for faster lookups.
+    // This is stored here rather than on `PhysicalDevice` to ensure that it's freed when the
+    // `Surface` is destroyed.
+    pub(crate) surface_capabilities:
+        RwLock<HashMap<(ash::vk::PhysicalDevice, SurfaceInfo), SurfaceCapabilities>>,
+    pub(crate) surface_formats:
+        RwLock<HashMap<(ash::vk::PhysicalDevice, SurfaceInfo), Vec<(Format, ColorSpace)>>>,
+    pub(crate) surface_present_modes: RwLock<HashMap<ash::vk::PhysicalDevice, Vec<PresentMode>>>,
+    pub(crate) surface_support: RwLock<HashMap<(ash::vk::PhysicalDevice, u32), bool>>,
 }
 
 impl<W> Surface<W> {
-    /// Creates a `Surface` given the raw handle.
+    /// Creates a `Surface` from a raw handle.
     ///
     /// # Safety
     ///
-    /// - `handle` must be a valid Vulkan surface handle owned by `instance`.
+    /// - `handle` must be a valid Vulkan object handle created from `instance`.
     /// - `handle` must have been created from `api`.
     /// - The window object that `handle` was created from must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    pub unsafe fn from_raw_surface(
+    #[inline]
+    pub unsafe fn from_handle(
         instance: Arc<Instance>,
         handle: ash::vk::SurfaceKHR,
         api: SurfaceApi,
         win: W,
-    ) -> Surface<W> {
+    ) -> Self {
         Surface {
             handle,
             instance,
@@ -70,7 +84,78 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Creates a `Surface` with no backing window or display.
+    ///
+    /// Presenting to a headless surface does nothing, so this is mostly useless in itself. However,
+    /// it may be useful for testing, and it is available for future extensions to layer on top of.
+    #[inline]
+    pub fn headless(instance: Arc<Instance>, win: W) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_headless(&instance)?;
+
+        unsafe { Ok(Self::headless_unchecked(instance, win)?) }
+    }
+
+    fn validate_headless(instance: &Instance) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().ext_headless_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`headless`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_headless_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn headless_unchecked(
+        instance: Arc<Instance>,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::HeadlessSurfaceCreateInfoEXT {
+            flags: ash::vk::HeadlessSurfaceCreateFlagsEXT::empty(),
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.ext_headless_surface.create_headless_surface_ext)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::Headless,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
+        }))
     }
 
     /// Creates a `Surface` from a `DisplayPlane`.
@@ -79,10 +164,20 @@ impl<W> Surface<W> {
     ///
     /// - Panics if `display_mode` and `plane` don't belong to the same physical device.
     /// - Panics if `plane` doesn't support the display of `display_mode`.
+    #[inline]
     pub fn from_display_plane(
         display_mode: &DisplayMode,
         plane: &DisplayPlane,
     ) -> Result<Arc<Surface<()>>, SurfaceCreationError> {
+        Self::validate_from_display_plane(display_mode, plane)?;
+
+        unsafe { Ok(Self::from_display_plane_unchecked(display_mode, plane)?) }
+    }
+
+    fn validate_from_display_plane(
+        display_mode: &DisplayMode,
+        plane: &DisplayPlane,
+    ) -> Result<(), SurfaceCreationError> {
         if !display_mode
             .display()
             .physical_device()
@@ -90,17 +185,29 @@ impl<W> Surface<W> {
             .enabled_extensions()
             .khr_display
         {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_display",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_display_plane`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_display"],
+                    ..Default::default()
+                },
             });
         }
 
         assert_eq!(
-            display_mode.display().physical_device().internal_object(),
-            plane.physical_device().internal_object()
+            display_mode.display().physical_device(),
+            plane.physical_device()
         );
         assert!(plane.supports(display_mode.display()));
 
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_display_plane_unchecked(
+        display_mode: &DisplayMode,
+        plane: &DisplayPlane,
+    ) -> Result<Arc<Surface<()>>, VulkanError> {
         let instance = display_mode.display().physical_device().instance();
 
         let create_info = ash::vk::DisplaySurfaceCreateInfoKHR {
@@ -119,7 +226,7 @@ impl<W> Surface<W> {
             ..Default::default()
         };
 
-        let handle = unsafe {
+        let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_display.create_display_plane_surface_khr)(
@@ -142,6 +249,11 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -149,20 +261,46 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `window` must be a valid handle.
+    /// - `window` must be a valid Android `ANativeWindow` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_android<T>(
         instance: Arc<Instance>,
         window: *const T,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_android(&instance, window)?;
+
+        Ok(Self::from_android_unchecked(instance, window, win)?)
+    }
+
+    fn validate_from_android<T>(
+        instance: &Instance,
+        _window: *const T,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_android_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_android_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_android`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_android_surface"],
+                    ..Default::default()
+                },
             });
         }
 
+        // VUID-VkAndroidSurfaceCreateInfoKHR-window-01248
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_android_unchecked<T>(
+        instance: Arc<Instance>,
+        window: *const T,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::AndroidSurfaceCreateInfoKHR {
             flags: ash::vk::AndroidSurfaceCreateFlagsKHR::empty(),
             window: window as *mut _,
@@ -192,6 +330,272 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
+        }))
+    }
+
+    /// Creates a `Surface` from a DirectFB surface.
+    ///
+    /// # Safety
+    ///
+    /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
+    /// - `surface` must be a valid DirectFB `IDirectFBSurface` handle.
+    /// - The object referred to by `dfb` and `surface` must outlive the created `Surface`.
+    ///   The `win` parameter can be used to ensure this.
+    #[inline]
+    pub unsafe fn from_directfb<D, S>(
+        instance: Arc<Instance>,
+        dfb: *const D,
+        surface: *const S,
+        win: W,
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_directfb(&instance, dfb, surface)?;
+
+        Ok(Self::from_directfb_unchecked(instance, dfb, surface, win)?)
+    }
+
+    fn validate_from_directfb<D, S>(
+        instance: &Instance,
+        _dfb: *const D,
+        _surface: *const S,
+    ) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().ext_directfb_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_directfb`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_directfb_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkDirectFBSurfaceCreateInfoEXT-dfb-04117
+        // Can't validate, therefore unsafe
+
+        // VUID-VkDirectFBSurfaceCreateInfoEXT-surface-04118
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_directfb_unchecked<D, S>(
+        instance: Arc<Instance>,
+        dfb: *const D,
+        surface: *const S,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::DirectFBSurfaceCreateInfoEXT {
+            flags: ash::vk::DirectFBSurfaceCreateFlagsEXT::empty(),
+            dfb: dfb as *mut _,
+            surface: surface as *mut _,
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.ext_directfb_surface.create_direct_fb_surface_ext)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::DirectFB,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
+        }))
+    }
+
+    /// Creates a `Surface` from an Fuchsia ImagePipe.
+    ///
+    /// # Safety
+    ///
+    /// - `image_pipe_handle` must be a valid Fuchsia `zx_handle_t` handle.
+    /// - The object referred to by `image_pipe_handle` must outlive the created `Surface`.
+    ///   The `win` parameter can be used to ensure this.
+    #[inline]
+    pub unsafe fn from_fuchsia_image_pipe(
+        instance: Arc<Instance>,
+        image_pipe_handle: ash::vk::zx_handle_t,
+        win: W,
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_fuchsia_image_pipe(&instance, image_pipe_handle)?;
+
+        Ok(Self::from_fuchsia_image_pipe_unchecked(
+            instance,
+            image_pipe_handle,
+            win,
+        )?)
+    }
+
+    fn validate_from_fuchsia_image_pipe(
+        instance: &Instance,
+        _image_pipe_handle: ash::vk::zx_handle_t,
+    ) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().fuchsia_imagepipe_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_fuchsia_image_pipe`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["fuchsia_imagepipe_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkImagePipeSurfaceCreateInfoFUCHSIA-imagePipeHandle-04863
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_fuchsia_image_pipe_unchecked(
+        instance: Arc<Instance>,
+        image_pipe_handle: ash::vk::zx_handle_t,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::ImagePipeSurfaceCreateInfoFUCHSIA {
+            flags: ash::vk::ImagePipeSurfaceCreateFlagsFUCHSIA::empty(),
+            image_pipe_handle,
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.fuchsia_imagepipe_surface
+                .create_image_pipe_surface_fuchsia)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::FuchsiaImagePipe,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
+        }))
+    }
+
+    /// Creates a `Surface` from a Google Games Platform stream descriptor.
+    ///
+    /// # Safety
+    ///
+    /// - `stream_descriptor` must be a valid Google Games Platform `GgpStreamDescriptor` handle.
+    /// - The object referred to by `stream_descriptor` must outlive the created `Surface`.
+    ///   The `win` parameter can be used to ensure this.
+    #[inline]
+    pub unsafe fn from_ggp_stream_descriptor(
+        instance: Arc<Instance>,
+        stream_descriptor: ash::vk::GgpStreamDescriptor,
+        win: W,
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_ggp_stream_descriptor(&instance, stream_descriptor)?;
+
+        Ok(Self::from_ggp_stream_descriptor_unchecked(
+            instance,
+            stream_descriptor,
+            win,
+        )?)
+    }
+
+    fn validate_from_ggp_stream_descriptor(
+        instance: &Instance,
+        _stream_descriptor: ash::vk::GgpStreamDescriptor,
+    ) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().ggp_stream_descriptor_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_ggp_stream_descriptor`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ggp_stream_descriptor_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkStreamDescriptorSurfaceCreateInfoGGP-streamDescriptor-02681
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_ggp_stream_descriptor_unchecked(
+        instance: Arc<Instance>,
+        stream_descriptor: ash::vk::GgpStreamDescriptor,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::StreamDescriptorSurfaceCreateInfoGGP {
+            flags: ash::vk::StreamDescriptorSurfaceCreateFlagsGGP::empty(),
+            stream_descriptor,
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.ggp_stream_descriptor_surface
+                .create_stream_descriptor_surface_ggp)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::GgpStreamDescriptor,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -199,22 +603,53 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `view` must be a valid handle.
-    /// - The object referred to by `view` must outlive the created `Surface`.
+    /// - `metal_layer` must be a valid `IOSMetalLayer` handle.
+    /// - The object referred to by `metal_layer` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     #[cfg(target_os = "ios")]
+    #[inline]
     pub unsafe fn from_ios(
         instance: Arc<Instance>,
         metal_layer: IOSMetalLayer,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_ios(&instance, &metal_layer)?;
+
+        Ok(Self::from_ios_unchecked(instance, metal_layer, win)?)
+    }
+
+    #[cfg(target_os = "ios")]
+    fn validate_from_ios(
+        instance: &Instance,
+        _metal_layer: &IOSMetalLayer,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().mvk_ios_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_MVK_ios_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_ios`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["mvk_ios_surface"],
+                    ..Default::default()
+                },
             });
         }
 
+        // VUID-VkIOSSurfaceCreateInfoMVK-pView-04143
+        // Can't validate, therefore unsafe
+
+        // VUID-VkIOSSurfaceCreateInfoMVK-pView-01316
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "ios")]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_ios_unchecked(
+        instance: Arc<Instance>,
+        metal_layer: IOSMetalLayer,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::IOSSurfaceCreateInfoMVK {
             flags: ash::vk::IOSSurfaceCreateFlagsMVK::empty(),
             p_view: metal_layer.render_layer.0 as *const _,
@@ -243,6 +678,11 @@ impl<W> Surface<W> {
 
             has_swapchain: AtomicBool::new(false),
             metal_layer,
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -250,22 +690,53 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `view` must be a valid handle.
+    /// - `view` must be a valid `CAMetalLayer` or `NSView` handle.
     /// - The object referred to by `view` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     #[cfg(target_os = "macos")]
+    #[inline]
     pub unsafe fn from_mac_os<T>(
         instance: Arc<Instance>,
         view: *const T,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_mac_os(&instance, view)?;
+
+        Ok(Self::from_mac_os_unchecked(instance, view, win)?)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn validate_from_mac_os<T>(
+        instance: &Instance,
+        _view: *const T,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().mvk_macos_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_MVK_macos_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_mac_os`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["mvk_macos_surface"],
+                    ..Default::default()
+                },
             });
         }
 
+        // VUID-VkMacOSSurfaceCreateInfoMVK-pView-04144
+        // Can't validate, therefore unsafe
+
+        // VUID-VkMacOSSurfaceCreateInfoMVK-pView-01317
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_mac_os_unchecked<T>(
+        instance: Arc<Instance>,
+        view: *const T,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::MacOSSurfaceCreateInfoMVK {
             flags: ash::vk::MacOSSurfaceCreateFlagsMVK::empty(),
             p_view: view as *const _,
@@ -295,6 +766,11 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -302,20 +778,43 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `layer` must be a valid handle.
+    /// - `layer` must be a valid Metal `CAMetalLayer` handle.
     /// - The object referred to by `layer` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_metal<T>(
         instance: Arc<Instance>,
         layer: *const T,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_metal(&instance, layer)?;
+
+        Ok(Self::from_metal_unchecked(instance, layer, win)?)
+    }
+
+    fn validate_from_metal<T>(
+        instance: &Instance,
+        _layer: *const T,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().ext_metal_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_EXT_metal_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_metal`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_metal_surface"],
+                    ..Default::default()
+                },
             });
         }
 
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_metal_unchecked<T>(
+        instance: Arc<Instance>,
+        layer: *const T,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::MetalSurfaceCreateInfoEXT {
             flags: ash::vk::MetalSurfaceCreateFlagsEXT::empty(),
             p_layer: layer as *const _,
@@ -345,6 +844,102 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
+        }))
+    }
+
+    /// Creates a `Surface` from a QNX Screen window.
+    ///
+    /// # Safety
+    ///
+    /// - `context` must be a valid QNX Screen `_screen_context` handle.
+    /// - `window` must be a valid QNX Screen `_screen_window` handle.
+    /// - The object referred to by `window` must outlive the created `Surface`.
+    ///   The `win` parameter can be used to ensure this.
+    #[inline]
+    pub unsafe fn from_qnx_screen<T, U>(
+        instance: Arc<Instance>,
+        context: *const T,
+        window: *const U,
+        win: W,
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_qnx_screen(&instance, context, window)?;
+
+        Ok(Self::from_qnx_screen_unchecked(
+            instance, context, window, win,
+        )?)
+    }
+
+    fn validate_from_qnx_screen<T, U>(
+        instance: &Instance,
+        _context: *const T,
+        _window: *const U,
+    ) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().qnx_screen_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_qnx_screen`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["qnx_screen_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkScreenSurfaceCreateInfoQNX-context-04741
+        // Can't validate, therefore unsafe
+
+        // VUID-VkScreenSurfaceCreateInfoQNX-window-04742
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_qnx_screen_unchecked<T, U>(
+        instance: Arc<Instance>,
+        context: *const T,
+        window: *const U,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::ScreenSurfaceCreateInfoQNX {
+            flags: ash::vk::ScreenSurfaceCreateFlagsQNX::empty(),
+            context: context as *mut _,
+            window: window as *mut _,
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.qnx_screen_surface.create_screen_surface_qnx)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::Qnx,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -352,20 +947,46 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `window` must be a valid handle.
+    /// - `window` must be a valid `nn::vi::NativeWindowHandle` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_vi<T>(
         instance: Arc<Instance>,
         window: *const T,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_vi(&instance, window)?;
+
+        Ok(Self::from_vi_unchecked(instance, window, win)?)
+    }
+
+    fn validate_from_vi<T>(
+        instance: &Instance,
+        _window: *const T,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().nn_vi_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_NN_vi_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_vi`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["nn_vi_surface"],
+                    ..Default::default()
+                },
             });
         }
 
+        // VUID-VkViSurfaceCreateInfoNN-window-01318
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_vi_unchecked<T>(
+        instance: Arc<Instance>,
+        window: *const T,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::ViSurfaceCreateInfoNN {
             flags: ash::vk::ViSurfaceCreateFlagsNN::empty(),
             window: window as *mut _,
@@ -395,6 +1016,11 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -404,21 +1030,55 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `display` and `surface` must be valid handles.
+    /// - `display` must be a valid Wayland `wl_display` handle.
+    /// - `surface` must be a valid Wayland `wl_surface` handle.
     /// - The objects referred to by `display` and `surface` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_wayland<D, S>(
         instance: Arc<Instance>,
         display: *const D,
         surface: *const S,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_wayland(&instance, display, surface)?;
+
+        Ok(Self::from_wayland_unchecked(
+            instance, display, surface, win,
+        )?)
+    }
+
+    fn validate_from_wayland<D, S>(
+        instance: &Instance,
+        _display: *const D,
+        _surface: *const S,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_wayland_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_wayland_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_wayland`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_wayland_surface"],
+                    ..Default::default()
+                },
             });
         }
 
+        // VUID-VkWaylandSurfaceCreateInfoKHR-display-01304
+        // Can't validate, therefore unsafe
+
+        // VUID-VkWaylandSurfaceCreateInfoKHR-surface-01305
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_wayland_unchecked<D, S>(
+        instance: Arc<Instance>,
+        display: *const D,
+        surface: *const S,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::WaylandSurfaceCreateInfoKHR {
             flags: ash::vk::WaylandSurfaceCreateFlagsKHR::empty(),
             display: display as *mut _,
@@ -449,6 +1109,11 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -458,21 +1123,53 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `hinstance` and `hwnd` must be valid handles.
+    /// - `hinstance` must be a valid Win32 `HINSTANCE` handle.
+    /// - `hwnd` must be a valid Win32 `HWND` handle.
     /// - The objects referred to by `hwnd` and `hinstance` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_win32<T, U>(
         instance: Arc<Instance>,
         hinstance: *const T,
         hwnd: *const U,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_win32(&instance, hinstance, hwnd)?;
+
+        Ok(Self::from_win32_unchecked(instance, hinstance, hwnd, win)?)
+    }
+
+    fn validate_from_win32<T, U>(
+        instance: &Instance,
+        _hinstance: *const T,
+        _hwnd: *const U,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_win32_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_win32_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_win32`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_win32_surface"],
+                    ..Default::default()
+                },
             });
         }
 
+        // VUID-VkWin32SurfaceCreateInfoKHR-hinstance-01307
+        // Can't validate, therefore unsafe
+
+        // VUID-VkWin32SurfaceCreateInfoKHR-hwnd-01308
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_win32_unchecked<T, U>(
+        instance: Arc<Instance>,
+        hinstance: *const T,
+        hwnd: *const U,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::Win32SurfaceCreateInfoKHR {
             flags: ash::vk::Win32SurfaceCreateFlagsKHR::empty(),
             hinstance: hinstance as *mut _,
@@ -503,6 +1200,11 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -512,21 +1214,53 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `connection` and `window` must be valid handles.
+    /// - `connection` must be a valid X11 `xcb_connection_t` handle.
+    /// - `window` must be a valid X11 `xcb_window_t` handle.
     /// - The objects referred to by `connection` and `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_xcb<C>(
         instance: Arc<Instance>,
         connection: *const C,
-        window: u32,
+        window: ash::vk::xcb_window_t,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_xcb(&instance, connection, window)?;
+
+        Ok(Self::from_xcb_unchecked(instance, connection, window, win)?)
+    }
+
+    fn validate_from_xcb<C>(
+        instance: &Instance,
+        _connection: *const C,
+        _window: ash::vk::xcb_window_t,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_xcb_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_xcb_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_xcb`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xcb_surface"],
+                    ..Default::default()
+                },
             });
         }
 
+        // VUID-VkXcbSurfaceCreateInfoKHR-connection-01310
+        // Can't validate, therefore unsafe
+
+        // VUID-VkXcbSurfaceCreateInfoKHR-window-01311
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_xcb_unchecked<C>(
+        instance: Arc<Instance>,
+        connection: *const C,
+        window: ash::vk::xcb_window_t,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::XcbSurfaceCreateInfoKHR {
             flags: ash::vk::XcbSurfaceCreateFlagsKHR::empty(),
             connection: connection as *mut _,
@@ -557,6 +1291,11 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -566,21 +1305,53 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `display` and `window` must be valid handles.
+    /// - `display` must be a valid Xlib `Display` handle.
+    /// - `window` must be a valid Xlib `Window` handle.
     /// - The objects referred to by `display` and `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_xlib<D>(
         instance: Arc<Instance>,
         display: *const D,
-        window: c_ulong,
+        window: ash::vk::Window,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_xlib(&instance, display, window)?;
+
+        Ok(Self::from_xlib_unchecked(instance, display, window, win)?)
+    }
+
+    fn validate_from_xlib<D>(
+        instance: &Instance,
+        _display: *const D,
+        _window: ash::vk::Window,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_xlib_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_xlib_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_xlib`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xlib_surface"],
+                    ..Default::default()
+                },
             });
         }
 
+        // VUID-VkXlibSurfaceCreateInfoKHR-dpy-01313
+        // Can't validate, therefore unsafe
+
+        // VUID-VkXlibSurfaceCreateInfoKHR-window-01314
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_xlib_unchecked<D>(
+        instance: Arc<Instance>,
+        display: *const D,
+        window: ash::vk::Window,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::XlibSurfaceCreateInfoKHR {
             flags: ash::vk::XlibSurfaceCreateFlagsKHR::empty(),
             dpy: display as *mut _,
@@ -611,6 +1382,11 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: RwLock::new(HashMap::new()),
+            surface_formats: RwLock::new(HashMap::new()),
+            surface_present_modes: RwLock::new(HashMap::new()),
+            surface_support: RwLock::new(HashMap::new()),
         }))
     }
 
@@ -674,9 +1450,9 @@ unsafe impl<W> VulkanObject for Surface<W> {
     }
 }
 
-impl<W> fmt::Debug for Surface<W> {
+impl<W> Debug for Surface<W> {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             instance,
@@ -686,7 +1462,7 @@ impl<W> fmt::Debug for Surface<W> {
             ..
         } = self;
 
-        fmt.debug_struct("Surface")
+        f.debug_struct("Surface")
             .field("handle", handle)
             .field("instance", instance)
             .field("api", api)
@@ -726,36 +1502,37 @@ pub enum SurfaceCreationError {
     /// Not enough memory.
     OomError(OomError),
 
-    /// The extension required for this function was not enabled.
-    MissingExtension {
-        /// Name of the missing extension.
-        name: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 }
 
 impl Error for SurfaceCreationError {
     #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            SurfaceCreationError::OomError(ref err) => Some(err),
+        match self {
+            SurfaceCreationError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
-impl fmt::Display for SurfaceCreationError {
+impl Display for SurfaceCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                SurfaceCreationError::OomError(_) => "not enough memory available",
-                SurfaceCreationError::MissingExtension { .. } => {
-                    "the extension required for this function was not enabled"
-                }
-            }
-        )
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            SurfaceCreationError::OomError(_) => write!(f, "not enough memory available"),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
     }
 }
 
@@ -785,13 +1562,18 @@ impl From<VulkanError> for SurfaceCreationError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SurfaceApi {
+    Headless,
     DisplayPlane,
 
     // Alphabetical order
     Android,
+    DirectFB,
+    FuchsiaImagePipe,
+    GgpStreamDescriptor,
     Ios,
     MacOs,
     Metal,
+    Qnx,
     Vi,
     Wayland,
     Win32,
@@ -799,18 +1581,18 @@ pub enum SurfaceApi {
     Xlib,
 }
 
-/// The way presenting a swapchain is accomplished.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum PresentMode {
+vulkan_enum! {
+    /// The way presenting a swapchain is accomplished.
+    #[non_exhaustive]
+    PresentMode = PresentModeKHR(i32);
+
     /// Immediately shows the image to the user. May result in visible tearing.
-    Immediate = ash::vk::PresentModeKHR::IMMEDIATE.as_raw(),
+    Immediate = IMMEDIATE,
 
     /// The action of presenting an image puts it in wait. When the next vertical blanking period
     /// happens, the waiting image is effectively shown to the user. If an image is presented while
     /// another one is waiting, it is replaced.
-    Mailbox = ash::vk::PresentModeKHR::MAILBOX.as_raw(),
+    Mailbox = MAILBOX,
 
     /// The action of presenting an image adds it to a queue of images. At each vertical blanking
     /// period, the queue is popped and an image is presented.
@@ -818,178 +1600,94 @@ pub enum PresentMode {
     /// Guaranteed to be always supported.
     ///
     /// This is the equivalent of OpenGL's `SwapInterval` with a value of 1.
-    Fifo = ash::vk::PresentModeKHR::FIFO.as_raw(),
+    Fifo = FIFO,
 
     /// Same as `Fifo`, except that if the queue was empty during the previous vertical blanking
     /// period then it is equivalent to `Immediate`.
     ///
     /// This is the equivalent of OpenGL's `SwapInterval` with a value of -1.
-    FifoRelaxed = ash::vk::PresentModeKHR::FIFO_RELAXED.as_raw(),
-    // TODO: These can't be enabled yet because they have to be used with shared present surfaces
-    // which vulkano doesnt support yet.
-    //SharedDemand = ash::vk::PresentModeKHR::SHARED_DEMAND_REFRESH,
-    //SharedContinuous = ash::vk::PresentModeKHR::SHARED_CONTINUOUS_REFRESH,
+    FifoRelaxed = FIFO_RELAXED,
+
+    /*
+    // TODO: document
+    SharedDemandRefresh = SHARED_DEMAND_REFRESH_KHR {
+        device_extensions: [khr_shared_presentable_image],
+    },
+
+    // TODO: document
+    SharedContinuousRefresh = SHARED_CONTINUOUS_REFRESH_KHR {
+        device_extensions: [khr_shared_presentable_image],
+    },
+     */
 }
 
-impl From<PresentMode> for ash::vk::PresentModeKHR {
-    #[inline]
-    fn from(val: PresentMode) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    // TODO: document
+    #[non_exhaustive]
+    SurfaceTransform = SurfaceTransformFlagsKHR(u32);
 
-impl TryFrom<ash::vk::PresentModeKHR> for PresentMode {
-    type Error = ();
-
-    fn try_from(value: ash::vk::PresentModeKHR) -> Result<Self, Self::Error> {
-        Ok(match value {
-            ash::vk::PresentModeKHR::IMMEDIATE => Self::Immediate,
-            ash::vk::PresentModeKHR::MAILBOX => Self::Mailbox,
-            ash::vk::PresentModeKHR::FIFO => Self::Fifo,
-            ash::vk::PresentModeKHR::FIFO_RELAXED => Self::FifoRelaxed,
-            //ash::vk::PresentModeKHR::SHARED_DEMAND_REFRESH => Self::SharedDemandRefresh,
-            //ash::vk::PresentModeKHR::SHARED_CONTINUOUS_REFRESH => Self::SharedContinuousRefresh,
-            _ => return Err(()),
-        })
-    }
-}
-
-/// A transformation to apply to the image before showing it on the screen.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-#[non_exhaustive]
-pub enum SurfaceTransform {
     /// Don't transform the image.
-    Identity = ash::vk::SurfaceTransformFlagsKHR::IDENTITY.as_raw(),
+    Identity = IDENTITY,
+
     /// Rotate 90 degrees.
-    Rotate90 = ash::vk::SurfaceTransformFlagsKHR::ROTATE_90.as_raw(),
+    Rotate90 = ROTATE_90,
+
     /// Rotate 180 degrees.
-    Rotate180 = ash::vk::SurfaceTransformFlagsKHR::ROTATE_180.as_raw(),
+    Rotate180 = ROTATE_180,
+
     /// Rotate 270 degrees.
-    Rotate270 = ash::vk::SurfaceTransformFlagsKHR::ROTATE_270.as_raw(),
+    Rotate270 = ROTATE_270,
+
     /// Mirror the image horizontally.
-    HorizontalMirror = ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR.as_raw(),
+    HorizontalMirror = HORIZONTAL_MIRROR,
+
     /// Mirror the image horizontally and rotate 90 degrees.
-    HorizontalMirrorRotate90 =
-        ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90.as_raw(),
+    HorizontalMirrorRotate90 = HORIZONTAL_MIRROR_ROTATE_90,
+
     /// Mirror the image horizontally and rotate 180 degrees.
-    HorizontalMirrorRotate180 =
-        ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180.as_raw(),
+    HorizontalMirrorRotate180 = HORIZONTAL_MIRROR_ROTATE_180,
+
     /// Mirror the image horizontally and rotate 270 degrees.
-    HorizontalMirrorRotate270 =
-        ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270.as_raw(),
+    HorizontalMirrorRotate270 = HORIZONTAL_MIRROR_ROTATE_270,
+
     /// Let the operating system or driver implementation choose.
-    Inherit = ash::vk::SurfaceTransformFlagsKHR::INHERIT.as_raw(),
+    Inherit = INHERIT,
 }
 
-impl From<SurfaceTransform> for ash::vk::SurfaceTransformFlagsKHR {
-    #[inline]
-    fn from(val: SurfaceTransform) -> Self {
-        Self::from_raw(val as u32)
-    }
-}
+vulkan_bitflags! {
+    /// List of supported composite alpha modes.
+    #[non_exhaustive]
+    SupportedSurfaceTransforms = SurfaceTransformFlagsKHR(u32);
 
-/// List of supported composite alpha modes.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct SupportedSurfaceTransforms {
-    pub identity: bool,
-    pub rotate90: bool,
-    pub rotate180: bool,
-    pub rotate270: bool,
-    pub horizontal_mirror: bool,
-    pub horizontal_mirror_rotate90: bool,
-    pub horizontal_mirror_rotate180: bool,
-    pub horizontal_mirror_rotate270: bool,
-    pub inherit: bool,
-}
+    // TODO: document
+    identity = IDENTITY,
 
-impl From<ash::vk::SurfaceTransformFlagsKHR> for SupportedSurfaceTransforms {
-    fn from(val: ash::vk::SurfaceTransformFlagsKHR) -> Self {
-        macro_rules! v {
-            ($val:expr, $out:ident, $e:expr, $f:ident) => {
-                if !($val & $e).is_empty() {
-                    $out.$f = true;
-                }
-            };
-        }
+    // TODO: document
+    rotate90 = ROTATE_90,
 
-        let mut result = SupportedSurfaceTransforms::none();
-        v!(
-            val,
-            result,
-            ash::vk::SurfaceTransformFlagsKHR::IDENTITY,
-            identity
-        );
-        v!(
-            val,
-            result,
-            ash::vk::SurfaceTransformFlagsKHR::ROTATE_90,
-            rotate90
-        );
-        v!(
-            val,
-            result,
-            ash::vk::SurfaceTransformFlagsKHR::ROTATE_180,
-            rotate180
-        );
-        v!(
-            val,
-            result,
-            ash::vk::SurfaceTransformFlagsKHR::ROTATE_270,
-            rotate270
-        );
-        v!(
-            val,
-            result,
-            ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR,
-            horizontal_mirror
-        );
-        v!(
-            val,
-            result,
-            ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90,
-            horizontal_mirror_rotate90
-        );
-        v!(
-            val,
-            result,
-            ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180,
-            horizontal_mirror_rotate180
-        );
-        v!(
-            val,
-            result,
-            ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270,
-            horizontal_mirror_rotate270
-        );
-        v!(
-            val,
-            result,
-            ash::vk::SurfaceTransformFlagsKHR::INHERIT,
-            inherit
-        );
-        result
-    }
+    // TODO: document
+    rotate180 = ROTATE_180,
+
+    // TODO: document
+    rotate270 = ROTATE_270,
+
+    // TODO: document
+    horizontal_mirror = HORIZONTAL_MIRROR,
+
+    // TODO: document
+    horizontal_mirror_rotate90 = HORIZONTAL_MIRROR_ROTATE_90,
+
+    // TODO: document
+    horizontal_mirror_rotate180 = HORIZONTAL_MIRROR_ROTATE_180,
+
+    // TODO: document
+    horizontal_mirror_rotate270 = HORIZONTAL_MIRROR_ROTATE_270,
+
+    // TODO: document
+    inherit = INHERIT,
 }
 
 impl SupportedSurfaceTransforms {
-    /// Builds a `SupportedSurfaceTransforms` with all fields set to false.
-    #[inline]
-    pub fn none() -> SupportedSurfaceTransforms {
-        SupportedSurfaceTransforms {
-            identity: false,
-            rotate90: false,
-            rotate180: false,
-            rotate270: false,
-            horizontal_mirror: false,
-            horizontal_mirror_rotate90: false,
-            horizontal_mirror_rotate180: false,
-            horizontal_mirror_rotate270: false,
-            inherit: false,
-        }
-    }
-
     /// Returns true if the given `SurfaceTransform` is in this list.
     #[inline]
     pub fn supports(&self, value: SurfaceTransform) -> bool {
@@ -1033,78 +1731,48 @@ impl Default for SurfaceTransform {
     }
 }
 
-/// How the alpha values of the pixels of the window are treated.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-#[non_exhaustive]
-pub enum CompositeAlpha {
+vulkan_enum! {
+    /// How the alpha values of the pixels of the window are treated.
+    #[non_exhaustive]
+    CompositeAlpha = CompositeAlphaFlagsKHR(u32);
+
     /// The alpha channel of the image is ignored. All the pixels are considered as if they have a
     /// value of 1.0.
-    Opaque = ash::vk::CompositeAlphaFlagsKHR::OPAQUE.as_raw(),
+    Opaque = OPAQUE,
 
     /// The alpha channel of the image is respected. The color channels are expected to have
     /// already been multiplied by the alpha value.
-    PreMultiplied = ash::vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED.as_raw(),
+    PreMultiplied = PRE_MULTIPLIED,
 
     /// The alpha channel of the image is respected. The color channels will be multiplied by the
     /// alpha value by the compositor before being added to what is behind.
-    PostMultiplied = ash::vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED.as_raw(),
+    PostMultiplied = POST_MULTIPLIED,
 
     /// Let the operating system or driver implementation choose.
-    Inherit = ash::vk::CompositeAlphaFlagsKHR::INHERIT.as_raw(),
+    Inherit = INHERIT,
 }
 
-impl From<CompositeAlpha> for ash::vk::CompositeAlphaFlagsKHR {
-    #[inline]
-    fn from(val: CompositeAlpha) -> Self {
-        Self::from_raw(val as u32)
-    }
-}
+vulkan_bitflags! {
+    /// List of supported composite alpha modes.
+    ///
+    /// See the docs of `CompositeAlpha`.
+    #[non_exhaustive]
+    SupportedCompositeAlpha = CompositeAlphaFlagsKHR(u32);
 
-/// List of supported composite alpha modes.
-///
-/// See the docs of `CompositeAlpha`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct SupportedCompositeAlpha {
-    pub opaque: bool,
-    pub pre_multiplied: bool,
-    pub post_multiplied: bool,
-    pub inherit: bool,
-}
+    // TODO: document
+    opaque = OPAQUE,
 
-impl From<ash::vk::CompositeAlphaFlagsKHR> for SupportedCompositeAlpha {
-    #[inline]
-    fn from(val: ash::vk::CompositeAlphaFlagsKHR) -> SupportedCompositeAlpha {
-        let mut result = SupportedCompositeAlpha::none();
-        if !(val & ash::vk::CompositeAlphaFlagsKHR::OPAQUE).is_empty() {
-            result.opaque = true;
-        }
-        if !(val & ash::vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED).is_empty() {
-            result.pre_multiplied = true;
-        }
-        if !(val & ash::vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED).is_empty() {
-            result.post_multiplied = true;
-        }
-        if !(val & ash::vk::CompositeAlphaFlagsKHR::INHERIT).is_empty() {
-            result.inherit = true;
-        }
-        result
-    }
+    // TODO: document
+    pre_multiplied = PRE_MULTIPLIED,
+
+    // TODO: document
+    post_multiplied = POST_MULTIPLIED,
+
+    // TODO: document
+    inherit = INHERIT,
 }
 
 impl SupportedCompositeAlpha {
-    /// Builds a `SupportedCompositeAlpha` with all fields set to false.
-    #[inline]
-    pub fn none() -> SupportedCompositeAlpha {
-        SupportedCompositeAlpha {
-            opaque: false,
-            pre_multiplied: false,
-            post_multiplied: false,
-            inherit: false,
-        }
-    }
-
     /// Returns true if the given `CompositeAlpha` is in this list.
     #[inline]
     pub fn supports(&self, value: CompositeAlpha) -> bool {
@@ -1131,154 +1799,177 @@ impl SupportedCompositeAlpha {
     }
 }
 
-/// How the presentation engine should interpret the data.
-///
-/// # A quick lesson about color spaces
-///
-/// ## What is a color space?
-///
-/// Each pixel of a monitor is made of three components: one red, one green, and one blue. In the
-/// past, computers would simply send to the monitor the intensity of each of the three components.
-///
-/// This proved to be problematic, because depending on the brand of the monitor the colors would
-/// not exactly be the same. For example on some monitors, a value of `[1.0, 0.0, 0.0]` would be a
-/// bit more orange than on others.
-///
-/// In order to standardize this, there exist what are called *color spaces*: sRGB, AdobeRGB,
-/// DCI-P3, scRGB, etc. When you manipulate RGB values in a specific color space, these values have
-/// a precise absolute meaning in terms of color, that is the same across all systems and monitors.
-///
-/// > **Note**: Color spaces are orthogonal to concept of RGB. *RGB* only indicates what is the
-/// > representation of the data, but not how it is interpreted. You can think of this a bit like
-/// > text encoding. An *RGB* value is a like a byte, in other words it is the medium by which
-/// > values are communicated, and a *color space* is like a text encoding (eg. UTF-8), in other
-/// > words it is the way the value should be interpreted.
-///
-/// The most commonly used color space today is sRGB. Most monitors today use this color space,
-/// and most images files are encoded in this color space.
-///
-/// ## Pixel formats and linear vs non-linear
-///
-/// In Vulkan all images have a specific format in which the data is stored. The data of an image
-/// consists of pixels in RGB but contains no information about the color space (or lack thereof)
-/// of these pixels. You are free to store them in whatever color space you want.
-///
-/// But one big practical problem with color spaces is that they are sometimes not linear, and in
-/// particular the popular sRGB color space is not linear. In a non-linear color space, a value of
-/// `[0.6, 0.6, 0.6]` for example is **not** twice as bright as a value of `[0.3, 0.3, 0.3]`. This
-/// is problematic, because operations such as taking the average of two colors or calculating the
-/// lighting of a texture with a dot product are mathematically incorrect and will produce
-/// incorrect colors.
-///
-/// > **Note**: If the texture format has an alpha component, it is not affected by the color space
-/// > and always behaves linearly.
-///
-/// In order to solve this Vulkan also provides image formats with the `Srgb` suffix, which are
-/// expected to contain RGB data in the sRGB color space. When you sample an image with such a
-/// format from a shader, the implementation will automatically turn the pixel values into a linear
-/// color space that is suitable for linear operations (such as additions or multiplications).
-/// When you write to a framebuffer attachment with such a format, the implementation will
-/// automatically perform the opposite conversion. These conversions are most of the time performed
-/// by the hardware and incur no additional cost.
-///
-/// ## Color space of the swapchain
-///
-/// The color space that you specify when you create a swapchain is how the implementation will
-/// interpret the raw data inside of the image.
-///
-/// > **Note**: The implementation can choose to send the data in the swapchain image directly to
-/// > the monitor, but it can also choose to write it in an intermediary buffer that is then read
-/// > by the operating system or windowing system. Therefore the color space that the
-/// > implementation supports is not necessarily the same as the one supported by the monitor.
-///
-/// It is *your* job to ensure that the data in the swapchain image is in the color space
-/// that is specified here, otherwise colors will be incorrect.
-/// The implementation will never perform any additional automatic conversion after the colors have
-/// been written to the swapchain image.
-///
-/// # How do I handle this correctly?
-///
-/// The easiest way to handle color spaces in a cross-platform program is:
-///
-/// - Always request the `SrgbNonLinear` color space when creating the swapchain.
-/// - Make sure that all your image files use the sRGB color space, and load them in images whose
-///   format has the `Srgb` suffix. Only use non-sRGB image formats for intermediary computations
-///   or to store non-color data.
-/// - Swapchain images should have a format with the `Srgb` suffix.
-///
-/// > **Note**: It is unclear whether the `SrgbNonLinear` color space is always supported by the
-/// > the implementation or not. See <https://github.com/KhronosGroup/Vulkan-Docs/issues/442>.
-///
-/// > **Note**: Lots of developers are confused by color spaces. You can sometimes find articles
-/// > talking about gamma correction and suggestion to put your colors to the power 2.2 for
-/// > example. These are all hacks and you should use the sRGB pixel formats instead.
-///
-/// If you follow these three rules, then everything should render the same way on all platforms.
-///
-/// Additionally you can try detect whether the implementation supports any additional color space
-/// and perform a manual conversion to that color space from inside your shader.
-///
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum ColorSpace {
-    SrgbNonLinear = ash::vk::ColorSpaceKHR::SRGB_NONLINEAR.as_raw(),
-    DisplayP3NonLinear = ash::vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT.as_raw(),
-    ExtendedSrgbLinear = ash::vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT.as_raw(),
-    ExtendedSrgbNonLinear = ash::vk::ColorSpaceKHR::EXTENDED_SRGB_NONLINEAR_EXT.as_raw(),
-    DisplayP3Linear = ash::vk::ColorSpaceKHR::DISPLAY_P3_LINEAR_EXT.as_raw(),
-    DciP3NonLinear = ash::vk::ColorSpaceKHR::DCI_P3_NONLINEAR_EXT.as_raw(),
-    Bt709Linear = ash::vk::ColorSpaceKHR::BT709_LINEAR_EXT.as_raw(),
-    Bt709NonLinear = ash::vk::ColorSpaceKHR::BT709_NONLINEAR_EXT.as_raw(),
-    Bt2020Linear = ash::vk::ColorSpaceKHR::BT2020_LINEAR_EXT.as_raw(),
-    Hdr10St2084 = ash::vk::ColorSpaceKHR::HDR10_ST2084_EXT.as_raw(),
-    DolbyVision = ash::vk::ColorSpaceKHR::DOLBYVISION_EXT.as_raw(),
-    Hdr10Hlg = ash::vk::ColorSpaceKHR::HDR10_HLG_EXT.as_raw(),
-    AdobeRgbLinear = ash::vk::ColorSpaceKHR::ADOBERGB_LINEAR_EXT.as_raw(),
-    AdobeRgbNonLinear = ash::vk::ColorSpaceKHR::ADOBERGB_NONLINEAR_EXT.as_raw(),
-    PassThrough = ash::vk::ColorSpaceKHR::PASS_THROUGH_EXT.as_raw(),
-    DisplayNative = ash::vk::ColorSpaceKHR::DISPLAY_NATIVE_AMD.as_raw(),
-}
+vulkan_enum! {
+    /// How the presentation engine should interpret the data.
+    ///
+    /// # A quick lesson about color spaces
+    ///
+    /// ## What is a color space?
+    ///
+    /// Each pixel of a monitor is made of three components: one red, one green, and one blue. In the
+    /// past, computers would simply send to the monitor the intensity of each of the three components.
+    ///
+    /// This proved to be problematic, because depending on the brand of the monitor the colors would
+    /// not exactly be the same. For example on some monitors, a value of `[1.0, 0.0, 0.0]` would be a
+    /// bit more orange than on others.
+    ///
+    /// In order to standardize this, there exist what are called *color spaces*: sRGB, AdobeRGB,
+    /// DCI-P3, scRGB, etc. When you manipulate RGB values in a specific color space, these values have
+    /// a precise absolute meaning in terms of color, that is the same across all systems and monitors.
+    ///
+    /// > **Note**: Color spaces are orthogonal to concept of RGB. *RGB* only indicates what is the
+    /// > representation of the data, but not how it is interpreted. You can think of this a bit like
+    /// > text encoding. An *RGB* value is a like a byte, in other words it is the medium by which
+    /// > values are communicated, and a *color space* is like a text encoding (eg. UTF-8), in other
+    /// > words it is the way the value should be interpreted.
+    ///
+    /// The most commonly used color space today is sRGB. Most monitors today use this color space,
+    /// and most images files are encoded in this color space.
+    ///
+    /// ## Pixel formats and linear vs non-linear
+    ///
+    /// In Vulkan all images have a specific format in which the data is stored. The data of an image
+    /// consists of pixels in RGB but contains no information about the color space (or lack thereof)
+    /// of these pixels. You are free to store them in whatever color space you want.
+    ///
+    /// But one big practical problem with color spaces is that they are sometimes not linear, and in
+    /// particular the popular sRGB color space is not linear. In a non-linear color space, a value of
+    /// `[0.6, 0.6, 0.6]` for example is **not** twice as bright as a value of `[0.3, 0.3, 0.3]`. This
+    /// is problematic, because operations such as taking the average of two colors or calculating the
+    /// lighting of a texture with a dot product are mathematically incorrect and will produce
+    /// incorrect colors.
+    ///
+    /// > **Note**: If the texture format has an alpha component, it is not affected by the color space
+    /// > and always behaves linearly.
+    ///
+    /// In order to solve this Vulkan also provides image formats with the `Srgb` suffix, which are
+    /// expected to contain RGB data in the sRGB color space. When you sample an image with such a
+    /// format from a shader, the implementation will automatically turn the pixel values into a linear
+    /// color space that is suitable for linear operations (such as additions or multiplications).
+    /// When you write to a framebuffer attachment with such a format, the implementation will
+    /// automatically perform the opposite conversion. These conversions are most of the time performed
+    /// by the hardware and incur no additional cost.
+    ///
+    /// ## Color space of the swapchain
+    ///
+    /// The color space that you specify when you create a swapchain is how the implementation will
+    /// interpret the raw data inside of the image.
+    ///
+    /// > **Note**: The implementation can choose to send the data in the swapchain image directly to
+    /// > the monitor, but it can also choose to write it in an intermediary buffer that is then read
+    /// > by the operating system or windowing system. Therefore the color space that the
+    /// > implementation supports is not necessarily the same as the one supported by the monitor.
+    ///
+    /// It is *your* job to ensure that the data in the swapchain image is in the color space
+    /// that is specified here, otherwise colors will be incorrect.
+    /// The implementation will never perform any additional automatic conversion after the colors have
+    /// been written to the swapchain image.
+    ///
+    /// # How do I handle this correctly?
+    ///
+    /// The easiest way to handle color spaces in a cross-platform program is:
+    ///
+    /// - Always request the `SrgbNonLinear` color space when creating the swapchain.
+    /// - Make sure that all your image files use the sRGB color space, and load them in images whose
+    ///   format has the `Srgb` suffix. Only use non-sRGB image formats for intermediary computations
+    ///   or to store non-color data.
+    /// - Swapchain images should have a format with the `Srgb` suffix.
+    ///
+    /// > **Note**: Lots of developers are confused by color spaces. You can sometimes find articles
+    /// > talking about gamma correction and suggestion to put your colors to the power 2.2 for
+    /// > example. These are all hacks and you should use the sRGB pixel formats instead.
+    ///
+    /// If you follow these three rules, then everything should render the same way on all platforms.
+    ///
+    /// Additionally you can try detect whether the implementation supports any additional color space
+    /// and perform a manual conversion to that color space from inside your shader.
+    #[non_exhaustive]
+    ColorSpace = ColorSpaceKHR(i32);
 
-impl From<ColorSpace> for ash::vk::ColorSpaceKHR {
-    #[inline]
-    fn from(val: ColorSpace) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+    // TODO: document
+    SrgbNonLinear = SRGB_NONLINEAR,
 
-impl From<ash::vk::ColorSpaceKHR> for ColorSpace {
-    #[inline]
-    fn from(val: ash::vk::ColorSpaceKHR) -> Self {
-        match val {
-            ash::vk::ColorSpaceKHR::SRGB_NONLINEAR => ColorSpace::SrgbNonLinear,
-            ash::vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT => ColorSpace::DisplayP3NonLinear,
-            ash::vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT => ColorSpace::ExtendedSrgbLinear,
-            ash::vk::ColorSpaceKHR::EXTENDED_SRGB_NONLINEAR_EXT => {
-                ColorSpace::ExtendedSrgbNonLinear
-            }
-            ash::vk::ColorSpaceKHR::DISPLAY_P3_LINEAR_EXT => ColorSpace::DisplayP3Linear,
-            ash::vk::ColorSpaceKHR::DCI_P3_NONLINEAR_EXT => ColorSpace::DciP3NonLinear,
-            ash::vk::ColorSpaceKHR::BT709_LINEAR_EXT => ColorSpace::Bt709Linear,
-            ash::vk::ColorSpaceKHR::BT709_NONLINEAR_EXT => ColorSpace::Bt709NonLinear,
-            ash::vk::ColorSpaceKHR::BT2020_LINEAR_EXT => ColorSpace::Bt2020Linear,
-            ash::vk::ColorSpaceKHR::HDR10_ST2084_EXT => ColorSpace::Hdr10St2084,
-            ash::vk::ColorSpaceKHR::DOLBYVISION_EXT => ColorSpace::DolbyVision,
-            ash::vk::ColorSpaceKHR::HDR10_HLG_EXT => ColorSpace::Hdr10Hlg,
-            ash::vk::ColorSpaceKHR::ADOBERGB_LINEAR_EXT => ColorSpace::AdobeRgbLinear,
-            ash::vk::ColorSpaceKHR::ADOBERGB_NONLINEAR_EXT => ColorSpace::AdobeRgbNonLinear,
-            ash::vk::ColorSpaceKHR::PASS_THROUGH_EXT => ColorSpace::PassThrough,
-            ash::vk::ColorSpaceKHR::DISPLAY_NATIVE_AMD => ColorSpace::DisplayNative,
-            _ => panic!("Wrong value for color space enum {:?}", val),
-        }
-    }
+    // TODO: document
+    DisplayP3NonLinear = DISPLAY_P3_NONLINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    ExtendedSrgbLinear = EXTENDED_SRGB_LINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    ExtendedSrgbNonLinear = EXTENDED_SRGB_NONLINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    DisplayP3Linear = DISPLAY_P3_LINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    DciP3NonLinear = DCI_P3_NONLINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    Bt709Linear = BT709_LINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    Bt709NonLinear = BT709_NONLINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    Bt2020Linear = BT2020_LINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    Hdr10St2084 = HDR10_ST2084_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    DolbyVision = DOLBYVISION_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    Hdr10Hlg = HDR10_HLG_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    AdobeRgbLinear = ADOBERGB_LINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    AdobeRgbNonLinear = ADOBERGB_NONLINEAR_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    PassThrough = PASS_THROUGH_EXT {
+        instance_extensions: [ext_swapchain_colorspace],
+    },
+
+    // TODO: document
+    DisplayNative = DISPLAY_NATIVE_AMD {
+        device_extensions: [amd_display_native_hdr],
+    },
 }
 
 /// Parameters for
 /// [`PhysicalDevice::surface_capabilities`](crate::device::physical::PhysicalDevice::surface_capabilities)
 /// and
 /// [`PhysicalDevice::surface_formats`](crate::device::physical::PhysicalDevice::surface_formats).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceInfo {
     pub full_screen_exclusive: FullScreenExclusive,
     pub win32_monitor: Option<Win32Monitor>,
@@ -1368,20 +2059,33 @@ pub struct SurfaceCapabilities {
     /// the `color_attachment` usage is guaranteed to be supported.
     pub supported_usage_flags: ImageUsage,
 
+    /// Whether creating a protected swapchain is supported.
+    pub supports_protected: bool,
+
     /// Whether full-screen exclusivity is supported.
     pub full_screen_exclusive_supported: bool,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::swapchain::{Surface, SurfaceCreationError};
+    use crate::{
+        swapchain::{Surface, SurfaceCreationError},
+        RequiresOneOf,
+    };
     use std::ptr;
 
     #[test]
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_win32(instance, ptr::null::<u8>(), ptr::null::<u8>(), ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_win32_surface") => (),
             _ => panic!(),
         }
     }
@@ -1390,7 +2094,14 @@ mod tests {
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0, ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_xcb_surface") => (),
             _ => panic!(),
         }
     }
@@ -1399,7 +2110,14 @@ mod tests {
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0, ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_xlib_surface") => (),
             _ => panic!(),
         }
     }
@@ -1408,7 +2126,14 @@ mod tests {
     fn khr_wayland_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>(), ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_wayland_surface") => (),
             _ => panic!(),
         }
     }
@@ -1417,7 +2142,14 @@ mod tests {
     fn khr_android_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_android(instance, ptr::null::<u8>(), ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_android_surface") => (),
             _ => panic!(),
         }
     }

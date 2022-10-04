@@ -37,7 +37,7 @@
 //!
 //! # let library = VulkanLibrary::new().unwrap();
 //! # let instance = Instance::new(library, Default::default()).unwrap();
-//! for physical_device in PhysicalDevice::enumerate(&instance) {
+//! for physical_device in instance.enumerate_physical_devices().unwrap() {
 //!     println!("Available device: {}", physical_device.properties().device_name);
 //! }
 //! ```
@@ -45,7 +45,7 @@
 //! # Enumerating physical devices and creating a device
 //!
 //! After you have created an instance, the next step is usually to enumerate the physical devices
-//! that are available on the system with `PhysicalDevice::enumerate()` (see above).
+//! that are available on the system with `Instance::enumerate_physical_devices()` (see above).
 //!
 //! When choosing which physical device to use, keep in mind that physical devices may or may not
 //! be able to draw to a certain surface (ie. to a window or a monitor), or may even not be able
@@ -57,9 +57,8 @@
 use self::debug::{DebugUtilsMessengerCreateInfo, UserCallback};
 pub use self::{extensions::InstanceExtensions, layers::LayerProperties};
 use crate::{
-    device::physical::{init_physical_devices, PhysicalDeviceInfo},
-    instance::debug::{trampoline, DebugUtilsMessageSeverity, DebugUtilsMessageType},
-    OomError, VulkanError, VulkanLibrary, VulkanObject,
+    device::physical::PhysicalDevice, instance::debug::trampoline, OomError, RequiresOneOf,
+    VulkanError, VulkanLibrary, VulkanObject,
 };
 pub use crate::{
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
@@ -70,7 +69,7 @@ use smallvec::SmallVec;
 use std::{
     error::Error,
     ffi::{c_void, CString},
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     panic::{RefUnwindSafe, UnwindSafe},
@@ -167,7 +166,7 @@ mod layers;
 /// let extensions = InstanceExtensions {
 ///     khr_surface: true,
 ///     khr_android_surface: true,
-///     .. InstanceExtensions::none()
+///     .. InstanceExtensions::empty()
 /// };
 ///
 /// let instance = Instance::new(
@@ -234,7 +233,6 @@ mod layers;
 pub struct Instance {
     handle: ash::vk::Instance,
     fns: InstanceFunctions,
-    pub(crate) physical_device_infos: Vec<PhysicalDeviceInfo>,
 
     api_version: Version,
     enabled_extensions: InstanceExtensions,
@@ -314,7 +312,8 @@ impl Instance {
 
         // VUID-VkApplicationInfo-apiVersion-04010
         assert!(max_api_version >= Version::V1_0);
-        let supported_extensions = library.supported_extensions();
+        let supported_extensions =
+            library.supported_extensions_with_layers(enabled_layers.iter().map(String::as_str))?;
         let mut flags = ash::vk::InstanceCreateFlags::empty();
 
         if enumerate_portability && supported_extensions.khr_portability_enumeration {
@@ -323,7 +322,7 @@ impl Instance {
         }
 
         // Check if the extensions are correct
-        enabled_extensions.check_requirements(supported_extensions, api_version)?;
+        enabled_extensions.check_requirements(&supported_extensions, api_version)?;
 
         // FIXME: check whether each layer is supported
         let enabled_layers_cstr: Vec<CString> = enabled_layers
@@ -386,17 +385,26 @@ impl Instance {
 
             // VUID-VkInstanceCreateInfo-pNext-04926
             if !enabled_extensions.ext_debug_utils {
-                return Err(InstanceCreationError::ExtensionNotEnabled {
-                    extension: "ext_debug_utils",
-                    reason: "debug_utils_messengers was not empty",
+                return Err(InstanceCreationError::RequirementNotMet {
+                    required_for: "`debug_utils_messengers` is not empty",
+                    requires_one_of: RequiresOneOf {
+                        instance_extensions: &["ext_debug_utils"],
+                        ..Default::default()
+                    },
                 });
             }
 
+            // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-parameter
+            // TODO: message_severity.validate_instance()?;
+
             // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-requiredbitmask
-            assert!(message_severity != DebugUtilsMessageSeverity::none());
+            assert!(!message_severity.is_empty());
+
+            // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-parameter
+            // TODO: message_type.validate_instance()?;
 
             // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-requiredbitmask
-            assert!(message_type != DebugUtilsMessageType::none());
+            assert!(!message_type.is_empty());
 
             // VUID-PFN_vkDebugUtilsMessengerCallbackEXT-None-04769
             // Can't be checked, creation is unsafe.
@@ -443,10 +451,9 @@ impl Instance {
             })
         };
 
-        let mut instance = Instance {
+        Ok(Arc::new(Instance {
             handle,
             fns,
-            physical_device_infos: Vec::new(),
 
             api_version,
             enabled_extensions,
@@ -454,12 +461,7 @@ impl Instance {
             library,
             max_api_version,
             _user_callbacks: user_callbacks,
-        };
-
-        // Enumerating all physical devices.
-        instance.physical_device_infos = init_physical_devices(&instance)?;
-
-        Ok(Arc::new(instance))
+        }))
     }
 
     /// Returns the Vulkan library used to create this instance.
@@ -501,6 +503,60 @@ impl Instance {
     pub fn enabled_layers(&self) -> &[String] {
         &self.enabled_layers
     }
+
+    /// Returns an iterator that enumerates the physical devices available.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use vulkano::{
+    /// #     instance::{Instance, InstanceExtensions},
+    /// #     Version, VulkanLibrary,
+    /// # };
+    ///
+    /// # let library = VulkanLibrary::new().unwrap();
+    /// # let instance = Instance::new(library, Default::default()).unwrap();
+    /// for physical_device in instance.enumerate_physical_devices().unwrap() {
+    ///     println!("Available device: {}", physical_device.properties().device_name);
+    /// }
+    /// ```
+    pub fn enumerate_physical_devices(
+        self: &Arc<Self>,
+    ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>>, VulkanError> {
+        let fns = self.fns();
+
+        unsafe {
+            let handles = loop {
+                let mut count = 0;
+                (fns.v1_0.enumerate_physical_devices)(self.handle, &mut count, ptr::null_mut())
+                    .result()
+                    .map_err(VulkanError::from)?;
+
+                let mut handles = Vec::with_capacity(count as usize);
+                let result = (fns.v1_0.enumerate_physical_devices)(
+                    self.handle,
+                    &mut count,
+                    handles.as_mut_ptr(),
+                );
+
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        handles.set_len(count as usize);
+                        break handles;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err)),
+                }
+            };
+
+            let physical_devices: SmallVec<[_; 4]> = handles
+                .into_iter()
+                .map(|handle| PhysicalDevice::from_handle(self.clone(), handle))
+                .collect::<Result<_, _>>()?;
+
+            Ok(physical_devices.into_iter())
+        }
+    }
 }
 
 impl Drop for Instance {
@@ -539,12 +595,11 @@ impl Hash for Instance {
     }
 }
 
-impl fmt::Debug for Instance {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl Debug for Instance {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             fns,
-            physical_device_infos,
             api_version,
             enabled_extensions,
             enabled_layers,
@@ -556,7 +611,6 @@ impl fmt::Debug for Instance {
         f.debug_struct("Instance")
             .field("handle", handle)
             .field("fns", fns)
-            .field("physical_device_infos", physical_device_infos)
             .field("api_version", api_version)
             .field("enabled_extensions", enabled_extensions)
             .field("enabled_layers", enabled_layers)
@@ -581,7 +635,7 @@ pub struct InstanceCreateInfo {
 
     /// The extensions to enable on the instance.
     ///
-    /// The default value is [`InstanceExtensions::none()`].
+    /// The default value is [`InstanceExtensions::empty()`].
     pub enabled_extensions: InstanceExtensions,
 
     /// The layers to enable on the instance.
@@ -630,7 +684,7 @@ impl Default for InstanceCreateInfo {
         Self {
             application_name: None,
             application_version: Version::major_minor(0, 0),
-            enabled_extensions: InstanceExtensions::none(),
+            enabled_extensions: InstanceExtensions::empty(),
             enabled_layers: Vec::new(),
             engine_name: None,
             engine_version: Version::major_minor(0, 0),
@@ -684,9 +738,9 @@ pub enum InstanceCreationError {
     /// A restriction for an extension was not met.
     ExtensionRestrictionNotMet(ExtensionRestrictionError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 }
 
@@ -700,20 +754,24 @@ impl Error for InstanceCreationError {
     }
 }
 
-impl fmt::Display for InstanceCreationError {
+impl Display for InstanceCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::InitializationFailed => write!(fmt, "initialization failed"),
-            Self::LayerNotPresent => write!(fmt, "layer not present"),
-            Self::ExtensionNotPresent => write!(fmt, "extension not present"),
-            Self::IncompatibleDriver => write!(fmt, "incompatible driver"),
-            Self::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::InitializationFailed => write!(f, "initialization failed"),
+            Self::LayerNotPresent => write!(f, "layer not present"),
+            Self::ExtensionNotPresent => write!(f, "extension not present"),
+            Self::IncompatibleDriver => write!(f, "incompatible driver"),
+            Self::ExtensionRestrictionNotMet(err) => Display::fmt(err, f),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
         }
     }
@@ -750,28 +808,9 @@ impl From<VulkanError> for InstanceCreationError {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::physical::PhysicalDevice;
 
     #[test]
     fn create_instance() {
         let _ = instance!();
-    }
-
-    #[test]
-    fn queue_family_by_id() {
-        let instance = instance!();
-
-        let phys = match PhysicalDevice::enumerate(&instance).next() {
-            Some(p) => p,
-            None => return,
-        };
-
-        let queue_family = match phys.queue_families().next() {
-            Some(q) => q,
-            None => return,
-        };
-
-        let by_id = phys.queue_family_by_id(queue_family.id()).unwrap();
-        assert_eq!(by_id.id(), queue_family.id());
     }
 }

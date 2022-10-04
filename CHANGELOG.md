@@ -6,45 +6,148 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
-- **Breaking** Public dependency updates:
-  - Winit 0.27
-  - raw-window-handle 0.5
-- **Breaking** Changes to `Instance` and Vulkan initialization:
-  - `FunctionPointers` is renamed to `VulkanLibrary`, and now resides in a separate `library` module. It is re-exported from the crate root.
-  - The `Loader` trait is now in the `library` module.
-  - `Instance` now requires a `VulkanLibrary` object, which you must create beforehand.
-  - The `auto_loader` function is removed.
-  - Supported extensions and layers are now retrieved from the `VulkanLibrary` object. The old `layers_list` and `InstanceExtensions` methods are removed.
-  - The deprecated methods of `DeviceExtensions` are removed.
-  - Vulkano-win: `required_extensions` now requires a reference to `VulkanLibrary`.
-  - `VulkanLibrary::get_instance_proc_addr` is now `unsafe`, and returns `ash::vk::PFN_vkVoidFunction`.
-- **Breaking** Changes to Vulkano-util:
-  - Required instance extensions for surface creation aren't added until `VulkanoContext` is created.
-  - The `instance`, `device`, `graphics_queue` and `compute_queue` methods of `VulkanoContext` now return a reference instead of an owned `Arc`.
-- **Breaking** Merged `ImmutableBuffer` into `DeviceLocalBuffer`.
-- **Breaking** Changes to command pools:
-  - `StandardCommandPool` is now implemented lock-free, using thread-local storage.
-  - `Device::standard_command_pool` has been removed in favor of `Device::with_standard_command_pool`.
-  - `StandardCommandPool::new` nows return a `Result`.
-  - Added `khr_portability_enumeration` as a default configuration for MacOS in `vulkano-utils`
-- **Breaking** Changes to descriptor (set) pools:
-  - Renamed `StdDescriptorPool[Alloc]` to `Standard{...}`.
-  - `StandardDescriptorPool` is now implemented lock-less, using thread-local storage.
-  - Removed `Device::standard_descriptor_pool` in favor of `Device::with_standard_descriptor_pool`.
-  - `DescriptorPool::allocate` now takes `&Arc<DescriptorSetLayout>` instead of `&DescriptorSetLayout`.
-  - `SingleLayoutDescSetPool::new` now returns `Result`.
-  - Added `SingleLayoutVariableDescSetPool`.
-- **Breaking** Changes to memory pools:
-  - Renamed `StdMemoryPool[Alloc]`, `StdHostVisibleMemoryTypePool[Alloc]`, `StdNonHostVisibleMemoryTypePool[Alloc]` to `Standard{...}`.
-  - Removed `Device::standard_pool` in favor of `Device::standard_memory_pool`, which returns `&Arc<StandardMemoryPool>`.
-- **Potentially Breaking** Fix iOS compilation:
+
+### Breaking changes
+
+Changes to queue operations:
+- To do operations on a queue, you must now call `with` to gain access. This takes a closure that is passed a 
+- The `wait` method of devices and queues is renamed to `wait_idle` to match Vulkan.
+- `Queue` now implements `VulkanObject` instead of `SynchronizedVulkanObject`, which is removed.
+- `Queue` now takes ownership of resources belonging to operations that you execute on it, to keep them from being destroyed while in use.
+- If `Queue` is dropped, it will call `wait_idle` to block the current thread until all operations on it have completed.
+- The `command_buffer::submit` module has been removed. The `SubmitAnyBuilder` enum is moved to the `sync` module, and no longer has a lifetime parameter.
+
+Changes to swapchains and operations:
+- The `W` parameter must now implement `Send + Sync`.
+- `PresentInfo` as been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
+- `acquire_next_image` returns an `u32` index to match Vulkan.
+
+Changes to `GpuFuture`:
+- Added required method `check_swapchain_image_acquired`.
+- `AccessError::SwapchainImageAcquireOnly` has been renamed to `SwapchainImageNotAcquired`.
+
+### Additions
+- Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
+- Added the `device_coherent`, `device_uncached` and `rdma_capable` flags to `MemoryPropertyFlags`, and improved the documentation of all flags with additional usage advice.
+- Some methods of `PhysicalDevice` now cache their results, so that another call with the same arguments will retrieve them faster.
+- Fence methods are now validated and synchronized, so they take `&self`.
+- When calling `Fence::is_signaled` or `Fence::wait`, if the fence is associated with a queue, any resources of the associated queue operation will be released.
+- `VulkanLibrary::extension_properties`, to mirror the equivalent function on `PhysicalDevice`.
+- `VulkanLibrary` methods `layer_extension_properties`, `supported_layer_extensions` and `supported_extensions_with_layers`, to query the extensions supported by layers.
+- Added the remaining missing variants of the `ColorSpace` enum.
+- Added a `supports_protected` member to `SurfaceCapabilities` for the `khr_surface_protected_capabilities` extension.
+
+### Bugs fixed
+- Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
+- [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
+- [#1871](https://github.com/vulkano-rs/vulkano/issues/1871): Layer extensions are not included when validating extensions to enable on an instance.
+
+# Version 0.31.0 (2022-09-18)
+
+### Public dependency updates
+- [winit](https://crates.io/crates/winit) 0.27
+- [raw-window-handle](https://crates.io/crates/raw-window-handle) 0.5
+- [half](https://crates.io/crates/half) 2
+
+### Breaking changes
+
+Changes to `Instance` and Vulkan initialization:
+- `FunctionPointers` is renamed to `VulkanLibrary`, and now resides in a separate `library` module. It is re-exported from the crate root.
+- The `Loader` trait is now in the `library` module.
+- `Instance` now requires a `VulkanLibrary` object, which you must create beforehand.
+- The `auto_loader` function is removed.
+- Supported extensions and layers are now retrieved from the `VulkanLibrary` object. The old `layers_list` and `InstanceExtensions` methods are removed.
+- The deprecated methods of `DeviceExtensions` are removed.
+- Vulkano-win: `required_extensions` now requires a reference to `VulkanLibrary`.
+- `VulkanLibrary::get_instance_proc_addr` is now `unsafe`, and returns `ash::vk::PFN_vkVoidFunction`.
+
+Changes to Vulkano-util:
+- Required instance extensions for surface creation aren't added until `VulkanoContext` is created.
+- The `instance`, `device`, `graphics_queue` and `compute_queue` methods of `VulkanoContext` now return a reference instead of an owned `Arc`.
+
+Changes to command pools:
+- `StandardCommandPool` is now implemented lock-free, using thread-local storage.
+- `Device::standard_command_pool` has been removed in favor of `Device::with_standard_command_pool`.
+- `StandardCommandPool::new` nows return a `Result`.
+- Added `khr_portability_enumeration` as a default configuration for MacOS in `vulkano-utils`
+
+Changes to descriptor (set) pools:
+- Renamed `StdDescriptorPool[Alloc]` to `Standard{...}`.
+- `StandardDescriptorPool` is now implemented lock-less, using thread-local storage.
+- Removed `Device::standard_descriptor_pool` in favor of `Device::with_standard_descriptor_pool`.
+- `DescriptorPool::allocate` now takes `&Arc<DescriptorSetLayout>` instead of `&DescriptorSetLayout`.
+- `SingleLayoutDescSetPool::new` now returns `Result`.
+- Added `SingleLayoutVariableDescSetPool`.
+
+Changes to memory pools:
+- Renamed `StdMemoryPool[Alloc]`, `StdHostVisibleMemoryTypePool[Alloc]`, `StdNonHostVisibleMemoryTypePool[Alloc]` to `Standard{...}`.
+- Renamed `Device::standard_pool` to `Device::standard_memory_pool`.
+
+Changes to `PhysicalDevice`:
+- `PhysicalDevice::enumerate` has been replaced with `Instance::enumerate_physical_devices`. This function returns `Arc<PhysicalDevice>`.
+- Enumerating physical devices multiple times now retrieves the list of devices each time, instead of only at instance creation. This makes it possible to handle devices that are added/removed during runtime.
+- `PhysicalDevice` now owns instead of borrows from its parent `Instance`, so it has no more type parameter.
+- Added `extension_properties`, `memory_properties` and `queue_family_properties` method to get the full properties directly.
+- `MemoryType`, `MemoryHeap` and `QueueFamily` have been removed. Where they were used, you now provide a `u32` index into the `memory_properties().memory_types`, `memory_properties().memory_heaps` and `queue_family_properties()` arrays.
+- `QueueFamily::supports_surface` has been replaced with `PhysicalDevice::surface_support`, to match the Vulkan structure.
+- `QueueCreateInfo` now implements `Default` (with a default `queue_family_index` of 0).
+- `Queue::family` has been renamed to `queue_family_index`.
+
+Changes to swapchain presentation:
+- `swapchain::present` now takes `PresentInfo` parameter.
+- `swapchain::present_incremental` has been removed.
+- `GpuFuture::then_swapchain_present` now takes `PresentInfo` parameter.
+- `GpuFuture::then_swapchain_present_incremental` has been removed.
+- `SubmitPresentBuilder::swapchain` now takes `PresentInfo`.
+- Added support for `present_id` feature with `present_id` field on `PresentInfo`.
+- Added support for `present_wait` feature by adding method `swapchain::wait_for_present`.
+
+Changes to `CpuBufferPool`:
+- The methods `next` and `chunk` have been renamed to `from_data` and `from_iter` respectively, to be clearer and to match the constructor methods of other buffer and image types.
+
+Changes to bitflag structs and enums corresponding to Vulkan equivalents, as well as to `InstanceExtensions`, `DeviceExtensions` and `Features`:
+- The `all()` constructor has been removed from types that have it, as it has the potential to break forward compatibility: it can enable new flags that were not anticipated by old code. For the same reason, the `!` operator is not implemented.
+- All values are validated against the device API version and enabled extensions.
+- The constructor `::none()` is deprecated in favour of `::empty()`.
+- The method `is_superset_of` is deprecated in favour of `contains`.
+- `BufferUsage` and `ImageUsage` no longer have constructors for some specific combinations.
+
+Miscellaneous:
+- Merged `ImmutableBuffer` into `DeviceLocalBuffer`.
+- `Semaphore::export_opaque_fd` has been renamed to `export_fd` and now takes an `ExternalSemaphoreHandleType` to specify the handle type to export.
+- `Surface::from_raw_surface` has been renamed to `from_handle` to match the `from_handle` methods that were added for other types.
+
+### Additions
+- All bitflag types, `InstanceExtensions`, `DeviceExtensions` and `Features` now:
+  - Have a `const fn empty()` constructor.
+  - Have `const` methods `is_empty`, `intersects`, `contains`, `union`, `intersection`, `difference`, `symmetric_difference`.
+  - Implement the operators `&`, `&=`, `|`, `|=`, `^`, `^=`, `-` and `-=`.
+  - Implement `Clone`, `Copy`, `Debug`, `Default`, `PartialEq`, `Eq` and `Hash`.
+  - Implement `From` to and from the corresponding Vulkan type (except `InstanceExtensions`, `DeviceExtensions` and `Features`).
+- All enum types now:
+  - Implement `Clone`, `Copy`, `Debug`, `PartialEq`, `Eq` and `Hash`.
+  - Implement `From` to the corresponding Vulkan type, and `TryFrom` from the corresponding Vulkan type.
+- Support for importing `OpaqueWin32` / `OpaqueWin32Kmt` memory handles.
+- Two missing functions for querying about sparse images: `PhysicalDevice::sparse_image_format_properties` and `UnsafeImage::sparse_memory_requirements`.
+- A `DeviceMemory::commitment` method to retrieve the current commitment for lazily-allocated memory.
+- Support for the `khr_external_fence` and `khr_external_fence_capabilities` extensions. No import or export functions are defined yet, but those can be added more easily now.
+- The missing `wayland_presentation_support`, `win32_presentation_support` `xcb_presentation_support` and `xlib_presentation_support` methods to `PhysicalDevice`.
+- Support for the `ext_headless_surface`, `ext_directfb_surface`, `fuchsia_imagepipe_surface`, `ggp_stream_descriptor_surface` and `qnx_screen_surface` surface for creating surfaces from these APIs.
+- Support for the `ext_tooling_info` extension.
+- Support for external memory to `UnsafeBuffer`.
+- Support for the `ext_separate_stencil_usage` extension. `UnsafeImage` and the `ImageAccess` trait now have a `stencil_usage` method.
+- The `DepthReadOnlyStencilAttachmentOptimal` and `DepthAttachmentStencilReadOnlyOptimal` image layouts.
+- The ability to choose a usage for image views, that is a subset of the usage of the parent image.
+
+### Bugs fixed
+- Fixed iOS compilation. Potentially breaking.
   - Removed dependency to `cocoa` and `metal`
   - Fixed iOS compilation errors
   - Added `winit_to_surface` method for iOS, ensuring we can draw to a sub `CAMetalLayer` layer
   - Added `Surface::update_ios_sublayer_on_resize` to ensure iOS sublayer is fullscreen if initial window size was not the same as device's
   - Ensure both iOS and MacOS have `CAMetalLayer` when using `create_surface_from_handle`
-- Bugs fixed:
-  - [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
+- [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
+- Atomic writes in shaders are not treated as write access for the purposes of synchronization.
 - Improvements to compiler linting:
   - Most clippy warnings and errors have been fixed, and the remainder is explicitly allowed in each crate root. Some of these may be re-enabled in the future if desired.
   - Warnings for dead code and unused variables have been re-enabled and fixed.

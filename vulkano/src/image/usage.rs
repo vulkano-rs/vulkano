@@ -7,231 +7,91 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::ops::BitOr;
+use crate::macros::vulkan_bitflags;
 
-/// Describes how an image is going to be used. This is **not** just an optimization.
-///
-/// If you try to use an image in a way that you didn't declare, a panic will happen.
-///
-/// If `transient_attachment` is true, then only `color_attachment`, `depth_stencil_attachment`
-/// and `input_attachment` can be true as well. The rest must be false or an error will be returned
-/// when creating the image.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct ImageUsage {
-    /// Can be used as a source for transfers. Includes blits.
-    pub transfer_src: bool,
+vulkan_bitflags! {
+    /// Describes how an image is going to be used. This is **not** just an optimization.
+    ///
+    /// If you try to use an image in a way that you didn't declare, an error will occur.
+    #[non_exhaustive]
+    ImageUsage = ImageUsageFlags(u32);
 
-    /// Can be used as a destination for transfers. Includes blits.
-    pub transfer_dst: bool,
+    /// The image can be used as a source for transfer, blit, resolve and clear commands.
+    transfer_src = TRANSFER_SRC,
 
-    /// Can be sampled from a shader.
-    pub sampled: bool,
+    /// The image can be used as a destination for transfer, blit, resolve and clear commands.
+    transfer_dst = TRANSFER_DST,
 
-    /// Can be used as an image storage in a shader.
-    pub storage: bool,
+    /// The image can be used as a sampled image in a shader.
+    sampled = SAMPLED,
 
-    /// Can be attached as a color attachment to a framebuffer.
-    pub color_attachment: bool,
+    /// The image can be used as a storage image in a shader.
+    storage = STORAGE,
 
-    /// Can be attached as a depth, stencil or depth-stencil attachment to a framebuffer.
-    pub depth_stencil_attachment: bool,
+    /// The image can be used as a color attachment in a render pass/framebuffer.
+    color_attachment = COLOR_ATTACHMENT,
 
-    /// Indicates that this image will only ever be used as a temporary framebuffer attachment.
+    /// The image can be used as a depth/stencil attachment in a render pass/framebuffer.
+    depth_stencil_attachment = DEPTH_STENCIL_ATTACHMENT,
+
+    /// The image will be used as an attachment, and will only ever be used temporarily.
     /// As soon as you leave a render pass, the content of transient images becomes undefined.
     ///
     /// This is a hint to the Vulkan implementation that it may not need allocate any memory for
     /// this image if the image can live entirely in some cache.
-    pub transient_attachment: bool,
-
-    /// Can be used as an input attachment. In other words, you can draw to it in a subpass then
-    /// read from it in a following pass.
-    pub input_attachment: bool,
-}
-
-impl ImageUsage {
-    /// Builds a `ImageUsage` with all values set to true. Note that using the returned value will
-    /// produce an error because of `transient_attachment` being true.
-    #[inline]
-    pub const fn all() -> ImageUsage {
-        ImageUsage {
-            transfer_src: true,
-            transfer_dst: true,
-            sampled: true,
-            storage: true,
-            color_attachment: true,
-            depth_stencil_attachment: true,
-            transient_attachment: true,
-            input_attachment: true,
-        }
-    }
-
-    /// Builds a `ImageUsage` with all values set to false. Useful as a default value.
     ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use vulkano::image::ImageUsage as ImageUsage;
-    ///
-    /// let _usage = ImageUsage {
-    ///     transfer_dst: true,
-    ///     sampled: true,
-    ///     .. ImageUsage::none()
-    /// };
-    /// ```
-    #[inline]
-    pub const fn none() -> ImageUsage {
-        ImageUsage {
-            transfer_src: false,
-            transfer_dst: false,
-            sampled: false,
-            storage: false,
-            color_attachment: false,
-            depth_stencil_attachment: false,
-            transient_attachment: false,
-            input_attachment: false,
-        }
-    }
+    /// If `transient_attachment` is true, then only `color_attachment`, `depth_stencil_attachment`
+    /// and `input_attachment` can be true as well. The rest must be false or an error will be
+    /// returned when creating the image.
+    transient_attachment = TRANSIENT_ATTACHMENT,
 
-    /// Builds a ImageUsage with color_attachment set to true and the rest to false.
-    #[inline]
-    pub const fn color_attachment() -> ImageUsage {
-        ImageUsage {
-            transfer_src: false,
-            transfer_dst: false,
-            sampled: false,
-            storage: false,
-            color_attachment: true,
-            depth_stencil_attachment: false,
-            transient_attachment: false,
-            input_attachment: false,
-        }
-    }
+    /// The image can be used as an input attachment in a render pass/framebuffer.
+    input_attachment = INPUT_ATTACHMENT,
 
-    /// Builds a ImageUsage with depth_stencil_attachment set to true and the rest to false.
-    #[inline]
-    pub const fn depth_stencil_attachment() -> ImageUsage {
-        ImageUsage {
-            transfer_src: false,
-            transfer_dst: false,
-            sampled: false,
-            storage: false,
-            color_attachment: false,
-            depth_stencil_attachment: true,
-            transient_attachment: false,
-            input_attachment: false,
-        }
-    }
+    /*
+    // TODO: document
+    video_decode_dst = VIDEO_DECODE_DST_KHR {
+        device_extensions: [khr_video_decode_queue],
+    },
 
-    /// Builds a ImageUsage with color_attachment and transient_attachment set to true and the rest to false.
-    #[inline]
-    pub const fn transient_color_attachment() -> ImageUsage {
-        ImageUsage {
-            transfer_src: false,
-            transfer_dst: false,
-            sampled: false,
-            storage: false,
-            color_attachment: true,
-            depth_stencil_attachment: false,
-            transient_attachment: true,
-            input_attachment: false,
-        }
-    }
+    // TODO: document
+    video_decode_src = VIDEO_DECODE_SRC_KHR {
+        device_extensions: [khr_video_decode_queue],
+    },
 
-    /// Builds a ImageUsage with depth_stencil_attachment and transient_attachment set to true and the rest to false.
-    #[inline]
-    pub const fn transient_depth_stencil_attachment() -> ImageUsage {
-        ImageUsage {
-            transfer_src: false,
-            transfer_dst: false,
-            sampled: false,
-            storage: false,
-            color_attachment: false,
-            depth_stencil_attachment: true,
-            transient_attachment: true,
-            input_attachment: false,
-        }
-    }
+    // TODO: document
+    video_decode_dpb = VIDEO_DECODE_DPB_KHR {
+        device_extensions: [khr_video_decode_queue],
+    },
 
-    /// Builds a ImageUsage with input_attachment and transient_attachment set to true and the rest to false.
-    #[inline]
-    pub const fn transient_input_attachment() -> ImageUsage {
-        ImageUsage {
-            transfer_src: false,
-            transfer_dst: false,
-            sampled: false,
-            storage: false,
-            color_attachment: false,
-            depth_stencil_attachment: false,
-            transient_attachment: true,
-            input_attachment: true,
-        }
-    }
-}
+    // TODO: document
+    fragment_density_map = FRAGMENT_DENSITY_MAP_EXT {
+        device_extensions: [ext_fragment_density_map],
+    },
 
-impl From<ImageUsage> for ash::vk::ImageUsageFlags {
-    #[inline]
-    fn from(val: ImageUsage) -> Self {
-        let mut result = ash::vk::ImageUsageFlags::empty();
-        if val.transfer_src {
-            result |= ash::vk::ImageUsageFlags::TRANSFER_SRC;
-        }
-        if val.transfer_dst {
-            result |= ash::vk::ImageUsageFlags::TRANSFER_DST;
-        }
-        if val.sampled {
-            result |= ash::vk::ImageUsageFlags::SAMPLED;
-        }
-        if val.storage {
-            result |= ash::vk::ImageUsageFlags::STORAGE;
-        }
-        if val.color_attachment {
-            result |= ash::vk::ImageUsageFlags::COLOR_ATTACHMENT;
-        }
-        if val.depth_stencil_attachment {
-            result |= ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
-        }
-        if val.transient_attachment {
-            result |= ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT;
-        }
-        if val.input_attachment {
-            result |= ash::vk::ImageUsageFlags::INPUT_ATTACHMENT;
-        }
-        result
-    }
-}
+    // TODO: document
+    fragment_shading_rate_attachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
+        device_extensions: [khr_fragment_shading_rate],
+    },
 
-impl From<ash::vk::ImageUsageFlags> for ImageUsage {
-    #[inline]
-    fn from(val: ash::vk::ImageUsageFlags) -> ImageUsage {
-        ImageUsage {
-            transfer_src: !(val & ash::vk::ImageUsageFlags::TRANSFER_SRC).is_empty(),
-            transfer_dst: !(val & ash::vk::ImageUsageFlags::TRANSFER_DST).is_empty(),
-            sampled: !(val & ash::vk::ImageUsageFlags::SAMPLED).is_empty(),
-            storage: !(val & ash::vk::ImageUsageFlags::STORAGE).is_empty(),
-            color_attachment: !(val & ash::vk::ImageUsageFlags::COLOR_ATTACHMENT).is_empty(),
-            depth_stencil_attachment: !(val & ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-                .is_empty(),
-            transient_attachment: !(val & ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT)
-                .is_empty(),
-            input_attachment: !(val & ash::vk::ImageUsageFlags::INPUT_ATTACHMENT).is_empty(),
-        }
-    }
-}
+    // TODO: document
+    video_encode_dst = VIDEO_ENCODE_DST_KHR {
+        device_extensions: [khr_video_encode_queue],
+    },
 
-impl BitOr for ImageUsage {
-    type Output = Self;
+    // TODO: document
+    video_encode_src = VIDEO_ENCODE_SRC_KHR {
+        device_extensions: [khr_video_encode_queue],
+    },
 
-    #[inline]
-    fn bitor(self, rhs: Self) -> Self {
-        ImageUsage {
-            transfer_src: self.transfer_src || rhs.transfer_src,
-            transfer_dst: self.transfer_dst || rhs.transfer_dst,
-            sampled: self.sampled || rhs.sampled,
-            storage: self.storage || rhs.storage,
-            color_attachment: self.color_attachment || rhs.color_attachment,
-            depth_stencil_attachment: self.depth_stencil_attachment || rhs.depth_stencil_attachment,
-            transient_attachment: self.transient_attachment || rhs.transient_attachment,
-            input_attachment: self.input_attachment || rhs.input_attachment,
-        }
-    }
+    // TODO: document
+    video_encode_dpb = VIDEO_ENCODE_DPB_KHR {
+        device_extensions: [khr_video_encode_queue],
+    },
+
+    // TODO: document
+    invocation_mask = INVOCATION_MASK_HUAWEI {
+        device_extensions: [huawei_invocation_mask],
+    },
+     */
 }

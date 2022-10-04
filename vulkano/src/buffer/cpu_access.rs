@@ -21,13 +21,13 @@ use super::{
 };
 use crate::{
     buffer::{sys::UnsafeBufferCreateInfo, BufferCreationError, TypedBufferAccess},
-    device::{physical::QueueFamily, Device, DeviceOwned},
+    device::{Device, DeviceOwned},
     memory::{
         pool::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
             PotentialDedicatedAllocation, StandardMemoryPoolAlloc,
         },
-        DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
+        DedicatedAllocation, DeviceMemoryError, MemoryPool,
     },
     sync::Sharing,
     DeviceSize,
@@ -35,7 +35,7 @@ use crate::{
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::size_of,
@@ -62,7 +62,7 @@ where
     memory: A,
 
     // Queue families allowed to access this buffer.
-    queue_families: SmallVec<[u32; 4]>,
+    queue_family_indices: SmallVec<[u32; 4]>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -82,7 +82,7 @@ where
         usage: BufferUsage,
         host_cached: bool,
         data: T,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryError> {
         unsafe {
             let uninitialized = CpuAccessibleBuffer::raw(
                 device,
@@ -115,7 +115,7 @@ where
         device: Arc<Device>,
         usage: BufferUsage,
         host_cached: bool,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryError> {
         CpuAccessibleBuffer::raw(device, size_of::<T>() as DeviceSize, usage, host_cached, [])
     }
 }
@@ -136,7 +136,7 @@ where
         usage: BufferUsage,
         host_cached: bool,
         data: I,
-    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocationError>
+    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryError>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
@@ -179,7 +179,7 @@ where
         len: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
-    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryError> {
         CpuAccessibleBuffer::raw(
             device,
             len * size_of::<T>() as DeviceSize,
@@ -203,27 +203,21 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    pub unsafe fn raw<'a, I>(
+    pub unsafe fn raw(
         device: Arc<Device>,
         size: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
-        queue_families: I,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryError> {
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let buffer = {
             match UnsafeBuffer::new(
                 device.clone(),
                 UnsafeBufferCreateInfo {
-                    sharing: if queue_families.len() >= 2 {
-                        Sharing::Concurrent(queue_families.clone())
+                    sharing: if queue_family_indices.len() >= 2 {
+                        Sharing::Concurrent(queue_family_indices.clone())
                     } else {
                         Sharing::Exclusive
                     },
@@ -241,13 +235,13 @@ where
         let mem_reqs = buffer.memory_requirements();
 
         let memory = MemoryPool::alloc_from_requirements(
-            device.standard_memory_pool(),
+            &device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::Map,
             Some(DedicatedAllocation::Buffer(&buffer)),
             |m| {
-                if m.is_host_cached() {
+                if m.property_flags.host_cached {
                     if host_cached {
                         AllocFromRequirementsFilter::Preferred
                     } else {
@@ -269,7 +263,7 @@ where
         Ok(Arc::new(CpuAccessibleBuffer {
             inner: buffer,
             memory,
-            queue_families,
+            queue_family_indices,
             marker: PhantomData,
         }))
     }
@@ -280,18 +274,9 @@ where
     T: BufferContents + ?Sized,
 {
     /// Returns the queue families this buffer can be used on.
-    // TODO: use a custom iterator
     #[inline]
-    pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families
-            .iter()
-            .map(|&num| {
-                self.device()
-                    .physical_device()
-                    .queue_family_by_id(num)
-                    .unwrap()
-            })
-            .collect()
+    pub fn queue_family_indices(&self) -> &[u32] {
+        &self.queue_family_indices
     }
 }
 
@@ -310,7 +295,7 @@ where
     /// that uses it in exclusive mode will fail. You can still submit this buffer for non-exclusive
     /// accesses (ie. reads).
     #[inline]
-    pub fn read(&self) -> Result<ReadLock<T, A>, ReadLockError> {
+    pub fn read(&self) -> Result<ReadLock<'_, T, A>, ReadLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
 
@@ -351,7 +336,7 @@ where
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it and any attempt to call `read()` will return an error.
     #[inline]
-    pub fn write(&self) -> Result<WriteLock<T, A>, WriteLockError> {
+    pub fn write(&self) -> Result<WriteLock<'_, T, A>, WriteLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
 
@@ -386,7 +371,7 @@ where
     A: Send + Sync,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.inner,
             offset: 0,
@@ -465,7 +450,7 @@ where
 #[derive(Debug)]
 pub struct ReadLock<'a, T, A>
 where
-    T: BufferContents + ?Sized + 'a,
+    T: BufferContents + ?Sized,
     A: MemoryPoolAlloc,
 {
     inner: &'a CpuAccessibleBuffer<T, A>,
@@ -507,7 +492,7 @@ where
 #[derive(Debug)]
 pub struct WriteLock<'a, T, A>
 where
-    T: BufferContents + ?Sized + 'a,
+    T: BufferContents + ?Sized,
     A: MemoryPoolAlloc,
 {
     inner: &'a CpuAccessibleBuffer<T, A>,
@@ -572,13 +557,13 @@ pub enum ReadLockError {
 
 impl Error for ReadLockError {}
 
-impl fmt::Display for ReadLockError {
+impl Display for ReadLockError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
-            match *self {
+            match self {
                 ReadLockError::CpuWriteLocked => {
                     "the buffer is already locked for write mode by the CPU"
                 }
@@ -601,13 +586,13 @@ pub enum WriteLockError {
 
 impl Error for WriteLockError {}
 
-impl fmt::Display for WriteLockError {
+impl Display for WriteLockError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
-            match *self {
+            match self {
                 WriteLockError::CpuLocked => "the buffer is already locked by the CPU",
                 WriteLockError::GpuLocked => "the buffer is already locked by the GPU",
             }
@@ -626,10 +611,26 @@ mod tests {
         const EMPTY: [i32; 0] = [];
 
         assert_should_panic!({
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, EMPTY)
-                .unwrap();
-            CpuAccessibleBuffer::from_iter(device, BufferUsage::all(), false, EMPTY.into_iter())
-                .unwrap();
+            CpuAccessibleBuffer::from_data(
+                device.clone(),
+                BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
+                false,
+                EMPTY,
+            )
+            .unwrap();
+            CpuAccessibleBuffer::from_iter(
+                device,
+                BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
+                false,
+                EMPTY.into_iter(),
+            )
+            .unwrap();
         });
     }
 }

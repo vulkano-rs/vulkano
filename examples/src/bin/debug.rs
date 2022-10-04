@@ -11,8 +11,7 @@ use std::sync::Arc;
 use vulkano::{
     command_buffer::allocator::StandardCommandBufferAllocator,
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     format::Format,
     image::{ImageDimensions, ImmutableImage, MipmapsCount},
@@ -38,7 +37,7 @@ fn main() {
     // this example. First, enable debugging using this extension: VK_EXT_debug_utils
     let extensions = InstanceExtensions {
         ext_debug_utils: true,
-        ..InstanceExtensions::none()
+        ..InstanceExtensions::empty()
     };
 
     let library = VulkanLibrary::new().unwrap();
@@ -60,10 +59,6 @@ fn main() {
     }
 
     // NOTE: To simplify the example code we won't verify these layer(s) are actually in the layers list:
-    #[cfg(not(target_os = "macos"))]
-    let layers = vec!["VK_LAYER_LUNARG_standard_validation".to_owned()];
-
-    #[cfg(target_os = "macos")]
     let layers = vec!["VK_LAYER_KHRONOS_validation".to_owned()];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
@@ -94,8 +89,14 @@ fn main() {
                     warning: true,
                     information: true,
                     verbose: true,
+                    ..DebugUtilsMessageSeverity::empty()
                 },
-                message_type: DebugUtilsMessageType::all(),
+                message_type: DebugUtilsMessageType {
+                    general: true,
+                    validation: true,
+                    performance: true,
+                    ..DebugUtilsMessageType::empty()
+                },
                 ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
                     let severity = if msg.severity.error {
                         "error"
@@ -137,14 +138,15 @@ fn main() {
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     let device_extensions = DeviceExtensions {
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .map(|p| {
-            p.queue_families()
-                .next()
-                .map(|q| (p, q))
+            (!p.queue_family_properties().is_empty())
+                .then_some((p, 0))
                 .expect("couldn't find a queue family")
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
@@ -153,6 +155,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .expect("no device available");
 
@@ -160,7 +163,10 @@ fn main() {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -168,7 +174,7 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8_UINT;

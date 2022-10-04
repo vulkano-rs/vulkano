@@ -257,6 +257,7 @@ impl Default for CommandBufferBeginInfo {
 ///
 /// The command buffer must not outlive the command pool that it was created from,
 /// nor the resources used by the recorded commands.
+#[derive(Debug)]
 pub struct UnsafeCommandBuffer {
     command_buffer: ash::vk::CommandBuffer,
     device: Arc<Device>,

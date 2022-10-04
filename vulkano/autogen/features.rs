@@ -83,6 +83,7 @@ pub fn write(vk_data: &VkRegistryData) {
 struct FeaturesMember {
     name: Ident,
     doc: String,
+    raw: String,
     ffi_name: Ident,
     ffi_members: Vec<(Ident, TokenStream)>,
     requires_features: Vec<Ident>,
@@ -112,9 +113,9 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 let string = feature.to_string();
                 quote! {
                     if !self.#feature {
-                        return Err(FeatureRestrictionError {
+                        return Err(crate::device::FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: FeatureRestriction::RequiresFeature(#string),
+                            restriction: crate::device::FeatureRestriction::RequiresFeature(#string),
                         });
                     }
                 }
@@ -123,9 +124,9 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 let string = feature.to_string();
                 quote! {
                     if self.#feature {
-                        return Err(FeatureRestrictionError {
+                        return Err(crate::device::FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: FeatureRestriction::ConflictsFeature(#string),
+                            restriction: crate::device::FeatureRestriction::ConflictsFeature(#string),
                         });
                     }
                 }
@@ -134,10 +135,10 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 required_by_extensions.iter().map(|(version, extension)| {
                     let string = extension.to_string();
                     quote! {
-                        if extensions.#extension && api_version >= Version::#version {
-                            return Err(FeatureRestrictionError {
+                        if extensions.#extension && api_version >= crate::Version::#version {
+                            return Err(crate::device::FeatureRestrictionError {
                                 feature: #name_string,
-                                restriction: FeatureRestriction::RequiredByExtension(#string),
+                                restriction: crate::device::FeatureRestriction::RequiredByExtension(#string),
                             });
                         }
                     }
@@ -145,9 +146,9 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             quote! {
                 if self.#name {
                     if !supported.#name {
-                        return Err(FeatureRestrictionError {
+                        return Err(crate::device::FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: FeatureRestriction::NotSupported,
+                            restriction: crate::device::FeatureRestriction::NotSupported,
                         });
                     }
 
@@ -160,7 +161,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         },
     );
 
-    let none_items = members.iter().map(|FeaturesMember { name, .. }| {
+    let empty_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: false,
         }
@@ -172,9 +173,21 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
     });
 
-    let is_superset_of_items = members.iter().map(|FeaturesMember { name, .. }| {
+    let intersects_items = members.iter().map(|FeaturesMember { name, .. }| {
+        quote! {
+            (self.#name && other.#name)
+        }
+    });
+
+    let contains_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             (self.#name || !other.#name)
+        }
+    });
+
+    let union_items = members.iter().map(|FeaturesMember { name, .. }| {
+        quote! {
+            #name: self.#name || other.#name,
         }
     });
 
@@ -187,6 +200,22 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
     let difference_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: self.#name && !other.#name,
+        }
+    });
+
+    let symmetric_difference_items = members.iter().map(|FeaturesMember { name, .. }| {
+        quote! {
+            #name: self.#name ^ other.#name,
+        }
+    });
+
+    let debug_items = members.iter().map(|FeaturesMember { name, raw, .. }| {
+        quote! {
+            if self.#name {
+                if !first { write!(f, ", ")? }
+                else { first = false; }
+                f.write_str(#raw)?;
+            }
         }
     });
 
@@ -268,13 +297,13 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// # let physical_device: vulkano::device::physical::PhysicalDevice = return;
         /// let minimal_features = Features {
         ///     geometry_shader: true,
-        ///     .. Features::none()
+        ///     .. Features::empty()
         /// };
         ///
         /// let optimal_features = vulkano::device::Features {
         ///     geometry_shader: true,
         ///     tessellation_shader: true,
-        ///     .. Features::none()
+        ///     .. Features::empty()
         /// };
         ///
         /// if !physical_device.supported_features().is_superset_of(&minimal_features) {
@@ -285,7 +314,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
         ///
-        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        #[derive(Copy, Clone, PartialEq, Eq, Hash)]
         pub struct Features {
             #(#struct_items)*
             pub _ne: crate::NonExhaustive,
@@ -294,7 +323,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         impl Default for Features {
             #[inline]
             fn default() -> Self {
-                Self::none()
+                Self::empty()
             }
         }
 
@@ -303,59 +332,167 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &Features,
-                api_version: Version,
-                extensions: &DeviceExtensions,
-            ) -> Result<(), FeatureRestrictionError> {
+                api_version: crate::Version,
+                extensions: &crate::device::DeviceExtensions,
+            ) -> Result<(), crate::device::FeatureRestrictionError> {
                 #(#check_requirements_items)*
                 Ok(())
             }
 
-            /// Builds a `Features` object with all values to false.
-            pub const fn none() -> Features {
-                Features {
-                    #(#none_items)*
+            /// Returns an `Features` object with none of the members set.
+            #[inline]
+            pub const fn empty() -> Self {
+                Self {
+                    #(#empty_items)*
                     _ne: crate::NonExhaustive(()),
                 }
             }
 
-            /// Builds a `Features` object with all values to true.
-            ///
-            /// > **Note**: This function is used for testing purposes, and is probably useless in
-            /// > a real code.
-            pub const fn all() -> Features {
+            /// Returns an `Features` object with none of the members set.
+            #[deprecated(since = "0.31.0", note = "Use `empty` instead.")]
+            #[inline]
+            pub const fn none() -> Self {
+                Self::empty()
+            }
+
+            /// Returns a `Features` object with all of the members set.
+            #[cfg(test)]
+            pub(crate) const fn all() -> Features {
                 Features {
                     #(#all_items)*
                     _ne: crate::NonExhaustive(()),
                 }
             }
 
-            /// Returns true if `self` is a superset of the parameter.
-            ///
-            /// That is, for each feature of the parameter that is true, the corresponding value
-            /// in self is true as well.
-            pub const fn is_superset_of(&self, other: &Features) -> bool {
-                #(#is_superset_of_items)&&*
+            /// Returns whether any members are set in both `self` and `other`.
+            #[inline]
+            pub const fn intersects(&self, other: &Self) -> bool {
+                #(#intersects_items)||*
             }
 
-            /// Builds a `Features` that is the intersection of `self` and another `Features`
-            /// object.
-            ///
-            /// The result's field will be true if it is also true in both `self` and `other`.
-            pub const fn intersection(&self, other: &Features) -> Features {
-                Features {
+            /// Returns whether all members in `other` are set in `self`.
+            #[inline]
+            pub const fn contains(&self, other: &Self) -> bool {
+                #(#contains_items)&&*
+            }
+
+            /// Returns whether all members in `other` are set in `self`.
+            #[deprecated(since = "0.31.0", note = "Use `contains` instead.")]
+            #[inline]
+            pub const fn is_superset_of(&self, other: &Self) -> bool {
+                self.contains(other)
+            }
+
+            /// Returns the union of `self` and `other`.
+            #[inline]
+            pub const fn union(&self, other: &Self) -> Self {
+                Self {
+                    #(#union_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
+            }
+
+            /// Returns the intersection of `self` and `other`.
+            #[inline]
+            pub const fn intersection(&self, other: &Self) -> Self {
+                Self {
                     #(#intersection_items)*
                     _ne: crate::NonExhaustive(()),
                 }
             }
 
-            /// Builds a `Features` that is the difference of another `Features` object from `self`.
-            ///
-            /// The result's field will be true if it is true in `self` but not `other`.
-            pub const fn difference(&self, other: &Features) -> Features {
-                Features {
+            /// Returns `self` without the members set in `other`.
+            #[inline]
+            pub const fn difference(&self, other: &Self) -> Self {
+                Self {
                     #(#difference_items)*
                     _ne: crate::NonExhaustive(()),
                 }
+            }
+
+            /// Returns the members set in `self` or `other`, but not both.
+            #[inline]
+            pub const fn symmetric_difference(&self, other: &Self) -> Self {
+                Self {
+                    #(#symmetric_difference_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
+            }
+        }
+
+        impl std::ops::BitAnd for Features {
+            type Output = Features;
+
+            #[inline]
+            fn bitand(self, rhs: Self) -> Self::Output {
+                self.intersection(&rhs)
+            }
+        }
+
+        impl std::ops::BitAndAssign for Features {
+            #[inline]
+            fn bitand_assign(&mut self, rhs: Self) {
+                *self = self.intersection(&rhs);
+            }
+        }
+
+        impl std::ops::BitOr for Features {
+            type Output = Features;
+
+            #[inline]
+            fn bitor(self, rhs: Self) -> Self::Output {
+                self.union(&rhs)
+            }
+        }
+
+        impl std::ops::BitOrAssign for Features {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: Self) {
+                *self = self.union(&rhs);
+            }
+        }
+
+        impl std::ops::BitXor for Features {
+            type Output = Features;
+
+            #[inline]
+            fn bitxor(self, rhs: Self) -> Self::Output {
+                self.symmetric_difference(&rhs)
+            }
+        }
+
+        impl std::ops::BitXorAssign for Features {
+            #[inline]
+            fn bitxor_assign(&mut self, rhs: Self) {
+                *self = self.symmetric_difference(&rhs);
+            }
+        }
+
+        impl std::ops::Sub for Features {
+            type Output = Features;
+
+            #[inline]
+            fn sub(self, rhs: Self) -> Self::Output {
+                self.difference(&rhs)
+            }
+        }
+
+        impl std::ops::SubAssign for Features {
+            #[inline]
+            fn sub_assign(&mut self, rhs: Self) {
+                *self = self.difference(&rhs);
+            }
+        }
+
+        impl std::fmt::Debug for Features {
+            #[allow(unused_assignments)]
+            fn fmt(&self, f: &mut std::fmt:: Formatter<'_>) -> Result<(), std::fmt::Error> {
+                write!(f, "[")?;
+
+                let mut first = true;
+                #(#debug_items)*
+
+                write!(f, "]")
             }
         }
 
@@ -413,6 +550,7 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
                             name: format_ident!("{}", name),
                             doc: String::new(),
                             ffi_name: format_ident!("{}", name),
+                            raw: vulkan_name.to_owned(),
                             ffi_members: vec![ty_name.clone()],
                             requires_features: requires_features
                                 .iter()
@@ -458,7 +596,13 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
 
 fn make_doc(feat: &mut FeaturesMember, vulkan_ty_name: &str) {
     let writer = &mut feat.doc;
-    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/{}.html#features-{})", vulkan_ty_name, feat.name).unwrap();
+    write!(
+        writer,
+        "- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/{}.html#features-{})",
+        vulkan_ty_name,
+        feat.raw
+    )
+    .unwrap();
 
     if !feat.requires_features.is_empty() {
         let links: Vec<_> = feat
@@ -560,9 +704,9 @@ fn features_ffi_output(members: &[FeaturesFfiMember]) -> TokenStream {
         impl FeaturesFfi {
             pub(crate) fn make_chain(
                 &mut self,
-                api_version: Version,
-                device_extensions: &DeviceExtensions,
-                _instance_extensions: &InstanceExtensions,
+                api_version: crate::Version,
+                device_extensions: &crate::device::DeviceExtensions,
+                _instance_extensions: &crate::instance::InstanceExtensions,
             ) {
                 self.features_vulkan10 = Default::default();
                 let head = &mut self.features_vulkan10;
@@ -594,7 +738,7 @@ fn features_ffi_members<'a>(
                 .map(|provided_by| {
                     if let Some(version) = provided_by.strip_prefix("VK_VERSION_") {
                         let version = format_ident!("V{}", version);
-                        quote! { api_version >= Version::#version }
+                        quote! { api_version >= crate::Version::#version }
                     } else {
                         let member = format_ident!(
                             "{}_extensions",

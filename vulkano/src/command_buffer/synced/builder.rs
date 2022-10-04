@@ -48,7 +48,7 @@ use std::{
     borrow::Cow,
     collections::{hash_map::Entry, HashMap},
     error::Error,
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     ops::{Range, RangeInclusive},
     sync::Arc,
 };
@@ -58,9 +58,6 @@ use std::{
 /// Each method of the `UnsafeCommandBufferBuilder` has an equivalent in this wrapper, except
 /// for `pipeline_layout` which is automatically handled. This wrapper automatically builds
 /// pipeline barriers, keeps used resources alive and implements the `CommandBuffer` trait.
-///
-/// Since the implementation needs to cache commands in a `Vec`, most methods have additional
-/// `Send + Sync + 'static` trait requirements on their generics.
 ///
 /// If this builder finds out that a command isn't valid because of synchronization reasons (eg.
 /// trying to copy from a buffer to an image which share the same memory), then an error is
@@ -177,7 +174,7 @@ impl SyncCommandBufferBuilder {
 
     /// Returns the binding/setting state.
     #[inline]
-    pub fn state(&self) -> CommandBufferState {
+    pub fn state(&self) -> CommandBufferState<'_> {
         CommandBufferState {
             current_state: &self.current_state,
         }
@@ -636,9 +633,9 @@ impl SyncCommandBufferBuilder {
                                             ImageMemoryBarrier {
                                                 source_stages: PipelineStages {
                                                     bottom_of_pipe: true,
-                                                    ..PipelineStages::none()
+                                                    ..PipelineStages::empty()
                                                 },
-                                                source_access: AccessFlags::none(),
+                                                source_access: AccessFlags::empty(),
                                                 destination_stages: memory.stages,
                                                 destination_access: memory.access,
                                                 old_layout: state.initial_layout,
@@ -770,9 +767,9 @@ impl SyncCommandBufferBuilder {
                                 source_access: state.memory.access,
                                 destination_stages: PipelineStages {
                                     top_of_pipe: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
-                                destination_access: AccessFlags::none(),
+                                destination_access: AccessFlags::empty(),
                                 old_layout: state.current_layout,
                                 new_layout: state.final_layout,
                                 subresource_range: image.range_to_subresources(range.clone()),
@@ -863,10 +860,10 @@ unsafe impl DeviceOwned for SyncCommandBufferBuilder {
     }
 }
 
-impl fmt::Debug for SyncCommandBufferBuilder {
+impl Debug for SyncCommandBufferBuilder {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.inner, f)
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        Debug::fmt(&self.inner, f)
     }
 }
 
@@ -886,12 +883,12 @@ pub enum SyncCommandBufferBuilderError {
 
 impl Error for SyncCommandBufferBuilderError {}
 
-impl fmt::Display for SyncCommandBufferBuilderError {
+impl Display for SyncCommandBufferBuilderError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            SyncCommandBufferBuilderError::Conflict { .. } => write!(fmt, "unsolvable conflict"),
-            SyncCommandBufferBuilderError::ExecError(err) => err.fmt(fmt),
+            SyncCommandBufferBuilderError::Conflict { .. } => write!(f, "unsolvable conflict"),
+            SyncCommandBufferBuilderError::ExecError(err) => Display::fmt(err, f),
         }
     }
 }

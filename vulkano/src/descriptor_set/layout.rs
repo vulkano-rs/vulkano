@@ -13,14 +13,15 @@
 
 use crate::{
     device::{Device, DeviceOwned},
+    macros::vulkan_enum,
     sampler::Sampler,
     shader::{DescriptorRequirements, ShaderStages},
-    OomError, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -65,14 +66,16 @@ impl DescriptorSetLayout {
         }))
     }
 
-    /// Creates a new `DescriptorSetLayout` from an ash-handle
+    /// Creates a new `DescriptorSetLayout` from a raw object handle.
+    ///
     /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
+        device: Arc<Device>,
         handle: ash::vk::DescriptorSetLayout,
         create_info: DescriptorSetLayoutCreateInfo,
-        device: Arc<Device>,
     ) -> Arc<DescriptorSetLayout> {
         let DescriptorSetLayoutCreateInfo {
             bindings,
@@ -114,9 +117,12 @@ impl DescriptorSetLayout {
 
         if push_descriptor {
             if !device.enabled_extensions().khr_push_descriptor {
-                return Err(DescriptorSetLayoutCreationError::ExtensionNotEnabled {
-                    extension: "khr_push_descriptor",
-                    reason: "description was set to be a push descriptor",
+                return Err(DescriptorSetLayoutCreationError::RequirementNotMet {
+                    required_for: "`create_info.push_descriptor` is set",
+                    requires_one_of: RequiresOneOf {
+                        device_extensions: &["khr_push_descriptor"],
+                        ..Default::default()
+                    },
                 });
             }
         }
@@ -124,16 +130,29 @@ impl DescriptorSetLayout {
         let highest_binding_num = bindings.keys().copied().next_back();
 
         for (&binding_num, binding) in bindings.iter() {
-            if binding.descriptor_count != 0 {
-                *descriptor_counts
-                    .entry(binding.descriptor_type)
-                    .or_default() += binding.descriptor_count;
+            let &DescriptorSetLayoutBinding {
+                descriptor_type,
+                descriptor_count,
+                variable_descriptor_count,
+                stages,
+                ref immutable_samplers,
+                _ne: _,
+            } = binding;
+
+            // VUID-VkDescriptorSetLayoutBinding-descriptorType-parameter
+            descriptor_type.validate_device(device)?;
+
+            if descriptor_count != 0 {
+                // VUID-VkDescriptorSetLayoutBinding-descriptorCount-00283
+                stages.validate_device(device)?;
+
+                *descriptor_counts.entry(descriptor_type).or_default() += descriptor_count;
             }
 
             if push_descriptor {
                 // VUID-VkDescriptorSetLayoutCreateInfo-flags-00280
                 if matches!(
-                    binding.descriptor_type,
+                    descriptor_type,
                     DescriptorType::StorageBufferDynamic | DescriptorType::UniformBufferDynamic
                 ) {
                     return Err(
@@ -144,7 +163,7 @@ impl DescriptorSetLayout {
                 }
 
                 // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-flags-03003
-                if binding.variable_descriptor_count {
+                if variable_descriptor_count {
                     return Err(
                         DescriptorSetLayoutCreationError::PushDescriptorVariableDescriptorCount {
                             binding_num,
@@ -153,16 +172,12 @@ impl DescriptorSetLayout {
                 }
             }
 
-            if !binding.immutable_samplers.is_empty() {
-                if binding
-                    .immutable_samplers
+            if !immutable_samplers.is_empty() {
+                if immutable_samplers
                     .iter()
                     .any(|sampler| sampler.sampler_ycbcr_conversion().is_some())
                 {
-                    if !matches!(
-                        binding.descriptor_type,
-                        DescriptorType::CombinedImageSampler
-                    ) {
+                    if !matches!(descriptor_type, DescriptorType::CombinedImageSampler) {
                         return Err(
                             DescriptorSetLayoutCreationError::ImmutableSamplersDescriptorTypeIncompatible {
                                 binding_num,
@@ -171,7 +186,7 @@ impl DescriptorSetLayout {
                     }
                 } else {
                     if !matches!(
-                        binding.descriptor_type,
+                        descriptor_type,
                         DescriptorType::Sampler | DescriptorType::CombinedImageSampler
                     ) {
                         return Err(
@@ -183,12 +198,12 @@ impl DescriptorSetLayout {
                 }
 
                 // VUID-VkDescriptorSetLayoutBinding-descriptorType-00282
-                if binding.descriptor_count != binding.immutable_samplers.len() as u32 {
+                if descriptor_count != immutable_samplers.len() as u32 {
                     return Err(
                         DescriptorSetLayoutCreationError::ImmutableSamplersCountMismatch {
                             binding_num,
-                            sampler_count: binding.immutable_samplers.len() as u32,
-                            descriptor_count: binding.descriptor_count,
+                            sampler_count: immutable_samplers.len() as u32,
+                            descriptor_count,
                         },
                     );
                 }
@@ -197,15 +212,18 @@ impl DescriptorSetLayout {
             // VUID-VkDescriptorSetLayoutBinding-descriptorType-01510
             // If descriptorType is VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT and descriptorCount is not 0, then stageFlags must be 0 or VK_SHADER_STAGE_FRAGMENT_BIT
 
-            if binding.variable_descriptor_count {
+            if variable_descriptor_count {
                 // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014
                 if !device
                     .enabled_features()
                     .descriptor_binding_variable_descriptor_count
                 {
-                    return Err(DescriptorSetLayoutCreationError::FeatureNotEnabled {
-                        feature: "descriptor_binding_variable_descriptor_count",
-                        reason: "binding has a variable count",
+                    return Err(DescriptorSetLayoutCreationError::RequirementNotMet {
+                        required_for: "`create_info.bindings` has an element where `variable_descriptor_count` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["descriptor_binding_variable_descriptor_count"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -221,7 +239,7 @@ impl DescriptorSetLayout {
 
                 // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03015
                 if matches!(
-                    binding.descriptor_type,
+                    descriptor_type,
                     DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
                 ) {
                     return Err(
@@ -455,13 +473,9 @@ pub enum DescriptorSetLayoutCreationError {
     /// Out of Memory.
     OomError(OomError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// A binding includes immutable samplers but their number differs from  `descriptor_count`.
@@ -504,28 +518,30 @@ impl From<VulkanError> for DescriptorSetLayoutCreationError {
 
 impl Error for DescriptorSetLayoutCreationError {}
 
-impl std::fmt::Display for DescriptorSetLayoutCreationError {
+impl Display for DescriptorSetLayoutCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => {
-                write!(fmt, "out of memory")
+                write!(f, "out of memory")
             }
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
+
             Self::ImmutableSamplersCountMismatch { binding_num, sampler_count, descriptor_count } => write!(
-                fmt,
+                f,
                 "binding {} includes immutable samplers but their number ({}) differs from  `descriptor_count` ({})",
                 binding_num, sampler_count, descriptor_count,
             ),
             Self::ImmutableSamplersDescriptorTypeIncompatible { binding_num } => write!(
-                fmt,
+                f,
                 "binding {} includes immutable samplers but it has an incompatible `descriptor_type`",
                 binding_num,
             ),
@@ -533,30 +549,40 @@ impl std::fmt::Display for DescriptorSetLayoutCreationError {
                 provided,
                 max_supported,
             } => write!(
-                fmt,
+                f,
                 "more descriptors were provided in all bindings ({}) than the `max_push_descriptors` limit ({})",
                 provided, max_supported,
             ),
             Self::PushDescriptorDescriptorTypeIncompatible { binding_num } => write!(
-                fmt,
+                f,
                 "`push_descriptor` is enabled, but binding {} has an incompatible `descriptor_type`",
                 binding_num,
             ),
             Self::PushDescriptorVariableDescriptorCount { binding_num } => write!(
-                fmt,
+                f,
                 "`push_descriptor` is enabled, but binding {} has `variable_descriptor_count` enabled",
                 binding_num,
             ),
             Self::VariableDescriptorCountBindingNotHighest { binding_num, highest_binding_num } => write!(
-                fmt,
+                f,
                 "binding {} has `variable_descriptor_count` enabled, but it is not the highest-numbered binding ({})",
                 binding_num, highest_binding_num,
             ),
             Self::VariableDescriptorCountDescriptorTypeIncompatible { binding_num } => write!(
-                fmt,
+                f,
                 "binding {} has `variable_descriptor_count` enabled, but it has an incompatible `descriptor_type`",
                 binding_num,
             ),
+        }
+    }
+}
+
+impl From<RequirementNotMet> for DescriptorSetLayoutCreationError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -658,7 +684,7 @@ pub struct DescriptorSetLayoutBinding {
 
     /// Which shader stages are going to access the descriptors in this binding.
     ///
-    /// The default value is [`ShaderStages::none()`], which must be overridden.
+    /// The default value is [`ShaderStages::empty()`], which must be overridden.
     pub stages: ShaderStages,
 
     /// Samplers that are included as a fixed part of the descriptor set layout. Once bound, they
@@ -683,7 +709,7 @@ impl DescriptorSetLayoutBinding {
             descriptor_type,
             descriptor_count: 1,
             variable_descriptor_count: false,
-            stages: ShaderStages::none(),
+            stages: ShaderStages::empty(),
             immutable_samplers: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
@@ -696,8 +722,8 @@ impl DescriptorSetLayoutBinding {
         &self,
         descriptor_requirements: &DescriptorRequirements,
     ) -> Result<(), DescriptorRequirementsNotMet> {
-        let DescriptorRequirements {
-            descriptor_types,
+        let &DescriptorRequirements {
+            ref descriptor_types,
             descriptor_count,
             image_format: _,
             image_multisampled: _,
@@ -720,16 +746,18 @@ impl DescriptorSetLayoutBinding {
             });
         }
 
-        if self.descriptor_count < *descriptor_count {
-            return Err(DescriptorRequirementsNotMet::DescriptorCount {
-                required: *descriptor_count,
-                obtained: self.descriptor_count,
-            });
+        if let Some(required) = descriptor_count {
+            if self.descriptor_count < required {
+                return Err(DescriptorRequirementsNotMet::DescriptorCount {
+                    required,
+                    obtained: self.descriptor_count,
+                });
+            }
         }
 
-        if !self.stages.is_superset_of(stages) {
+        if !self.stages.contains(&stages) {
             return Err(DescriptorRequirementsNotMet::ShaderStages {
-                required: *stages,
+                required: stages,
                 obtained: self.stages,
             });
         }
@@ -742,7 +770,7 @@ impl From<&DescriptorRequirements> for DescriptorSetLayoutBinding {
     fn from(reqs: &DescriptorRequirements) -> Self {
         Self {
             descriptor_type: reqs.descriptor_types[0],
-            descriptor_count: reqs.descriptor_count,
+            descriptor_count: reqs.descriptor_count.unwrap_or(0),
             variable_descriptor_count: false,
             stages: reqs.stages,
             immutable_samplers: Vec::new(),
@@ -772,79 +800,95 @@ pub enum DescriptorRequirementsNotMet {
 
 impl Error for DescriptorRequirementsNotMet {}
 
-impl fmt::Display for DescriptorRequirementsNotMet {
+impl Display for DescriptorRequirementsNotMet {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DescriptorType { required, obtained } => write!(
-                fmt,
+                f,
                 "the descriptor's type ({:?}) is not one of those required ({:?})",
                 obtained, required
             ),
             Self::DescriptorCount { required, obtained } => write!(
-                fmt,
+                f,
                 "the descriptor count ({}) is less than what is required ({})",
                 obtained, required
             ),
             Self::ShaderStages { .. } => write!(
-                fmt,
+                f,
                 "the descriptor's shader stages do not contain the stages that are required",
             ),
         }
     }
 }
 
-/// Describes what kind of resource may later be bound to a descriptor.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum DescriptorType {
+vulkan_enum! {
+    /// Describes what kind of resource may later be bound to a descriptor.
+    #[non_exhaustive]
+    DescriptorType = DescriptorType(i32);
+
     /// Describes how a `SampledImage` descriptor should be read.
-    Sampler = ash::vk::DescriptorType::SAMPLER.as_raw(),
+    Sampler = SAMPLER,
 
     /// Combines `SampledImage` and `Sampler` in one descriptor.
-    CombinedImageSampler = ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER.as_raw(),
+    CombinedImageSampler = COMBINED_IMAGE_SAMPLER,
 
     /// Gives read-only access to an image via a sampler. The image must be combined with a sampler
     /// inside the shader.
-    SampledImage = ash::vk::DescriptorType::SAMPLED_IMAGE.as_raw(),
+    SampledImage = SAMPLED_IMAGE,
 
     /// Gives read and/or write access to individual pixels in an image. The image cannot be
     /// sampled, so you have exactly specify which pixel to read or write.
-    StorageImage = ash::vk::DescriptorType::STORAGE_IMAGE.as_raw(),
+    StorageImage = STORAGE_IMAGE,
 
     /// Gives read-only access to the content of a buffer, interpreted as an array of texel data.
-    UniformTexelBuffer = ash::vk::DescriptorType::UNIFORM_TEXEL_BUFFER.as_raw(),
+    UniformTexelBuffer = UNIFORM_TEXEL_BUFFER,
 
     /// Gives read and/or write access to the content of a buffer, interpreted as an array of texel
     /// data. Less restrictive but sometimes slower than a uniform texel buffer.
-    StorageTexelBuffer = ash::vk::DescriptorType::STORAGE_TEXEL_BUFFER.as_raw(),
+    StorageTexelBuffer = STORAGE_TEXEL_BUFFER,
 
     /// Gives read-only access to the content of a buffer, interpreted as a structure.
-    UniformBuffer = ash::vk::DescriptorType::UNIFORM_BUFFER.as_raw(),
+    UniformBuffer = UNIFORM_BUFFER,
 
     /// Gives read and/or write access to the content of a buffer, interpreted as a structure. Less
     /// restrictive but sometimes slower than a uniform buffer.
-    StorageBuffer = ash::vk::DescriptorType::STORAGE_BUFFER.as_raw(),
+    StorageBuffer = STORAGE_BUFFER,
 
     /// As `UniformBuffer`, but the offset within the buffer is specified at the time the descriptor
     /// set is bound, rather than when the descriptor set is updated.
-    UniformBufferDynamic = ash::vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw(),
+    UniformBufferDynamic = UNIFORM_BUFFER_DYNAMIC,
 
     /// As `StorageBuffer`, but the offset within the buffer is specified at the time the descriptor
     /// set is bound, rather than when the descriptor set is updated.
-    StorageBufferDynamic = ash::vk::DescriptorType::STORAGE_BUFFER_DYNAMIC.as_raw(),
+    StorageBufferDynamic = STORAGE_BUFFER_DYNAMIC,
 
     /// Gives access to an image inside a fragment shader via a render pass. You can only access the
     /// pixel that is currently being processed by the fragment shader.
-    InputAttachment = ash::vk::DescriptorType::INPUT_ATTACHMENT.as_raw(),
-}
+    InputAttachment = INPUT_ATTACHMENT,
 
-impl From<DescriptorType> for ash::vk::DescriptorType {
-    #[inline]
-    fn from(val: DescriptorType) -> Self {
-        Self::from_raw(val as i32)
-    }
+    /*
+    // TODO: document
+    InlineUniformBlock = INLINE_UNIFORM_BLOCK {
+        api_version: V1_3,
+        device_extensions: [ext_inline_uniform_block],
+    },
+
+    // TODO: document
+    AccelerationStructure = ACCELERATION_STRUCTURE_KHR {
+        device_extensions: [khr_acceleration_structure],
+    },
+
+    // TODO: document
+    AccelerationStructureNV = ACCELERATION_STRUCTURE_NV {
+        device_extensions: [nv_ray_tracing],
+    },
+
+    // TODO: document
+    Mutable = MUTABLE_VALVE {
+        device_extensions: [valve_mutable_descriptor_type],
+    },
+     */
 }
 
 #[cfg(test)]
