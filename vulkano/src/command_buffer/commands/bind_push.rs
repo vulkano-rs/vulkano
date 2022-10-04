@@ -323,10 +323,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if `self` and any element of `vertex_buffers` do not belong to the same device.
     /// - Panics if any element of `vertex_buffers` does not have the
     ///   [`vertex_buffer`](crate::buffer::BufferUsage::vertex_buffer) usage enabled.
-    pub fn bind_vertex_buffers<V>(&mut self, first_binding: u32, vertex_buffers: V) -> &mut Self
-    where
-        V: VertexBuffersCollection,
-    {
+    pub fn bind_vertex_buffers(
+        &mut self,
+        first_binding: u32,
+        vertex_buffers: impl VertexBuffersCollection,
+    ) -> &mut Self {
         let vertex_buffers = vertex_buffers.into_vec();
         self.validate_bind_vertex_buffers(first_binding, &vertex_buffers)
             .unwrap();
@@ -836,10 +837,7 @@ pub struct SyncCommandBufferBuilderBindDescriptorSets<'b> {
 
 impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
     /// Adds a descriptor set to the list.
-    pub fn add<S>(&mut self, descriptor_set: S)
-    where
-        S: Into<DescriptorSetWithOffsets>,
-    {
+    pub fn add(&mut self, descriptor_set: impl Into<DescriptorSetWithOffsets>) {
         self.descriptor_sets.push(descriptor_set.into());
     }
 

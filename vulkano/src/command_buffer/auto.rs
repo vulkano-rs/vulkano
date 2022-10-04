@@ -29,8 +29,8 @@ use crate::{
     sync::{AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf,
 };
+use ahash::HashMap;
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     marker::PhantomData,

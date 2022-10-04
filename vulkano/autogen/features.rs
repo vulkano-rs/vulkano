@@ -7,16 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, VkRegistryData};
+use super::{write_file, IndexMap, VkRegistryData};
+use ahash::HashMap;
 use heck::ToSnakeCase;
-use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    fmt::Write as _,
-};
+use std::{collections::hash_map::Entry, fmt::Write as _};
 use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
 // This is not included in vk.xml, so it's added here manually
@@ -515,7 +512,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
 }
 
 fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMember> {
-    let mut features = HashMap::new();
+    let mut features = HashMap::default();
     std::iter::once(&types["VkPhysicalDeviceFeatures"])
         .chain(sorted_structs(types).into_iter())
         .filter(|(ty, _)| {
@@ -728,7 +725,7 @@ fn features_ffi_members<'a>(
     types: &'a HashMap<&str, (&Type, Vec<&str>)>,
     extensions: &IndexMap<&'a str, &Extension>,
 ) -> Vec<FeaturesFfiMember> {
-    let mut feature_included_in: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut feature_included_in: HashMap<&str, Vec<&str>> = HashMap::default();
     sorted_structs(types)
         .into_iter()
         .map(|(ty, provided_by)| {

@@ -51,9 +51,10 @@ use crate::{
     },
     DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
+use ahash::HashMap;
 use smallvec::SmallVec;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::hash_map::Entry,
     mem::{size_of_val, MaybeUninit},
     ptr, slice,
     sync::Arc,
@@ -218,7 +219,7 @@ where
             // We want to union each push constant range into a set of ranges that do not have intersecting stage flags.
             // e.g. The range [0, 16) is either made available to Vertex | Fragment or we only make [0, 16) available to
             // Vertex and a subrange available to Fragment, like [0, 8)
-            let mut range_map = HashMap::new();
+            let mut range_map = HashMap::default();
             for stage in stages.iter() {
                 if let Some(range) = stage.push_constant_requirements() {
                     match range_map.entry((range.offset, range.size)) {
@@ -2381,7 +2382,7 @@ where
         let render_pass = render_pass.as_ref().unwrap();
 
         let mut descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements> =
-            HashMap::new();
+            HashMap::default();
         let mut dynamic_state: HashMap<DynamicState, bool> = HashMap::default();
         let mut stages = HashMap::default();
         let mut stages_vk: SmallVec<[_; 5]> = SmallVec::new();

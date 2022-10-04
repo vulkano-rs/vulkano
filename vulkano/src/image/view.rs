@@ -847,10 +847,7 @@ impl ImageViewCreateInfo {
     /// Returns an `ImageViewCreateInfo` with the `view_type` determined from the image type and
     /// array layers, and `subresource_range` determined from the image format and covering the
     /// whole image.
-    pub fn from_image<I>(image: &I) -> Self
-    where
-        I: ImageAccess + ?Sized,
-    {
+    pub fn from_image(image: &(impl ImageAccess + ?Sized)) -> Self {
         Self {
             view_type: match image.dimensions() {
                 ImageDimensions::Dim1d {

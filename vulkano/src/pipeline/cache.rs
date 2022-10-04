@@ -145,10 +145,10 @@ impl PipelineCache {
     ///
     // FIXME: vkMergePipelineCaches is not thread safe for the destination cache
     // TODO: write example
-    pub fn merge<'a, I>(&self, pipelines: I) -> Result<(), OomError>
-    where
-        I: IntoIterator<Item = &'a &'a Arc<PipelineCache>>,
-    {
+    pub fn merge<'a>(
+        &self,
+        pipelines: impl IntoIterator<Item = &'a &'a Arc<PipelineCache>>,
+    ) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
 

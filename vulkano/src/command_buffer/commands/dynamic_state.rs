@@ -563,10 +563,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the highest discard rectangle slot being set is greater than the
     ///   [`max_discard_rectangles`](crate::device::Properties::max_discard_rectangles) device
     ///   property.
-    pub fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I) -> &mut Self
-    where
-        I: IntoIterator<Item = Scissor>,
-    {
+    pub fn set_discard_rectangle(
+        &mut self,
+        first_rectangle: u32,
+        rectangles: impl IntoIterator<Item = Scissor>,
+    ) -> &mut Self {
         let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
         self.validate_set_discard_rectangle(first_rectangle, &rectangles)
             .unwrap();
@@ -1086,10 +1087,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if `first_scissor` is not 0, or if more than 1 scissor is provided.
-    pub fn set_scissor<I>(&mut self, first_scissor: u32, scissors: I) -> &mut Self
-    where
-        I: IntoIterator<Item = Scissor>,
-    {
+    pub fn set_scissor(
+        &mut self,
+        first_scissor: u32,
+        scissors: impl IntoIterator<Item = Scissor>,
+    ) -> &mut Self {
         let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
         self.validate_set_scissor(first_scissor, &scissors).unwrap();
 
@@ -1164,10 +1166,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if more than 1 scissor is provided.
-    pub fn set_scissor_with_count<I>(&mut self, scissors: I) -> &mut Self
-    where
-        I: IntoIterator<Item = Scissor>,
-    {
+    pub fn set_scissor_with_count(
+        &mut self,
+        scissors: impl IntoIterator<Item = Scissor>,
+    ) -> &mut Self {
         let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
         self.validate_set_scissor_with_count(&scissors).unwrap();
 
@@ -1475,10 +1477,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if `first_viewport` is not 0, or if more than 1 viewport is provided.
-    pub fn set_viewport<I>(&mut self, first_viewport: u32, viewports: I) -> &mut Self
-    where
-        I: IntoIterator<Item = Viewport>,
-    {
+    pub fn set_viewport(
+        &mut self,
+        first_viewport: u32,
+        viewports: impl IntoIterator<Item = Viewport>,
+    ) -> &mut Self {
         let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
         self.validate_set_viewport(first_viewport, &viewports)
             .unwrap();
@@ -1554,10 +1557,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if more than 1 viewport is provided.
-    pub fn set_viewport_with_count<I>(&mut self, viewports: I) -> &mut Self
-    where
-        I: IntoIterator<Item = Viewport>,
-    {
+    pub fn set_viewport_with_count(
+        &mut self,
+        viewports: impl IntoIterator<Item = Viewport>,
+    ) -> &mut Self {
         let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
         self.validate_set_viewport_with_count(&viewports).unwrap();
 
@@ -1643,10 +1646,7 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_color_write_enable<I>(&mut self, enables: I)
-    where
-        I: IntoIterator<Item = bool>,
-    {
+    pub unsafe fn set_color_write_enable(&mut self, enables: impl IntoIterator<Item = bool>) {
         struct Cmd<I> {
             enables: Mutex<Option<I>>,
         }
@@ -1854,10 +1854,11 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetDiscardRectangle` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I)
-    where
-        I: IntoIterator<Item = Scissor>,
-    {
+    pub unsafe fn set_discard_rectangle(
+        &mut self,
+        first_rectangle: u32,
+        rectangles: impl IntoIterator<Item = Scissor>,
+    ) {
         struct Cmd {
             first_rectangle: u32,
             rectangles: Mutex<SmallVec<[Scissor; 2]>>,
@@ -2238,10 +2239,11 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetScissor` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor<I>(&mut self, first_scissor: u32, scissors: I)
-    where
-        I: IntoIterator<Item = Scissor>,
-    {
+    pub unsafe fn set_scissor(
+        &mut self,
+        first_scissor: u32,
+        scissors: impl IntoIterator<Item = Scissor>,
+    ) {
         struct Cmd {
             first_scissor: u32,
             scissors: Mutex<SmallVec<[Scissor; 2]>>,
@@ -2273,10 +2275,7 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor_with_count<I>(&mut self, scissors: I)
-    where
-        I: IntoIterator<Item = Scissor>,
-    {
+    pub unsafe fn set_scissor_with_count(&mut self, scissors: impl IntoIterator<Item = Scissor>) {
         struct Cmd {
             scissors: Mutex<SmallVec<[Scissor; 2]>>,
         }
@@ -2301,10 +2300,11 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetViewport` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_viewport<I>(&mut self, first_viewport: u32, viewports: I)
-    where
-        I: IntoIterator<Item = Viewport>,
-    {
+    pub unsafe fn set_viewport(
+        &mut self,
+        first_viewport: u32,
+        viewports: impl IntoIterator<Item = Viewport>,
+    ) {
         struct Cmd {
             first_viewport: u32,
             viewports: Mutex<SmallVec<[Viewport; 2]>>,
@@ -2336,10 +2336,10 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_viewport_with_count<I>(&mut self, viewports: I)
-    where
-        I: IntoIterator<Item = Viewport>,
-    {
+    pub unsafe fn set_viewport_with_count(
+        &mut self,
+        viewports: impl IntoIterator<Item = Viewport>,
+    ) {
         struct Cmd {
             viewports: Mutex<SmallVec<[Viewport; 2]>>,
         }

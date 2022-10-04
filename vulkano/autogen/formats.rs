@@ -7,9 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{extensions::RequiresOneOf, write_file, VkRegistryData};
+use super::{extensions::RequiresOneOf, write_file, IndexMap, VkRegistryData};
 use heck::ToSnakeCase;
-use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};

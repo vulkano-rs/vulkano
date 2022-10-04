@@ -89,9 +89,9 @@ use crate::{
     sampler::Sampler,
     OomError, VulkanObject,
 };
+use ahash::HashMap;
 use smallvec::{smallvec, SmallVec};
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
@@ -118,10 +118,12 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
     fn layout(&self) -> &Arc<DescriptorSetLayout>;
 
     /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
-    fn offsets<I>(self: Arc<Self>, dynamic_offsets: I) -> DescriptorSetWithOffsets
+    fn offsets(
+        self: Arc<Self>,
+        dynamic_offsets: impl IntoIterator<Item = u32>,
+    ) -> DescriptorSetWithOffsets
     where
         Self: Sized + 'static,
-        I: IntoIterator<Item = u32>,
     {
         DescriptorSetWithOffsets::new(self, dynamic_offsets)
     }
@@ -408,10 +410,10 @@ pub struct DescriptorSetWithOffsets {
 }
 
 impl DescriptorSetWithOffsets {
-    pub fn new<O>(descriptor_set: Arc<dyn DescriptorSet>, dynamic_offsets: O) -> Self
-    where
-        O: IntoIterator<Item = u32>,
-    {
+    pub fn new(
+        descriptor_set: Arc<dyn DescriptorSet>,
+        dynamic_offsets: impl IntoIterator<Item = u32>,
+    ) -> Self {
         let dynamic_offsets: SmallVec<_> = dynamic_offsets.into_iter().collect();
         let layout = descriptor_set.layout();
         let properties = layout.device().physical_device().properties();

@@ -18,8 +18,9 @@ use crate::{
     shader::{DescriptorRequirements, ShaderStages},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
+use ahash::HashMap;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
@@ -911,7 +912,7 @@ mod tests {
         },
         shader::ShaderStages,
     };
-    use std::collections::HashMap;
+    use ahash::HashMap;
 
     #[test]
     fn empty() {

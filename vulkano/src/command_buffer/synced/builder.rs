@@ -43,10 +43,11 @@ use crate::{
     },
     DeviceSize, OomError, VulkanObject,
 };
+use ahash::HashMap;
 use smallvec::SmallVec;
 use std::{
     borrow::Cow,
-    collections::{hash_map::Entry, HashMap},
+    collections::hash_map::Entry,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     ops::{Range, RangeInclusive},

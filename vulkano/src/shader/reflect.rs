@@ -25,10 +25,8 @@ use crate::{
     },
     DeviceSize,
 };
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-};
+use ahash::{HashMap, HashSet};
+use std::borrow::Cow;
 
 /// Returns an iterator of the capabilities used by `spirv`.
 #[inline]

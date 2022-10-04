@@ -84,9 +84,9 @@ use crate::{
     },
     DeviceSize,
 };
+use ahash::HashMap;
 use std::{
     borrow::Cow,
-    collections::HashMap,
     fmt::{Debug, Error as FmtError, Formatter},
     ops::Range,
     sync::Arc,

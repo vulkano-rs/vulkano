@@ -106,7 +106,7 @@ pub use self::{
     vertex::{Vertex, VertexMemberInfo, VertexMemberTy},
 };
 use crate::format::Format;
-use std::collections::HashMap;
+use ahash::HashMap;
 
 mod buffers;
 mod collection;

@@ -85,10 +85,7 @@ impl VulkanLibrary {
     }
 
     /// Loads a custom Vulkan library.
-    pub fn with_loader<L>(loader: L) -> Result<Arc<Self>, LoadingError>
-    where
-        L: Loader + 'static,
-    {
+    pub fn with_loader(loader: impl Loader + 'static) -> Result<Arc<Self>, LoadingError> {
         let fns = EntryFunctions::load(|name| unsafe {
             loader
                 .get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr())
@@ -111,10 +108,7 @@ impl VulkanLibrary {
         }))
     }
 
-    unsafe fn get_api_version<L>(loader: &L) -> Result<Version, VulkanError>
-    where
-        L: Loader,
-    {
+    unsafe fn get_api_version(loader: &impl Loader) -> Result<Version, VulkanError> {
         // Per the Vulkan spec:
         // If the vkGetInstanceProcAddr returns NULL for vkEnumerateInstanceVersion, it is a
         // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
@@ -352,10 +346,7 @@ impl DynamicLibraryLoader {
     ///
     /// - The dynamic library must be a valid Vulkan implementation.
     ///
-    pub unsafe fn new<P>(path: P) -> Result<DynamicLibraryLoader, LoadingError>
-    where
-        P: AsRef<Path>,
-    {
+    pub unsafe fn new(path: impl AsRef<Path>) -> Result<DynamicLibraryLoader, LoadingError> {
         let vk_lib = Library::new(path.as_ref()).map_err(LoadingError::LibraryLoadFailure)?;
 
         let get_instance_proc_addr = *vk_lib

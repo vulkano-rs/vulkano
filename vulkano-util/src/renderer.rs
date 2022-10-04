@@ -7,22 +7,20 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::collections::HashMap;
+use crate::{context::VulkanoContext, window::WindowDescriptor};
+use ahash::HashMap;
 use std::sync::Arc;
-
-use crate::context::VulkanoContext;
-use crate::window::WindowDescriptor;
-use vulkano::device::Device;
-use vulkano::image::{ImageUsage, StorageImage, SwapchainImage};
-use vulkano::swapchain::SwapchainPresentInfo;
 use vulkano::{
-    device::Queue,
+    device::{Device, Queue},
     format::Format,
-    image::{view::ImageView, ImageAccess, ImageViewAbstract},
-    swapchain,
-    swapchain::{AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
-    sync,
-    sync::{FlushError, GpuFuture},
+    image::{
+        view::ImageView, ImageAccess, ImageUsage, ImageViewAbstract, StorageImage, SwapchainImage,
+    },
+    swapchain::{
+        self, AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        SwapchainPresentInfo,
+    },
+    sync::{self, FlushError, GpuFuture},
 };
 use vulkano_win::create_surface_from_winit;
 use winit::window::Window;

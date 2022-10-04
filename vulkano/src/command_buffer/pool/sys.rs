@@ -248,10 +248,10 @@ impl UnsafeCommandPool {
     ///
     /// - The `command_buffers` must have been allocated from this pool.
     /// - The `command_buffers` must not be in the pending state.
-    pub unsafe fn free_command_buffers<I>(&self, command_buffers: I)
-    where
-        I: IntoIterator<Item = UnsafeCommandPoolAlloc>,
-    {
+    pub unsafe fn free_command_buffers(
+        &self,
+        command_buffers: impl IntoIterator<Item = UnsafeCommandPoolAlloc>,
+    ) {
         let command_buffers: SmallVec<[_; 4]> =
             command_buffers.into_iter().map(|cb| cb.handle).collect();
         let fns = self.device.fns();

@@ -8,9 +8,10 @@
 // according to those terms.
 
 use crate::{RegisteredType, TypesMeta};
+use ahash::HashMap;
 use heck::ToUpperCamelCase;
 use proc_macro2::{Span, TokenStream};
-use std::{borrow::Cow, collections::HashMap, mem};
+use std::{borrow::Cow, mem};
 use syn::{Ident, LitStr};
 use vulkano::shader::spirv::{Decoration, Id, Instruction, Spirv};
 
