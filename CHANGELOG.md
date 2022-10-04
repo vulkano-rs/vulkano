@@ -38,9 +38,14 @@ Changes to `GpuFuture`:
 - Added a `supports_protected` member to `SurfaceCapabilities` for the `khr_surface_protected_capabilities` extension.
 
 ### Bugs fixed
-- Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
 - [#1871](https://github.com/vulkano-rs/vulkano/issues/1871): Layer extensions are not included when validating extensions to enable on an instance.
+
+# Version 0.31.1 (2022-10-04)
+
+### Bugs fixed
+- Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
+- [#2018](https://github.com/vulkano-rs/vulkano/issues/2018): Incorrect handling of `VK_SUBOPTIMAL_KHR` caused a panic when presenting.
 
 # Version 0.31.0 (2022-09-18)
 
