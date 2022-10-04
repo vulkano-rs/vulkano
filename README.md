@@ -2,12 +2,19 @@
 
 # [Vulkano](https://vulkano.rs)
 
-[![Crates.io](https://img.shields.io/crates/v/vulkano.svg)](https://crates.io/crates/vulkano)
-[![Docs](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
 [![Build Status](https://github.com/vulkano-rs/vulkano/workflows/Rust/badge.svg)](https://github.com/vulkano-rs/vulkano/actions?query=workflow%3ARust)
 [![Discord](https://img.shields.io/discord/937149253296476201?label=discord)](https://discord.gg/bncB9W2VDV)
-
-See also [vulkano.rs](https://vulkano.rs).
+[![Website/guide](https://img.shields.io/badge/-website/guide-%23555.svg)](https://vulkano.rs/)
+<br/>
+[![Crates.io](https://img.shields.io/crates/v/vulkano?label=vulkano)](https://crates.io/crates/vulkano)
+[![Crates.io](https://img.shields.io/crates/v/vulkano-shaders?label=vulkano-shaders)](https://crates.io/crates/vulkano-shaders)
+[![Crates.io](https://img.shields.io/crates/v/vulkano-util?label=vulkano-util)](https://crates.io/crates/vulkano-util)
+[![Crates.io](https://img.shields.io/crates/v/vulkano-win?label=vulkano-win)](https://crates.io/crates/vulkano-win)
+<br/>
+[![Docs](https://img.shields.io/docsrs/vulkano?label=vulkano%20docs)](https://docs.rs/vulkano)
+[![Docs](https://img.shields.io/docsrs/vulkano-shaders?label=vulkano-shaders%20docs)](https://docs.rs/vulkano-shaders)
+[![Docs](https://img.shields.io/docsrs/vulkano-util?label=vulkano-util%20docs)](https://docs.rs/vulkano-util)
+[![Docs](https://img.shields.io/docsrs/vulkano-win?label=vulkano-win%20docs)](https://docs.rs/vulkano-win)
 
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
 It follows the Rust philosophy, which is that as long as you don't use unsafe code you shouldn't
