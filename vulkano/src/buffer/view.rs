@@ -15,7 +15,7 @@
 //! In order to create a view from a buffer, the buffer must have been created with either the
 //! `uniform_texel_buffer` or the `storage_texel_buffer` usage.
 //!
-//! # Example
+//! # Examples
 //!
 //! ```
 //! # use std::sync::Arc;
@@ -235,7 +235,6 @@ where
     }
 
     /// Returns the buffer associated to this view.
-    #[inline]
     pub fn buffer(&self) -> &Arc<B> {
         &self.buffer
     }
@@ -245,7 +244,6 @@ impl<B> Drop for BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    #[inline]
     fn drop(&mut self) {
         unsafe {
             let fns = self.buffer.inner().buffer.device().fns();
@@ -264,7 +262,6 @@ where
 {
     type Object = ash::vk::BufferView;
 
-    #[inline]
     fn internal_object(&self) -> ash::vk::BufferView {
         self.handle
     }
@@ -274,7 +271,6 @@ unsafe impl<B> DeviceOwned for BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.buffer.device()
     }
@@ -284,7 +280,6 @@ impl<B> PartialEq for BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.device() == other.device()
     }
@@ -296,7 +291,6 @@ impl<B> Hash for BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -359,24 +353,18 @@ pub enum BufferViewCreationError {
 }
 
 impl Error for BufferViewCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            BufferViewCreationError::OomError(ref err) => Some(err),
+        match self {
+            BufferViewCreationError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for BufferViewCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::OomError(_) => write!(
-                f,
-                "out of memory when creating buffer view",
-            ),
-
+            Self::OomError(_) => write!(f, "out of memory when creating buffer view"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -385,10 +373,10 @@ impl Display for BufferViewCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::BufferMissingUsage => write!(
                 f,
-                "the buffer was not created with one of the `storage_texel_buffer` or `uniform_texel_buffer` usages",
+                "the buffer was not created with one of the `storage_texel_buffer` or \
+                `uniform_texel_buffer` usages",
             ),
             Self::OffsetNotAligned { .. } => write!(
                 f,
@@ -398,34 +386,29 @@ impl Display for BufferViewCreationError {
                 f,
                 "the range within the buffer is not a multiple of the required alignment",
             ),
-            Self::UnsupportedFormat => write!(
-                f,
-                "the requested format is not supported for this usage",
-            ),
-            Self::MaxTexelBufferElementsExceeded => write!(
-                f,
-                "the `max_texel_buffer_elements` limit has been exceeded",
-            ),
+            Self::UnsupportedFormat => {
+                write!(f, "the requested format is not supported for this usage")
+            }
+            Self::MaxTexelBufferElementsExceeded => {
+                write!(f, "the `max_texel_buffer_elements` limit has been exceeded")
+            }
         }
     }
 }
 
 impl From<OomError> for BufferViewCreationError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<VulkanError> for BufferViewCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         OomError::from(err).into()
     }
 }
 
 impl From<RequirementNotMet> for BufferViewCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -455,22 +438,18 @@ where
     B: BufferAccess + ?Sized + 'static,
     Arc<B>: BufferAccessObject,
 {
-    #[inline]
     fn buffer(&self) -> Arc<dyn BufferAccess> {
         self.buffer.as_buffer_access_object()
     }
 
-    #[inline]
     fn format(&self) -> Option<Format> {
         self.format
     }
 
-    #[inline]
     fn format_features(&self) -> &FormatFeatures {
         &self.format_features
     }
 
-    #[inline]
     fn range(&self) -> Range<DeviceSize> {
         self.range.clone()
     }
@@ -486,7 +465,6 @@ impl PartialEq for dyn BufferViewAbstract {
 impl Eq for dyn BufferViewAbstract {}
 
 impl Hash for dyn BufferViewAbstract {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.internal_object().hash(state);
         self.device().hash(state);

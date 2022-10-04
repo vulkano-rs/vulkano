@@ -225,17 +225,19 @@ extern crate quote;
 extern crate syn;
 
 use crate::codegen::ShaderKind;
+use ahash::HashMap;
 use shaderc::{EnvVersion, SpirvVersion};
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::fs;
-use std::fs::File;
-use std::io::{Read, Result as IoResult};
-use std::path::Path;
-use std::slice::from_raw_parts;
-use std::{env, iter::empty};
-use syn::parse::{Parse, ParseStream, Result};
+use std::{
+    borrow::Cow,
+    env, fs,
+    fs::File,
+    io::{Read, Result as IoResult},
+    iter::empty,
+    path::Path,
+    slice::from_raw_parts,
+};
 use syn::{
+    parse::{Parse, ParseStream, Result},
     Ident, ItemUse, LitBool, LitStr, Meta, MetaList, NestedMeta, Path as SynPath, TypeImplTrait,
 };
 
@@ -373,7 +375,7 @@ impl Parse for MacroInput {
         let mut include_directories = Vec::new();
         let mut macro_defines = Vec::new();
         let mut shared_constants = None;
-        let mut shaders = HashMap::new();
+        let mut shaders = HashMap::default();
         let mut spirv_version = None;
         let mut types_meta = None;
         let mut vulkan_version = None;
@@ -802,7 +804,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let mut shaders_code = Vec::with_capacity(input.shaders.len());
     let mut types_code = Vec::with_capacity(input.shaders.len());
-    let mut types_registry = HashMap::new();
+    let mut types_registry = HashMap::default();
 
     for (prefix, (shader_kind, shader_source)) in input.shaders {
         let (code, types) = if let SourceKind::Bytes(path) = shader_source {

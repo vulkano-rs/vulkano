@@ -43,10 +43,11 @@ use crate::{
     },
     DeviceSize, OomError, VulkanObject,
 };
+use ahash::HashMap;
 use smallvec::SmallVec;
 use std::{
     borrow::Cow,
-    collections::{hash_map::Entry, HashMap},
+    collections::hash_map::Entry,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     ops::{Range, RangeInclusive},
@@ -118,6 +119,7 @@ impl SyncCommandBufferBuilder {
     /// # Safety
     ///
     /// See `UnsafeCommandBufferBuilder::new()`.
+    #[inline]
     pub unsafe fn new(
         pool_alloc: &UnsafeCommandPoolAlloc,
         begin_info: CommandBufferBeginInfo,
@@ -130,8 +132,8 @@ impl SyncCommandBufferBuilder {
                 .unwrap()
                 .render_pass
                 .is_some();
-
         let inner = UnsafeCommandBufferBuilder::new(pool_alloc, begin_info)?;
+
         Ok(SyncCommandBufferBuilder::from_unsafe_cmd(
             inner,
             level,
@@ -345,18 +347,17 @@ impl SyncCommandBufferBuilder {
         None
     }
 
-    // Adds a command to be processed by the builder.
-    //
-    // The `resources` argument should contain each buffer or image used by the command.
-    // The function will take care of handling the pipeline barrier or flushing.
-    //
-    // - The index of the resource within the `resources` slice maps to the resource accessed
-    //   through `Command::buffer(..)` or `Command::image(..)`.
-    // - `PipelineMemoryAccess` must match the way the resource has been used.
-    // - `start_layout` and `end_layout` designate the image layout that the image is expected to be
-    //   in when the command starts, and the image layout that the image will be transitioned to
-    //   during the command. When it comes to buffers, you should pass `Undefined` for both.
-    #[inline]
+    /// Adds a command to be processed by the builder.
+    ///
+    /// The `resources` argument should contain each buffer or image used by the command.
+    /// The function will take care of handling the pipeline barrier or flushing.
+    ///
+    /// - The index of the resource within the `resources` slice maps to the resource accessed
+    ///   through `Command::buffer(..)` or `Command::image(..)`.
+    /// - `PipelineMemoryAccess` must match the way the resource has been used.
+    /// - `start_layout` and `end_layout` designate the image layout that the image is expected to
+    ///   be in when the command starts, and the image layout that the image will be transitioned to
+    ///   during the command. When it comes to buffers, you should pass `Undefined` for both.
     pub(in crate::command_buffer) fn add_resource(
         &mut self,
         resource: (Cow<'static, str>, Resource),
@@ -609,26 +610,30 @@ impl SyncCommandBufferBuilder {
                                         // We can't transition to `Preinitialized`,
                                         // so all we can do here is error out.
                                         // TODO: put this in find_image_conflict instead?
-                                        panic!("Command requires Preinitialized layout, but the initial layout of the image is not Preinitialized");
+                                        panic!(
+                                            "Command requires Preinitialized layout, but the \
+                                            initial layout of the image is not Preinitialized"
+                                        );
                                     }
                                     _ => {
                                         // Insert a layout transition.
 
-                                        // A layout transition is a write, so if we perform one, we need
-                                        // exclusive access.
+                                        // A layout transition is a write, so if we perform one, we
+                                        // need exclusive access.
                                         state.memory.exclusive = true; // TODO: is this correct?
                                         state.exclusive_any = true;
 
-                                        // Note that we transition from `bottom_of_pipe`, which means that we
-                                        // wait for all the previous commands to be entirely finished. This is
-                                        // suboptimal, but:
+                                        // Note that we transition from `bottom_of_pipe`, which
+                                        // means that we wait for all the previous commands to be
+                                        // entirely finished. This is suboptimal, but:
                                         //
-                                        // - If we're at the start of the command buffer we have no choice anyway,
-                                        //   because we have no knowledge about what comes before.
-                                        // - If we're in the middle of the command buffer, this pipeline is going
-                                        //   to be merged with an existing barrier. While it may still be
-                                        //   suboptimal in some cases, in the general situation it will be ok.
-                                        //
+                                        // - If we're at the start of the command buffer we have no
+                                        //   choice anyway, because we have no knowledge about what
+                                        //   comes before.
+                                        // - If we're in the middle of the command buffer, this
+                                        //   pipeline is going to be merged with an existing
+                                        //   barrier. While it may still be suboptimal in some
+                                        //   cases, in the general situation it will be ok.
                                         self.pending_barrier.image_memory_barriers.push(
                                             ImageMemoryBarrier {
                                                 source_stages: PipelineStages {
@@ -861,7 +866,6 @@ unsafe impl DeviceOwned for SyncCommandBufferBuilder {
 }
 
 impl Debug for SyncCommandBufferBuilder {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         Debug::fmt(&self.inner, f)
     }
@@ -884,7 +888,6 @@ pub enum SyncCommandBufferBuilderError {
 impl Error for SyncCommandBufferBuilderError {}
 
 impl Display for SyncCommandBufferBuilderError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             SyncCommandBufferBuilderError::Conflict { .. } => write!(f, "unsolvable conflict"),
@@ -894,7 +897,6 @@ impl Display for SyncCommandBufferBuilderError {
 }
 
 impl From<CommandBufferExecError> for SyncCommandBufferBuilderError {
-    #[inline]
     fn from(val: CommandBufferExecError) -> Self {
         SyncCommandBufferBuilderError::ExecError(val)
     }
@@ -1100,6 +1102,7 @@ pub enum SetOrPush {
 }
 
 impl SetOrPush {
+    #[inline]
     pub fn resources(&self) -> &DescriptorSetResources {
         match self {
             Self::Set(set) => set.as_ref().0.resources(),
@@ -1303,7 +1306,8 @@ impl<'a> CommandBufferState<'a> {
         self.current_state.rasterizer_discard_enable
     }
 
-    /// Returns the current scissor for a given viewport slot, or `None` if nothing has been set yet.
+    /// Returns the current scissor for a given viewport slot, or `None` if nothing has been set
+    /// yet.
     #[inline]
     pub fn scissor(&self, num: u32) -> Option<&'a Scissor> {
         self.current_state.scissor.get(&num)
@@ -1348,7 +1352,8 @@ impl<'a> CommandBufferState<'a> {
         self.current_state.stencil_write_mask
     }
 
-    /// Returns the current viewport for a given viewport slot, or `None` if nothing has been set yet.
+    /// Returns the current viewport for a given viewport slot, or `None` if nothing has been set
+    /// yet.
     #[inline]
     pub fn viewport(&self, num: u32) -> Option<&'a Viewport> {
         self.current_state.viewport.get(&num)

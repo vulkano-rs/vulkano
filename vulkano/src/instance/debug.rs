@@ -17,7 +17,7 @@
 //! Note that the vulkano library can also emit messages to warn you about performance issues.
 //! TODO: ^ that's not the case yet, need to choose whether we keep this idea
 //!
-//! # Example
+//! # Examples
 //!
 //! ```
 //! # use vulkano::instance::Instance;
@@ -40,10 +40,12 @@
 //! Note that you must keep the `_callback` object alive for as long as you want your callback to
 //! be callable. If you don't store the return value of `DebugUtilsMessenger`'s constructor in a
 //! variable, it will be immediately destroyed and your callback will not work.
-//!
 
 use super::Instance;
-use crate::{macros::vulkan_bitflags, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject};
+use crate::{
+    macros::{vulkan_bitflags, vulkan_enum},
+    RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
+};
 use std::{
     error::Error,
     ffi::{c_void, CStr},
@@ -254,7 +256,6 @@ pub enum DebugUtilsMessengerCreationError {
 impl Error for DebugUtilsMessengerCreationError {}
 
 impl Display for DebugUtilsMessengerCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
@@ -270,14 +271,12 @@ impl Display for DebugUtilsMessengerCreationError {
 }
 
 impl From<VulkanError> for DebugUtilsMessengerCreationError {
-    #[inline]
     fn from(err: VulkanError) -> DebugUtilsMessengerCreationError {
         panic!("unexpected error: {:?}", err)
     }
 }
 
 impl From<RequirementNotMet> for DebugUtilsMessengerCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -426,6 +425,70 @@ impl Default for DebugUtilsLabel {
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+vulkan_enum! {
+    /// Features of the validation layer to enable.
+    ValidationFeatureEnable = ValidationFeatureEnableEXT(i32);
+
+    /// The validation layer will use shader programs running on the GPU to provide additional
+    /// validation.
+    ///
+    /// This must not be used together with `DebugPrintf`.
+    GpuAssisted = GPU_ASSISTED,
+
+    /// The validation layer will reserve and use one descriptor set slot for its own use.
+    /// The limit reported by
+    /// [`max_bound_descriptor_sets`](crate::device::Properties::max_bound_descriptor_sets)
+    /// will be reduced by 1.
+    ///
+    /// `GpuAssisted` must also be enabled.
+    GpuAssistedReserveBindingSlot = GPU_ASSISTED_RESERVE_BINDING_SLOT,
+
+    /// The validation layer will report recommendations that are not strictly errors,
+    /// but that may be considered good Vulkan practice.
+    BestPractices = BEST_PRACTICES,
+
+    /// The validation layer will process `debugPrintfEXT` operations in shaders, and send them
+    /// to the debug callback.
+    ///
+    /// This must not be used together with `GpuAssisted`.
+    DebugPrintf = DEBUG_PRINTF,
+
+    /// The validation layer will report errors relating to synchronization, such as data races and
+    /// the use of synchronization primitives.
+    SynchronizationValidation = SYNCHRONIZATION_VALIDATION,
+}
+
+vulkan_enum! {
+    /// Features of the validation layer to disable.
+    ValidationFeatureDisable = ValidationFeatureDisableEXT(i32);
+
+    /// All validation is disabled.
+    All = ALL,
+
+    /// Shader validation is disabled.
+    Shaders = SHADERS,
+
+    /// Thread safety validation is disabled.
+    ThreadSafety = THREAD_SAFETY,
+
+    /// Stateless parameter validation is disabled.
+    ApiParameters = API_PARAMETERS,
+
+    /// Object lifetime validation is disabled.
+    ObjectLifetimes = OBJECT_LIFETIMES,
+
+    /// Core validation checks are disabled.
+    ///
+    /// This also disables shader validation and GPU-assisted validation.
+    CoreChecks = CORE_CHECKS,
+
+    /// Protection against duplicate non-dispatchable handles is disabled.
+    UniqueHandles = UNIQUE_HANDLES,
+
+    /// Results of shader validation will not be cached, and are validated from scratch each time.
+    ShaderValidationCache = SHADER_VALIDATION_CACHE,
 }
 
 #[cfg(test)]

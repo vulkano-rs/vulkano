@@ -20,7 +20,8 @@ use crate::{
     device::{Device, DeviceOwned},
     OomError,
 };
-use std::{collections::HashMap, sync::Arc};
+use ahash::HashMap;
+use std::sync::Arc;
 
 /// Standard implementation of a descriptor pool.
 ///
@@ -40,6 +41,7 @@ enum Pool {
 
 impl StandardDescriptorPool {
     /// Builds a new `StandardDescriptorPool`.
+    #[inline]
     pub fn new(device: Arc<Device>) -> StandardDescriptorPool {
         StandardDescriptorPool {
             device,
@@ -51,6 +53,7 @@ impl StandardDescriptorPool {
 unsafe impl DescriptorPool for StandardDescriptorPool {
     type Alloc = StandardDescriptorPoolAlloc;
 
+    #[inline]
     fn allocate(
         &mut self,
         layout: &Arc<DescriptorSetLayout>,

@@ -83,6 +83,7 @@ impl Semaphore {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: SemaphoreCreateInfo,
@@ -140,6 +141,7 @@ impl Semaphore {
     ///
     /// For most applications, using the pool should be preferred,
     /// in order to avoid creating new semaphores every frame.
+    #[inline]
     pub fn from_pool(device: Arc<Device>) -> Result<Semaphore, SemaphoreError> {
         let handle = device.semaphore_pool().lock().pop();
         let semaphore = match handle {
@@ -168,6 +170,7 @@ impl Semaphore {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Semaphore,
@@ -253,6 +256,7 @@ impl Semaphore {
 
     #[cfg(not(unix))]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn export_fd_unchecked(
         &self,
         _handle_type: ExternalSemaphoreHandleType,
@@ -262,6 +266,7 @@ impl Semaphore {
 
     #[cfg(unix)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn export_fd_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
@@ -333,7 +338,6 @@ impl PartialEq for Semaphore {
 impl Eq for Semaphore {}
 
 impl Hash for Semaphore {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -506,10 +510,9 @@ pub enum SemaphoreError {
 }
 
 impl Error for SemaphoreError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
@@ -519,7 +522,6 @@ impl Display for SemaphoreError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -528,10 +530,10 @@ impl Display for SemaphoreError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::HandleTypeNotSupported { handle_type } => write!(
                 f,
-                "the requested export handle type ({:?}) was not provided in `export_handle_types` when creating the semaphore",
+                "the requested export handle type ({:?}) was not provided in `export_handle_types` \
+                when creating the semaphore",
                 handle_type,
             ),
         }
@@ -539,7 +541,6 @@ impl Display for SemaphoreError {
 }
 
 impl From<VulkanError> for SemaphoreError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
@@ -551,14 +552,12 @@ impl From<VulkanError> for SemaphoreError {
 }
 
 impl From<OomError> for SemaphoreError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<RequirementNotMet> for SemaphoreError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

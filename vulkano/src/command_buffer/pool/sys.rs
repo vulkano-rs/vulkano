@@ -78,6 +78,7 @@ impl UnsafeCommandPool {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::CommandPool,
@@ -175,6 +176,7 @@ impl UnsafeCommandPool {
     /// # Safety
     ///
     /// - The command buffers allocated from this pool jump to the initial state.
+    #[inline]
     pub unsafe fn reset(&self, release_resources: bool) -> Result<(), OomError> {
         let flags = if release_resources {
             ash::vk::CommandPoolResetFlags::RELEASE_RESOURCES
@@ -186,10 +188,12 @@ impl UnsafeCommandPool {
         (fns.v1_0.reset_command_pool)(self.device.internal_object(), self.handle, flags)
             .result()
             .map_err(VulkanError::from)?;
+
         Ok(())
     }
 
     /// Allocates command buffers.
+    #[inline]
     pub fn allocate_command_buffers(
         &self,
         allocate_info: CommandBufferAllocateInfo,
@@ -244,10 +248,10 @@ impl UnsafeCommandPool {
     ///
     /// - The `command_buffers` must have been allocated from this pool.
     /// - The `command_buffers` must not be in the pending state.
-    pub unsafe fn free_command_buffers<I>(&self, command_buffers: I)
-    where
-        I: IntoIterator<Item = UnsafeCommandPoolAlloc>,
-    {
+    pub unsafe fn free_command_buffers(
+        &self,
+        command_buffers: impl IntoIterator<Item = UnsafeCommandPoolAlloc>,
+    ) {
         let command_buffers: SmallVec<[_; 4]> =
             command_buffers.into_iter().map(|cb| cb.handle).collect();
         let fns = self.device.fns();
@@ -269,6 +273,7 @@ impl UnsafeCommandPool {
     /// enabled on the device. Otherwise an error is returned.
     /// Since this operation is purely an optimization it is legitimate to call this function and
     /// simply ignore any possible error.
+    #[inline]
     pub fn trim(&self) -> Result<(), CommandPoolTrimError> {
         if !(self.device.api_version() >= Version::V1_1
             || self.device.enabled_extensions().khr_maintenance1)
@@ -351,7 +356,6 @@ impl PartialEq for UnsafeCommandPool {
 impl Eq for UnsafeCommandPool {}
 
 impl Hash for UnsafeCommandPool {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -373,26 +377,25 @@ pub enum UnsafeCommandPoolCreationError {
 }
 
 impl Error for UnsafeCommandPoolCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for UnsafeCommandPoolCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match *self {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory",),
             Self::QueueFamilyIndexOutOfRange {
                 queue_family_index,
                 queue_family_count,
             } => write!(
                 f,
-                "the provided `queue_family_index` ({}) was not less than the number of queue families in the physical device ({})",
+                "the provided `queue_family_index` ({}) was not less than the number of queue \
+                families in the physical device ({})",
                 queue_family_index, queue_family_count,
             ),
         }
@@ -400,7 +403,6 @@ impl Display for UnsafeCommandPoolCreationError {
 }
 
 impl From<VulkanError> for UnsafeCommandPoolCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
@@ -513,7 +515,6 @@ impl PartialEq for UnsafeCommandPoolAlloc {
 impl Eq for UnsafeCommandPoolAlloc {}
 
 impl Hash for UnsafeCommandPoolAlloc {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -532,7 +533,6 @@ pub enum CommandPoolTrimError {
 impl Error for CommandPoolTrimError {}
 
 impl Display for CommandPoolTrimError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
@@ -548,7 +548,6 @@ impl Display for CommandPoolTrimError {
 }
 
 impl From<VulkanError> for CommandPoolTrimError {
-    #[inline]
     fn from(err: VulkanError) -> CommandPoolTrimError {
         panic!("unexpected error: {:?}", err)
     }

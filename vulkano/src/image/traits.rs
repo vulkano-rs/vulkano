@@ -247,7 +247,6 @@ impl PartialEq for dyn ImageAccess {
 impl Eq for dyn ImageAccess {}
 
 impl Hash for dyn ImageAccess {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
@@ -274,12 +273,10 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
 where
     I: ImageAccess,
 {
-    #[inline]
     fn inner(&self) -> ImageInner<'_> {
         self.image.inner()
     }
 
-    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         if self.preinitialized {
             ImageLayout::Preinitialized
@@ -288,12 +285,10 @@ where
         }
     }
 
-    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.final_layout_requirement()
     }
 
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         self.image.descriptor_layouts()
     }
@@ -303,7 +298,6 @@ impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
 where
     I: ImageAccess,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
@@ -315,7 +309,6 @@ impl<I> Hash for ImageAccessFromUndefinedLayout<I>
 where
     I: ImageAccess,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
@@ -331,32 +324,26 @@ where
     T: SafeDeref + Send + Sync,
     T::Target: ImageAccess,
 {
-    #[inline]
     fn inner(&self) -> ImageInner<'_> {
         (**self).inner()
     }
 
-    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         (**self).initial_layout_requirement()
     }
 
-    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         (**self).final_layout_requirement()
     }
 
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         (**self).descriptor_layouts()
     }
 
-    #[inline]
     unsafe fn layout_initialized(&self) {
         (**self).layout_initialized();
     }
 
-    #[inline]
     fn is_layout_initialized(&self) -> bool {
         (**self).is_layout_initialized()
     }

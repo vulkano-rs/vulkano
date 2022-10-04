@@ -10,21 +10,20 @@
 use crate::pipeline::graphics::vertex_input::VertexMemberTy;
 
 /// Implements the `Vertex` trait on a struct.
-///# Example
 ///
-///```
+/// # Examples
+///
+/// ```
 /// # use bytemuck::{Zeroable, Pod};
+/// #[repr(C)]
+/// #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+/// struct Vertex{
+///     position: [f32; 3],
+///     color: [f32; 4],
+/// }
 ///
-///#[repr(C)]
-///#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-///struct Vertex{
-///  position: [f32; 3],
-///  color: [f32; 4]
-///}
-///
-///vulkano::impl_vertex!(Vertex, position, color);
-///
-///```
+/// vulkano::impl_vertex!(Vertex, position, color);
+/// ```
 #[macro_export]
 macro_rules! impl_vertex {
     ($out:ty $(, $member:ident)*) => (
@@ -128,7 +127,6 @@ unsafe impl<T> VertexMember for (T,)
 where
     T: VertexMember,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         <T as VertexMember>::format()
     }
@@ -138,7 +136,6 @@ unsafe impl<T> VertexMember for (T, T)
 where
     T: VertexMember,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         let (ty, sz) = <T as VertexMember>::format();
         (ty, sz * 2)
@@ -149,7 +146,6 @@ unsafe impl<T> VertexMember for (T, T, T)
 where
     T: VertexMember,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         let (ty, sz) = <T as VertexMember>::format();
         (ty, sz * 3)
@@ -160,7 +156,6 @@ unsafe impl<T> VertexMember for (T, T, T, T)
 where
     T: VertexMember,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         let (ty, sz) = <T as VertexMember>::format();
         (ty, sz * 4)
@@ -172,7 +167,6 @@ unsafe impl<T> VertexMember for nalgebra::Vector1<T>
 where
     T: VertexMember,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         <T as VertexMember>::format()
     }
@@ -183,7 +177,6 @@ unsafe impl<T> VertexMember for nalgebra::Vector2<T>
 where
     T: VertexMember,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         let (ty, sz) = <T as VertexMember>::format();
         (ty, sz * 2)
@@ -195,7 +188,6 @@ unsafe impl<T> VertexMember for nalgebra::Vector3<T>
 where
     T: VertexMember,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         let (ty, sz) = <T as VertexMember>::format();
         (ty, sz * 3)
@@ -207,7 +199,6 @@ unsafe impl<T> VertexMember for nalgebra::Vector4<T>
 where
     T: VertexMember,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         let (ty, sz) = <T as VertexMember>::format();
         (ty, sz * 4)
@@ -219,7 +210,6 @@ unsafe impl<T> VertexMember for nalgebra::Point1<T>
 where
     T: VertexMember + nalgebra::Scalar,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         <T as VertexMember>::format()
     }
@@ -230,7 +220,6 @@ unsafe impl<T> VertexMember for nalgebra::Point2<T>
 where
     T: VertexMember + nalgebra::Scalar,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         let (ty, sz) = <T as VertexMember>::format();
         (ty, sz * 2)
@@ -242,7 +231,6 @@ unsafe impl<T> VertexMember for nalgebra::Point3<T>
 where
     T: VertexMember + nalgebra::Scalar,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         let (ty, sz) = <T as VertexMember>::format();
         (ty, sz * 3)
@@ -254,7 +242,6 @@ unsafe impl<T> VertexMember for nalgebra::Point4<T>
 where
     T: VertexMember + nalgebra::Scalar,
 {
-    #[inline]
     fn format() -> (VertexMemberTy, usize) {
         let (ty, sz) = <T as VertexMember>::format();
         (ty, sz * 4)
@@ -267,7 +254,6 @@ macro_rules! impl_vm_array {
         where
             T: VertexMember,
         {
-            #[inline]
             fn format() -> (VertexMemberTy, usize) {
                 let (ty, sz) = <T as VertexMember>::format();
                 (ty, sz * $sz)

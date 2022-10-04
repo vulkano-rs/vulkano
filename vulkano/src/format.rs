@@ -173,6 +173,7 @@ impl From<Format> for ash::vk::Format {
 
 // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap46.html#spirvenv-image-formats
 impl From<ImageFormat> for Option<Format> {
+    #[inline]
     fn from(val: ImageFormat) -> Self {
         match val {
             ImageFormat::Unknown => None,
@@ -252,6 +253,7 @@ pub enum ChromaSampling {
 }
 
 impl ChromaSampling {
+    #[inline]
     pub fn subsampled_extent(&self, mut extent: [u32; 3]) -> [u32; 3] {
         match self {
             ChromaSampling::Mode444 => (),

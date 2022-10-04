@@ -33,6 +33,7 @@ pub struct Event {
 
 impl Event {
     /// Creates a new `Event`.
+    #[inline]
     pub fn new(device: Arc<Device>, _create_info: EventCreateInfo) -> Result<Event, OomError> {
         let create_info = ash::vk::EventCreateInfo {
             flags: ash::vk::EventCreateFlags::empty(),
@@ -66,6 +67,7 @@ impl Event {
     ///
     /// For most applications, using the event pool should be preferred,
     /// in order to avoid creating new events every frame.
+    #[inline]
     pub fn from_pool(device: Arc<Device>) -> Result<Event, OomError> {
         let handle = device.event_pool().lock().pop();
         let event = match handle {
@@ -100,6 +102,7 @@ impl Event {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Event,
@@ -142,10 +145,9 @@ impl Event {
     ///
     /// If a command buffer is waiting on this event, it is then unblocked.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the device or host ran out of memory.
-    ///
     #[inline]
     pub fn set(&mut self) {
         self.set_raw().unwrap();
@@ -165,10 +167,9 @@ impl Event {
 
     /// Changes the `Event` to the unsignaled state.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the device or host ran out of memory.
-    ///
     #[inline]
     pub fn reset(&mut self) {
         self.reset_raw().unwrap();
@@ -216,7 +217,6 @@ impl PartialEq for Event {
 impl Eq for Event {}
 
 impl Hash for Event {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -230,6 +230,7 @@ pub struct EventCreateInfo {
 }
 
 impl Default for EventCreateInfo {
+    #[inline]
     fn default() -> Self {
         Self {
             _ne: crate::NonExhaustive(()),

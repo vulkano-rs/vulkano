@@ -43,7 +43,6 @@ impl Debug for VertexBuffer {
 }
 
 impl From<VertexBuffer> for VertexInputBindingDescription {
-    #[inline]
     fn from(val: VertexBuffer) -> Self {
         Self {
             stride: val.stride,
@@ -54,6 +53,7 @@ impl From<VertexBuffer> for VertexInputBindingDescription {
 
 impl BuffersDefinition {
     /// Constructs a new definition.
+    #[inline]
     pub fn new() -> Self {
         BuffersDefinition(Vec::new())
     }
@@ -65,6 +65,7 @@ impl BuffersDefinition {
             stride: mem::size_of::<V>() as u32,
             input_rate: VertexInputRate::Vertex,
         });
+
         self
     }
 
@@ -75,31 +76,34 @@ impl BuffersDefinition {
             stride: mem::size_of::<V>() as u32,
             input_rate: VertexInputRate::Instance { divisor: 1 },
         });
+
         self
     }
 
     /// Adds a new instance buffer containing elements of type `V` to the definition, with the
     /// specified input rate divisor.
     ///
-    /// This requires the
-    /// [`vertex_attribute_instance_rate_divisor`](crate::device::Features::vertex_attribute_instance_rate_divisor)
-    /// feature has been enabled on the device, unless `divisor` is 1.
+    /// This requires the [`vertex_attribute_instance_rate_divisor`] feature has been enabled on
+    /// the device, unless `divisor` is 1.
     ///
-    /// `divisor` can be 0 if the
-    /// [`vertex_attribute_instance_rate_zero_divisor`](crate::device::Features::vertex_attribute_instance_rate_zero_divisor)
-    /// feature is also enabled. This means that every vertex will use the same vertex and instance
-    /// data.
+    /// `divisor` can be 0 if the [`vertex_attribute_instance_rate_zero_divisor`] feature is also
+    /// enabled. This means that every vertex will use the same vertex and instance data.
+    ///
+    /// [`vertex_attribute_instance_rate_divisor`]: crate::device::Features::vertex_attribute_instance_rate_divisor
+    /// [`vertex_attribute_instance_rate_zero_divisor`]: crate::device::Features::vertex_attribute_instance_rate_zero_divisor
     pub fn instance_with_divisor<V: Vertex>(mut self, divisor: u32) -> Self {
         self.0.push(VertexBuffer {
             info_fn: V::member,
             stride: mem::size_of::<V>() as u32,
             input_rate: VertexInputRate::Instance { divisor },
         });
+
         self
     }
 }
 
 unsafe impl VertexDefinition for BuffersDefinition {
+    #[inline]
     fn definition(
         &self,
         interface: &ShaderInterface,

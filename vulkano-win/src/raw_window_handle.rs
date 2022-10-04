@@ -6,9 +6,10 @@ use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
 use std::sync::Arc;
-use vulkano::instance::Instance;
-use vulkano::swapchain::Surface;
-use vulkano::swapchain::SurfaceCreationError;
+use vulkano::{
+    instance::Instance,
+    swapchain::{Surface, SurfaceCreationError},
+};
 
 /// Creates a vulkan surface from a generic window
 /// which implements HasRawWindowHandle and thus can reveal the os-dependent handle.
