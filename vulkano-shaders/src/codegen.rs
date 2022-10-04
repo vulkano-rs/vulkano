@@ -205,17 +205,14 @@ pub fn compile(
     Ok((content, includes))
 }
 
-pub(super) fn reflect<'a, I>(
+pub(super) fn reflect<'a>(
     prefix: &'a str,
     words: &[u32],
     types_meta: &TypesMeta,
-    input_paths: I,
+    input_paths: impl IntoIterator<Item = &'a str>,
     shared_constants: bool,
     types_registry: &'a mut HashMap<String, RegisteredType>,
-) -> Result<(TokenStream, TokenStream), Error>
-where
-    I: IntoIterator<Item = &'a str>,
-{
+) -> Result<(TokenStream, TokenStream), Error> {
     let spirv = Spirv::new(words)?;
 
     let include_bytes = input_paths.into_iter().map(|s| {
