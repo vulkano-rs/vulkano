@@ -104,6 +104,7 @@ pub mod format;
 mod version;
 #[macro_use]
 pub mod render_pass;
+mod cache;
 mod fns;
 pub mod image;
 pub mod instance;
