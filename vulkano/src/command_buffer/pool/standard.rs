@@ -196,7 +196,7 @@ unsafe impl Sync for StandardCommandPoolAlloc {}
 unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
     #[inline]
     fn inner(&self) -> &UnsafeCommandPoolAlloc {
-        &*self.cmd
+        &self.cmd
     }
 
     #[inline]

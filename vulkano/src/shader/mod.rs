@@ -124,10 +124,10 @@ impl ShaderModule {
             });
         }
 
-        for capability in spirv_capabilities {
-            if let Err(reason) = check_spirv_capability(&device, capability.clone()) {
+        for &capability in spirv_capabilities {
+            if let Err(reason) = check_spirv_capability(&device, capability) {
                 return Err(ShaderCreationError::SpirvCapabilityNotSupported {
-                    capability: capability.clone(),
+                    capability,
                     reason,
                 });
             }
