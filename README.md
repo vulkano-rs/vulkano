@@ -6,15 +6,15 @@
 [![Discord](https://img.shields.io/discord/937149253296476201?label=discord)](https://discord.gg/bncB9W2VDV)
 [![Website/guide](https://img.shields.io/badge/-website/guide-%23555.svg)](https://vulkano.rs/)
 <br/>
-[![Crates.io](https://img.shields.io/crates/v/vulkano?label=vulkano)](https://crates.io/crates/vulkano)
-[![Crates.io](https://img.shields.io/crates/v/vulkano-shaders?label=vulkano-shaders)](https://crates.io/crates/vulkano-shaders)
-[![Crates.io](https://img.shields.io/crates/v/vulkano-util?label=vulkano-util)](https://crates.io/crates/vulkano-util)
-[![Crates.io](https://img.shields.io/crates/v/vulkano-win?label=vulkano-win)](https://crates.io/crates/vulkano-win)
+[![vulkano crates.io](https://img.shields.io/crates/v/vulkano?label=vulkano)](https://crates.io/crates/vulkano)
+[![vulkano-shaders crates.io](https://img.shields.io/crates/v/vulkano-shaders?label=shaders)](https://crates.io/crates/vulkano-shaders)
+[![vulkano-util crates.io](https://img.shields.io/crates/v/vulkano-util?label=util)](https://crates.io/crates/vulkano-util)
+[![vulkano-win crates.io](https://img.shields.io/crates/v/vulkano-win?label=win)](https://crates.io/crates/vulkano-win)
 <br/>
-[![Docs](https://img.shields.io/docsrs/vulkano?label=vulkano%20docs)](https://docs.rs/vulkano)
-[![Docs](https://img.shields.io/docsrs/vulkano-shaders?label=vulkano-shaders%20docs)](https://docs.rs/vulkano-shaders)
-[![Docs](https://img.shields.io/docsrs/vulkano-util?label=vulkano-util%20docs)](https://docs.rs/vulkano-util)
-[![Docs](https://img.shields.io/docsrs/vulkano-win?label=vulkano-win%20docs)](https://docs.rs/vulkano-win)
+[![vulkano docs](https://img.shields.io/docsrs/vulkano?label=vulkano%20docs)](https://docs.rs/vulkano)
+[![vulkano-shaders docs](https://img.shields.io/docsrs/vulkano-shaders?label=shaders%20docs)](https://docs.rs/vulkano-shaders)
+[![vulkano-util docs](https://img.shields.io/docsrs/vulkano-util?label=util%20docs)](https://docs.rs/vulkano-util)
+[![vulkano-win docs](https://img.shields.io/docsrs/vulkano-win?label=win%20docs)](https://docs.rs/vulkano-win)
 
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
 It follows the Rust philosophy, which is that as long as you don't use unsafe code you shouldn't
