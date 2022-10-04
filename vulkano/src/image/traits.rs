@@ -107,22 +107,7 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// of the image are selected, or `plane0` if the image is multi-planar.
     #[inline]
     fn subresource_layers(&self) -> ImageSubresourceLayers {
-        ImageSubresourceLayers {
-            aspects: {
-                let aspects = self.format().aspects();
-
-                if aspects.plane0 {
-                    ImageAspects {
-                        plane0: true,
-                        ..ImageAspects::empty()
-                    }
-                } else {
-                    aspects
-                }
-            },
-            mip_level: 0,
-            array_layers: 0..self.dimensions().array_layers(),
-        }
+        ImageSubresourceLayers::from_parameters(self.format(), self.dimensions().array_layers())
     }
 
     /// Returns an `ImageSubresourceRange` covering the whole image. If the image is multi-planar,
