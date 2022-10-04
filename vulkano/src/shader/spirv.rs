@@ -16,8 +16,8 @@
 //! [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html).
 
 use crate::Version;
+use ahash::{HashMap, HashMapExt};
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     ops::Range,

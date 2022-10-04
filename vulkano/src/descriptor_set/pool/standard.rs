@@ -20,7 +20,8 @@ use crate::{
     device::{Device, DeviceOwned},
     OomError,
 };
-use std::{collections::HashMap, sync::Arc};
+use ahash::HashMap;
+use std::sync::Arc;
 
 /// Standard implementation of a descriptor pool.
 ///

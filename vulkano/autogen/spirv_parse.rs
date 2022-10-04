@@ -8,11 +8,11 @@
 // according to those terms.
 
 use super::{write_file, SpirvGrammar};
+use ahash::{HashMap, HashSet};
 use heck::ToSnakeCase;
 use lazy_static::lazy_static;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
-use std::collections::{HashMap, HashSet};
 
 lazy_static! {
     static ref SPEC_CONSTANT_OP: HashSet<&'static str> = {
@@ -252,7 +252,7 @@ fn instruction_members(grammar: &SpirvGrammar) -> Vec<InstructionMember> {
             let name = format_ident!("{}", instruction.opname.strip_prefix("Op").unwrap());
             let mut has_result_id = false;
             let mut has_result_type_id = false;
-            let mut operand_names = HashMap::new();
+            let mut operand_names = HashMap::default();
 
             let mut operands = instruction
                 .operands

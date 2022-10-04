@@ -492,13 +492,10 @@ impl Sampler {
     }
 
     /// Checks whether this sampler is compatible with `image_view`.
-    pub fn check_can_sample<I>(
+    pub fn check_can_sample(
         &self,
-        image_view: &I,
-    ) -> Result<(), SamplerImageViewIncompatibleError>
-    where
-        I: ImageViewAbstract + ?Sized,
-    {
+        image_view: &(impl ImageViewAbstract + ?Sized),
+    ) -> Result<(), SamplerImageViewIncompatibleError> {
         /*
             Note: Most of these checks come from the Instruction/Sampler/Image View Validation
             section, and are not strictly VUIDs.

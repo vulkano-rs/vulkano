@@ -7,23 +7,21 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::entry_point;
-use crate::read_file_to_string;
-use crate::structs;
-use crate::RegisteredType;
-use crate::TypesMeta;
+use crate::{entry_point, read_file_to_string, structs, RegisteredType, TypesMeta};
+use ahash::HashMap;
 use proc_macro2::TokenStream;
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
 use shaderc::{CompileOptions, Compiler, EnvVersion, SpirvVersion, TargetEnv};
-use std::collections::HashMap;
-use std::iter::Iterator;
-use std::path::Path;
 use std::{
     cell::{RefCell, RefMut},
     io::Error as IoError,
+    iter::Iterator,
+    path::Path,
 };
-use vulkano::shader::reflect;
-use vulkano::shader::spirv::{Spirv, SpirvError};
+use vulkano::shader::{
+    reflect,
+    spirv::{Spirv, SpirvError},
+};
 
 pub(super) fn path_to_str(path: &Path) -> &str {
     path.to_str().expect(
@@ -207,17 +205,14 @@ pub fn compile(
     Ok((content, includes))
 }
 
-pub(super) fn reflect<'a, I>(
+pub(super) fn reflect<'a>(
     prefix: &'a str,
     words: &[u32],
     types_meta: &TypesMeta,
-    input_paths: I,
+    input_paths: impl IntoIterator<Item = &'a str>,
     shared_constants: bool,
     types_registry: &'a mut HashMap<String, RegisteredType>,
-) -> Result<(TokenStream, TokenStream), Error>
-where
-    I: IntoIterator<Item = &'a str>,
-{
+) -> Result<(TokenStream, TokenStream), Error> {
     let spirv = Spirv::new(words)?;
 
     let include_bytes = input_paths.into_iter().map(|s| {
@@ -378,7 +373,7 @@ mod tests {
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
         let res = std::panic::catch_unwind(|| {
-            structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new())
+            structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::default())
         });
         assert!(res.is_err());
     }
@@ -407,7 +402,7 @@ mod tests {
         )
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
+        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::default());
     }
     #[test]
     fn test_wrap_alignment() {
@@ -439,7 +434,7 @@ mod tests {
         )
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
+        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::default());
     }
 
     #[test]

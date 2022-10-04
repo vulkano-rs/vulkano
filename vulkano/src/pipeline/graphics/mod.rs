@@ -70,8 +70,8 @@ use crate::{
     shader::{DescriptorRequirements, ShaderStage},
     VulkanObject,
 };
+use ahash::HashMap;
 use std::{
-    collections::HashMap,
     fmt::{Debug, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     ptr,
