@@ -47,6 +47,7 @@ pub struct Queue {
 }
 
 impl Queue {
+    // TODO: Make public
     #[inline]
     pub(super) fn from_handle(
         device: Arc<Device>,
@@ -110,12 +111,14 @@ unsafe impl VulkanObject for Queue {
 }
 
 unsafe impl DeviceOwned for Queue {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
 impl PartialEq for Queue {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
             && self.queue_family_index == other.queue_family_index
@@ -126,7 +129,6 @@ impl PartialEq for Queue {
 impl Eq for Queue {}
 
 impl Hash for Queue {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
         self.queue_family_index.hash(state);
@@ -158,7 +160,6 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn bind_sparse_unchecked(
         &mut self,
         bind_infos: impl IntoIterator<Item = BindSparseInfo>,
@@ -449,15 +450,16 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn present_unchecked(
         &mut self,
         present_info: PresentInfo,
     ) -> impl ExactSizeIterator<Item = Result<bool, VulkanError>> {
-        let &PresentInfo {
+        let PresentInfo {
             ref wait_semaphores,
             ref swapchain_infos,
             _ne: _,
-        } = &present_info;
+        } = present_info;
 
         let wait_semaphores_vk: SmallVec<[_; 4]> = wait_semaphores
             .iter()
@@ -573,7 +575,6 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn submit_unchecked(
         &mut self,
         submit_infos: impl IntoIterator<Item = SubmitInfo>,
@@ -842,8 +843,9 @@ impl<'a> QueueGuard<'a> {
 
     /// Opens a queue debug label region.
     ///
-    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
-    /// enabled on the instance.
+    /// The [`ext_debug_utils`] extension must be enabled on the instance.
+    ///
+    /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
     #[inline]
     pub fn begin_debug_utils_label(
         &mut self,
@@ -881,6 +883,7 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn begin_debug_utils_label_unchecked(&mut self, label_info: DebugUtilsLabel) {
         let DebugUtilsLabel {
             label_name,
@@ -911,8 +914,8 @@ impl<'a> QueueGuard<'a> {
     #[inline]
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), QueueError> {
         self.validate_end_debug_utils_label()?;
-
         self.end_debug_utils_label_unchecked();
+
         Ok(())
     }
 
@@ -940,6 +943,7 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn end_debug_utils_label_unchecked(&mut self) {
         let fns = self.queue.device.instance().fns();
         (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(self.queue.handle);
@@ -986,6 +990,7 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn insert_debug_utils_label_unchecked(&mut self, label_info: DebugUtilsLabel) {
         let DebugUtilsLabel {
             label_name,
@@ -1106,11 +1111,9 @@ impl Error for QueueError {
 }
 
 impl Display for QueueError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::VulkanError(_) => write!(f, "a runtime error occurred",),
-
+            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -1124,14 +1127,12 @@ impl Display for QueueError {
 }
 
 impl From<VulkanError> for QueueError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         Self::VulkanError(err)
     }
 }
 
 impl From<RequirementNotMet> for QueueError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

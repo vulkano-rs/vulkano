@@ -61,6 +61,7 @@ impl SingleLayoutDescSetPool {
     /// - Panics if the provided `layout` is for push descriptors rather than regular descriptor
     ///   sets.
     /// - Panics if the provided `layout` has a binding with a variable descriptor count.
+    #[inline]
     pub fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, OomError> {
         assert!(
             !layout.push_descriptor(),
@@ -82,7 +83,6 @@ impl SingleLayoutDescSetPool {
 
     /// Returns a new descriptor set, either by creating a new one or returning an existing one
     /// from the internal reserve.
-    #[inline]
     pub fn next(
         &mut self,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
@@ -187,12 +187,10 @@ pub(crate) struct SingleLayoutPoolAlloc {
 }
 
 impl DescriptorSetAlloc for SingleLayoutPoolAlloc {
-    #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         &self.inner
     }
 
-    #[inline]
     fn inner_mut(&mut self) -> &mut UnsafeDescriptorSet {
         &mut self.inner
     }
@@ -246,7 +244,6 @@ impl PartialEq for SingleLayoutDescSet {
 impl Eq for SingleLayoutDescSet {}
 
 impl Hash for SingleLayoutDescSet {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
@@ -280,6 +277,7 @@ impl SingleLayoutVariableDescSetPool {
     ///
     /// - Panics if the provided `layout` is for push descriptors rather than regular descriptor
     ///   sets.
+    #[inline]
     pub fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, OomError> {
         assert!(
             !layout.push_descriptor(),
@@ -302,7 +300,6 @@ impl SingleLayoutVariableDescSetPool {
     /// # Panics
     ///
     /// - Panics if the provided `variable_descriptor_count` exceeds the maximum for the layout.
-    #[inline]
     pub fn next(
         &mut self,
         variable_descriptor_count: u32,
@@ -441,12 +438,10 @@ unsafe impl Send for SingleLayoutVariablePoolAlloc {}
 unsafe impl Sync for SingleLayoutVariablePoolAlloc {}
 
 impl DescriptorSetAlloc for SingleLayoutVariablePoolAlloc {
-    #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         &self.inner
     }
 
-    #[inline]
     fn inner_mut(&mut self) -> &mut UnsafeDescriptorSet {
         &mut self.inner
     }
@@ -493,7 +488,6 @@ impl PartialEq for SingleLayoutVariableDescSet {
 impl Eq for SingleLayoutVariableDescSet {}
 
 impl Hash for SingleLayoutVariableDescSet {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);

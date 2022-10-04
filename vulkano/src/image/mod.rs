@@ -379,7 +379,7 @@ impl ImageDimensions {
     ///
     /// The returned value is always at least 1.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use vulkano::image::ImageDimensions;
@@ -392,7 +392,6 @@ impl ImageDimensions {
     ///
     /// assert_eq!(dims.max_mip_levels(), 6);
     /// ```
-    ///
     #[inline]
     pub fn max_mip_levels(&self) -> u32 {
         // This calculates `log2(max(width, height, depth)) + 1` using fast integer operations.
@@ -413,7 +412,7 @@ impl ImageDimensions {
     ///
     /// Returns `None` if `level` is superior or equal to `max_mip_levels()`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use vulkano::image::ImageDimensions;
@@ -443,11 +442,11 @@ impl ImageDimensions {
     /// assert_eq!(dims.mip_level_dimensions(11), None);
     /// ```
     ///
-    /// # Panic
+    /// # Panics
     ///
-    /// In debug mode, Panics if `width`, `height` or `depth` is equal to 0. In release, returns
-    /// an unspecified value.
-    ///
+    /// - In debug mode, panics if `width`, `height` or `depth` is equal to 0. In release, returns
+    ///   an unspecified value.
+    #[inline]
     pub fn mip_level_dimensions(&self, level: u32) -> Option<ImageDimensions> {
         if level == 0 {
             return Some(*self);
@@ -520,6 +519,7 @@ pub struct ImageSubresourceLayers {
 }
 
 impl From<ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
+    #[inline]
     fn from(val: ImageSubresourceLayers) -> Self {
         Self {
             aspect_mask: val.aspects.into(),

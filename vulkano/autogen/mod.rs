@@ -8,11 +8,10 @@
 // according to those terms.
 
 use self::spirv_grammar::SpirvGrammar;
-use indexmap::IndexMap;
+use ahash::HashMap;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::{
-    collections::HashMap,
     env,
     fmt::Display,
     fs::File,
@@ -35,6 +34,8 @@ mod spirv_grammar;
 mod spirv_parse;
 mod spirv_reqs;
 mod version;
+
+pub type IndexMap<K, V> = indexmap::IndexMap<K, V, ahash::RandomState>;
 
 pub fn autogen() {
     let registry = get_vk_registry("vk.xml");

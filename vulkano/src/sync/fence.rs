@@ -103,6 +103,7 @@ impl Fence {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: FenceCreateInfo,
@@ -148,6 +149,7 @@ impl Fence {
             )
             .result()
             .map_err(VulkanError::from)?;
+
             output.assume_init()
         };
 
@@ -171,6 +173,7 @@ impl Fence {
     ///
     /// For most applications, using the fence pool should be preferred,
     /// in order to avoid creating new fences every frame.
+    #[inline]
     pub fn from_pool(device: Arc<Device>) -> Result<Fence, FenceError> {
         let handle = device.fence_pool().lock().pop();
         let fence = match handle {
@@ -210,6 +213,7 @@ impl Fence {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Fence,
@@ -236,6 +240,7 @@ impl Fence {
     }
 
     /// Returns true if the fence is signaled.
+    #[inline]
     pub fn is_signaled(&self) -> Result<bool, OomError> {
         let queue_to_signal = {
             let mut state = self.lock();
@@ -322,10 +327,9 @@ impl Fence {
 
     /// Waits for multiple fences at once.
     ///
-    /// # Panic
+    /// # Panics
     ///
-    /// Panics if not all fences belong to the same device.
-    #[inline]
+    /// - Panics if not all fences belong to the same device.
     pub fn multi_wait<'a>(
         fences: impl IntoIterator<Item = &'a Fence>,
         timeout: Option<Duration>,
@@ -442,8 +446,10 @@ impl Fence {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn reset_unchecked(&self) -> Result<(), VulkanError> {
         let mut state = self.state.lock();
+
         self.reset_unchecked_locked(&mut state)
     }
 
@@ -462,10 +468,9 @@ impl Fence {
     ///
     /// The fences must not be in use by a queue operation.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if not all fences belong to the same device.
-    #[inline]
     pub fn multi_reset<'a>(fences: impl IntoIterator<Item = &'a Fence>) -> Result<(), FenceError> {
         let (fences, mut states): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = fences
             .into_iter()
@@ -503,7 +508,6 @@ impl Fence {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn multi_reset_unchecked<'a>(
         fences: impl IntoIterator<Item = &'a Fence>,
     ) -> Result<(), VulkanError> {
@@ -514,6 +518,7 @@ impl Fence {
                 (fence, state)
             })
             .unzip();
+
         Self::multi_reset_unchecked_locked(&fences, &mut states)
     }
 
@@ -544,7 +549,6 @@ impl Fence {
         Ok(())
     }
 
-    #[inline]
     pub(crate) fn lock(&self) -> MutexGuard<'_, FenceState> {
         self.state.lock()
     }
@@ -591,7 +595,6 @@ impl PartialEq for Fence {
 impl Eq for Fence {}
 
 impl Hash for Fence {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -607,17 +610,14 @@ pub struct FenceState {
 impl FenceState {
     /// If the fence is already signaled, or it's unsignaled but there's no queue that
     /// could signal it, returns the currently known value.
-    #[inline]
     pub(crate) fn status(&self) -> Option<bool> {
         (self.is_signaled || self.in_use_by.is_none()).then_some(self.is_signaled)
     }
 
-    #[inline]
     pub(crate) fn is_in_use(&self) -> bool {
         self.in_use_by.is_some()
     }
 
-    #[inline]
     pub(crate) unsafe fn add_to_queue(&mut self, queue: &Arc<Queue>) {
         self.is_signaled = false;
         self.in_use_by = Some(Arc::downgrade(queue));
@@ -625,20 +625,17 @@ impl FenceState {
 
     /// Called when a fence first discovers that it is signaled.
     /// Returns the queue that should be informed about it.
-    #[inline]
     pub(crate) unsafe fn set_signaled(&mut self) -> Option<Arc<Queue>> {
         self.is_signaled = true;
         self.in_use_by.take().and_then(|queue| queue.upgrade())
     }
 
     /// Called when a queue is unlocking resources.
-    #[inline]
     pub(crate) unsafe fn set_finished(&mut self) {
         self.is_signaled = true;
         self.in_use_by = None;
     }
 
-    #[inline]
     pub(crate) unsafe fn reset(&mut self) {
         debug_assert!(self.in_use_by.is_none());
         self.is_signaled = false;
@@ -795,10 +792,9 @@ pub enum FenceError {
 }
 
 impl Error for FenceError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
@@ -810,7 +806,6 @@ impl Display for FenceError {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::DeviceLost => write!(f, "the device was lost"),
             Self::Timeout => write!(f, "the timeout has been reached"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -819,14 +814,12 @@ impl Display for FenceError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::InUse => write!(f, "the fence is currently in use by a queue"),
         }
     }
 }
 
 impl From<VulkanError> for FenceError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
@@ -839,14 +832,12 @@ impl From<VulkanError> for FenceError {
 }
 
 impl From<OomError> for FenceError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<RequirementNotMet> for FenceError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

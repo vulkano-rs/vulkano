@@ -110,7 +110,6 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    #[inline]
     pub unsafe fn uninitialized(
         device: Arc<Device>,
         usage: BufferUsage,
@@ -173,7 +172,6 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `len` is zero.
-    #[inline]
     pub unsafe fn uninitialized_array(
         device: Arc<Device>,
         len: DeviceSize,
@@ -274,7 +272,6 @@ where
     T: BufferContents + ?Sized,
 {
     /// Returns the queue families this buffer can be used on.
-    #[inline]
     pub fn queue_family_indices(&self) -> &[u32] {
         &self.queue_family_indices
     }
@@ -294,7 +291,6 @@ where
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it in exclusive mode will fail. You can still submit this buffer for non-exclusive
     /// accesses (ie. reads).
-    #[inline]
     pub fn read(&self) -> Result<ReadLock<'_, T, A>, ReadLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
@@ -335,7 +331,6 @@ where
     ///
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it and any attempt to call `read()` will return an error.
-    #[inline]
     pub fn write(&self) -> Result<WriteLock<'_, T, A>, WriteLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
@@ -370,7 +365,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync,
 {
-    #[inline]
     fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.inner,
@@ -378,7 +372,6 @@ where
         }
     }
 
-    #[inline]
     fn size(&self) -> DeviceSize {
         self.inner.size()
     }
@@ -389,7 +382,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync + 'static,
 {
-    #[inline]
     fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
         self.clone()
     }
@@ -407,7 +399,6 @@ unsafe impl<T, A> DeviceOwned for CpuAccessibleBuffer<T, A>
 where
     T: BufferContents + ?Sized,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
@@ -418,7 +409,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
@@ -436,7 +426,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);
@@ -463,7 +452,6 @@ where
     T: BufferContents + ?Sized + 'a,
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn drop(&mut self) {
         unsafe {
             let mut state = self.inner.inner.state();
@@ -479,7 +467,6 @@ where
 {
     type Target = T;
 
-    #[inline]
     fn deref(&self) -> &T {
         self.data
     }
@@ -506,7 +493,6 @@ where
     T: BufferContents + ?Sized + 'a,
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn drop(&mut self) {
         unsafe {
             self.inner
@@ -529,7 +515,6 @@ where
 {
     type Target = T;
 
-    #[inline]
     fn deref(&self) -> &T {
         self.data
     }
@@ -540,7 +525,6 @@ where
     T: BufferContents + ?Sized + 'a,
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn deref_mut(&mut self) -> &mut T {
         self.data
     }
@@ -558,7 +542,6 @@ pub enum ReadLockError {
 impl Error for ReadLockError {}
 
 impl Display for ReadLockError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
@@ -587,7 +570,6 @@ pub enum WriteLockError {
 impl Error for WriteLockError {}
 
 impl Display for WriteLockError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,

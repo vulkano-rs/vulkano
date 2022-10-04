@@ -51,9 +51,10 @@ use crate::{
     },
     DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
+use ahash::HashMap;
 use smallvec::SmallVec;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::hash_map::Entry,
     mem::{size_of_val, MaybeUninit},
     ptr, slice,
     sync::Arc,
@@ -150,6 +151,7 @@ where
     Fss: SpecializationConstants,
 {
     /// Builds the graphics pipeline, using an inferred a pipeline layout.
+    #[inline]
     pub fn build(
         self,
         device: Arc<Device>,
@@ -217,7 +219,7 @@ where
             // We want to union each push constant range into a set of ranges that do not have intersecting stage flags.
             // e.g. The range [0, 16) is either made available to Vertex | Fragment or we only make [0, 16) available to
             // Vertex and a subrange available to Fragment, like [0, 8)
-            let mut range_map = HashMap::new();
+            let mut range_map = HashMap::default();
             for stage in stages.iter() {
                 if let Some(range) = stage.push_constant_requirements() {
                     match range_map.entry((range.offset, range.size)) {
@@ -263,6 +265,7 @@ where
     /// Does the same as `build`, except that `build` automatically builds the pipeline layout
     /// object corresponding to the union of your shaders while this function allows you to specify
     /// the pipeline layout.
+    #[inline]
     pub fn with_pipeline_layout(
         mut self,
         device: Arc<Device>,
@@ -292,12 +295,12 @@ where
         }
 
         let has = {
-            let &Self {
-                ref render_pass,
+            let Self {
+                render_pass,
                 cache: _,
 
-                ref vertex_shader,
-                ref tessellation_shaders,
+                vertex_shader,
+                tessellation_shaders,
                 geometry_shader: _,
                 fragment_shader: _,
 
@@ -306,7 +309,7 @@ where
                 tessellation_state: _,
                 viewport_state: _,
                 discard_rectangle_state: _,
-                ref rasterization_state,
+                rasterization_state,
                 multisample_state: _,
                 depth_stencil_state: _,
                 color_blend_state: _,
@@ -422,24 +425,24 @@ where
         let physical_device = device.physical_device();
         let properties = physical_device.properties();
 
-        let &Self {
-            ref render_pass,
+        let Self {
+            render_pass,
             cache: _,
 
-            ref vertex_shader,
-            ref tessellation_shaders,
-            ref geometry_shader,
-            ref fragment_shader,
+            vertex_shader,
+            tessellation_shaders,
+            geometry_shader,
+            fragment_shader,
 
             vertex_input_state: _,
-            ref input_assembly_state,
-            ref tessellation_state,
-            ref viewport_state,
-            ref discard_rectangle_state,
-            ref rasterization_state,
-            ref multisample_state,
-            ref depth_stencil_state,
-            ref color_blend_state,
+            input_assembly_state,
+            tessellation_state,
+            viewport_state,
+            discard_rectangle_state,
+            rasterization_state,
+            multisample_state,
+            depth_stencil_state,
+            color_blend_state,
         } = self;
 
         let render_pass = render_pass.as_ref().expect("Missing render pass");
@@ -594,9 +597,9 @@ where
             // Vertex input state
             // VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-04910
             {
-                let &VertexInputState {
-                    ref bindings,
-                    ref attributes,
+                let VertexInputState {
+                    bindings,
+                    attributes,
                 } = vertex_input_state;
 
                 // VUID-VkPipelineVertexInputStateCreateInfo-vertexBindingDescriptionCount-00613
@@ -1405,18 +1408,15 @@ where
 
             // Discard rectangle state
             {
-                let &DiscardRectangleState {
-                    mode,
-                    ref rectangles,
-                } = discard_rectangle_state;
+                let DiscardRectangleState { mode, rectangles } = discard_rectangle_state;
 
                 if device.enabled_extensions().ext_discard_rectangles {
                     // VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleMode-parameter
                     mode.validate_device(device)?;
 
-                    let discard_rectangle_count = match *rectangles {
-                        PartialStateMode::Dynamic(count) => count,
-                        PartialStateMode::Fixed(ref rectangles) => rectangles.len() as u32,
+                    let discard_rectangle_count = match rectangles {
+                        PartialStateMode::Dynamic(count) => *count,
+                        PartialStateMode::Fixed(rectangles) => rectangles.len() as u32,
                     };
 
                     // VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleCount-00582
@@ -1429,9 +1429,9 @@ where
                         );
                     }
                 } else {
-                    let error = match *rectangles {
+                    let error = match rectangles {
                         PartialStateMode::Dynamic(_) => true,
-                        PartialStateMode::Fixed(ref rectangles) => !rectangles.is_empty(),
+                        PartialStateMode::Fixed(rectangles) => !rectangles.is_empty(),
                     };
 
                     if error {
@@ -1502,8 +1502,8 @@ where
         // VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00750
         // VUID-VkGraphicsPipelineCreateInfo-pViewportState-04892
         if has.viewport_state {
-            let (viewport_count, scissor_count) = match *viewport_state {
-                ViewportState::Fixed { ref data } => {
+            let (viewport_count, scissor_count) = match viewport_state {
+                ViewportState::Fixed { data } => {
                     let count = data.len() as u32;
                     assert!(count != 0); // TODO: return error?
 
@@ -1532,7 +1532,7 @@ where
                     (count, count)
                 }
                 ViewportState::FixedViewport {
-                    ref viewports,
+                    viewports,
                     scissor_count_dynamic,
                 } => {
                     let viewport_count = viewports.len() as u32;
@@ -1559,7 +1559,7 @@ where
                     }
 
                     // VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136
-                    let scissor_count = if scissor_count_dynamic {
+                    let scissor_count = if *scissor_count_dynamic {
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
@@ -1582,7 +1582,7 @@ where
                     (viewport_count, scissor_count)
                 }
                 ViewportState::FixedScissor {
-                    ref scissors,
+                    scissors,
                     viewport_count_dynamic,
                 } => {
                     let scissor_count = scissors.len() as u32;
@@ -1591,7 +1591,7 @@ where
                     assert!(scissor_count != 0); // TODO: return error?
 
                     // VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135
-                    let viewport_count = if viewport_count_dynamic {
+                    let viewport_count = if *viewport_count_dynamic {
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
@@ -1617,7 +1617,7 @@ where
 
                     (viewport_count, scissor_count)
                 }
-                ViewportState::Dynamic {
+                &ViewportState::Dynamic {
                     count,
                     viewport_count_dynamic,
                     scissor_count_dynamic,
@@ -1763,10 +1763,10 @@ where
         // VUID-VkGraphicsPipelineCreateInfo-renderPass-06053
         // VUID-VkGraphicsPipelineCreateInfo-renderPass-06590
         if has.depth_stencil_state {
-            let &DepthStencilState {
-                ref depth,
-                ref depth_bounds,
-                ref stencil,
+            let DepthStencilState {
+                depth,
+                depth_bounds,
+                stencil,
             } = depth_stencil_state;
 
             if let Some(depth_state) = depth {
@@ -1859,9 +1859,9 @@ where
             }
 
             if let Some(depth_bounds_state) = depth_bounds {
-                let &DepthBoundsState {
+                let DepthBoundsState {
                     enable_dynamic,
-                    ref bounds,
+                    bounds,
                 } = depth_bounds_state;
 
                 // VUID-VkPipelineDepthStencilStateCreateInfo-depthBoundsTestEnable-00598
@@ -1876,7 +1876,7 @@ where
                 }
 
                 // VUID?
-                if enable_dynamic
+                if *enable_dynamic
                     && !(device.api_version() >= Version::V1_3
                         || device.enabled_features().extended_dynamic_state)
                 {
@@ -1908,10 +1908,10 @@ where
             }
 
             if let Some(stencil_state) = stencil {
-                let &StencilState {
+                let StencilState {
                     enable_dynamic,
-                    ref front,
-                    ref back,
+                    front,
+                    back,
                 } = stencil_state;
 
                 let has_stencil_attachment = match render_pass {
@@ -1926,7 +1926,7 @@ where
                 }
 
                 // VUID?
-                if enable_dynamic
+                if *enable_dynamic
                     && !(device.api_version() >= Version::V1_3
                         || device.enabled_features().extended_dynamic_state)
                 {
@@ -2088,9 +2088,9 @@ where
         // VUID-VkGraphicsPipelineCreateInfo-renderPass-06044
         // VUID-VkGraphicsPipelineCreateInfo-renderPass-06054
         if has.color_blend_state {
-            let &ColorBlendState {
+            let ColorBlendState {
                 logic_op,
-                ref attachments,
+                attachments,
                 blend_constants: _,
             } = color_blend_state;
 
@@ -2382,7 +2382,7 @@ where
         let render_pass = render_pass.as_ref().unwrap();
 
         let mut descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements> =
-            HashMap::new();
+            HashMap::default();
         let mut dynamic_state: HashMap<DynamicState, bool> = HashMap::default();
         let mut stages = HashMap::default();
         let mut stages_vk: SmallVec<[_; 5]> = SmallVec::new();
@@ -2445,9 +2445,9 @@ where
             {
                 dynamic_state.insert(DynamicState::VertexInput, false);
 
-                let &VertexInputState {
-                    ref bindings,
-                    ref attributes,
+                let VertexInputState {
+                    bindings,
+                    attributes,
                 } = vertex_input_state;
 
                 vertex_binding_descriptions_vk.extend(bindings.iter().map(
@@ -2864,27 +2864,26 @@ where
 
             // Discard rectangle state
             if device.enabled_extensions().ext_discard_rectangles {
-                let &DiscardRectangleState {
-                    mode,
-                    ref rectangles,
-                } = discard_rectangle_state;
+                let DiscardRectangleState { mode, rectangles } = discard_rectangle_state;
 
-                let discard_rectangle_count = match *rectangles {
-                    PartialStateMode::Fixed(ref rectangles) => {
+                let discard_rectangle_count = match rectangles {
+                    PartialStateMode::Fixed(rectangles) => {
                         dynamic_state.insert(DynamicState::DiscardRectangle, false);
                         discard_rectangles.extend(rectangles.iter().map(|&rect| rect.into()));
+
                         discard_rectangles.len() as u32
                     }
                     PartialStateMode::Dynamic(count) => {
                         dynamic_state.insert(DynamicState::DiscardRectangle, true);
-                        count
+
+                        *count
                     }
                 };
 
                 let _ = discard_rectangle_state_vk.insert(
                     ash::vk::PipelineDiscardRectangleStateCreateInfoEXT {
                         flags: ash::vk::PipelineDiscardRectangleStateCreateFlagsEXT::empty(),
-                        discard_rectangle_mode: mode.into(),
+                        discard_rectangle_mode: (*mode).into(),
                         discard_rectangle_count,
                         p_discard_rectangles: discard_rectangles.as_ptr(),
                         ..Default::default()
@@ -2919,8 +2918,8 @@ where
 
         // Viewport state
         if has.viewport_state {
-            let (viewport_count, scissor_count) = match *viewport_state {
-                ViewportState::Fixed { ref data } => {
+            let (viewport_count, scissor_count) = match viewport_state {
+                ViewportState::Fixed { data } => {
                     let count = data.len() as u32;
                     viewports_vk.extend(data.iter().map(|e| e.0.clone().into()));
                     dynamic_state.insert(DynamicState::Viewport, false);
@@ -2933,7 +2932,7 @@ where
                     (count, count)
                 }
                 ViewportState::FixedViewport {
-                    ref viewports,
+                    viewports,
                     scissor_count_dynamic,
                 } => {
                     let viewport_count = viewports.len() as u32;
@@ -2941,7 +2940,7 @@ where
                     dynamic_state.insert(DynamicState::Viewport, false);
                     dynamic_state.insert(DynamicState::ViewportWithCount, false);
 
-                    let scissor_count = if scissor_count_dynamic {
+                    let scissor_count = if *scissor_count_dynamic {
                         dynamic_state.insert(DynamicState::Scissor, false);
                         dynamic_state.insert(DynamicState::ScissorWithCount, true);
                         0
@@ -2954,15 +2953,15 @@ where
                     (viewport_count, scissor_count)
                 }
                 ViewportState::FixedScissor {
-                    ref scissors,
+                    scissors,
                     viewport_count_dynamic,
                 } => {
                     let scissor_count = scissors.len() as u32;
-                    scissors_vk.extend(scissors.iter().map(|e| (*e).into()));
+                    scissors_vk.extend(scissors.iter().map(|&e| e.into()));
                     dynamic_state.insert(DynamicState::Scissor, false);
                     dynamic_state.insert(DynamicState::ScissorWithCount, false);
 
-                    let viewport_count = if viewport_count_dynamic {
+                    let viewport_count = if *viewport_count_dynamic {
                         dynamic_state.insert(DynamicState::Viewport, false);
                         dynamic_state.insert(DynamicState::ViewportWithCount, true);
                         0
@@ -2974,7 +2973,7 @@ where
 
                     (viewport_count, scissor_count)
                 }
-                ViewportState::Dynamic {
+                &ViewportState::Dynamic {
                     count,
                     viewport_count_dynamic,
                     scissor_count_dynamic,
@@ -2982,19 +2981,23 @@ where
                     let viewport_count = if viewport_count_dynamic {
                         dynamic_state.insert(DynamicState::Viewport, false);
                         dynamic_state.insert(DynamicState::ViewportWithCount, true);
+
                         0
                     } else {
                         dynamic_state.insert(DynamicState::Viewport, true);
                         dynamic_state.insert(DynamicState::ViewportWithCount, false);
+
                         count
                     };
                     let scissor_count = if scissor_count_dynamic {
                         dynamic_state.insert(DynamicState::Scissor, false);
                         dynamic_state.insert(DynamicState::ScissorWithCount, true);
+
                         0
                     } else {
                         dynamic_state.insert(DynamicState::Scissor, true);
                         dynamic_state.insert(DynamicState::ScissorWithCount, false);
+
                         count
                     };
 
@@ -3070,10 +3073,10 @@ where
 
         // Depth/stencil state
         if has.depth_stencil_state {
-            let &DepthStencilState {
-                ref depth,
-                ref depth_bounds,
-                ref stencil,
+            let DepthStencilState {
+                depth,
+                depth_bounds,
+                stencil,
             } = depth_stencil_state;
 
             let (depth_test_enable, depth_write_enable, depth_compare_op) =
@@ -3119,12 +3122,12 @@ where
 
             let (depth_bounds_test_enable, min_depth_bounds, max_depth_bounds) =
                 if let Some(depth_bounds_state) = depth_bounds {
-                    let &DepthBoundsState {
+                    let DepthBoundsState {
                         enable_dynamic,
-                        ref bounds,
+                        bounds,
                     } = depth_bounds_state;
 
-                    if enable_dynamic {
+                    if *enable_dynamic {
                         dynamic_state.insert(DynamicState::DepthBoundsTestEnable, true);
                     } else {
                         dynamic_state.insert(DynamicState::DepthBoundsTestEnable, false);
@@ -3147,13 +3150,13 @@ where
                 };
 
             let (stencil_test_enable, front, back) = if let Some(stencil_state) = stencil {
-                let &StencilState {
+                let StencilState {
                     enable_dynamic,
-                    ref front,
-                    ref back,
+                    front,
+                    back,
                 } = stencil_state;
 
-                if enable_dynamic {
+                if *enable_dynamic {
                     dynamic_state.insert(DynamicState::StencilTestEnable, true);
                 } else {
                     dynamic_state.insert(DynamicState::StencilTestEnable, false);
@@ -3500,6 +3503,7 @@ where
             )
             .result()
             .map_err(VulkanError::from)?;
+
             output.assume_init()
         };
 
@@ -3529,7 +3533,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the vertex shader to use.
     // TODO: correct specialization constants
-    #[inline]
     pub fn vertex_shader<'vs2, Vss2>(
         self,
         shader: EntryPoint<'vs2>,
@@ -3561,7 +3564,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the tessellation shaders to use.
     // TODO: correct specialization constants
-    #[inline]
     pub fn tessellation_shaders<'tcs2, 'tes2, Tcss2, Tess2>(
         self,
         control_shader: EntryPoint<'tcs2>,
@@ -3599,7 +3601,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the geometry shader to use.
     // TODO: correct specialization constants
-    #[inline]
     pub fn geometry_shader<'gs2, Gss2>(
         self,
         shader: EntryPoint<'gs2>,
@@ -3633,7 +3634,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// The fragment shader is run once for each pixel that is covered by each primitive.
     // TODO: correct specialization constants
-    #[inline]
     pub fn fragment_shader<'fs2, Fss2>(
         self,
         shader: EntryPoint<'fs2>,
@@ -3666,7 +3666,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Sets the vertex input state.
     ///
     /// The default value is [`VertexInputState::default()`].
-    #[inline]
     pub fn vertex_input_state<T>(
         self,
         vertex_input_state: T,
@@ -3792,7 +3791,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// You will most likely need to explicitly specify the template parameter to the type of a
     /// vertex.
     #[deprecated(since = "0.27.0", note = "Use `vertex_input_state` instead")]
-    #[inline]
     pub fn vertex_input_single_buffer<V: Vertex>(
         self,
     ) -> GraphicsPipelineBuilder<
@@ -3941,7 +3939,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Sets the viewports to some value, and the scissor boxes to boxes that always cover the
     /// whole viewport.
     #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
-    #[inline]
     pub fn viewports<I>(self, viewports: I) -> Self
     where
         I: IntoIterator<Item = Viewport>,
@@ -3951,7 +3948,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the characteristics of viewports and scissor boxes in advance.
     #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
-    #[inline]
     pub fn viewports_scissors<I>(mut self, viewports: I) -> Self
     where
         I: IntoIterator<Item = (Viewport, Scissor)>,
@@ -3965,7 +3961,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Sets the scissor boxes to some values, and viewports to dynamic. The viewports will
     /// need to be set before drawing.
     #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
-    #[inline]
     pub fn viewports_dynamic_scissors_fixed<I>(mut self, scissors: I) -> Self
     where
         I: IntoIterator<Item = Scissor>,
@@ -3992,7 +3987,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Sets the viewports to some values, and scissor boxes to dynamic. The scissor boxes will
     /// need to be set before drawing.
     #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
-    #[inline]
     pub fn viewports_fixed_scissors_dynamic<I>(mut self, viewports: I) -> Self
     where
         I: IntoIterator<Item = Viewport>,
@@ -4151,10 +4145,9 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// Sample shading is disabled by default.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if `min_fract` is not between 0.0 and 1.0.
-    ///
     #[deprecated(since = "0.27.0", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn sample_shading_enabled(mut self, min_fract: f32) -> Self {
@@ -4255,7 +4248,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     #[deprecated(since = "0.27.0", note = "Use `color_blend_state` instead")]
-    #[inline]
     pub fn blend_individual<I>(mut self, blend: I) -> Self
     where
         I: IntoIterator<Item = AttachmentBlend>,
@@ -4335,7 +4327,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the render pass subpass to use.
-    #[inline]
     pub fn render_pass(self, render_pass: impl Into<PipelineRenderPassType>) -> Self {
         GraphicsPipelineBuilder {
             render_pass: Some(render_pass.into()),

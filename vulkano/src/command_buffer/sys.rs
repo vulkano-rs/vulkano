@@ -49,6 +49,7 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// - `pool_alloc` must outlive the returned builder and its created command buffer.
     /// - `kind` must match how `pool_alloc` was created.
+    #[inline]
     pub unsafe fn new(
         pool_alloc: &CommandPoolAlloc,
         begin_info: CommandBufferBeginInfo,

@@ -7,16 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, VkRegistryData};
+use super::{write_file, IndexMap, VkRegistryData};
+use ahash::HashMap;
 use heck::ToSnakeCase;
-use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    fmt::Write as _,
-};
+use std::{collections::hash_map::Entry, fmt::Write as _};
 use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
 // This is not included in vk.xml, so it's added here manually
@@ -290,20 +287,20 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// Note that the `robust_buffer_access` is guaranteed to be supported by all Vulkan
         /// implementations.
         ///
-        /// # Example
+        /// # Examples
         ///
         /// ```
         /// use vulkano::device::Features;
         /// # let physical_device: vulkano::device::physical::PhysicalDevice = return;
         /// let minimal_features = Features {
         ///     geometry_shader: true,
-        ///     .. Features::empty()
+        ///     ..Features::empty()
         /// };
         ///
         /// let optimal_features = vulkano::device::Features {
         ///     geometry_shader: true,
         ///     tessellation_shader: true,
-        ///     .. Features::empty()
+        ///     ..Features::empty()
         /// };
         ///
         /// if !physical_device.supported_features().is_superset_of(&minimal_features) {
@@ -313,7 +310,6 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// assert!(optimal_features.is_superset_of(&minimal_features));
         /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
-        ///
         #[derive(Copy, Clone, PartialEq, Eq, Hash)]
         pub struct Features {
             #(#struct_items)*
@@ -328,7 +324,8 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
 
         impl Features {
-            /// Checks enabled features against the device version, device extensions and each other.
+            /// Checks enabled features against the device version, device extensions and each
+            /// other.
             pub(super) fn check_requirements(
                 &self,
                 supported: &Features,
@@ -515,7 +512,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
 }
 
 fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMember> {
-    let mut features = HashMap::new();
+    let mut features = HashMap::default();
     std::iter::once(&types["VkPhysicalDeviceFeatures"])
         .chain(sorted_structs(types).into_iter())
         .filter(|(ty, _)| {
@@ -728,7 +725,7 @@ fn features_ffi_members<'a>(
     types: &'a HashMap<&str, (&Type, Vec<&str>)>,
     extensions: &IndexMap<&'a str, &Extension>,
 ) -> Vec<FeaturesFfiMember> {
-    let mut feature_included_in: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut feature_included_in: HashMap<&str, Vec<&str>> = HashMap::default();
     sorted_structs(types)
         .into_iter()
         .map(|(ty, provided_by)| {

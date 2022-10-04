@@ -72,7 +72,6 @@ impl WriteDescriptorSet {
     }
 
     /// Write a number of consecutive buffer elements.
-    #[inline]
     pub fn buffer_array(
         binding: u32,
         first_array_element: u32,
@@ -94,7 +93,6 @@ impl WriteDescriptorSet {
     }
 
     /// Write a number of consecutive buffer view elements.
-    #[inline]
     pub fn buffer_view_array(
         binding: u32,
         first_array_element: u32,
@@ -116,7 +114,6 @@ impl WriteDescriptorSet {
     }
 
     /// Write a number of consecutive image view elements.
-    #[inline]
     pub fn image_view_array(
         binding: u32,
         first_array_element: u32,
@@ -142,7 +139,6 @@ impl WriteDescriptorSet {
     }
 
     /// Write a number of consecutive image view and sampler elements.
-    #[inline]
     pub fn image_view_sampler_array(
         binding: u32,
         first_array_element: u32,
@@ -164,7 +160,6 @@ impl WriteDescriptorSet {
     }
 
     /// Write a number of consecutive sampler elements.
-    #[inline]
     pub fn sampler_array(
         binding: u32,
         first_array_element: u32,
@@ -949,7 +944,6 @@ impl Error for DescriptorSetUpdateError {
 }
 
 impl Display for DescriptorSetUpdateError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::ArrayIndexOutOfBounds {
@@ -958,66 +952,75 @@ impl Display for DescriptorSetUpdateError {
                 written_count,
             } => write!(
                 f,
-                "tried to write up to element {} to binding {}, but only {} descriptors are available",
+                "tried to write up to element {} to binding {}, but only {} descriptors are \
+                available",
                 written_count, binding, available_count,
             ),
             Self::ImageView2dFrom3d { binding, index } => write!(
                 f,
-                "tried to write an image view to binding {} index {} with a 2D type and a 3D underlying image",
+                "tried to write an image view to binding {} index {} with a 2D type and a 3D \
+                underlying image",
                 binding, index,
             ),
             Self::ImageViewDepthAndStencil { binding, index } => write!(
                 f,
-                "tried to write an image view to binding {} index {} that has both the `depth` and `stencil` aspects",
+                "tried to write an image view to binding {} index {} that has both the `depth` and \
+                `stencil` aspects",
                 binding, index,
             ),
             Self::ImageViewHasSamplerYcbcrConversion { binding, index } => write!(
                 f,
-                "tried to write an image view to binding {} index {} with an attached sampler YCbCr conversion to binding that does not support it",
+                "tried to write an image view to binding {} index {} with an attached sampler \
+                YCbCr conversion to binding that does not support it",
                 binding, index,
             ),
             Self::ImageViewIsArrayed { binding, index } => write!(
                 f,
-                "tried to write an image view of an arrayed type to binding {} index {}, but this binding has a descriptor type that does not support arrayed image views",
+                "tried to write an image view of an arrayed type to binding {} index {}, but this \
+                binding has a descriptor type that does not support arrayed image views",
                 binding, index,
             ),
             Self::ImageViewIncompatibleSampler { binding, index, .. } => write!(
                 f,
-                "tried to write an image view to binding {} index {}, that was not compatible with the sampler that was provided as part of the update or immutably in the layout",
+                "tried to write an image view to binding {} index {}, that was not compatible with \
+                the sampler that was provided as part of the update or immutably in the layout",
                 binding, index,
             ),
             Self::ImageViewNotIdentitySwizzled { binding, index } => write!(
                 f,
-                "tried to write an image view with non-identity swizzling to binding {} index {}, but this binding has a descriptor type that requires it to be identity swizzled",
+                "tried to write an image view with non-identity swizzling to binding {} index {}, \
+                but this binding has a descriptor type that requires it to be identity swizzled",
                 binding, index,
             ),
             Self::IncompatibleDescriptorType { binding } => write!(
                 f,
-                "tried to write a resource to binding {} whose type was not compatible with the descriptor type",
+                "tried to write a resource to binding {} whose type was not compatible with the \
+                descriptor type",
                 binding,
             ),
-            Self::InvalidBinding { binding } => write!(
-                f,
-                "tried to write to a nonexistent binding {}",
-                binding,
-            ),
+            Self::InvalidBinding { binding } => {
+                write!(f, "tried to write to a nonexistent binding {}", binding,)
+            }
             Self::MissingUsage {
                 binding,
                 index,
                 usage,
             } => write!(
                 f,
-                "tried to write a resource to binding {} index {} that did not have the required usage {} enabled",
+                "tried to write a resource to binding {} index {} that did not have the required \
+                usage {} enabled",
                 binding, index, usage,
             ),
             Self::SamplerHasSamplerYcbcrConversion { binding, index } => write!(
                 f,
-                "tried to write a sampler to binding {} index {} that has an attached sampler YCbCr conversion",
+                "tried to write a sampler to binding {} index {} that has an attached sampler \
+                YCbCr conversion",
                 binding, index,
             ),
             Self::SamplerIsImmutable { binding } => write!(
                 f,
-                "tried to write a sampler to binding {}, which already contains immutable samplers in the descriptor set layout",
+                "tried to write a sampler to binding {}, which already contains immutable samplers \
+                in the descriptor set layout",
                 binding,
             ),
         }

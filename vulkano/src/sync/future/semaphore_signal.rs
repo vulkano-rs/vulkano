@@ -27,7 +27,6 @@ use std::{
 };
 
 /// Builds a new semaphore signal future.
-#[inline]
 pub fn then_signal_semaphore<F>(future: F) -> SemaphoreSignalFuture<F>
 where
     F: GpuFuture,
@@ -64,17 +63,15 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn cleanup_finished(&mut self) {
         self.previous.cleanup_finished();
     }
 
-    #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         // Flushing the signaling part, since it must always be submitted before the waiting part.
         self.flush()?;
-
         let sem = smallvec![self.semaphore.clone()];
+
         Ok(SubmitAnyBuilder::SemaphoresWait(sem))
     }
 
@@ -193,24 +190,20 @@ where
         }
     }
 
-    #[inline]
     unsafe fn signal_finished(&self) {
         debug_assert!(*self.wait_submitted.lock());
         self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
 
-    #[inline]
     fn queue_change_allowed(&self) -> bool {
         true
     }
 
-    #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         self.previous.queue()
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -223,7 +216,6 @@ where
             .map(|_| None)
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -251,7 +243,6 @@ unsafe impl<F> DeviceOwned for SemaphoreSignalFuture<F>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.semaphore.device()
     }

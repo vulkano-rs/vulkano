@@ -448,6 +448,7 @@ impl Sampler {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Sampler,
@@ -492,13 +493,10 @@ impl Sampler {
     }
 
     /// Checks whether this sampler is compatible with `image_view`.
-    pub fn check_can_sample<I>(
+    pub fn check_can_sample(
         &self,
-        image_view: &I,
-    ) -> Result<(), SamplerImageViewIncompatibleError>
-    where
-        I: ImageViewAbstract + ?Sized,
-    {
+        image_view: &(impl ImageViewAbstract + ?Sized),
+    ) -> Result<(), SamplerImageViewIncompatibleError> {
         /*
             Note: Most of these checks come from the Instruction/Sampler/Image View Validation
             section, and are not strictly VUIDs.
@@ -755,7 +753,6 @@ impl PartialEq for Sampler {
 impl Eq for Sampler {}
 
 impl Hash for Sampler {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -857,22 +854,19 @@ pub enum SamplerCreationError {
 }
 
 impl Error for SamplerCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            SamplerCreationError::OomError(ref err) => Some(err),
+        match self {
+            SamplerCreationError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for SamplerCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match *self {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::TooManyObjects => write!(f, "too many simultaneous sampler objects",),
-
+            Self::TooManyObjects => write!(f, "too many simultaneous sampler objects"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -881,61 +875,77 @@ impl Display for SamplerCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::AnisotropyInvalidFilter { .. } => write!(f, "anisotropy was enabled with an invalid filter"),
-            Self::CompareInvalidReductionMode { .. } => write!(f, "depth comparison was enabled with an invalid reduction mode"),
+            Self::AnisotropyInvalidFilter { .. } => {
+                write!(f, "anisotropy was enabled with an invalid filter")
+            }
+            Self::CompareInvalidReductionMode { .. } => write!(
+                f,
+                "depth comparison was enabled with an invalid reduction mode",
+            ),
             Self::MaxSamplerAnisotropyExceeded { .. } => {
                 write!(f, "max_sampler_anisotropy limit exceeded")
             }
             Self::MaxSamplerLodBiasExceeded { .. } => write!(f, "mip lod bias limit exceeded"),
             Self::SamplerYcbcrConversionAnisotropyEnabled => write!(
                 f,
-                "sampler YCbCr conversion was enabled together with anisotropy"
+                "sampler YCbCr conversion was enabled together with anisotropy",
             ),
-            Self::SamplerYcbcrConversionChromaFilterMismatch { .. } => write!(f, "sampler YCbCr conversion was enabled, and its format does not support `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter` or `min_filter` did not match the conversion's `chroma_filter`"),
-            Self::SamplerYcbcrConversionInvalidAddressMode { .. } => write!(f, "sampler YCbCr conversion was enabled, but the address mode for u, v or w was something other than `ClampToEdge`"),
-            Self::SamplerYcbcrConversionInvalidReductionMode { .. } => write!(f, "sampler YCbCr conversion was enabled, but the reduction mode was something other than `WeightedAverage`"),
+            Self::SamplerYcbcrConversionChromaFilterMismatch { .. } => write!(
+                f,
+                "sampler YCbCr conversion was enabled, and its format does not support
+                `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter`
+                or `min_filter` did not match the conversion's `chroma_filter`",
+            ),
+            Self::SamplerYcbcrConversionInvalidAddressMode { .. } => write!(
+                f,
+                "sampler YCbCr conversion was enabled, but the address mode for u, v or w was
+                something other than `ClampToEdge`",
+            ),
+            Self::SamplerYcbcrConversionInvalidReductionMode { .. } => write!(
+                f,
+                "sampler YCbCr conversion was enabled, but the reduction mode was something other \
+                than `WeightedAverage`",
+            ),
             Self::SamplerYcbcrConversionUnnormalizedCoordinatesEnabled => write!(
                 f,
-                "sampler YCbCr conversion was enabled together with unnormalized coordinates"
+                "sampler YCbCr conversion was enabled together with unnormalized coordinates",
             ),
             Self::UnnormalizedCoordinatesAnisotropyEnabled => write!(
                 f,
-                "unnormalized coordinates were enabled together with anisotropy"
+                "unnormalized coordinates were enabled together with anisotropy",
             ),
             Self::UnnormalizedCoordinatesCompareEnabled => write!(
                 f,
-                "unnormalized coordinates were enabled together with depth comparison"
+                "unnormalized coordinates were enabled together with depth comparison",
             ),
             Self::UnnormalizedCoordinatesFiltersNotEqual { .. } => write!(
                 f,
-                "unnormalized coordinates were enabled, but the min and mag filters were not equal"
+                "unnormalized coordinates were enabled, but the min and mag filters were not equal",
             ),
             Self::UnnormalizedCoordinatesInvalidAddressMode { .. } => write!(
                 f,
-                "unnormalized coordinates were enabled, but the address mode for u or v was something other than `ClampToEdge` or `ClampToBorder`"
+                "unnormalized coordinates were enabled, but the address mode for u or v was \
+                something other than `ClampToEdge` or `ClampToBorder`",
             ),
             Self::UnnormalizedCoordinatesInvalidMipmapMode { .. } => write!(
                 f,
-                "unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`"
+                "unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`",
             ),
             Self::UnnormalizedCoordinatesNonzeroLod { .. } => write!(
                 f,
-                "unnormalized coordinates were enabled, but the LOD range was not zero"
+                "unnormalized coordinates were enabled, but the LOD range was not zero",
             ),
         }
     }
 }
 
 impl From<OomError> for SamplerCreationError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<VulkanError> for SamplerCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
@@ -947,7 +957,6 @@ impl From<VulkanError> for SamplerCreationError {
 }
 
 impl From<RequirementNotMet> for SamplerCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -1087,6 +1096,7 @@ pub struct SamplerCreateInfo {
 }
 
 impl Default for SamplerCreateInfo {
+    #[inline]
     fn default() -> Self {
         Self {
             mag_filter: Filter::Nearest,
@@ -1478,16 +1488,55 @@ impl Error for SamplerImageViewIncompatibleError {}
 impl Display for SamplerImageViewIncompatibleError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::BorderColorFormatNotCompatible => write!(f, "the sampler has a border color with a numeric type different from the image view"),
-            Self::BorderColorOpaqueBlackNotIdentitySwizzled => write!(f, "the sampler has an opaque black border color, but the image view is not identity swizzled"),
-            Self::DepthComparisonNotSupported => write!(f, "the sampler has depth comparison enabled, but this is not supported by the image view"),
-            Self::DepthComparisonWrongAspect => write!(f, "the sampler has depth comparison enabled, but the image view does not select the `depth` aspect"),
-            Self::FilterLinearNotSupported => write!(f, "the sampler uses a linear filter, but this is not supported by the image view's format features"),
-            Self::FilterCubicNotSupported => write!(f, "the sampler uses a cubic filter, but this is not supported by the image view's format features"),
-            Self::FilterCubicMinmaxNotSupported => write!(f, "the sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is not supported by the image view's format features"),
-            Self::MipmapModeLinearNotSupported => write!(f, "the sampler uses a linear mipmap mode, but this is not supported by the image view's format features"),
-            Self::UnnormalizedCoordinatesMultipleMipLevels => write!(f, "the sampler uses unnormalized coordinates, but the image view has multiple mip levels"),
-            Self::UnnormalizedCoordinatesViewTypeNotCompatible => write!(f, "the sampler uses unnormalized coordinates, but the image view has a type other than `Dim1d` or `Dim2d`"),
+            Self::BorderColorFormatNotCompatible => write!(
+                f,
+                "the sampler has a border color with a numeric type different from the image view",
+            ),
+            Self::BorderColorOpaqueBlackNotIdentitySwizzled => write!(
+                f,
+                "the sampler has an opaque black border color, but the image view is not identity \
+                swizzled",
+            ),
+            Self::DepthComparisonNotSupported => write!(
+                f,
+                "the sampler has depth comparison enabled, but this is not supported by the image \
+                view",
+            ),
+            Self::DepthComparisonWrongAspect => write!(
+                f,
+                "the sampler has depth comparison enabled, but the image view does not select the \
+                `depth` aspect",
+            ),
+            Self::FilterLinearNotSupported => write!(
+                f,
+                "the sampler uses a linear filter, but this is not supported by the image view's \
+                format features",
+            ),
+            Self::FilterCubicNotSupported => write!(
+                f,
+                "the sampler uses a cubic filter, but this is not supported by the image view's \
+                format features",
+            ),
+            Self::FilterCubicMinmaxNotSupported => write!(
+                f,
+                "the sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is \
+                not supported by the image view's format features",
+            ),
+            Self::MipmapModeLinearNotSupported => write!(
+                f,
+                "the sampler uses a linear mipmap mode, but this is not supported by the image \
+                view's format features",
+            ),
+            Self::UnnormalizedCoordinatesMultipleMipLevels => write!(
+                f,
+                "the sampler uses unnormalized coordinates, but the image view has multiple mip \
+                levels",
+            ),
+            Self::UnnormalizedCoordinatesViewTypeNotCompatible => write!(
+                f,
+                "the sampler uses unnormalized coordinates, but the image view has a type other \
+                than `Dim1d` or `Dim2d`",
+            ),
         }
     }
 }

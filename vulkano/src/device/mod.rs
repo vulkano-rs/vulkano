@@ -539,6 +539,7 @@ impl Device {
     ///
     /// - `file` must be a handle to external memory that was created outside the Vulkan API.
     #[cfg_attr(not(unix), allow(unused_variables))]
+    #[inline]
     pub unsafe fn memory_fd_properties(
         &self,
         handle_type: ExternalMemoryHandleType,
@@ -622,12 +623,13 @@ impl Device {
     /// This function is not thread-safe. You must not submit anything to any of the queue
     /// of the device (either explicitly or implicitly, for example with a future's destructor)
     /// while this function is waiting.
-    ///
+    #[inline]
     pub unsafe fn wait_idle(&self) -> Result<(), OomError> {
         let fns = self.fns();
         (fns.v1_0.device_wait_idle)(self.handle)
             .result()
             .map_err(VulkanError::from)?;
+
         Ok(())
     }
 }
@@ -671,7 +673,6 @@ impl PartialEq for Device {
 impl Eq for Device {}
 
 impl Hash for Device {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.physical_device.hash(state);
@@ -709,15 +710,12 @@ pub enum DeviceCreationError {
 impl Error for DeviceCreationError {}
 
 impl Display for DeviceCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match *self {
-            Self::InitializationFailed => {
-                write!(
-                    f,
-                    "failed to create the device for an implementation-specific reason"
-                )
-            }
+        match self {
+            Self::InitializationFailed => write!(
+                f,
+                "failed to create the device for an implementation-specific reason",
+            ),
             Self::OutOfHostMemory => write!(f, "no memory available on the host"),
             Self::OutOfDeviceMemory => {
                 write!(f, "no memory available on the graphical device")
@@ -726,24 +724,23 @@ impl Display for DeviceCreationError {
             Self::TooManyQueuesForFamily => {
                 write!(f, "tried to create too many queues for a given family")
             }
-            Self::FeatureNotPresent => {
-                write!(
-                    f,
-                    "some of the requested features are unsupported by the physical device"
-                )
-            }
-            Self::PriorityOutOfRange => {
-                write!(
-                    f,
-                    "the priority of one of the queues is out of the [0.0; 1.0] range"
-                )
-            }
-            Self::ExtensionNotPresent => {
-                write!(f,"some of the requested device extensions are not supported by the physical device")
-            }
-            Self::TooManyObjects => {
-                write!(f,"you have reached the limit to the number of devices that can be created from the same physical device")
-            }
+            Self::FeatureNotPresent => write!(
+                f,
+                "some of the requested features are unsupported by the physical device",
+            ),
+            Self::PriorityOutOfRange => write!(
+                f,
+                "the priority of one of the queues is out of the [0.0; 1.0] range",
+            ),
+            Self::ExtensionNotPresent => write!(
+                f,
+                "some of the requested device extensions are not supported by the physical device",
+            ),
+            Self::TooManyObjects => write!(
+                f,
+                "you have reached the limit to the number of devices that can be created from the \
+                same physical device",
+            ),
             Self::ExtensionRestrictionNotMet(err) => err.fmt(f),
             Self::FeatureRestrictionNotMet(err) => err.fmt(f),
         }
@@ -751,7 +748,6 @@ impl Display for DeviceCreationError {
 }
 
 impl From<VulkanError> for DeviceCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             VulkanError::InitializationFailed => Self::InitializationFailed,
@@ -767,14 +763,12 @@ impl From<VulkanError> for DeviceCreationError {
 }
 
 impl From<ExtensionRestrictionError> for DeviceCreationError {
-    #[inline]
     fn from(err: ExtensionRestrictionError) -> Self {
         Self::ExtensionRestrictionNotMet(err)
     }
 }
 
 impl From<FeatureRestrictionError> for DeviceCreationError {
-    #[inline]
     fn from(err: FeatureRestrictionError) -> Self {
         Self::FeatureRestrictionNotMet(err)
     }
@@ -850,7 +844,6 @@ impl Default for QueueCreateInfo {
 /// # Safety
 ///
 /// - `device()` must return the correct device.
-///
 pub unsafe trait DeviceOwned {
     /// Returns the device that owns `Self`.
     fn device(&self) -> &Arc<Device>;
@@ -861,7 +854,6 @@ where
     T: Deref,
     T::Target: DeviceOwned,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         (**self).device()
     }
@@ -899,11 +891,9 @@ pub enum MemoryFdPropertiesError {
 impl Error for MemoryFdPropertiesError {}
 
 impl Display for MemoryFdPropertiesError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match *self {
+        match self {
             Self::OutOfHostMemory => write!(f, "no memory available on the host"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -912,7 +902,6 @@ impl Display for MemoryFdPropertiesError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::InvalidExternalHandle => {
                 write!(f, "the provided external handle was not valid")
             }
@@ -928,7 +917,6 @@ impl Display for MemoryFdPropertiesError {
 }
 
 impl From<VulkanError> for MemoryFdPropertiesError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             VulkanError::OutOfHostMemory => Self::OutOfHostMemory,
@@ -939,7 +927,6 @@ impl From<VulkanError> for MemoryFdPropertiesError {
 }
 
 impl From<RequirementNotMet> for MemoryFdPropertiesError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

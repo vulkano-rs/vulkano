@@ -59,17 +59,19 @@ use std::{
 ///
 /// # Usage
 ///
-/// Since a `DeviceLocalBuffer` can only be directly accessed by the GPU, data cannot be transfered between
-/// the host process and the buffer alone. One must use additional buffers which are accessible to the CPU as
-/// staging areas, then use command buffers to execute the necessary data transfers.
+/// Since a `DeviceLocalBuffer` can only be directly accessed by the GPU, data cannot be transfered
+/// between the host process and the buffer alone. One must use additional buffers which are
+/// accessible to the CPU as staging areas, then use command buffers to execute the necessary data
+/// transfers.
 ///
-/// Despite this, if one knows in advance that a buffer will not need to be frequently accessed by the host,
-/// then there may be significant performance gains by using a `DeviceLocalBuffer` over a buffer type which
-/// allows host access.
+/// Despite this, if one knows in advance that a buffer will not need to be frequently accessed by
+/// the host, then there may be significant performance gains by using a `DeviceLocalBuffer` over a
+/// buffer type which allows host access.
 ///
-/// # Example
+/// # Examples
 ///
-/// The following example outlines the general strategy one may take when initializing a `DeviceLocalBuffer`.
+/// The following example outlines the general strategy one may take when initializing a
+/// `DeviceLocalBuffer`.
 ///
 /// ```
 /// use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
@@ -112,21 +114,20 @@ use std::{
 /// )
 /// .unwrap();
 /// cbb.copy_buffer(CopyBufferInfo::buffers(
-///     temporary_accessible_buffer,
-///     device_local_buffer.clone(),
-/// ))
-/// .unwrap();
+///         temporary_accessible_buffer,
+///         device_local_buffer.clone(),
+///     ))
+///     .unwrap();
 /// let cb = cbb.build().unwrap();
 ///
 /// // Execute copy command and wait for completion before proceeding.
 /// cb.execute(queue.clone())
-/// .unwrap()
-/// .then_signal_fence_and_flush()
-/// .unwrap()
-/// .wait(None /* timeout */)
-/// .unwrap()
+///     .unwrap()
+///     .then_signal_fence_and_flush()
+///     .unwrap()
+///     .wait(None /* timeout */)
+///     .unwrap()
 /// ```
-///
 #[derive(Debug)]
 pub struct DeviceLocalBuffer<T, A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>>
 where
@@ -154,7 +155,6 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    #[inline]
     pub fn new(
         device: Arc<Device>,
         usage: BufferUsage,
@@ -178,9 +178,9 @@ where
     /// Builds a `DeviceLocalBuffer` that copies its data from another buffer.
     ///
     /// This function returns two objects: the newly-created buffer, and a future representing
-    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you must
-    /// either submit your operation after this future, or execute this future and wait for it to
-    /// be finished before submitting your own operation.
+    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you
+    /// must either submit your operation after this future, or execute this future and wait for it
+    /// to be finished before submitting your own operation.
     pub fn from_buffer<B>(
         source: Arc<B>,
         usage: BufferUsage,
@@ -244,9 +244,9 @@ where
     /// submits the command buffer as a future.
     ///
     /// This function returns two objects: the newly-created buffer, and a future representing
-    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you must
-    /// either submit your operation after this future, or execute this future and wait for it to
-    /// be finished before submitting your own operation.
+    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you
+    /// must either submit your operation after this future, or execute this future and wait for it
+    /// to be finished before submitting your own operation.
     ///
     /// # Panics
     ///
@@ -323,7 +323,6 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `len` is zero.
-    #[inline]
     pub fn array(
         device: Arc<Device>,
         len: DeviceSize,
@@ -460,6 +459,7 @@ where
             }
         };
         let mem_reqs = buffer.memory_requirements();
+
         Ok((buffer, mem_reqs))
     }
 
@@ -478,7 +478,6 @@ where
     T: BufferContents + ?Sized,
 {
     /// Returns the queue families this buffer can be used on.
-    #[inline]
     pub fn queue_family_indices(&self) -> &[u32] {
         &self.queue_family_indices
     }
@@ -488,7 +487,6 @@ unsafe impl<T, A> DeviceOwned for DeviceLocalBuffer<T, A>
 where
     T: BufferContents + ?Sized,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
@@ -499,7 +497,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync,
 {
-    #[inline]
     fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.inner,
@@ -507,7 +504,6 @@ where
         }
     }
 
-    #[inline]
     fn size(&self) -> DeviceSize {
         self.inner.size()
     }
@@ -518,7 +514,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync + 'static,
 {
-    #[inline]
     fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
         self.clone()
     }
@@ -537,7 +532,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
@@ -555,7 +549,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);
@@ -569,7 +562,6 @@ pub enum DeviceLocalBufferCreationError {
 }
 
 impl Error for DeviceLocalBufferCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::DeviceMemoryAllocationError(err) => Some(err),
@@ -579,7 +571,6 @@ impl Error for DeviceLocalBufferCreationError {
 }
 
 impl Display for DeviceLocalBufferCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),
@@ -589,14 +580,12 @@ impl Display for DeviceLocalBufferCreationError {
 }
 
 impl From<DeviceMemoryError> for DeviceLocalBufferCreationError {
-    #[inline]
     fn from(e: DeviceMemoryError) -> Self {
         Self::DeviceMemoryAllocationError(e)
     }
 }
 
 impl From<CommandBufferBeginError> for DeviceLocalBufferCreationError {
-    #[inline]
     fn from(e: CommandBufferBeginError) -> Self {
         Self::CommandBufferBeginError(e)
     }

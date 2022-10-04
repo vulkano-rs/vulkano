@@ -20,7 +20,6 @@ use parking_lot::{Mutex, MutexGuard};
 use std::{mem::replace, ops::Range, sync::Arc, time::Duration};
 
 /// Builds a new fence signal future.
-#[inline]
 pub fn then_signal_fence<F>(future: F, behavior: FenceSignalFutureBehavior) -> FenceSignalFuture<F>
 where
     F: GpuFuture,
@@ -167,7 +166,6 @@ where
 {
     // Implementation of `cleanup_finished`, but takes a `&self` instead of a `&mut self`.
     // This is an external function so that we can also call it from an `Arc<FenceSignalFuture>`.
-    #[inline]
     fn cleanup_finished_impl(&self) {
         let mut state = self.state.lock();
 
@@ -353,12 +351,11 @@ where
 }
 
 impl<F> FenceSignalFutureState<F> {
-    #[inline]
     fn get_prev(&self) -> Option<&F> {
-        match *self {
-            FenceSignalFutureState::Pending(ref prev, _) => Some(prev),
-            FenceSignalFutureState::PartiallyFlushed(ref prev, _) => Some(prev),
-            FenceSignalFutureState::Flushed(ref prev, _) => Some(prev),
+        match self {
+            FenceSignalFutureState::Pending(prev, _) => Some(prev),
+            FenceSignalFutureState::PartiallyFlushed(prev, _) => Some(prev),
+            FenceSignalFutureState::Flushed(prev, _) => Some(prev),
             FenceSignalFutureState::Cleaned => None,
             FenceSignalFutureState::Poisoned => None,
         }
@@ -369,18 +366,16 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn cleanup_finished(&mut self) {
         self.cleanup_finished_impl()
     }
 
-    #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         let mut state = self.state.lock();
         self.flush_impl(&mut state)?;
 
-        match *state {
-            FenceSignalFutureState::Flushed(_, ref fence) => match self.behavior {
+        match &*state {
+            FenceSignalFutureState::Flushed(_, fence) => match self.behavior {
                 FenceSignalFutureBehavior::Block { timeout } => {
                     fence.wait(timeout)?;
                 }
@@ -394,13 +389,11 @@ where
         Ok(SubmitAnyBuilder::Empty)
     }
 
-    #[inline]
     fn flush(&self) -> Result<(), FlushError> {
         let mut state = self.state.lock();
         self.flush_impl(&mut state)
     }
 
-    #[inline]
     unsafe fn signal_finished(&self) {
         let state = self.state.lock();
         match *state {
@@ -412,7 +405,6 @@ where
         }
     }
 
-    #[inline]
     fn queue_change_allowed(&self) -> bool {
         match self.behavior {
             FenceSignalFutureBehavior::Continue => {
@@ -423,7 +415,6 @@ where
         }
     }
 
-    #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         let state = self.state.lock();
         if let Some(prev) = state.get_prev() {
@@ -433,7 +424,6 @@ where
         }
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -449,7 +439,6 @@ where
         }
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -484,7 +473,6 @@ unsafe impl<F> DeviceOwned for FenceSignalFuture<F>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
@@ -528,39 +516,32 @@ unsafe impl<F> GpuFuture for Arc<FenceSignalFuture<F>>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn cleanup_finished(&mut self) {
         self.cleanup_finished_impl()
     }
 
-    #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         // Note that this is sound because we always return `SubmitAnyBuilder::Empty`. See the
         // documentation of `build_submission`.
         (**self).build_submission()
     }
 
-    #[inline]
     fn flush(&self) -> Result<(), FlushError> {
         (**self).flush()
     }
 
-    #[inline]
     unsafe fn signal_finished(&self) {
         (**self).signal_finished()
     }
 
-    #[inline]
     fn queue_change_allowed(&self) -> bool {
         (**self).queue_change_allowed()
     }
 
-    #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         (**self).queue()
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -571,7 +552,6 @@ where
         (**self).check_buffer_access(buffer, range, exclusive, queue)
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,

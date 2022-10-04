@@ -44,7 +44,6 @@ where
     ///
     /// - Panics if `src_buffer` or `dst_buffer` were not created from the same device
     ///   as `self`.
-    #[inline]
     pub fn copy_buffer(
         &mut self,
         copy_buffer_info: impl Into<CopyBufferInfo>,
@@ -196,7 +195,6 @@ where
     ///
     /// - Panics if `src_image` or `dst_image` were not created from the same device
     ///   as `self`.
-    #[inline]
     pub fn copy_image(&mut self, copy_image_info: CopyImageInfo) -> Result<&mut Self, CopyError> {
         self.validate_copy_image(&copy_image_info)?;
 
@@ -876,7 +874,6 @@ where
     }
 
     /// Copies from a buffer to an image.
-    #[inline]
     pub fn copy_buffer_to_image(
         &mut self,
         copy_buffer_to_image_info: CopyBufferToImageInfo,
@@ -1308,7 +1305,6 @@ where
     }
 
     /// Copies from an image to a buffer.
-    #[inline]
     pub fn copy_image_to_buffer(
         &mut self,
         copy_image_to_buffer_info: CopyImageToBufferInfo,
@@ -1740,7 +1736,6 @@ where
     /// # Panics
     ///
     /// - Panics if `dst_buffer` was not created from the same device as `self`.
-    #[inline]
     pub fn fill_buffer(
         &mut self,
         fill_buffer_info: FillBufferInfo,
@@ -1844,7 +1839,6 @@ where
     /// # Panics
     ///
     /// - Panics if `dst_buffer` was not created from the same device as `self`.
-    #[inline]
     pub fn update_buffer<B, D, Dd>(
         &mut self,
         data: Dd,
@@ -2414,7 +2408,6 @@ impl SyncCommandBufferBuilder {
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
-    #[inline]
     pub unsafe fn update_buffer<D, Dd>(
         &mut self,
         data: Dd,
@@ -3002,7 +2995,6 @@ impl UnsafeCommandBufferBuilder {
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
-    #[inline]
     pub unsafe fn update_buffer<D>(
         &mut self,
         data: &D,
@@ -3102,7 +3094,6 @@ where
     D: TypedBufferAccess<Content = [T]>,
 {
     /// Returns a `CopyBufferInfoTyped` with the specified `src_buffer` and `dst_buffer`.
-    #[inline]
     pub fn buffers(src_buffer: Arc<S>, dst_buffer: Arc<D>) -> Self {
         let region = BufferCopy {
             size: min(src_buffer.len(), dst_buffer.len()),
@@ -3123,7 +3114,6 @@ where
     S: TypedBufferAccess<Content = [T]> + 'static,
     D: TypedBufferAccess<Content = [T]> + 'static,
 {
-    #[inline]
     fn from(typed: CopyBufferInfoTyped<S, D, T>) -> Self {
         let CopyBufferInfoTyped {
             src_buffer,

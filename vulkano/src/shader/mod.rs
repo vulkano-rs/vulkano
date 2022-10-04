@@ -28,9 +28,9 @@ use crate::{
     sync::PipelineStages,
     DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
+use ahash::{HashMap, HashSet};
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
     error::Error,
     ffi::{CStr, CString},
     fmt::{Display, Error as FmtError, Formatter},
@@ -63,6 +63,7 @@ impl ShaderModule {
     /// # Safety
     ///
     /// - The SPIR-V code is not validated beyond the minimum needed to extract the information.
+    #[inline]
     pub unsafe fn from_words(
         device: Arc<Device>,
         words: &[u32],
@@ -84,11 +85,13 @@ impl ShaderModule {
     /// # Panics
     ///
     /// - Panics if the length of `bytes` is not a multiple of 4.
+    #[inline]
     pub unsafe fn from_bytes(
         device: Arc<Device>,
         bytes: &[u8],
     ) -> Result<Arc<ShaderModule>, ShaderCreationError> {
         assert!((bytes.len() % 4) == 0);
+
         Self::from_words(
             device,
             std::slice::from_raw_parts(
@@ -204,6 +207,7 @@ impl ShaderModule {
         entry_points: impl IntoIterator<Item = (String, ExecutionModel, EntryPointInfo)>,
     ) -> Result<Arc<ShaderModule>, ShaderCreationError> {
         assert!((bytes.len() % 4) == 0);
+
         Self::from_words_with_data(
             device,
             std::slice::from_raw_parts(
@@ -220,6 +224,7 @@ impl ShaderModule {
     /// Returns information about the entry point with the provided name. Returns `None` if no entry
     /// point with that name exists in the shader module or if multiple entry points with the same
     /// name exist.
+    #[inline]
     pub fn entry_point<'a>(&'a self, name: &str) -> Option<EntryPoint<'a>> {
         self.entry_points.get(name).and_then(|infos| {
             if infos.len() == 1 {
@@ -234,8 +239,9 @@ impl ShaderModule {
         })
     }
 
-    /// Returns information about the entry point with the provided name and execution model. Returns
-    /// `None` if no entry and execution model exists in the shader module.
+    /// Returns information about the entry point with the provided name and execution model.
+    /// Returns `None` if no entry and execution model exists in the shader module.
+    #[inline]
     pub fn entry_point_with_execution<'a>(
         &'a self,
         name: &str,
@@ -294,7 +300,6 @@ pub enum ShaderCreationError {
 }
 
 impl Error for ShaderCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::OomError(err) => Some(err),
@@ -604,6 +609,7 @@ pub struct DescriptorIdentifier {
 impl DescriptorRequirements {
     /// Produces the intersection of two descriptor requirements, so that the requirements of both
     /// are satisfied. An error is returned if the requirements conflict.
+    #[inline]
     pub fn intersection(&self, other: &Self) -> Result<Self, DescriptorRequirementsIncompatible> {
         let descriptor_types: Vec<_> = self
             .descriptor_types
@@ -731,7 +737,7 @@ pub struct SpecializationConstantRequirements {
 ///
 /// This trait is implemented on `()` for shaders that don't have any specialization constant.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust
 /// use vulkano::shader::SpecializationConstants;
@@ -774,7 +780,6 @@ pub struct SpecializationConstantRequirements {
 /// - The `SpecializationMapEntry` returned must contain valid offsets and sizes.
 /// - The size of each `SpecializationMapEntry` must match the size of the corresponding constant
 ///   (`4` for booleans).
-///
 pub unsafe trait SpecializationConstants {
     /// Returns descriptors of the struct's layout.
     fn descriptors() -> &'static [SpecializationMapEntry];
@@ -840,6 +845,7 @@ impl ShaderInterface {
     }
 
     /// Creates a description of an empty shader interface.
+    #[inline]
     pub const fn empty() -> ShaderInterface {
         ShaderInterface {
             elements: Vec::new(),
@@ -855,6 +861,7 @@ impl ShaderInterface {
     /// Checks whether the interface is potentially compatible with another one.
     ///
     /// Returns `Ok` if the two interfaces are compatible.
+    #[inline]
     pub fn matches(&self, other: &ShaderInterface) -> Result<(), ShaderInterfaceMismatchError> {
         if self.elements().len() != other.elements().len() {
             return Err(ShaderInterfaceMismatchError::ElementsCountMismatch {
@@ -977,6 +984,7 @@ pub enum ShaderScalarType {
 
 // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#formats-numericformat
 impl From<NumericType> for ShaderScalarType {
+    #[inline]
     fn from(val: NumericType) -> Self {
         match val {
             NumericType::SFLOAT => Self::Float,
@@ -1023,12 +1031,11 @@ pub enum ShaderInterfaceMismatchError {
 impl Error for ShaderInterfaceMismatchError {}
 
 impl Display for ShaderInterfaceMismatchError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 ShaderInterfaceMismatchError::ElementsCountMismatch { .. } => {
                     "the number of elements mismatches"
                 }

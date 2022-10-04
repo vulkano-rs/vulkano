@@ -59,7 +59,8 @@ where
             // Secondary command buffer could leave the primary in any state.
             self.inner.reset_state();
 
-            // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
+            // If the secondary is non-concurrent or one-time use, that restricts the primary as
+            // well.
             self.usage = std::cmp::min(self.usage, secondary_usage);
         }
 
@@ -96,7 +97,8 @@ where
             // Secondary command buffer could leave the primary in any state.
             self.inner.reset_state();
 
-            // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
+            // If the secondary is non-concurrent or one-time use, that restricts the primary as
+            // well.
             self.usage = std::cmp::min(self.usage, secondary_usage);
         }
 
@@ -411,11 +413,7 @@ pub struct SyncCommandBufferBuilderExecuteCommands<'a> {
 
 impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
     /// Adds a command buffer to the list.
-    #[inline]
-    pub fn add<C>(&mut self, command_buffer: C)
-    where
-        C: SecondaryCommandBuffer + 'static,
-    {
+    pub fn add(&mut self, command_buffer: impl SecondaryCommandBuffer + 'static) {
         self.inner.push(Box::new(command_buffer));
     }
 
@@ -544,11 +542,7 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
     }
 
     /// Adds a command buffer to the list.
-    #[inline]
-    pub fn add<C>(&mut self, cb: &C)
-    where
-        C: ?Sized + SecondaryCommandBuffer,
-    {
+    pub fn add(&mut self, cb: &(impl SecondaryCommandBuffer + ?Sized)) {
         // TODO: debug assert that it is a secondary command buffer?
         self.raw_cbs.push(cb.inner().internal_object());
     }
@@ -700,7 +694,6 @@ pub enum ExecuteCommandsError {
 }
 
 impl Error for ExecuteCommandsError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::SyncCommandBufferBuilderError(err) => Some(err),
@@ -710,11 +703,9 @@ impl Error for ExecuteCommandsError {
 }
 
 impl Display for ExecuteCommandsError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -723,8 +714,9 @@ impl Display for ExecuteCommandsError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::ForbiddenWithSubpassContents { contents: subpass_contents } => write!(
+            Self::ForbiddenWithSubpassContents {
+                contents: subpass_contents,
+            } => write!(
                 f,
                 "operation forbidden inside a render subpass with contents {:?}",
                 subpass_contents,
@@ -736,7 +728,8 @@ impl Display for ExecuteCommandsError {
                 command_buffer_index,
             } => write!(
                 f,
-                "a render pass is active, but command buffer {} does not contain occlusion query inheritance info",
+                "a render pass is active, but command buffer {} does not contain occlusion query \
+                inheritance info",
                 command_buffer_index,
             ),
             Self::OcclusionQueryFlagsNotSuperset {
@@ -745,7 +738,8 @@ impl Display for ExecuteCommandsError {
                 inherited_flags,
             } => write!(
                 f,
-                "the inherited occlusion query control flags ({:?}) of command buffer {} are not a superset of the currently active flags ({:?})",
+                "the inherited occlusion query control flags ({:?}) of command buffer {} are not a \
+                superset of the currently active flags ({:?})",
                 inherited_flags, command_buffer_index, required_flags,
             ),
             Self::PipelineStatisticsQueryFlagsNotSuperset {
@@ -754,7 +748,8 @@ impl Display for ExecuteCommandsError {
                 inherited_flags,
             } => write!(
                 f,
-                "the inherited pipeline statistics query flags ({:?}) of command buffer {} are not a superset of the currently active flags ({:?})",
+                "the inherited pipeline statistics query flags ({:?}) of command buffer {} are not \
+                a superset of the currently active flags ({:?})",
                 inherited_flags, command_buffer_index, required_flags,
             ),
             Self::RenderPassColorAttachmentCountMismatch {
@@ -763,10 +758,9 @@ impl Display for ExecuteCommandsError {
                 inherited_count,
             } => write!(
                 f,
-                "the inherited color attachment count ({}) of command buffer {} does not match the current attachment count ({})",
-                inherited_count,
-                command_buffer_index,
-                required_count,
+                "the inherited color attachment count ({}) of command buffer {} does not match the \
+                current attachment count ({})",
+                inherited_count, command_buffer_index, required_count,
             ),
             Self::RenderPassColorAttachmentFormatMismatch {
                 command_buffer_index,
@@ -775,11 +769,9 @@ impl Display for ExecuteCommandsError {
                 inherited_format,
             } => write!(
                 f,
-                "the inherited format ({:?}) of color attachment {} of command buffer {} does not match the current attachment format ({:?})",
-                inherited_format,
-                color_attachment_index,
-                command_buffer_index,
-                required_format,
+                "the inherited format ({:?}) of color attachment {} of command buffer {} does not \
+                match the current attachment format ({:?})",
+                inherited_format, color_attachment_index, command_buffer_index, required_format,
             ),
             Self::RenderPassColorAttachmentSamplesMismatch {
                 command_buffer_index,
@@ -788,11 +780,9 @@ impl Display for ExecuteCommandsError {
                 inherited_samples,
             } => write!(
                 f,
-                "the inherited sample count ({:?}) of color attachment {} of command buffer {} does not match the current attachment sample count ({:?})",
-                inherited_samples,
-                color_attachment_index,
-                command_buffer_index,
-                required_samples,
+                "the inherited sample count ({:?}) of color attachment {} of command buffer {} \
+                does not match the current attachment sample count ({:?})",
+                inherited_samples, color_attachment_index, command_buffer_index, required_samples,
             ),
             Self::RenderPassDepthAttachmentFormatMismatch {
                 command_buffer_index,
@@ -800,10 +790,9 @@ impl Display for ExecuteCommandsError {
                 inherited_format,
             } => write!(
                 f,
-                "the inherited format ({:?}) of the depth attachment of command buffer {} does not match the current attachment format ({:?})",
-                inherited_format,
-                command_buffer_index,
-                required_format,
+                "the inherited format ({:?}) of the depth attachment of command buffer {} does not \
+                match the current attachment format ({:?})",
+                inherited_format, command_buffer_index, required_format,
             ),
             Self::RenderPassDepthAttachmentSamplesMismatch {
                 command_buffer_index,
@@ -811,37 +800,40 @@ impl Display for ExecuteCommandsError {
                 inherited_samples,
             } => write!(
                 f,
-                "the inherited sample count ({:?}) of the depth attachment of command buffer {} does not match the current attachment sample count ({:?})",
-                inherited_samples,
-                command_buffer_index,
-                required_samples,
+                "the inherited sample count ({:?}) of the depth attachment of command buffer {} \
+                does not match the current attachment sample count ({:?})",
+                inherited_samples, command_buffer_index, required_samples,
             ),
             Self::RenderPassFramebufferMismatch {
                 command_buffer_index,
             } => write!(
                 f,
-                "the inherited framebuffer of command buffer {} does not match the current framebuffer",
+                "the inherited framebuffer of command buffer {} does not match the current \
+                framebuffer",
                 command_buffer_index,
             ),
             Self::RenderPassInheritanceRequired {
                 command_buffer_index,
             } => write!(
                 f,
-                "a render pass is active, but command buffer {} does not contain render pass inheritance info",
+                "a render pass is active, but command buffer {} does not contain render pass \
+                inheritance info",
                 command_buffer_index,
             ),
             Self::RenderPassInheritanceForbidden {
                 command_buffer_index,
             } => write!(
                 f,
-                "a render pass is not active, but command buffer {} contains render pass inheritance info",
+                "a render pass is not active, but command buffer {} contains render pass \
+                inheritance info",
                 command_buffer_index,
             ),
             Self::RenderPassNotCompatible {
                 command_buffer_index,
             } => write!(
                 f,
-                "the inherited render pass of command buffer {} is not compatible with the current render pass",
+                "the inherited render pass of command buffer {} is not compatible with the current \
+                render pass",
                 command_buffer_index,
             ),
             Self::RenderPassStencilAttachmentFormatMismatch {
@@ -850,10 +842,9 @@ impl Display for ExecuteCommandsError {
                 inherited_format,
             } => write!(
                 f,
-                "the inherited format ({:?}) of the stencil attachment of command buffer {} does not match the current attachment format ({:?})",
-                inherited_format,
-                command_buffer_index,
-                required_format,
+                "the inherited format ({:?}) of the stencil attachment of command buffer {} does \
+                not match the current attachment format ({:?})",
+                inherited_format, command_buffer_index, required_format,
             ),
             Self::RenderPassStencilAttachmentSamplesMismatch {
                 command_buffer_index,
@@ -861,10 +852,9 @@ impl Display for ExecuteCommandsError {
                 inherited_samples,
             } => write!(
                 f,
-                "the inherited sample count ({:?}) of the stencil attachment of command buffer {} does not match the current attachment sample count ({:?})",
-                inherited_samples,
-                command_buffer_index,
-                required_samples,
+                "the inherited sample count ({:?}) of the stencil attachment of command buffer {} \
+                does not match the current attachment sample count ({:?})",
+                inherited_samples, command_buffer_index, required_samples,
             ),
             Self::RenderPassSubpassMismatch {
                 command_buffer_index,
@@ -872,10 +862,9 @@ impl Display for ExecuteCommandsError {
                 inherited_subpass,
             } => write!(
                 f,
-                "the inherited subpass index ({}) of command buffer {} does not match the current subpass index ({})",
-                inherited_subpass,
-                command_buffer_index,
-                required_subpass,
+                "the inherited subpass index ({}) of command buffer {} does not match the current \
+                subpass index ({})",
+                inherited_subpass, command_buffer_index, required_subpass,
             ),
             Self::RenderPassTypeMismatch {
                 command_buffer_index,
@@ -890,17 +879,15 @@ impl Display for ExecuteCommandsError {
                 inherited_view_mask,
             } => write!(
                 f,
-                "the inherited view mask ({}) of command buffer {} does not match the current view mask ({})",
-                inherited_view_mask,
-                command_buffer_index,
-                required_view_mask,
+                "the inherited view mask ({}) of command buffer {} does not match the current view \
+                mask ({})",
+                inherited_view_mask, command_buffer_index, required_view_mask,
             ),
         }
     }
 }
 
 impl From<SyncCommandBufferBuilderError> for ExecuteCommandsError {
-    #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
     }

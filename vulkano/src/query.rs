@@ -110,6 +110,7 @@ impl QueryPool {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::QueryPool,
@@ -120,6 +121,7 @@ impl QueryPool {
             query_count,
             _ne: _,
         } = create_info;
+
         Arc::new(QueryPool {
             handle,
             device,
@@ -152,9 +154,9 @@ impl QueryPool {
 
     /// Returns a reference to a range of queries, or `None` if out of range.
     ///
-    /// # Panic
+    /// # Panics
     ///
-    /// Panics if the range is empty.
+    /// - Panics if the range is empty.
     #[inline]
     pub fn queries_range(&self, range: Range<u32>) -> Option<QueriesRange<'_>> {
         assert!(!range.is_empty());
@@ -203,7 +205,6 @@ impl PartialEq for QueryPool {
 impl Eq for QueryPool {}
 
 impl Hash for QueryPool {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -248,17 +249,15 @@ pub enum QueryPoolCreationError {
 }
 
 impl Error for QueryPoolCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            QueryPoolCreationError::OomError(ref err) => Some(err),
+        match self {
+            QueryPoolCreationError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for QueryPoolCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
@@ -267,7 +266,7 @@ impl Display for QueryPoolCreationError {
                 QueryPoolCreationError::OomError(_) => "not enough memory available",
                 QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
                     "a pipeline statistics pool was requested but the corresponding feature \
-                 wasn't enabled"
+                    wasn't enabled"
                 }
             }
         )
@@ -275,14 +274,12 @@ impl Display for QueryPoolCreationError {
 }
 
 impl From<OomError> for QueryPoolCreationError {
-    #[inline]
     fn from(err: OomError) -> QueryPoolCreationError {
         QueryPoolCreationError::OomError(err)
     }
 }
 
 impl From<VulkanError> for QueryPoolCreationError {
-    #[inline]
     fn from(err: VulkanError) -> QueryPoolCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => {
@@ -352,6 +349,7 @@ impl<'a> QueriesRange<'a> {
     /// is returned if some results were not yet available; these will not be written to the buffer.
     ///
     /// See also [`copy_query_pool_results`](crate::command_buffer::AutoCommandBufferBuilder::copy_query_pool_results).
+    #[inline]
     pub fn get_results<T>(
         &self,
         destination: &mut [T],
@@ -461,22 +459,19 @@ pub enum GetResultsError {
 }
 
 impl Error for GetResultsError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for GetResultsError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::DeviceLost => write!(f, "the connection to the device has been lost"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -485,7 +480,6 @@ impl Display for GetResultsError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::BufferTooSmall { .. } => write!(f, "the buffer is too small for the operation"),
             Self::InvalidFlags => write!(
                 f,
@@ -496,7 +490,6 @@ impl Display for GetResultsError {
 }
 
 impl From<VulkanError> for GetResultsError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
@@ -509,14 +502,12 @@ impl From<VulkanError> for GetResultsError {
 }
 
 impl From<OomError> for GetResultsError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<RequirementNotMet> for GetResultsError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

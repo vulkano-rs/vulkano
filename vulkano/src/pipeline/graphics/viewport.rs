@@ -120,7 +120,6 @@ impl ViewportState {
     }
 
     /// Creates a `ViewportState` with fixed state from the given viewports and scissors.
-    #[inline]
     pub fn viewport_fixed_scissor_fixed(
         data: impl IntoIterator<Item = (Viewport, Scissor)>,
     ) -> Self {
@@ -131,7 +130,6 @@ impl ViewportState {
 
     /// Creates a `ViewportState` with fixed state from the given viewports, and matching scissors
     /// that cover the whole viewport.
-    #[inline]
     pub fn viewport_fixed_scissor_irrelevant(data: impl IntoIterator<Item = Viewport>) -> Self {
         Self::Fixed {
             data: data
@@ -174,6 +172,7 @@ impl ViewportState {
     /// Returns the number of viewports and scissors.
     ///
     /// `None` is returned if both `viewport_count_dynamic` and `scissor_count_dynamic` are `true`.
+    #[inline]
     pub fn count(&self) -> Option<u32> {
         Some(match *self {
             ViewportState::Fixed { ref data } => data.len() as u32,

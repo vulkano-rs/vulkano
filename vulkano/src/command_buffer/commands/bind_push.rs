@@ -327,10 +327,11 @@ where
     /// - Panics if `self` and any element of `vertex_buffers` do not belong to the same device.
     /// - Panics if any element of `vertex_buffers` does not have the
     ///   [`vertex_buffer`](crate::buffer::BufferUsage::vertex_buffer) usage enabled.
-    pub fn bind_vertex_buffers<V>(&mut self, first_binding: u32, vertex_buffers: V) -> &mut Self
-    where
-        V: VertexBuffersCollection,
-    {
+    pub fn bind_vertex_buffers(
+        &mut self,
+        first_binding: u32,
+        vertex_buffers: impl VertexBuffersCollection,
+    ) -> &mut Self {
         let vertex_buffers = vertex_buffers.into_vec();
         self.validate_bind_vertex_buffers(first_binding, &vertex_buffers)
             .unwrap();
@@ -706,7 +707,6 @@ impl SyncCommandBufferBuilder {
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
-    #[inline]
     pub unsafe fn push_constants<D>(
         &mut self,
         pipeline_layout: Arc<PipelineLayout>,
@@ -841,11 +841,7 @@ pub struct SyncCommandBufferBuilderBindDescriptorSets<'b> {
 
 impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
     /// Adds a descriptor set to the list.
-    #[inline]
-    pub fn add<S>(&mut self, descriptor_set: S)
-    where
-        S: Into<DescriptorSetWithOffsets>,
-    {
+    pub fn add(&mut self, descriptor_set: impl Into<DescriptorSetWithOffsets>) {
         self.descriptor_sets.push(descriptor_set.into());
     }
 
@@ -1075,7 +1071,6 @@ impl UnsafeCommandBufferBuilder {
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
-    #[inline]
     pub unsafe fn push_constants<D>(
         &mut self,
         pipeline_layout: &PipelineLayout,
@@ -1107,7 +1102,6 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdPushDescriptorSetKHR` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn push_descriptor_set<'a>(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
@@ -1168,6 +1162,7 @@ impl UnsafeCommandBufferBuilder {
 }
 
 /// Prototype for a `vkCmdBindVertexBuffers`.
+#[derive(Debug)]
 pub struct UnsafeCommandBufferBuilderBindVertexBuffer {
     // Raw handles of the buffers to bind.
     pub raw_buffers: SmallVec<[ash::vk::Buffer; 4]>,
@@ -1273,7 +1268,6 @@ impl error::Error for BindPushError {
 }
 
 impl Display for BindPushError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
@@ -1284,83 +1278,78 @@ impl Display for BindPushError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::DescriptorSetUpdateError(_) => write!(
-                f,
-                "a DescriptorSetUpdateError",
-            ),
-
+            Self::DescriptorSetUpdateError(_) => write!(f, "a DescriptorSetUpdateError"),
             Self::DescriptorSetNotCompatible { set_num } => write!(
                 f,
-                "the element of `descriptor_sets` being bound to slot {} is not compatible with the corresponding slot in `pipeline_layout`",
+                "the element of `descriptor_sets` being bound to slot {} is not compatible with \
+                the corresponding slot in `pipeline_layout`",
                 set_num,
             ),
             Self::DescriptorSetNotPush { set_num } => write!(
                 f,
-                "the descriptor set number being pushed ({}) is not defined for push descriptor sets in the pipeline layout",
+                "the descriptor set number being pushed ({}) is not defined for push descriptor \
+                sets in the pipeline layout",
                 set_num,
             ),
-            Self::DescriptorSetOutOfRange { set_num, pipeline_layout_set_count } => write!(
+            Self::DescriptorSetOutOfRange {
+                set_num,
+                pipeline_layout_set_count,
+            } => write!(
                 f,
-                "the highest descriptor set slot being bound ({}) is greater than the number of sets in `pipeline_layout` ({})",
+                "the highest descriptor set slot being bound ({}) is greater than the number of \
+                sets in `pipeline_layout` ({})",
                 set_num, pipeline_layout_set_count,
             ),
-            Self::IndexBufferMissingUsage => write!(
-                f,
-                "an index buffer is missing the `index_buffer` usage",
-            ),
-            Self::MaxVertexInputBindingsExceeded { .. } => write!(
-                f,
-                "the `max_vertex_input_bindings` limit has been exceeded",
-            ),
-            Self::NotSupportedByQueueFamily => write!(
-                f,
-                "the queue family doesn't allow this operation",
-            ),
+            Self::IndexBufferMissingUsage => {
+                write!(f, "an index buffer is missing the `index_buffer` usage")
+            }
+            Self::MaxVertexInputBindingsExceeded { .. } => {
+                write!(f, "the `max_vertex_input_bindings` limit has been exceeded")
+            }
+            Self::NotSupportedByQueueFamily => {
+                write!(f, "the queue family doesn't allow this operation")
+            }
             Self::PreviousPipelineColorAttachmentFormatMismatch => write!(
                 f,
-                "the newly set pipeline has color attachment formats that do not match the previously used pipeline",
+                "the newly set pipeline has color attachment formats that do not match the \
+                previously used pipeline",
             ),
             Self::PreviousPipelineDepthAttachmentFormatMismatch => write!(
                 f,
-                "the newly set pipeline has a depth attachment format that does not match the previously used pipeline",
+                "the newly set pipeline has a depth attachment format that does not match the \
+                previously used pipeline",
             ),
             Self::PreviousPipelineStencilAttachmentFormatMismatch => write!(
                 f,
-                "the newly set pipeline has a stencil attachment format that does not match the previously used pipeline"
+                "the newly set pipeline has a stencil attachment format that does not match the \
+                previously used pipeline",
             ),
-            Self::PushConstantsDataOutOfRange {
+            Self::PushConstantsDataOutOfRange { offset } => write!(
+                f,
+                "the push constants data to be written at offset {} is not included in any push \
+                constant range of the pipeline layout",
                 offset,
-            } => write!(
-                f,
-                "the push constants data to be written at offset {} is not included in any push constant range of the pipeline layout",
-                offset,
             ),
-            Self::PushConstantsOffsetNotAligned => write!(
-                f,
-                "the push constants offset is not a multiple of 4",
-            ),
-            Self::PushConstantsSizeNotAligned => write!(
-                f,
-                "the push constants size is not a multiple of 4",
-            ),
-            Self::VertexBufferMissingUsage => write!(
-                f,
-                "a vertex buffer is missing the `vertex_buffer` usage",
-            ),
+            Self::PushConstantsOffsetNotAligned => {
+                write!(f, "the push constants offset is not a multiple of 4")
+            }
+            Self::PushConstantsSizeNotAligned => {
+                write!(f, "the push constants size is not a multiple of 4")
+            }
+            Self::VertexBufferMissingUsage => {
+                write!(f, "a vertex buffer is missing the `vertex_buffer` usage")
+            }
         }
     }
 }
 
 impl From<DescriptorSetUpdateError> for BindPushError {
-    #[inline]
     fn from(err: DescriptorSetUpdateError) -> Self {
         Self::DescriptorSetUpdateError(err)
     }
 }
 
 impl From<RequirementNotMet> for BindPushError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

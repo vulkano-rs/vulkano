@@ -50,6 +50,7 @@ impl Version {
 }
 
 impl Default for Version {
+    #[inline]
     fn default() -> Self {
         Self::V1_0
     }
@@ -84,6 +85,7 @@ impl TryFrom<Version> for u32 {
 impl FromStr for Version {
     type Err = ParseIntError;
 
+    #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut iter = s.splitn(3, '.');
         let major: u32 = iter.next().unwrap().parse()?;
@@ -99,14 +101,15 @@ impl FromStr for Version {
 }
 
 impl Debug for Version {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
 impl Display for Version {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
-        Debug::fmt(self, formatter)
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        Debug::fmt(self, f)
     }
 }
 

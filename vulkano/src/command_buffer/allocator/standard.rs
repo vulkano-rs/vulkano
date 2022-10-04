@@ -81,6 +81,7 @@ unsafe impl CommandBufferAllocator for Arc<StandardCommandBufferAllocator> {
     type Builder = StandardCommandBufferBuilderAlloc;
     type Alloc = StandardCommandBufferAlloc;
 
+    #[inline]
     fn allocate(
         &self,
         level: CommandBufferLevel,
@@ -218,6 +219,7 @@ unsafe impl DeviceOwned for StandardCommandBufferAlloc {
 }
 
 impl Drop for StandardCommandBufferAlloc {
+    #[inline]
     fn drop(&mut self) {
         // Safe because `self.cmd` is wrapped in a `ManuallyDrop`.
         let cmd: CommandPoolAlloc = unsafe { ptr::read(&*self.cmd) };

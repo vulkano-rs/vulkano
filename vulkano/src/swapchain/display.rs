@@ -142,10 +142,9 @@ impl DisplayPlane {
 
     /// Enumerates all the display planes that are available on a given physical device.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the device or host ran out of memory.
-    ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
     pub fn enumerate(physical_device: Arc<PhysicalDevice>) -> IntoIter<DisplayPlane> {
@@ -235,10 +234,9 @@ impl Display {
 
     /// Enumerates all the displays that are available on a given physical device.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the device or host ran out of memory.
-    ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
     pub fn enumerate(physical_device: Arc<PhysicalDevice>) -> IntoIter<Display> {
@@ -344,10 +342,9 @@ impl Display {
 
     /// Returns a list of all modes available on this display.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the device or host ran out of memory.
-    ///
     // TODO: move iterator creation here from display_modes_raw?
     #[inline]
     pub fn display_modes(&self) -> IntoIter<DisplayMode> {
