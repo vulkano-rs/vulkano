@@ -17,8 +17,8 @@ use vulkano::{
         debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
         Instance, InstanceCreateInfo, InstanceExtensions,
     },
+    Version, VulkanLibrary,
 };
-use vulkano::{Version, VulkanLibrary};
 
 /// A configuration struct to pass various creation options to create [`VulkanoContext`].
 ///

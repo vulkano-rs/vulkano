@@ -7,9 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, VkRegistryData};
+use super::{write_file, IndexMap, VkRegistryData};
 use heck::ToSnakeCase;
-use indexmap::IndexMap;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use std::fmt::Write as _;

@@ -36,8 +36,8 @@ use crate::{
     shader::{DescriptorRequirements, EntryPoint, SpecializationConstants},
     DeviceSize, OomError, VulkanError, VulkanObject,
 };
+use ahash::HashMap;
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     mem,

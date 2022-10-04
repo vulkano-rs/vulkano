@@ -1,8 +1,6 @@
+use ahash::HashMap;
 use parking_lot::RwLock;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    hash::Hash,
-};
+use std::{collections::hash_map::Entry, hash::Hash};
 
 /// A map specialized to caching properties that are specific to a Vulkan implementation.
 ///

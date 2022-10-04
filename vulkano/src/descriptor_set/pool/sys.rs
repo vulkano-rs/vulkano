@@ -15,9 +15,9 @@ use crate::{
     device::{Device, DeviceOwned},
     OomError, Version, VulkanError, VulkanObject,
 };
+use ahash::HashMap;
 use smallvec::SmallVec;
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
