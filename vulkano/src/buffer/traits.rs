@@ -49,7 +49,6 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     ///
     /// This method can be used when you want to perform an operation on some part of the buffer
     /// and not on the whole buffer.
-    #[inline]
     fn slice<T>(self: &Arc<Self>, range: Range<DeviceSize>) -> Option<Arc<BufferSlice<[T], Self>>>
     where
         Self: Sized + TypedBufferAccess<Content = [T]>,
@@ -61,7 +60,6 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     ///
     /// This method can be used when you want to perform an operation on a specific element of the
     /// buffer and not on the whole buffer.
-    #[inline]
     fn index<T>(self: &Arc<Self>, index: DeviceSize) -> Option<Arc<BufferSlice<T, Self>>>
     where
         Self: Sized + TypedBufferAccess<Content = [T]>,
@@ -121,6 +119,7 @@ pub trait BufferAccessObject {
 }
 
 impl BufferAccessObject for Arc<dyn BufferAccess> {
+    #[inline]
     fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
         self.clone()
     }
@@ -141,12 +140,10 @@ where
     T: SafeDeref + Send + Sync,
     T::Target: BufferAccess,
 {
-    #[inline]
     fn inner(&self) -> BufferInner<'_> {
         (**self).inner()
     }
 
-    #[inline]
     fn size(&self) -> DeviceSize {
         (**self).size()
     }
@@ -192,7 +189,6 @@ impl PartialEq for dyn BufferAccess {
 impl Eq for dyn BufferAccess {}
 
 impl Hash for dyn BufferAccess {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);
@@ -213,7 +209,6 @@ pub enum BufferDeviceAddressError {
 impl Error for BufferDeviceAddressError {}
 
 impl Display for BufferDeviceAddressError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
@@ -224,7 +219,6 @@ impl Display for BufferDeviceAddressError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::BufferMissingUsage => write!(
                 f,
                 "the device address usage flag was not set on this buffer",

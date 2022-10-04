@@ -362,6 +362,7 @@ impl SamplerYcbcrConversion {
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
     /// - `create_info.format` must be `Some`.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::SamplerYcbcrConversion,
@@ -377,6 +378,7 @@ impl SamplerYcbcrConversion {
             force_explicit_reconstruction,
             _ne: _,
         } = create_info;
+
         Arc::new(SamplerYcbcrConversion {
             handle,
             device,
@@ -506,7 +508,6 @@ impl PartialEq for SamplerYcbcrConversion {
 impl Eq for SamplerYcbcrConversion {}
 
 impl Hash for SamplerYcbcrConversion {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -557,21 +558,18 @@ pub enum SamplerYcbcrConversionCreationError {
 }
 
 impl Error for SamplerYcbcrConversionCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            SamplerYcbcrConversionCreationError::OomError(ref err) => Some(err),
+        match self {
+            SamplerYcbcrConversionCreationError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for SamplerYcbcrConversionCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match *self {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -580,7 +578,6 @@ impl Display for SamplerYcbcrConversionCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::CubicFilterNotSupported => {
                 write!(f, "the `Cubic` filter was specified")
             }
@@ -596,43 +593,37 @@ impl Display for SamplerYcbcrConversionCreationError {
             Self::FormatChromaOffsetNotSupported => {
                 write!(f, "the format does not support the chosen chroma offsets")
             }
-            Self::FormatInvalidComponentMapping => {
-                write!(
-                    f,
-                    "the component mapping was not valid for use with the chosen format"
-                )
-            }
-            Self::FormatForceExplicitReconstructionNotSupported => {
-                write!(
-                    f,
-                    "the format does not support `force_explicit_reconstruction`"
-                )
-            }
+            Self::FormatInvalidComponentMapping => write!(
+                f,
+                "the component mapping was not valid for use with the chosen format",
+            ),
+            Self::FormatForceExplicitReconstructionNotSupported => write!(
+                f,
+                "the format does not support `force_explicit_reconstruction`",
+            ),
             Self::FormatLinearFilterNotSupported => {
                 write!(f, "the format does not support the `Linear` filter")
             }
-            Self::YcbcrModelInvalidComponentMapping => {
-                write!(
-                    f,
-                    "the component mapping was not valid for use with the chosen YCbCr model"
-                )
-            }
-            Self::YcbcrRangeFormatNotEnoughBits => {
-                write!(f, "for the chosen `ycbcr_range`, the R, G or B components being read from the `format` do not have the minimum number of required bits")
-            }
+            Self::YcbcrModelInvalidComponentMapping => write!(
+                f,
+                "the component mapping was not valid for use with the chosen YCbCr model",
+            ),
+            Self::YcbcrRangeFormatNotEnoughBits => write!(
+                f,
+                "for the chosen `ycbcr_range`, the R, G or B components being read from the \
+                `format` do not have the minimum number of required bits",
+            ),
         }
     }
 }
 
 impl From<OomError> for SamplerYcbcrConversionCreationError {
-    #[inline]
     fn from(err: OomError) -> SamplerYcbcrConversionCreationError {
         SamplerYcbcrConversionCreationError::OomError(err)
     }
 }
 
 impl From<VulkanError> for SamplerYcbcrConversionCreationError {
-    #[inline]
     fn from(err: VulkanError) -> SamplerYcbcrConversionCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => {
@@ -647,7 +638,6 @@ impl From<VulkanError> for SamplerYcbcrConversionCreationError {
 }
 
 impl From<RequirementNotMet> for SamplerYcbcrConversionCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

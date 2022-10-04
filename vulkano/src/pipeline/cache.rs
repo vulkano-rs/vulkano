@@ -41,7 +41,7 @@ impl PipelineCache {
     /// implementation. Therefore you can easily crash your application or the system by passing
     /// wrong data. Hence why this function is unsafe.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// This example loads a cache from a file, if it exists.
     /// See [`get_data`](#method.get_data) for how to store the data in a file.
@@ -61,8 +61,12 @@ impl PipelineCache {
     ///         let mut data = Vec::new();
     ///         if let Ok(_) = file.read_to_end(&mut data) {
     ///             Some(data)
-    ///         } else { None }
-    ///     } else { None }
+    ///         } else {
+    ///             None
+    ///         }
+    ///     } else {
+    ///         None
+    ///     }
     /// };
     ///
     /// let cache = if let Some(data) = data {
@@ -82,7 +86,7 @@ impl PipelineCache {
 
     /// Builds a new empty pipeline cache.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// # use std::sync::Arc;
@@ -135,7 +139,7 @@ impl PipelineCache {
     ///
     /// It is `self` that is modified here. The pipeline caches passed as parameter are untouched.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if `self` is included in the list of other pipelines.
     ///
@@ -173,7 +177,7 @@ impl PipelineCache {
     ///
     /// This data can be stored and then reloaded and passed to `PipelineCache::with_data`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// This example stores the data of a pipeline cache on the disk.
     /// See [`with_data`](#method.with_data) for how to reload it.
@@ -197,6 +201,7 @@ impl PipelineCache {
     ///     }
     /// }
     /// ```
+    #[inline]
     pub fn get_data(&self) -> Result<Vec<u8>, OomError> {
         let fns = self.device.fns();
 

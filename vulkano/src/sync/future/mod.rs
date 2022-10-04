@@ -145,7 +145,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Checks whether accessing a swapchain image is permitted.
     ///
     /// > **Note**: Setting `before` to `true` should skip checking the current future and always
-    /// > forward the call to the future before. 
+    /// > forward the call to the future before.
     fn check_swapchain_image_acquired(
         &self,
         image: &UnsafeImage,
@@ -166,7 +166,6 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut function. The actual implementation is in the
     /// > `CommandBuffer` trait.
-    #[inline]
     fn then_execute<Cb>(
         self,
         queue: Arc<Queue>,
@@ -183,7 +182,6 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut function. The actual implementation is in the
     /// > `CommandBuffer` trait.
-    #[inline]
     fn then_execute_same_queue<Cb>(
         self,
         command_buffer: Cb,
@@ -228,6 +226,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     {
         let f = self.then_signal_semaphore();
         f.flush()?;
+
         Ok(f)
     }
 
@@ -253,6 +252,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     {
         let f = self.then_signal_fence();
         f.flush()?;
+
         Ok(f)
     }
 
@@ -277,6 +277,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Turn the current future into a `Box<dyn GpuFuture>`.
     ///
     /// This is a helper function that calls `Box::new(yourFuture) as Box<dyn GpuFuture>`.
+    #[inline]
     fn boxed(self) -> Box<dyn GpuFuture>
     where
         Self: Sized + 'static,
@@ -287,6 +288,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Turn the current future into a `Box<dyn GpuFuture + Send>`.
     ///
     /// This is a helper function that calls `Box::new(yourFuture) as Box<dyn GpuFuture + Send>`.
+    #[inline]
     fn boxed_send(self) -> Box<dyn GpuFuture + Send>
     where
         Self: Sized + Send + 'static,
@@ -297,6 +299,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Turn the current future into a `Box<dyn GpuFuture + Sync>`.
     ///
     /// This is a helper function that calls `Box::new(yourFuture) as Box<dyn GpuFuture + Sync>`.
+    #[inline]
     fn boxed_sync(self) -> Box<dyn GpuFuture + Sync>
     where
         Self: Sized + Sync + 'static,
@@ -306,7 +309,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
 
     /// Turn the current future into a `Box<dyn GpuFuture + Send + Sync>`.
     ///
-    /// This is a helper function that calls `Box::new(yourFuture) as Box<dyn GpuFuture + Send + Sync>`.
+    /// This is a helper function that calls `Box::new(yourFuture) as Box<dyn GpuFuture + Send +
+    /// Sync>`.
+    #[inline]
     fn boxed_send_sync(self) -> Box<dyn GpuFuture + Send + Sync>
     where
         Self: Sized + Send + Sync + 'static,
@@ -319,37 +324,30 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn cleanup_finished(&mut self) {
         (**self).cleanup_finished()
     }
 
-    #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         (**self).build_submission()
     }
 
-    #[inline]
     fn flush(&self) -> Result<(), FlushError> {
         (**self).flush()
     }
 
-    #[inline]
     unsafe fn signal_finished(&self) {
         (**self).signal_finished()
     }
 
-    #[inline]
     fn queue_change_allowed(&self) -> bool {
         (**self).queue_change_allowed()
     }
 
-    #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         (**self).queue()
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -360,7 +358,6 @@ where
         (**self).check_buffer_access(buffer, range, exclusive, queue)
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -431,12 +428,11 @@ pub enum AccessError {
 impl Error for AccessError {}
 
 impl Display for AccessError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 AccessError::ExclusiveDenied => "only shared access is allowed for this resource",
                 AccessError::AlreadyInUse => {
                     "the resource is already in use, and there is no tracking of concurrent usages"
@@ -446,14 +442,14 @@ impl Display for AccessError {
                 }
                 AccessError::ImageNotInitialized { .. } => {
                     "trying to use an image without transitioning it from the undefined or \
-                 preinitialized layouts first"
+                    preinitialized layouts first"
                 }
                 AccessError::BufferNotInitialized => {
                     "trying to use a buffer that still contains garbage data"
                 }
                 AccessError::SwapchainImageNotAcquired => {
                     "trying to use a swapchain image without depending on a corresponding acquire \
-                 image future"
+                    image future"
                 }
             }
         )
@@ -472,12 +468,11 @@ pub enum AccessCheckError {
 impl Error for AccessCheckError {}
 
 impl Display for AccessCheckError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 AccessCheckError::Denied(_) => "access to the resource has been denied",
                 AccessCheckError::Unknown => "the resource is unknown",
             }
@@ -486,7 +481,6 @@ impl Display for AccessCheckError {
 }
 
 impl From<AccessError> for AccessCheckError {
-    #[inline]
     fn from(err: AccessError) -> AccessCheckError {
         AccessCheckError::Denied(err)
     }
@@ -524,23 +518,21 @@ pub enum FlushError {
 }
 
 impl Error for FlushError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            FlushError::AccessError(ref err) => Some(err),
-            FlushError::OomError(ref err) => Some(err),
+        match self {
+            FlushError::AccessError(err) => Some(err),
+            FlushError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for FlushError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 FlushError::AccessError(_) => "access to a resource has been denied",
                 FlushError::OomError(_) => "not enough memory",
                 FlushError::DeviceLost => "the connection to the device has been lost",
@@ -550,8 +542,7 @@ impl Display for FlushError {
                     "the swapchain no longer has full screen exclusivity"
                 }
                 FlushError::Timeout => {
-                    "the flush operation needed to block, but the timeout has \
-                                    elapsed"
+                    "the flush operation needed to block, but the timeout has elapsed"
                 }
                 FlushError::PresentIdLessThanOrEqual => {
                     "present id is less than or equal to previous"
@@ -562,14 +553,12 @@ impl Display for FlushError {
 }
 
 impl From<AccessError> for FlushError {
-    #[inline]
     fn from(err: AccessError) -> FlushError {
         FlushError::AccessError(err)
     }
 }
 
 impl From<VulkanError> for FlushError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
@@ -585,7 +574,6 @@ impl From<VulkanError> for FlushError {
 }
 
 impl From<FenceError> for FlushError {
-    #[inline]
     fn from(err: FenceError) -> FlushError {
         match err {
             FenceError::OomError(err) => FlushError::OomError(err),

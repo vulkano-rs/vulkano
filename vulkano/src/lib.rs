@@ -151,12 +151,11 @@ pub enum OomError {
 impl Error for OomError {}
 
 impl Display for OomError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 OomError::OutOfHostMemory => "no memory available on the host",
                 OomError::OutOfDeviceMemory => "no memory available on the graphical device",
             }
@@ -165,7 +164,6 @@ impl Display for OomError {
 }
 
 impl From<VulkanError> for OomError {
-    #[inline]
     fn from(err: VulkanError) -> OomError {
         match err {
             VulkanError::OutOfHostMemory => OomError::OutOfHostMemory,
@@ -182,117 +180,79 @@ impl Error for VulkanError {}
 
 impl Display for VulkanError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            VulkanError::OutOfHostMemory => write!(
-                f,
-                "A host memory allocation has failed.",
-            ),
-            VulkanError::OutOfDeviceMemory => write!(
-                f,
-                "A device memory allocation has failed.",
-            ),
-            VulkanError::InitializationFailed => write!(
-                f,
-                "Initialization of an object could not be completed for implementation-specific reasons.",
-            ),
-            VulkanError::DeviceLost => write!(
-                f,
-                "The logical or physical device has been lost.",
-            ),
-            VulkanError::MemoryMapFailed => write!(
-                f,
-                "Mapping of a memory object has failed.",
-            ),
-            VulkanError::LayerNotPresent => write!(
-                f,
-                "A requested layer is not present or could not be loaded.",
-            ),
-            VulkanError::ExtensionNotPresent => write!(
-                f,
-                "A requested extension is not supported.",
-            ),
-            VulkanError::FeatureNotPresent => write!(
-                f,
-                "A requested feature is not supported.",
-            ),
-            VulkanError::IncompatibleDriver => write!(
-                f,
-                "The requested version of Vulkan is not supported by the driver or is otherwise incompatible for implementation-specific reasons.",
-            ),
-            VulkanError::TooManyObjects => write!(
-                f,
-                "Too many objects of the type have already been created.",
-            ),
-            VulkanError::FormatNotSupported => write!(
-                f,
-                "A requested format is not supported on this device.",
-            ),
-            VulkanError::FragmentedPool => write!(
-                f,
-                "A pool allocation has failed due to fragmentation of the pool's memory.",
-            ),
-            VulkanError::Unknown => write!(
-                f,
-                "An unknown error has occurred; either the application has provided invalid input, or an implementation failure has occurred.",
-            ),
-            VulkanError::OutOfPoolMemory => write!(
-                f,
-                "A pool memory allocation has failed.",
-            ),
-            VulkanError::InvalidExternalHandle => write!(
-                f,
-                "An external handle is not a valid handle of the specified type.",
-            ),
-            VulkanError::Fragmentation => write!(
-                f,
-                "A descriptor pool creation has failed due to fragmentation.",
-            ),
-            VulkanError::InvalidOpaqueCaptureAddress => write!(
-                f,
-                "A buffer creation or memory allocation failed because the requested address is not available. A shader group handle assignment failed because the requested shader group handle information is no longer valid.",
-            ),
-            VulkanError::IncompatibleDisplay => write!(
-                f,
-                "The display used by a swapchain does not use the same presentable image layout, or is incompatible in a way that prevents sharing an image.",
-            ),
-            VulkanError::NotPermitted => write!(
-                f,
-                "A requested operation was not permitted.",
-            ),
-            VulkanError::SurfaceLost => write!(
-                f,
-                "A surface is no longer available.",
-            ),
-            VulkanError::NativeWindowInUse => write!(
-                f,
-                "The requested window is already in use by Vulkan or another API in a manner which prevents it from being used again.",
-            ),
-            VulkanError::OutOfDate => write!(
-                f,
-                "A surface has changed in such a way that it is no longer compatible with the swapchain, and further presentation requests using the swapchain will fail.",
-            ),
-            VulkanError::ValidationFailed => write!(
-                f,
-                "Validation failed.",
-            ),
-            VulkanError::FullScreenExclusiveModeLost => write!(
-                f,
-                "An operation on a swapchain created with application controlled full-screen access failed as it did not have exclusive full-screen access.",
-            ),
-            VulkanError::InvalidDrmFormatModifierPlaneLayout => write!(
-                f,
-                "The requested DRM format modifier plane layout is invalid.",
-            ),
-            VulkanError::InvalidShader => write!(
-                f,
-                "One or more shaders failed to compile or link.",
-            ),
-            VulkanError::Unnamed(result) => write!(
-                f,
-                "Unnamed error, VkResult value {}",
-                result.as_raw(),
-            ),
-        }
+        write!(
+            f,
+            "{}",
+            match self {
+                VulkanError::OutOfHostMemory => "a host memory allocation has failed",
+                VulkanError::OutOfDeviceMemory => "a device memory allocation has failed",
+                VulkanError::InitializationFailed => {
+                    "initialization of an object could not be completed for \
+                    implementation-specific reasons"
+                }
+                VulkanError::DeviceLost => "the logical or physical device has been lost",
+                VulkanError::MemoryMapFailed => "mapping of a memory object has failed",
+                VulkanError::LayerNotPresent => {
+                    "a requested layer is not present or could not be loaded"
+                }
+                VulkanError::ExtensionNotPresent => "a requested extension is not supported",
+                VulkanError::FeatureNotPresent => "a requested feature is not supported",
+                VulkanError::IncompatibleDriver => {
+                    "the requested version of Vulkan is not supported by the driver or is \
+                    otherwise incompatible for implementation-specific reasons"
+                }
+                VulkanError::TooManyObjects => {
+                    "too many objects of the type have already been created"
+                }
+                VulkanError::FormatNotSupported => {
+                    "a requested format is not supported on this device"
+                }
+                VulkanError::FragmentedPool => {
+                    "a pool allocation has failed due to fragmentation of the pool's memory"
+                }
+                VulkanError::Unknown => {
+                    "an unknown error has occurred; either the application has provided invalid \
+                    input, or an implementation failure has occurred"
+                }
+                VulkanError::OutOfPoolMemory => "a pool memory allocation has failed",
+                VulkanError::InvalidExternalHandle => {
+                    "an external handle is not a valid handle of the specified type"
+                }
+                VulkanError::Fragmentation => {
+                    "a descriptor pool creation has failed due to fragmentation"
+                }
+                VulkanError::InvalidOpaqueCaptureAddress => {
+                    "a buffer creation or memory allocation failed because the requested address \
+                    is not available. A shader group handle assignment failed because the \
+                    requested shader group handle information is no longer valid"
+                }
+                VulkanError::IncompatibleDisplay => {
+                    "the display used by a swapchain does not use the same presentable image \
+                    layout, or is incompatible in a way that prevents sharing an image"
+                }
+                VulkanError::NotPermitted => "a requested operation was not permitted",
+                VulkanError::SurfaceLost => "a surface is no longer available",
+                VulkanError::NativeWindowInUse => {
+                    "the requested window is already in use by Vulkan or another API in a manner \
+                    which prevents it from being used again"
+                }
+                VulkanError::OutOfDate => {
+                    "a surface has changed in such a way that it is no longer compatible with the \
+                    swapchain, and further presentation requests using the swapchain will fail"
+                }
+                VulkanError::ValidationFailed => "validation failed",
+                VulkanError::FullScreenExclusiveModeLost => {
+                    "an operation on a swapchain created with application controlled full-screen \
+                    access failed as it did not have exclusive full-screen access"
+                }
+                VulkanError::InvalidDrmFormatModifierPlaneLayout => {
+                    "the requested DRM format modifier plane layout is invalid"
+                }
+                VulkanError::InvalidShader => "one or more shaders failed to compile or link",
+                VulkanError::Unnamed(result) =>
+                    return write!(f, "unnamed error, VkResult value {}", result.as_raw()),
+            }
+        )
     }
 }
 
@@ -315,7 +275,6 @@ pub struct RequiresOneOf {
 
 impl RequiresOneOf {
     /// Returns whether there is more than one possible requirement.
-    #[inline]
     pub fn len(&self) -> usize {
         self.api_version.map_or(0, |_| 1)
             + self.features.len()
@@ -325,7 +284,6 @@ impl RequiresOneOf {
 }
 
 impl Display for RequiresOneOf {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let mut members_written = 0;
 

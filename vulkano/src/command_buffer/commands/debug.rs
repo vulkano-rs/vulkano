@@ -30,7 +30,6 @@ use std::{
 /// instance.
 impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Opens a command buffer debug label region.
-    #[inline]
     pub fn begin_debug_utils_label(
         &mut self,
         mut label_info: DebugUtilsLabel,
@@ -82,7 +81,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - When submitting the command buffer, there must be an outstanding command buffer label
     ///   region begun with `begin_debug_utils_label` in the queue, either within this command
     ///   buffer or a previously submitted one.
-    #[inline]
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<&mut Self, DebugUtilsError> {
         self.validate_end_debug_utils_label()?;
 
@@ -126,7 +124,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Inserts a command buffer debug label.
-    #[inline]
     pub fn insert_debug_utils_label(
         &mut self,
         mut label_info: DebugUtilsLabel,
@@ -323,7 +320,6 @@ pub enum DebugUtilsError {
 impl Error for DebugUtilsError {}
 
 impl Display for DebugUtilsError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
@@ -334,7 +330,6 @@ impl Display for DebugUtilsError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::NotSupportedByQueueFamily => {
                 write!(f, "the queue family doesn't allow this operation")
             }

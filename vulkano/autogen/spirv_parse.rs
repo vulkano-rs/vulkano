@@ -384,7 +384,7 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
         );
 
         quote! {
-            #[derive(Clone, Debug, PartialEq, Eq)]
+            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
             #[allow(non_camel_case_types)]
             pub struct #name {
                 #(#members_items)*
@@ -524,7 +524,8 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
 
         let derives = match name_string.as_str() {
             "ExecutionModel" => quote! { #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)] },
-            _ => quote! { #[derive(Clone, Debug, PartialEq, Eq)] },
+            "Decoration" => quote! { #[derive(Clone, Debug, PartialEq, Eq)] },
+            _ => quote! { #[derive(Clone, Copy, Debug, PartialEq, Eq)] },
         };
 
         quote! {

@@ -17,7 +17,7 @@
 //! Note that the vulkano library can also emit messages to warn you about performance issues.
 //! TODO: ^ that's not the case yet, need to choose whether we keep this idea
 //!
-//! # Example
+//! # Examples
 //!
 //! ```
 //! # use vulkano::instance::Instance;
@@ -40,7 +40,6 @@
 //! Note that you must keep the `_callback` object alive for as long as you want your callback to
 //! be callable. If you don't store the return value of `DebugUtilsMessenger`'s constructor in a
 //! variable, it will be immediately destroyed and your callback will not work.
-//!
 
 use super::Instance;
 use crate::{macros::vulkan_bitflags, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject};
@@ -254,7 +253,6 @@ pub enum DebugUtilsMessengerCreationError {
 impl Error for DebugUtilsMessengerCreationError {}
 
 impl Display for DebugUtilsMessengerCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
@@ -270,14 +268,12 @@ impl Display for DebugUtilsMessengerCreationError {
 }
 
 impl From<VulkanError> for DebugUtilsMessengerCreationError {
-    #[inline]
     fn from(err: VulkanError) -> DebugUtilsMessengerCreationError {
         panic!("unexpected error: {:?}", err)
     }
 }
 
 impl From<RequirementNotMet> for DebugUtilsMessengerCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

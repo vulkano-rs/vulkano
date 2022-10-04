@@ -114,6 +114,7 @@ vulkan_bitflags! {
 }
 
 impl ImageAspects {
+    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = ImageAspect> {
         let Self {
             color,
@@ -147,6 +148,7 @@ impl ImageAspects {
 }
 
 impl From<ImageAspect> for ImageAspects {
+    #[inline]
     fn from(aspect: ImageAspect) -> Self {
         let mut result = Self::empty();
 

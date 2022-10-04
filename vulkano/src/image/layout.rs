@@ -12,27 +12,28 @@ use crate::{descriptor_set::layout::DescriptorType, macros::vulkan_enum};
 vulkan_enum! {
     /// In-memory layout of the pixel data of an image.
     ///
-    /// The pixel data of a Vulkan image is arranged in a particular way, which is called its *layout*.
-    /// Each image subresource (mipmap level and array layer) in an image can have a different layout,
-    /// but usually the whole image has its data in the same layout. Layouts are abstract in the sense
-    /// that the user does not know the specific details of each layout; the device driver is free to
-    /// implement each layout in the way it sees fit.
+    /// The pixel data of a Vulkan image is arranged in a particular way, which is called its
+    /// *layout*. Each image subresource (mipmap level and array layer) in an image can have a
+    /// different layout, but usually the whole image has its data in the same layout. Layouts are
+    /// abstract in the sense that the user does not know the specific details of each layout; the
+    /// device driver is free to implement each layout in the way it sees fit.
     ///
-    /// The layout of a newly created image is either `Undefined` or `Preinitialized`. Every operation
-    /// that can be performed on an image is only possible with specific layouts, so before the
-    /// operation is performed, the user must perform a *layout transition* on the image. This
-    /// rearranges the pixel data from one layout into another. Layout transitions are performed as part
-    /// of pipeline barriers in a command buffer.
+    /// The layout of a newly created image is either `Undefined` or `Preinitialized`. Every
+    /// operation that can be performed on an image is only possible with specific layouts, so
+    /// before the operation is performed, the user must perform a *layout transition* on the
+    /// image. This rearranges the pixel data from one layout into another. Layout transitions are
+    /// performed as part of pipeline barriers in a command buffer.
     ///
-    /// The `General` layout is compatible with any operation, so layout transitions are never needed.
-    /// However, the other layouts, while more restricted, are usually better optimised for a particular
-    /// type of operation than `General`, so they are usually preferred.
+    /// The `General` layout is compatible with any operation, so layout transitions are never
+    /// needed. However, the other layouts, while more restricted, are usually better optimised for
+    /// a particular type of operation than `General`, so they are usually preferred.
     ///
-    /// Vulkan does not keep track of layouts itself, so it is the responsibility of the user to keep
-    /// track of this information. When performing a layout transition, the previous layout must be
-    /// specified as well. Some operations allow for different layouts, but require the user to specify
-    /// which one. Vulkano helps with this by providing sensible defaults, automatically tracking the
-    /// layout of each image when creating a command buffer, and adding layout transitions where needed.
+    /// Vulkan does not keep track of layouts itself, so it is the responsibility of the user to
+    /// keep track of this information. When performing a layout transition, the previous layout
+    /// must be specified as well. Some operations allow for different layouts, but require the
+    /// user to specify which one. Vulkano helps with this by providing sensible defaults,
+    /// automatically tracking the layout of each image when creating a command buffer, and adding
+    /// layout transitions where needed.
     #[non_exhaustive]
     ImageLayout = ImageLayout(i32);
 
@@ -73,15 +74,15 @@ vulkan_enum! {
     /// tiling, optimal tiling gives undefined results.
     Preinitialized = PREINITIALIZED,
 
-    // A combination of `DepthStencilReadOnlyOptimal` for the depth aspect of the image,
-    // and `DepthStencilAttachmentOptimal` for the stencil aspect of the image.
+    /// A combination of `DepthStencilReadOnlyOptimal` for the depth aspect of the image,
+    /// and `DepthStencilAttachmentOptimal` for the stencil aspect of the image.
     DepthReadOnlyStencilAttachmentOptimal = DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],
     },
 
-    // A combination of `DepthStencilAttachmentOptimal` for the depth aspect of the image,
-    // and `DepthStencilReadOnlyOptimal` for the stencil aspect of the image.
+    /// A combination of `DepthStencilAttachmentOptimal` for the depth aspect of the image,
+    /// and `DepthStencilReadOnlyOptimal` for the stencil aspect of the image.
     DepthAttachmentStencilReadOnlyOptimal = DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],

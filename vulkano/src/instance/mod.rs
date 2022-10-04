@@ -202,7 +202,7 @@ mod layers;
 /// > `export VK_INSTANCE_LAYERS=VK_LAYER_LUNARG_api_dump` on Linux if you installed the Vulkan SDK
 /// > will print the list of raw Vulkan function calls.
 ///
-/// ## Example
+/// ## Examples
 ///
 /// ```
 /// # use std::{sync::Arc, error::Error};
@@ -506,7 +506,7 @@ impl Instance {
 
     /// Returns an iterator that enumerates the physical devices available.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```no_run
     /// # use vulkano::{
@@ -589,7 +589,6 @@ impl PartialEq for Instance {
 impl Eq for Instance {}
 
 impl Hash for Instance {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
     }
@@ -745,17 +744,15 @@ pub enum InstanceCreationError {
 }
 
 impl Error for InstanceCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for InstanceCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
@@ -764,7 +761,6 @@ impl Display for InstanceCreationError {
             Self::ExtensionNotPresent => write!(f, "extension not present"),
             Self::IncompatibleDriver => write!(f, "incompatible driver"),
             Self::ExtensionRestrictionNotMet(err) => Display::fmt(err, f),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -778,21 +774,18 @@ impl Display for InstanceCreationError {
 }
 
 impl From<OomError> for InstanceCreationError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<ExtensionRestrictionError> for InstanceCreationError {
-    #[inline]
     fn from(err: ExtensionRestrictionError) -> Self {
         Self::ExtensionRestrictionNotMet(err)
     }
 }
 
 impl From<VulkanError> for InstanceCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),

@@ -18,7 +18,7 @@
 //! > actual allocation, you can skip this allocation and make it acceptable to use a persistent
 //! > descriptor set in performance-critical paths..
 //!
-//! # Example
+//! # Examples
 //! TODO:
 
 use crate::{
@@ -124,17 +124,14 @@ unsafe impl<P> DescriptorSet for PersistentDescriptorSet<P>
 where
     P: DescriptorPoolAlloc,
 {
-    #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         self.alloc.inner()
     }
 
-    #[inline]
     fn layout(&self) -> &Arc<DescriptorSetLayout> {
         self.inner.layout()
     }
 
-    #[inline]
     fn resources(&self) -> &DescriptorSetResources {
         self.inner.resources()
     }
@@ -144,7 +141,6 @@ unsafe impl<P> DeviceOwned for PersistentDescriptorSet<P>
 where
     P: DescriptorPoolAlloc,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.layout().device()
     }
@@ -154,7 +150,6 @@ impl<P> PartialEq for PersistentDescriptorSet<P>
 where
     P: DescriptorPoolAlloc,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner().internal_object() == other.inner().internal_object()
             && self.device() == other.device()
@@ -167,7 +162,6 @@ impl<P> Hash for PersistentDescriptorSet<P>
 where
     P: DescriptorPoolAlloc,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);

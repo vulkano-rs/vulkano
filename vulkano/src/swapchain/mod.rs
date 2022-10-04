@@ -51,7 +51,7 @@
 //! may be able to do this for you, if you pass it ownership of your Window (or a
 //! reference-counting container for it).
 //!
-//! ### Example
+//! ### Examples
 //!
 //! ```no_run
 //! use std::ptr;
@@ -88,9 +88,9 @@
 //! # }
 //! #
 //! # fn build_window() -> Arc<Window> { Arc::new(Window(ptr::null())) }
-//! let window = build_window();        // Third-party function, not provided by vulkano
+//! let window = build_window(); // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
-//!     let hinstance: *const () = ptr::null();     // Windows-specific object
+//!     let hinstance: *const () = ptr::null(); // Windows-specific object
 //!     Surface::from_win32(instance.clone(), hinstance, window.hwnd(), Arc::clone(&window)).unwrap()
 //! };
 //! ```
@@ -194,31 +194,31 @@
 //!
 //! // Create the swapchain and its images.
 //! let (swapchain, images) = Swapchain::new(
-//!         // Create the swapchain in this `device`'s memory.
-//!         device,
-//!         // The surface where the images will be presented.
-//!         surface,
-//!         // The creation parameters.
-//!         SwapchainCreateInfo {
-//!             // How many images to use in the swapchain.
-//!             min_image_count,
-//!             // The format of the images.
-//!             image_format: Some(image_format),
-//!             // The size of each image.
-//!             image_extent,
-//!             // What the images are going to be used for.
-//!             image_usage,
-//!             // What transformation to use with the surface.
-//!             pre_transform,
-//!             // How to handle the alpha channel.
-//!             composite_alpha,
-//!             // How to present images.
-//!             present_mode,
-//!             // How to handle full-screen exclusivity
-//!             full_screen_exclusive,
-//!             ..Default::default()
-//!         }
-//!     )?;
+//!     // Create the swapchain in this `device`'s memory.
+//!     device,
+//!     // The surface where the images will be presented.
+//!     surface,
+//!     // The creation parameters.
+//!     SwapchainCreateInfo {
+//!         // How many images to use in the swapchain.
+//!         min_image_count,
+//!         // The format of the images.
+//!         image_format: Some(image_format),
+//!         // The size of each image.
+//!         image_extent,
+//!         // What the images are going to be used for.
+//!         image_usage,
+//!         // What transformation to use with the surface.
+//!         pre_transform,
+//!         // How to handle the alpha channel.
+//!         composite_alpha,
+//!         // How to present images.
+//!         present_mode,
+//!         // How to handle full-screen exclusivity
+//!         full_screen_exclusive,
+//!         ..Default::default()
+//!     }
+//! )?;
 //!
 //! # Ok(())
 //! # }
@@ -256,12 +256,14 @@
 //!     // The command_buffer contains the draw commands that modify the framebuffer
 //!     // constructed from images[image_index]
 //!     acquire_future
-//!         .then_execute(queue.clone(), command_buffer).unwrap()
+//!         .then_execute(queue.clone(), command_buffer)
+//!         .unwrap()
 //!         .then_swapchain_present(
 //!             queue.clone(),
 //!             SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
 //!         )
-//!         .then_signal_fence_and_flush().unwrap();
+//!         .then_signal_fence_and_flush()
+//!         .unwrap();
 //! }
 //! ```
 //!
@@ -275,7 +277,6 @@
 //! to an image of that swapchain will not produce any error, but may or may not work. To continue
 //! rendering, you will need to *recreate* the swapchain by creating a new swapchain and passing
 //! as last parameter the old swapchain.
-//!
 //!
 //! ```
 //! use vulkano::swapchain;
@@ -303,7 +304,7 @@
 //!     let (image_index, suboptimal, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
 //!         Ok(r) => r,
 //!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
-//!         Err(err) => panic!("{:?}", err)
+//!         Err(err) => panic!("{:?}", err),
 //!     };
 //!
 //!     // ...
@@ -314,14 +315,14 @@
 //!             queue.clone(),
 //!             SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
 //!         )
-//!         .then_signal_fence_and_flush().unwrap(); // TODO: PresentError?
+//!         .then_signal_fence_and_flush()
+//!         .unwrap(); // TODO: PresentError?
 //!
 //!     if suboptimal {
 //!         recreate_swapchain = true;
 //!     }
 //! }
 //! ```
-//!
 
 pub use self::{
     surface::{
@@ -448,10 +449,12 @@ pub struct RectangleLayer {
 
 impl RectangleLayer {
     /// Returns true if this rectangle layer is compatible with swapchain.
+    #[inline]
     pub fn is_compatible_with(&self, swapchain: &dyn SwapchainAbstract) -> bool {
         // FIXME negative offset is not disallowed by spec, but semantically should not be possible
         debug_assert!(self.offset[0] >= 0);
         debug_assert!(self.offset[1] >= 0);
+
         self.offset[0] as u32 + self.extent[0] <= swapchain.image_extent()[0]
             && self.offset[1] as u32 + self.extent[1] <= swapchain.image_extent()[1]
             && self.layer < swapchain.image_array_layers()

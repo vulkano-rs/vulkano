@@ -131,6 +131,7 @@ impl SyncCommandBuffer {
     /// Tries to lock the resources used by the command buffer.
     ///
     /// > **Note**: You should call this in the implementation of the `CommandBuffer` trait.
+    #[inline]
     pub fn lock_submit(
         &self,
         future: &dyn GpuFuture,
@@ -281,7 +282,7 @@ impl SyncCommandBuffer {
     /// # Safety
     ///
     /// The command buffer must have been successfully locked with `lock_submit()`.
-    ///
+    #[inline]
     pub unsafe fn unlock(&self) {
         for (buffer, range_map) in &self.buffers2 {
             let mut buffer_state = buffer.state();

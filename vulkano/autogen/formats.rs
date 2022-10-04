@@ -573,7 +573,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         ///
         /// Note: for 16-bit floating point values, you need to import the [`half::f16`] type.
         ///
-        /// # Example
+        /// # Examples
         ///
         /// ```
         /// # #[macro_use] extern crate vulkano;

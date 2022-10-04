@@ -96,7 +96,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If there is a graphics pipeline with color blend state bound, `enables.len()` must equal
     /// - [`attachments.len()`](crate::pipeline::graphics::color_blend::ColorBlendState::attachments).
-    #[inline]
     pub fn set_color_write_enable<I>(&mut self, enables: I) -> &mut Self
     where
         I: IntoIterator<Item = bool>,
@@ -166,7 +165,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
         self.validate_set_cull_mode(cull_mode).unwrap();
 
@@ -215,7 +213,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If the [`depth_bias_clamp`](crate::device::Features::depth_bias_clamp)
     ///   feature is not enabled on the device, panics if `clamp` is not 0.0.
-    #[inline]
     pub fn set_depth_bias(
         &mut self,
         constant_factor: f32,
@@ -271,7 +268,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
         self.validate_set_depth_bias_enable(enable).unwrap();
 
@@ -371,7 +367,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
         self.validate_set_depth_bounds_test_enable(enable).unwrap();
 
@@ -421,7 +416,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
         self.validate_set_depth_compare_op(compare_op).unwrap();
 
@@ -474,7 +468,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
         self.validate_set_depth_test_enable(enable).unwrap();
 
@@ -521,7 +514,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
         self.validate_set_depth_write_enable(enable).unwrap();
 
@@ -644,7 +636,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
         self.validate_set_front_face(face).unwrap();
 
@@ -694,7 +685,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   extension is not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - Panics if `factor` is not between 1 and 256 inclusive.
-    #[inline]
     pub fn set_line_stipple(&mut self, factor: u32, pattern: u16) -> &mut Self {
         self.validate_set_line_stipple(factor, pattern).unwrap();
 
@@ -788,7 +778,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state2_logic_op`](crate::device::Features::extended_dynamic_state2_logic_op)
     ///   feature is not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_logic_op(&mut self, logic_op: LogicOp) -> &mut Self {
         self.validate_set_logic_op(logic_op).unwrap();
 
@@ -843,7 +832,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if `num` is greater than the
     ///   [`max_tessellation_patch_size`](crate::device::Properties::max_tessellation_patch_size)
     ///   property of the device.
-    #[inline]
     pub fn set_patch_control_points(&mut self, num: u32) -> &mut Self {
         self.validate_set_patch_control_points(num).unwrap();
 
@@ -912,7 +900,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
         self.validate_set_primitive_restart_enable(enable).unwrap();
 
@@ -966,7 +953,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   enabled, panics if `topology` is a `WithAdjacency` topology.
     /// - If the [`tessellation_shader`](crate::device::Features::tessellation_shader) feature is
     ///   not enabled, panics if `topology` is `PatchList`.
-    #[inline]
     pub fn set_primitive_topology(&mut self, topology: PrimitiveTopology) -> &mut Self {
         self.validate_set_primitive_topology(topology).unwrap();
 
@@ -1051,7 +1037,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
         self.validate_set_rasterizer_discard_enable(enable).unwrap();
 
@@ -1181,7 +1166,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if more than 1 scissor is provided.
-    #[inline]
     pub fn set_scissor_with_count(
         &mut self,
         scissors: impl IntoIterator<Item = Scissor>,
@@ -1295,7 +1279,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_stencil_op(
         &mut self,
         faces: StencilFaces,
@@ -1410,7 +1393,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
     ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    #[inline]
     pub fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
         self.validate_set_stencil_test_enable(enable).unwrap();
 
@@ -1575,7 +1557,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if more than 1 viewport is provided.
-    #[inline]
     pub fn set_viewport_with_count(
         &mut self,
         viewports: impl IntoIterator<Item = Viewport>,
@@ -1665,7 +1646,6 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_color_write_enable(&mut self, enables: impl IntoIterator<Item = bool>) {
         struct Cmd<I> {
             enables: Mutex<Option<I>>,
@@ -1874,7 +1854,6 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetDiscardRectangle` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
@@ -2260,7 +2239,6 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetScissor` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_scissor(
         &mut self,
         first_scissor: u32,
@@ -2297,7 +2275,6 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_scissor_with_count(&mut self, scissors: impl IntoIterator<Item = Scissor>) {
         struct Cmd {
             scissors: Mutex<SmallVec<[Scissor; 2]>>,
@@ -2323,7 +2300,6 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetViewport` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_viewport(
         &mut self,
         first_viewport: u32,
@@ -2360,7 +2336,6 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_viewport_with_count(
         &mut self,
         viewports: impl IntoIterator<Item = Viewport>,
@@ -2398,7 +2373,6 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_color_write_enable(&mut self, enables: impl IntoIterator<Item = bool>) {
         debug_assert!(self.device.enabled_extensions().ext_color_write_enable);
 
@@ -2522,7 +2496,6 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetDiscardRectangleEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
@@ -2722,7 +2695,6 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetScissor` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_scissor(
         &mut self,
         first_scissor: u32,
@@ -2748,7 +2720,6 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_scissor_with_count(&mut self, scissors: impl IntoIterator<Item = Scissor>) {
         let scissors = scissors
             .into_iter()
@@ -2780,7 +2751,6 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetViewport` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_viewport(
         &mut self,
         first_viewport: u32,
@@ -2806,7 +2776,6 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    #[inline]
     pub unsafe fn set_viewport_with_count(
         &mut self,
         viewports: impl IntoIterator<Item = Viewport>,
@@ -2880,7 +2849,6 @@ enum SetDynamicStateError {
 impl Error for SetDynamicStateError {}
 
 impl Display for SetDynamicStateError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
@@ -2891,45 +2859,42 @@ impl Display for SetDynamicStateError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::FactorOutOfRange => write!(
                 f,
                 "the provided `factor` is not between 1 and 256 inclusive",
             ),
-            Self::MaxDiscardRectanglesExceeded { .. } => write!(
-                f,
-                "the `max_discard_rectangles` limit has been exceeded",
-            ),
+            Self::MaxDiscardRectanglesExceeded { .. } => {
+                write!(f, "the `max_discard_rectangles` limit has been exceeded")
+            }
             Self::MaxTessellationPatchSizeExceeded { .. } => write!(
                 f,
                 "the `max_tessellation_patch_size` limit has been exceeded",
             ),
-            Self::MaxViewportsExceeded { .. } => write!(
-                f,
-                "the `max_viewports` limit has been exceeded",
-            ),
-            Self::NotSupportedByQueueFamily => write!(
-                f,
-                "the queue family doesn't allow this operation",
-            ),
+            Self::MaxViewportsExceeded { .. } => {
+                write!(f, "the `max_viewports` limit has been exceeded")
+            }
+            Self::NotSupportedByQueueFamily => {
+                write!(f, "the queue family doesn't allow this operation")
+            }
             Self::PipelineColorBlendAttachmentCountMismatch {
                 provided_count,
                 required_count,
             } => write!(
                 f,
-                "the provided item count ({}) is different from the number of attachments in the color blend state of the currently bound pipeline ({})",
+                "the provided item count ({}) is different from the number of attachments in the \
+                color blend state of the currently bound pipeline ({})",
                 provided_count, required_count,
             ),
             Self::PipelineHasFixedState => write!(
                 f,
-                "the currently bound pipeline contains this state as internally fixed state, which cannot be overridden with dynamic state",
+                "the currently bound pipeline contains this state as internally fixed state, which \
+                cannot be overridden with dynamic state",
             ),
         }
     }
 }
 
 impl From<RequirementNotMet> for SetDynamicStateError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

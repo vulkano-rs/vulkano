@@ -67,7 +67,6 @@ impl<W> Surface<W> {
     /// - `handle` must have been created from `api`.
     /// - The window object that `handle` was created from must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_handle(
         instance: Arc<Instance>,
         handle: ash::vk::SurfaceKHR,
@@ -95,7 +94,6 @@ impl<W> Surface<W> {
     ///
     /// Presenting to a headless surface does nothing, so this is mostly useless in itself. However,
     /// it may be useful for testing, and it is available for future extensions to layer on top of.
-    #[inline]
     pub fn headless(instance: Arc<Instance>, win: W) -> Result<Arc<Self>, SurfaceCreationError> {
         Self::validate_headless(&instance)?;
 
@@ -159,11 +157,10 @@ impl<W> Surface<W> {
 
     /// Creates a `Surface` from a `DisplayPlane`.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if `display_mode` and `plane` don't belong to the same physical device.
     /// - Panics if `plane` doesn't support the display of `display_mode`.
-    #[inline]
     pub fn from_display_plane(
         display_mode: &DisplayMode,
         plane: &DisplayPlane,
@@ -263,7 +260,6 @@ impl<W> Surface<W> {
     /// - `window` must be a valid Android `ANativeWindow` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_android<T>(
         instance: Arc<Instance>,
         window: *const T,
@@ -345,7 +341,6 @@ impl<W> Surface<W> {
     /// - `surface` must be a valid DirectFB `IDirectFBSurface` handle.
     /// - The object referred to by `dfb` and `surface` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_directfb<D, S>(
         instance: Arc<Instance>,
         dfb: *const D,
@@ -433,7 +428,6 @@ impl<W> Surface<W> {
     /// - `image_pipe_handle` must be a valid Fuchsia `zx_handle_t` handle.
     /// - The object referred to by `image_pipe_handle` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_fuchsia_image_pipe(
         instance: Arc<Instance>,
         image_pipe_handle: ash::vk::zx_handle_t,
@@ -519,7 +513,6 @@ impl<W> Surface<W> {
     /// - `stream_descriptor` must be a valid Google Games Platform `GgpStreamDescriptor` handle.
     /// - The object referred to by `stream_descriptor` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_ggp_stream_descriptor(
         instance: Arc<Instance>,
         stream_descriptor: ash::vk::GgpStreamDescriptor,
@@ -607,7 +600,6 @@ impl<W> Surface<W> {
     ///   The `win` parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     #[cfg(target_os = "ios")]
-    #[inline]
     pub unsafe fn from_ios(
         instance: Arc<Instance>,
         metal_layer: IOSMetalLayer,
@@ -694,7 +686,6 @@ impl<W> Surface<W> {
     ///   The `win` parameter can be used to ensure this.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     #[cfg(target_os = "macos")]
-    #[inline]
     pub unsafe fn from_mac_os<T>(
         instance: Arc<Instance>,
         view: *const T,
@@ -780,7 +771,6 @@ impl<W> Surface<W> {
     /// - `layer` must be a valid Metal `CAMetalLayer` handle.
     /// - The object referred to by `layer` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_metal<T>(
         instance: Arc<Instance>,
         layer: *const T,
@@ -859,7 +849,6 @@ impl<W> Surface<W> {
     /// - `window` must be a valid QNX Screen `_screen_window` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_qnx_screen<T, U>(
         instance: Arc<Instance>,
         context: *const T,
@@ -949,7 +938,6 @@ impl<W> Surface<W> {
     /// - `window` must be a valid `nn::vi::NativeWindowHandle` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_vi<T>(
         instance: Arc<Instance>,
         window: *const T,
@@ -1033,7 +1021,6 @@ impl<W> Surface<W> {
     /// - `surface` must be a valid Wayland `wl_surface` handle.
     /// - The objects referred to by `display` and `surface` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_wayland<D, S>(
         instance: Arc<Instance>,
         display: *const D,
@@ -1126,7 +1113,6 @@ impl<W> Surface<W> {
     /// - `hwnd` must be a valid Win32 `HWND` handle.
     /// - The objects referred to by `hwnd` and `hinstance` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_win32<T, U>(
         instance: Arc<Instance>,
         hinstance: *const T,
@@ -1217,7 +1203,6 @@ impl<W> Surface<W> {
     /// - `window` must be a valid X11 `xcb_window_t` handle.
     /// - The objects referred to by `connection` and `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_xcb<C>(
         instance: Arc<Instance>,
         connection: *const C,
@@ -1308,7 +1293,6 @@ impl<W> Surface<W> {
     /// - `window` must be a valid Xlib `Window` handle.
     /// - The objects referred to by `display` and `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    #[inline]
     pub unsafe fn from_xlib<D>(
         instance: Arc<Instance>,
         display: *const D,
@@ -1390,19 +1374,16 @@ impl<W> Surface<W> {
     }
 
     /// Returns the instance this surface was created with.
-    #[inline]
     pub fn instance(&self) -> &Arc<Instance> {
         &self.instance
     }
 
     /// Returns the windowing API that was used to construct the surface.
-    #[inline]
     pub fn api(&self) -> SurfaceApi {
         self.api
     }
 
     /// Returns a reference to the `W` type parameter that was passed when creating the surface.
-    #[inline]
     pub fn window(&self) -> &W {
         &self.window
     }
@@ -1415,7 +1396,6 @@ impl<W> Surface<W> {
     /// its sublayers are not automatically resized, and we must resize
     /// it here.
     #[cfg(target_os = "ios")]
-    #[inline]
     pub unsafe fn update_ios_sublayer_on_resize(&self) {
         use core_graphics_types::geometry::CGRect;
         let class = class!(CAMetalLayer);
@@ -1427,7 +1407,6 @@ impl<W> Surface<W> {
 }
 
 impl<W> Drop for Surface<W> {
-    #[inline]
     fn drop(&mut self) {
         unsafe {
             let fns = self.instance.fns();
@@ -1443,14 +1422,12 @@ impl<W> Drop for Surface<W> {
 unsafe impl<W> VulkanObject for Surface<W> {
     type Object = ash::vk::SurfaceKHR;
 
-    #[inline]
     fn internal_object(&self) -> ash::vk::SurfaceKHR {
         self.handle
     }
 }
 
 impl<W> Debug for Surface<W> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
@@ -1472,7 +1449,6 @@ impl<W> Debug for Surface<W> {
 }
 
 impl<W> PartialEq for Surface<W> {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.instance() == other.instance()
     }
@@ -1481,7 +1457,6 @@ impl<W> PartialEq for Surface<W> {
 impl<W> Eq for Surface<W> {}
 
 impl<W> Hash for Surface<W> {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.instance().hash(state);
@@ -1489,7 +1464,6 @@ impl<W> Hash for Surface<W> {
 }
 
 unsafe impl<W> SurfaceSwapchainLock for Surface<W> {
-    #[inline]
     fn flag(&self) -> &AtomicBool {
         &self.has_swapchain
     }
@@ -1508,7 +1482,6 @@ pub enum SurfaceCreationError {
 }
 
 impl Error for SurfaceCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             SurfaceCreationError::OomError(err) => Some(err),
@@ -1518,11 +1491,9 @@ impl Error for SurfaceCreationError {
 }
 
 impl Display for SurfaceCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            SurfaceCreationError::OomError(_) => write!(f, "not enough memory available"),
-
+            Self::OomError(_) => write!(f, "not enough memory available"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -1536,14 +1507,12 @@ impl Display for SurfaceCreationError {
 }
 
 impl From<OomError> for SurfaceCreationError {
-    #[inline]
     fn from(err: OomError) -> SurfaceCreationError {
         SurfaceCreationError::OomError(err)
     }
 }
 
 impl From<VulkanError> for SurfaceCreationError {
-    #[inline]
     fn from(err: VulkanError) -> SurfaceCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => {
@@ -1805,83 +1774,87 @@ vulkan_enum! {
     ///
     /// ## What is a color space?
     ///
-    /// Each pixel of a monitor is made of three components: one red, one green, and one blue. In the
-    /// past, computers would simply send to the monitor the intensity of each of the three components.
+    /// Each pixel of a monitor is made of three components: one red, one green, and one blue. In
+    /// the past, computers would simply send to the monitor the intensity of each of the three
+    /// components.
     ///
-    /// This proved to be problematic, because depending on the brand of the monitor the colors would
-    /// not exactly be the same. For example on some monitors, a value of `[1.0, 0.0, 0.0]` would be a
+    /// This proved to be problematic, because depending on the brand of the monitor the colors
+    /// would not exactly be the same. For example on some monitors, a value of `[1.0, 0.0, 0.0]`
+    /// would be a
     /// bit more orange than on others.
     ///
     /// In order to standardize this, there exist what are called *color spaces*: sRGB, AdobeRGB,
-    /// DCI-P3, scRGB, etc. When you manipulate RGB values in a specific color space, these values have
-    /// a precise absolute meaning in terms of color, that is the same across all systems and monitors.
+    /// DCI-P3, scRGB, etc. When you manipulate RGB values in a specific color space, these values
+    /// have a precise absolute meaning in terms of color, that is the same across all systems and
+    /// monitors.
     ///
     /// > **Note**: Color spaces are orthogonal to concept of RGB. *RGB* only indicates what is the
-    /// > representation of the data, but not how it is interpreted. You can think of this a bit like
-    /// > text encoding. An *RGB* value is a like a byte, in other words it is the medium by which
-    /// > values are communicated, and a *color space* is like a text encoding (eg. UTF-8), in other
-    /// > words it is the way the value should be interpreted.
+    /// > representation of the data, but not how it is interpreted. You can think of this a bit
+    /// > like text encoding. An *RGB* value is a like a byte, in other words it is the medium by
+    /// > which values are communicated, and a *color space* is like a text encoding (eg. UTF-8),
+    /// > in other words it is the way the value should be interpreted.
     ///
     /// The most commonly used color space today is sRGB. Most monitors today use this color space,
     /// and most images files are encoded in this color space.
     ///
     /// ## Pixel formats and linear vs non-linear
     ///
-    /// In Vulkan all images have a specific format in which the data is stored. The data of an image
-    /// consists of pixels in RGB but contains no information about the color space (or lack thereof)
-    /// of these pixels. You are free to store them in whatever color space you want.
+    /// In Vulkan all images have a specific format in which the data is stored. The data of an
+    /// image consists of pixels in RGB but contains no information about the color space (or lack
+    /// thereof) of these pixels. You are free to store them in whatever color space you want.
     ///
-    /// But one big practical problem with color spaces is that they are sometimes not linear, and in
-    /// particular the popular sRGB color space is not linear. In a non-linear color space, a value of
-    /// `[0.6, 0.6, 0.6]` for example is **not** twice as bright as a value of `[0.3, 0.3, 0.3]`. This
-    /// is problematic, because operations such as taking the average of two colors or calculating the
-    /// lighting of a texture with a dot product are mathematically incorrect and will produce
-    /// incorrect colors.
+    /// But one big practical problem with color spaces is that they are sometimes not linear, and
+    /// in particular the popular sRGB color space is not linear. In a non-linear color space, a
+    /// value of `[0.6, 0.6, 0.6]` for example is **not** twice as bright as a value of `[0.3, 0.3,
+    /// 0.3]`. This is problematic, because operations such as taking the average of two colors or
+    /// calculating the lighting of a texture with a dot product are mathematically incorrect and
+    /// will produce incorrect colors.
     ///
-    /// > **Note**: If the texture format has an alpha component, it is not affected by the color space
-    /// > and always behaves linearly.
+    /// > **Note**: If the texture format has an alpha component, it is not affected by the color
+    /// > space and always behaves linearly.
     ///
     /// In order to solve this Vulkan also provides image formats with the `Srgb` suffix, which are
     /// expected to contain RGB data in the sRGB color space. When you sample an image with such a
-    /// format from a shader, the implementation will automatically turn the pixel values into a linear
-    /// color space that is suitable for linear operations (such as additions or multiplications).
-    /// When you write to a framebuffer attachment with such a format, the implementation will
-    /// automatically perform the opposite conversion. These conversions are most of the time performed
-    /// by the hardware and incur no additional cost.
+    /// format from a shader, the implementation will automatically turn the pixel values into a
+    /// linear color space that is suitable for linear operations (such as additions or
+    /// multiplications). When you write to a framebuffer attachment with such a format, the
+    /// implementation will automatically perform the opposite conversion. These conversions are
+    /// most of the time performed by the hardware and incur no additional cost.
     ///
     /// ## Color space of the swapchain
     ///
     /// The color space that you specify when you create a swapchain is how the implementation will
     /// interpret the raw data inside of the image.
     ///
-    /// > **Note**: The implementation can choose to send the data in the swapchain image directly to
-    /// > the monitor, but it can also choose to write it in an intermediary buffer that is then read
-    /// > by the operating system or windowing system. Therefore the color space that the
+    /// > **Note**: The implementation can choose to send the data in the swapchain image directly
+    /// > to the monitor, but it can also choose to write it in an intermediary buffer that is then
+    /// > read by the operating system or windowing system. Therefore the color space that the
     /// > implementation supports is not necessarily the same as the one supported by the monitor.
     ///
     /// It is *your* job to ensure that the data in the swapchain image is in the color space
-    /// that is specified here, otherwise colors will be incorrect.
-    /// The implementation will never perform any additional automatic conversion after the colors have
-    /// been written to the swapchain image.
+    /// that is specified here, otherwise colors will be incorrect. The implementation will never
+    /// perform any additional automatic conversion after the colors have been written to the
+    /// swapchain image.
     ///
     /// # How do I handle this correctly?
     ///
     /// The easiest way to handle color spaces in a cross-platform program is:
     ///
     /// - Always request the `SrgbNonLinear` color space when creating the swapchain.
-    /// - Make sure that all your image files use the sRGB color space, and load them in images whose
-    ///   format has the `Srgb` suffix. Only use non-sRGB image formats for intermediary computations
-    ///   or to store non-color data.
+    /// - Make sure that all your image files use the sRGB color space, and load them in images
+    ///   whose format has the `Srgb` suffix. Only use non-sRGB image formats for intermediary
+    ///   computations or to store non-color data.
     /// - Swapchain images should have a format with the `Srgb` suffix.
     ///
     /// > **Note**: Lots of developers are confused by color spaces. You can sometimes find articles
     /// > talking about gamma correction and suggestion to put your colors to the power 2.2 for
     /// > example. These are all hacks and you should use the sRGB pixel formats instead.
     ///
-    /// If you follow these three rules, then everything should render the same way on all platforms.
+    /// If you follow these three rules, then everything should render the same way on all
+    /// platforms.
     ///
-    /// Additionally you can try detect whether the implementation supports any additional color space
-    /// and perform a manual conversion to that color space from inside your shader.
+    /// Additionally you can try detect whether the implementation supports any additional color
+    /// space and perform a manual conversion to that color space from inside your shader.
     #[non_exhaustive]
     ColorSpace = ColorSpaceKHR(i32);
 
@@ -1964,10 +1937,10 @@ vulkan_enum! {
     },
 }
 
-/// Parameters for
-/// [`PhysicalDevice::surface_capabilities`](crate::device::physical::PhysicalDevice::surface_capabilities)
-/// and
-/// [`PhysicalDevice::surface_formats`](crate::device::physical::PhysicalDevice::surface_formats).
+/// Parameters for [`PhysicalDevice::surface_capabilities`] and [`PhysicalDevice::surface_formats`].
+///
+/// [`PhysicalDevice::surface_capabilities`]: crate::device::physical::PhysicalDevice::surface_capabilities
+/// [`PhysicalDevice::surface_formats`]: crate::device::physical::PhysicalDevice::surface_formats
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceInfo {
     pub full_screen_exclusive: FullScreenExclusive,
@@ -2004,6 +1977,7 @@ pub struct IOSMetalLayer {
 
 #[cfg(target_os = "ios")]
 impl IOSMetalLayer {
+    #[inline]
     pub fn new(main_layer: *mut Object, render_layer: *mut Object) -> Self {
         Self {
             main_layer: LayerHandle(main_layer),

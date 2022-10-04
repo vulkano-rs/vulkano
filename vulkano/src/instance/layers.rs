@@ -22,7 +22,7 @@ impl LayerProperties {
     /// If you want to enable this layer on an instance, you need to pass this value to
     /// `Instance::new`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```no_run
     /// use vulkano::VulkanLibrary;
@@ -46,7 +46,7 @@ impl LayerProperties {
     ///
     /// This description is chosen by the layer itself.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```no_run
     /// use vulkano::VulkanLibrary;
@@ -68,7 +68,7 @@ impl LayerProperties {
 
     /// Returns the version of Vulkan supported by this layer.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```no_run
     /// use vulkano::{Version, VulkanLibrary};
@@ -90,7 +90,7 @@ impl LayerProperties {
     ///
     /// The number is chosen by the layer itself. It can be used for bug reports for example.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```no_run
     /// use vulkano::VulkanLibrary;
