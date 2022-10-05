@@ -14,6 +14,7 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::{
+    cell::Cell,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
@@ -34,16 +35,13 @@ use std::{
 pub struct CommandPool {
     handle: ash::vk::CommandPool,
     device: Arc<Device>,
-    // We don't want `CommandPool` to implement Sync.
-    // This marker unimplements both Send and Sync, but we reimplement Send manually right under.
-    dummy_avoid_sync: PhantomData<*const u8>,
 
     queue_family_index: u32,
     _transient: bool,
     _reset_command_buffer: bool,
+    // Unimplement `Sync`, as Vulkan command pools are not thread-safe.
+    _marker: PhantomData<Cell<ash::vk::CommandPool>>,
 }
-
-unsafe impl Send for CommandPool {}
 
 impl CommandPool {
     /// Creates a new `CommandPool`.
@@ -64,11 +62,10 @@ impl CommandPool {
         Ok(CommandPool {
             handle,
             device,
-            dummy_avoid_sync: PhantomData,
-
             queue_family_index,
             _transient: transient,
             _reset_command_buffer: reset_command_buffer,
+            _marker: PhantomData,
         })
     }
 
@@ -94,11 +91,10 @@ impl CommandPool {
         CommandPool {
             handle,
             device,
-            dummy_avoid_sync: PhantomData,
-
             queue_family_index,
             _transient: transient,
             _reset_command_buffer: reset_command_buffer,
+            _marker: PhantomData,
         }
     }
 
