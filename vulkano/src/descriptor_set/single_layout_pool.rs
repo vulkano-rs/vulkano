@@ -34,15 +34,15 @@ const MAX_SETS: usize = 32;
 
 const MAX_POOLS: usize = 32;
 
-/// `SingleLayoutDescSetPool` is a convenience wrapper provided by Vulkano not to be confused with
-/// `VkDescriptorPool`. Its function is to provide access to pool(s) to allocate descriptor sets
-/// from and optimizes for a specific layout which must not have a variable descriptor count. If
-/// you need a variable descriptor count see [`SingleLayoutVariableDescSetPool`]. For a
+/// `SingleLayoutDescriptorSetPool` is a convenience wrapper provided by Vulkano not to be confused
+/// with `VkDescriptorPool`. Its function is to provide access to pool(s) to allocate descriptor
+/// sets from and optimizes for a specific layout which must not have a variable descriptor count.
+/// If you need a variable descriptor count see [`SingleLayoutVariableDescriptorSetPool`]. For a
 /// general-purpose descriptor set allocator see [`StandardDescriptorSetAllocator`].
 ///
 /// [`StandardDescriptorSetAllocator`]: super::allocator::standard::StandardDescriptorSetAllocator
 #[derive(Debug)]
-pub struct SingleLayoutDescSetPool {
+pub struct SingleLayoutDescriptorSetPool {
     // The `SingleLayoutPool` struct contains an actual Vulkan pool. Every time it is full we create
     // a new pool and replace the current one with the new one.
     inner: UnsafeCell<Arc<SingleLayoutPool>>,
@@ -54,9 +54,9 @@ pub struct SingleLayoutDescSetPool {
 
 // This is needed because of the blanket impl on `Arc<T>`, which requires that `T` is `Send + Sync`.
 // `SingleLayoutPool` is `Send + !Sync`.
-unsafe impl Send for SingleLayoutDescSetPool {}
+unsafe impl Send for SingleLayoutDescriptorSetPool {}
 
-impl SingleLayoutDescSetPool {
+impl SingleLayoutDescriptorSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
     ///
@@ -75,7 +75,7 @@ impl SingleLayoutDescSetPool {
         assert!(
             layout.variable_descriptor_count() == 0,
             "the provided descriptor set layout has a binding with a variable descriptor count, \
-            which cannot be used with SingleLayoutDescSetPool",
+            which cannot be used with SingleLayoutDescriptorSetPool",
         );
 
         Ok(Self {
@@ -191,7 +191,7 @@ pub(crate) struct SingleLayoutPoolAlloc {
     pool: Arc<SingleLayoutPool>,
 }
 
-// This is required for the same reason as for `SingleLayoutDescSetPool`.
+// This is required for the same reason as for `SingleLayoutDescriptorSetPool`.
 unsafe impl Send for SingleLayoutPoolAlloc {}
 // `DescriptorPool` is `!Sync`, but we never access it, only keep it alive.
 unsafe impl Sync for SingleLayoutPoolAlloc {}
@@ -213,7 +213,7 @@ impl Drop for SingleLayoutPoolAlloc {
     }
 }
 
-/// A descriptor set created from a [`SingleLayoutDescSetPool`].
+/// A descriptor set created from a [`SingleLayoutDescriptorSetPool`].
 pub struct SingleLayoutDescSet {
     alloc: SingleLayoutPoolAlloc,
     inner: DescriptorSetInner,
@@ -260,14 +260,14 @@ impl Hash for SingleLayoutDescSet {
     }
 }
 
-/// Much like [`SingleLayoutDescSetPool`], except that it allows you to allocate descriptor sets
-/// with a variable descriptor count. As this has more overhead, you should only use this pool if
-/// you need the functionality and prefer [`SingleLayoutDescSetPool`] otherwise. For a more general
-/// purpose descriptor set allocator see [`StandardDescriptorSetAllocator`].
+/// Much like [`SingleLayoutDescriptorSetPool`], except that it allows you to allocate descriptor
+/// sets with a variable descriptor count. As this has more overhead, you should only use this pool
+/// if you need the functionality and prefer [`SingleLayoutDescriptorSetPool`] otherwise. For a
+/// more general purpose descriptor set allocator see [`StandardDescriptorSetAllocator`].
 ///
 /// [`StandardDescriptorSetAllocator`]: super::allocator::standard::StandardDescriptorSetAllocator
 #[derive(Debug)]
-pub struct SingleLayoutVariableDescSetPool {
+pub struct SingleLayoutVariableDescriptorSetPool {
     // The `SingleLayoutVariablePool` struct contains an actual Vulkan pool. Every time it is full
     // we grab one from the reserve, or create a new pool if there are none.
     inner: UnsafeCell<Arc<SingleLayoutVariablePool>>,
@@ -281,9 +281,9 @@ pub struct SingleLayoutVariableDescSetPool {
 
 // This is needed because of the blanket impl on `Arc<T>`, which requires that `T` is `Send + Sync`.
 // `SingleLayoutVariablePool` is `Send + !Sync`.
-unsafe impl Send for SingleLayoutVariableDescSetPool {}
+unsafe impl Send for SingleLayoutVariableDescriptorSetPool {}
 
-impl SingleLayoutVariableDescSetPool {
+impl SingleLayoutVariableDescriptorSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
     ///
@@ -443,7 +443,7 @@ pub(crate) struct SingleLayoutVariablePoolAlloc {
     _pool: Arc<SingleLayoutVariablePool>,
 }
 
-// This is required for the same reason as for `SingleLayoutVariableDescSetPool`.
+// This is required for the same reason as for `SingleLayoutVariableDescriptorSetPool`.
 unsafe impl Send for SingleLayoutVariablePoolAlloc {}
 // `DescriptorPool` is `!Sync`, but we never access it, only keep it alive.
 unsafe impl Sync for SingleLayoutVariablePoolAlloc {}
@@ -458,7 +458,7 @@ impl DescriptorSetAlloc for SingleLayoutVariablePoolAlloc {
     }
 }
 
-/// A descriptor set created from a [`SingleLayoutVariableDescSetPool`].
+/// A descriptor set created from a [`SingleLayoutVariableDescriptorSetPool`].
 pub struct SingleLayoutVariableDescSet {
     alloc: SingleLayoutVariablePoolAlloc,
     inner: DescriptorSetInner,

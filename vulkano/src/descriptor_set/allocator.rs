@@ -19,10 +19,10 @@
 use super::{
     layout::DescriptorSetLayout,
     single_layout_pool::{
-        SingleLayoutPoolAlloc, SingleLayoutVariableDescSetPool, SingleLayoutVariablePoolAlloc,
+        SingleLayoutDescriptorSetPool, SingleLayoutPoolAlloc,
+        SingleLayoutVariableDescriptorSetPool, SingleLayoutVariablePoolAlloc,
     },
     sys::UnsafeDescriptorSet,
-    SingleLayoutDescSetPool,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -69,8 +69,8 @@ pub trait DescriptorSetAlloc: Send + Sync {
 
 /// Standard implementation of a descriptor set allocator.
 ///
-/// Internally, this implementation uses one [`SingleLayoutDescSetPool`] /
-/// [`SingleLayoutVariableDescSetPool`] per descriptor set layout.
+/// Internally, this implementation uses one [`SingleLayoutDescriptorSetPool`] /
+/// [`SingleLayoutVariableDescriptorSetPool`] per descriptor set layout.
 #[derive(Debug)]
 pub struct StandardDescriptorSetAllocator {
     device: Arc<Device>,
@@ -79,8 +79,8 @@ pub struct StandardDescriptorSetAllocator {
 
 #[derive(Debug)]
 enum Pool {
-    Fixed(SingleLayoutDescSetPool),
-    Variable(SingleLayoutVariableDescSetPool),
+    Fixed(SingleLayoutDescriptorSetPool),
+    Variable(SingleLayoutVariableDescriptorSetPool),
 }
 
 impl StandardDescriptorSetAllocator {
@@ -127,9 +127,9 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
             pool
         } else {
             pools.entry(layout.clone()).or_insert(if max_count == 0 {
-                Pool::Fixed(SingleLayoutDescSetPool::new(layout.clone())?)
+                Pool::Fixed(SingleLayoutDescriptorSetPool::new(layout.clone())?)
             } else {
-                Pool::Variable(SingleLayoutVariableDescSetPool::new(layout.clone())?)
+                Pool::Variable(SingleLayoutVariableDescriptorSetPool::new(layout.clone())?)
             })
         };
 
