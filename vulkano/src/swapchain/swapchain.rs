@@ -2313,6 +2313,11 @@ pub unsafe fn acquire_next_image_raw<W>(
         err => return Err(VulkanError::from(err).into()),
     };
 
+    if let Some(fence) = fence {
+        let mut state = fence.state();
+        state.import_swapchain_acquire();
+    }
+
     Ok(AcquiredImage {
         image_index: out.assume_init(),
         suboptimal,
