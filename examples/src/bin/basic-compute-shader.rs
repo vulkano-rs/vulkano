@@ -144,7 +144,7 @@ fn main() {
         .unwrap()
     };
 
-    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     // We start by creating the buffer that will store the data.
@@ -174,7 +174,7 @@ fn main() {
     // descriptor sets that each contain the buffer you want to run the shader on.
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(
-        &mut descriptor_set_allocator,
+        &descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::buffer(0, data_buffer.clone())],
     )

@@ -317,7 +317,7 @@ fn main() {
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let buf = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        device,
         BufferUsage {
             transfer_dst: true,
             ..BufferUsage::empty()

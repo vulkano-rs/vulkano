@@ -30,7 +30,7 @@ pub struct FractalComputePipeline {
     queue: Arc<Queue>,
     pipeline: Arc<ComputePipeline>,
     command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-    descriptor_set_allocator: StandardDescriptorSetAllocator,
+    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     palette: Arc<CpuAccessibleBuffer<[[f32; 4]]>>,
     palette_size: i32,
     end_color: [f32; 4],
@@ -40,6 +40,7 @@ impl FractalComputePipeline {
     pub fn new(
         queue: Arc<Queue>,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     ) -> FractalComputePipeline {
         // Initial colors
         let colors = vec![
@@ -75,8 +76,6 @@ impl FractalComputePipeline {
             .unwrap()
         };
 
-        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(queue.device().clone());
-
         FractalComputePipeline {
             queue,
             pipeline,
@@ -111,7 +110,7 @@ impl FractalComputePipeline {
     }
 
     pub fn compute(
-        &mut self,
+        &self,
         image: DeviceImageView,
         c: Vector2<f32>,
         scale: Vector2<f32>,
@@ -124,7 +123,7 @@ impl FractalComputePipeline {
         let pipeline_layout = self.pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
-            &mut self.descriptor_set_allocator,
+            &*self.descriptor_set_allocator,
             desc_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, image),

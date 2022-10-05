@@ -14,6 +14,7 @@ use vulkano::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
     },
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
     format::Format,
     image::ImageAccess,
@@ -34,6 +35,7 @@ impl RenderPassPlaceOverFrame {
     pub fn new(
         gfx_queue: Arc<Queue>,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
         output_format: Format,
     ) -> RenderPassPlaceOverFrame {
         let render_pass = vulkano::single_pass_renderpass!(gfx_queue.device().clone(),
@@ -52,8 +54,12 @@ impl RenderPassPlaceOverFrame {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-        let pixels_draw_pipeline =
-            PixelsDrawPipeline::new(gfx_queue.clone(), subpass, command_buffer_allocator.clone());
+        let pixels_draw_pipeline = PixelsDrawPipeline::new(
+            gfx_queue.clone(),
+            subpass,
+            command_buffer_allocator.clone(),
+            descriptor_set_allocator,
+        );
 
         RenderPassPlaceOverFrame {
             gfx_queue,
@@ -66,7 +72,7 @@ impl RenderPassPlaceOverFrame {
     /// Place view exactly over swapchain image target.
     /// Texture draw pipeline uses a quad onto which it places the view.
     pub fn render<F>(
-        &mut self,
+        &self,
         before_future: F,
         view: DeviceImageView,
         target: SwapchainImageView,
@@ -87,7 +93,7 @@ impl RenderPassPlaceOverFrame {
         .unwrap();
         // Create primary command buffer builder
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            &*self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

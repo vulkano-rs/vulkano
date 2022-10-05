@@ -40,7 +40,7 @@ pub struct AmbientLightingSystem {
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-    descriptor_set_allocator: StandardDescriptorSetAllocator,
+    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
 }
 
 impl AmbientLightingSystem {
@@ -49,6 +49,7 @@ impl AmbientLightingSystem {
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     ) -> AmbientLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader
@@ -101,9 +102,6 @@ impl AmbientLightingSystem {
                 .unwrap()
         };
 
-        let descriptor_set_allocator =
-            StandardDescriptorSetAllocator::new(gfx_queue.device().clone());
-
         AmbientLightingSystem {
             gfx_queue,
             vertex_buffer,
@@ -127,7 +125,7 @@ impl AmbientLightingSystem {
     /// - `ambient_color` is the color to apply.
     ///
     pub fn draw(
-        &mut self,
+        &self,
         viewport_dimensions: [u32; 2],
         color_input: Arc<dyn ImageViewAbstract + 'static>,
         ambient_color: [f32; 3],
@@ -138,7 +136,7 @@ impl AmbientLightingSystem {
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
         let descriptor_set = PersistentDescriptorSet::new(
-            &mut self.descriptor_set_allocator,
+            &*self.descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::image_view(0, color_input)],
         )
@@ -151,7 +149,7 @@ impl AmbientLightingSystem {
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &self.command_buffer_allocator,
+            &*self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {

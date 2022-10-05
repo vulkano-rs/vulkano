@@ -50,7 +50,7 @@ impl PersistentDescriptorSet {
     /// See `new_with_pool` for more.
     #[inline]
     pub fn new<A>(
-        allocator: &mut A,
+        allocator: &A,
         layout: Arc<DescriptorSetLayout>,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, DescriptorSetCreationError>
@@ -68,7 +68,7 @@ impl PersistentDescriptorSet {
     /// - Panics if `layout` was created for push descriptors rather than descriptor sets.
     /// - Panics if `variable_descriptor_count` is too large for the given `layout`.
     pub fn new_variable<A>(
-        allocator: &mut A,
+        allocator: &A,
         layout: Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,

@@ -13,6 +13,7 @@ use cgmath::Vector2;
 use std::time::Instant;
 use std::{rc::Rc, sync::Arc};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::device::Queue;
 use vulkano::sync::GpuFuture;
 use vulkano_util::renderer::{DeviceImageView, VulkanoWindowRenderer};
@@ -62,15 +63,20 @@ impl FractalApp {
         let command_buffer_allocator = Rc::new(StandardCommandBufferAllocator::new(
             gfx_queue.device().clone(),
         ));
+        let descriptor_set_allocator = Rc::new(StandardDescriptorSetAllocator::new(
+            gfx_queue.device().clone(),
+        ));
 
         FractalApp {
             fractal_pipeline: FractalComputePipeline::new(
                 gfx_queue.clone(),
                 command_buffer_allocator.clone(),
+                descriptor_set_allocator.clone(),
             ),
             place_over_frame: RenderPassPlaceOverFrame::new(
                 gfx_queue,
                 command_buffer_allocator,
+                descriptor_set_allocator,
                 image_format,
             ),
             is_julia: false,

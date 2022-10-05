@@ -72,7 +72,7 @@ pub struct PixelsDrawPipeline {
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-    descriptor_set_allocator: StandardDescriptorSetAllocator,
+    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     vertices: Arc<CpuAccessibleBuffer<[TexturedVertex]>>,
     indices: Arc<CpuAccessibleBuffer<[u32]>>,
 }
@@ -82,6 +82,7 @@ impl PixelsDrawPipeline {
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     ) -> PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let vertex_buffer = CpuAccessibleBuffer::<[TexturedVertex]>::from_iter(
@@ -119,9 +120,6 @@ impl PixelsDrawPipeline {
                 .unwrap()
         };
 
-        let descriptor_set_allocator =
-            StandardDescriptorSetAllocator::new(gfx_queue.device().clone());
-
         PixelsDrawPipeline {
             gfx_queue,
             subpass,
@@ -134,7 +132,7 @@ impl PixelsDrawPipeline {
     }
 
     fn create_image_sampler_nearest(
-        &mut self,
+        &self,
         image: Arc<dyn ImageViewAbstract>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
@@ -151,7 +149,7 @@ impl PixelsDrawPipeline {
         .unwrap();
 
         PersistentDescriptorSet::new(
-            &mut self.descriptor_set_allocator,
+            &*self.descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::image_view_sampler(
                 0,
@@ -164,7 +162,7 @@ impl PixelsDrawPipeline {
 
     /// Draw input `image` over a quad of size -1.0 to 1.0
     pub fn draw(
-        &mut self,
+        &self,
         viewport_dimensions: [u32; 2],
         image: Arc<dyn ImageViewAbstract>,
     ) -> SecondaryAutoCommandBuffer {

@@ -226,7 +226,7 @@ fn main() {
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
     let rotation_start = Instant::now();
 
-    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     event_loop.run(move |event, _, control_flow| {
@@ -309,7 +309,7 @@ fn main() {
 
                 let layout = pipeline.layout().set_layouts().get(0).unwrap();
                 let set = PersistentDescriptorSet::new(
-                    &mut descriptor_set_allocator,
+                    &descriptor_set_allocator,
                     layout.clone(),
                     [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
                 )

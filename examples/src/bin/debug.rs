@@ -173,7 +173,7 @@ fn main() {
     .expect("failed to create device");
     let queue = queues.next().unwrap();
 
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8_UINT;

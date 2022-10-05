@@ -502,9 +502,9 @@ mod tests {
         )
         .unwrap();
 
-        let mut ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        let ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
         let set = PersistentDescriptorSet::new(
-            &mut ds_allocator,
+            &ds_allocator,
             pipeline.layout().set_layouts().get(0).unwrap().clone(),
             [WriteDescriptorSet::buffer(0, data_buffer.clone())],
         )

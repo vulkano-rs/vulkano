@@ -270,7 +270,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let mascot_texture = {
@@ -388,7 +388,7 @@ fn main() {
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new_variable(
-        &mut descriptor_set_allocator,
+        &descriptor_set_allocator,
         layout.clone(),
         2,
         [WriteDescriptorSet::image_view_sampler_array(

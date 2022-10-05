@@ -614,7 +614,7 @@ mod tests {
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_data(
-            device.clone(),
+            device,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
@@ -662,7 +662,7 @@ mod tests {
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            device,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()

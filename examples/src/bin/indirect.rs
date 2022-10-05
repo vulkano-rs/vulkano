@@ -317,7 +317,7 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     event_loop.run(move |event, _, control_flow| {
@@ -395,7 +395,7 @@ fn main() {
                 // Pass the two buffers to the compute shader
                 let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
                 let cs_desciptor_set = PersistentDescriptorSet::new(
-                    &mut descriptor_set_allocator,
+                    &descriptor_set_allocator,
                     layout.clone(),
                     [
                         WriteDescriptorSet::buffer(0, vertices.clone()),

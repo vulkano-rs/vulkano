@@ -580,7 +580,7 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let allocator = StandardCommandBufferAllocator::new(device.clone());
+            let allocator = StandardCommandBufferAllocator::new(device);
 
             // Create a tiny test buffer
             let (buf, future) = DeviceLocalBuffer::from_data(
@@ -756,10 +756,10 @@ mod tests {
             )
             .unwrap();
 
-            let mut ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
+            let ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
             let set = PersistentDescriptorSet::new(
-                &mut ds_allocator,
+                &ds_allocator,
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
                     0,
@@ -817,7 +817,7 @@ mod tests {
             .unwrap();
 
             let set = PersistentDescriptorSet::new(
-                &mut ds_allocator,
+                &ds_allocator,
                 set_layout,
                 [WriteDescriptorSet::sampler(
                     0,

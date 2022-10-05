@@ -21,16 +21,16 @@ use crate::{
     OomError,
 };
 use ahash::HashMap;
-use std::sync::Arc;
+use std::{cell::UnsafeCell, sync::Arc};
 
 /// Standard implementation of a descriptor set allocator.
 ///
-/// Interally, this implementation uses one [`SingleLayoutDescSetPool`] /
+/// Internally, this implementation uses one [`SingleLayoutDescSetPool`] /
 /// [`SingleLayoutVariableDescSetPool`] per descriptor set layout.
 #[derive(Debug)]
 pub struct StandardDescriptorSetAllocator {
     device: Arc<Device>,
-    pools: HashMap<Arc<DescriptorSetLayout>, Pool>,
+    pools: UnsafeCell<HashMap<Arc<DescriptorSetLayout>, Pool>>,
 }
 
 #[derive(Debug)]
@@ -40,12 +40,12 @@ enum Pool {
 }
 
 impl StandardDescriptorSetAllocator {
-    /// Builds a new `StandardDescriptorSetAllocator`.
+    /// Creates a new `StandardDescriptorSetAllocator`.
     #[inline]
     pub fn new(device: Arc<Device>) -> StandardDescriptorSetAllocator {
         StandardDescriptorSetAllocator {
             device,
-            pools: HashMap::default(),
+            pools: UnsafeCell::new(HashMap::default()),
         }
     }
 }
@@ -55,7 +55,7 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
 
     #[inline]
     fn allocate(
-        &mut self,
+        &self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
     ) -> Result<StandardDescriptorSetAlloc, OomError> {
@@ -75,18 +75,18 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
             max_count,
         );
 
+        let pools = unsafe { &mut *self.pools.get() };
+
         // We do this instead of using `HashMap::entry` directly because that would involve cloning
         // an `Arc` every time. `hash_raw_entry` is still not stabilized >:(
-        let pool = if let Some(pool) = self.pools.get_mut(layout) {
+        let pool = if let Some(pool) = pools.get_mut(layout) {
             pool
         } else {
-            self.pools
-                .entry(layout.clone())
-                .or_insert(if max_count == 0 {
-                    Pool::Fixed(SingleLayoutDescSetPool::new(layout.clone())?)
-                } else {
-                    Pool::Variable(SingleLayoutVariableDescSetPool::new(layout.clone())?)
-                })
+            pools.entry(layout.clone()).or_insert(if max_count == 0 {
+                Pool::Fixed(SingleLayoutDescSetPool::new(layout.clone())?)
+            } else {
+                Pool::Variable(SingleLayoutVariableDescSetPool::new(layout.clone())?)
+            })
         };
 
         let inner = match pool {

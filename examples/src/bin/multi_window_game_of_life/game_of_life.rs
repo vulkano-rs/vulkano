@@ -34,7 +34,7 @@ pub struct GameOfLifeComputePipeline {
     compute_queue: Arc<Queue>,
     compute_life_pipeline: Arc<ComputePipeline>,
     command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-    descriptor_set_allocator: StandardDescriptorSetAllocator,
+    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     life_in: Arc<CpuAccessibleBuffer<[u32]>>,
     life_out: Arc<CpuAccessibleBuffer<[u32]>>,
     image: DeviceImageView,
@@ -59,6 +59,7 @@ impl GameOfLifeComputePipeline {
     pub fn new(
         compute_queue: Arc<Queue>,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
         size: [u32; 2],
     ) -> GameOfLifeComputePipeline {
         let life_in = rand_grid(&compute_queue, size);
@@ -90,9 +91,6 @@ impl GameOfLifeComputePipeline {
         )
         .unwrap();
 
-        let descriptor_set_allocator =
-            StandardDescriptorSetAllocator::new(compute_queue.device().clone());
-
         GameOfLifeComputePipeline {
             compute_queue,
             compute_life_pipeline,
@@ -108,7 +106,7 @@ impl GameOfLifeComputePipeline {
         self.image.clone()
     }
 
-    pub fn draw_life(&mut self, pos: Vector2<i32>) {
+    pub fn draw_life(&self, pos: Vector2<i32>) {
         let mut life_in = self.life_in.write().unwrap();
         let size = self.image.image().dimensions().width_height();
         if pos.y < 0 || pos.y >= size[1] as i32 || pos.x < 0 || pos.x >= size[0] as i32 {
@@ -154,7 +152,7 @@ impl GameOfLifeComputePipeline {
 
     /// Build the command for a dispatch.
     fn dispatch(
-        &mut self,
+        &self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         life_color: [f32; 4],
         dead_color: [f32; 4],
@@ -166,7 +164,7 @@ impl GameOfLifeComputePipeline {
         let pipeline_layout = self.compute_life_pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
-            &mut self.descriptor_set_allocator,
+            &*self.descriptor_set_allocator,
             desc_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, self.image.clone()),

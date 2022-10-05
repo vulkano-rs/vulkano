@@ -13,6 +13,7 @@ use crate::{
 };
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::{device::Queue, format::Format};
 use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 use vulkano_util::window::{VulkanoWindows, WindowDescriptor};
@@ -33,16 +34,21 @@ impl RenderPipeline {
         let command_buffer_allocator = Rc::new(StandardCommandBufferAllocator::new(
             gfx_queue.device().clone(),
         ));
+        let descriptor_set_allocator = Rc::new(StandardDescriptorSetAllocator::new(
+            gfx_queue.device().clone(),
+        ));
 
         RenderPipeline {
             compute: GameOfLifeComputePipeline::new(
                 compute_queue,
                 command_buffer_allocator.clone(),
+                descriptor_set_allocator.clone(),
                 size,
             ),
             place_over_frame: RenderPassPlaceOverFrame::new(
                 gfx_queue,
                 command_buffer_allocator,
+                descriptor_set_allocator,
                 swapchain_format,
             ),
         }

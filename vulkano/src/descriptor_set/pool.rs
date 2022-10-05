@@ -18,9 +18,11 @@ use crate::{
 use ahash::HashMap;
 use smallvec::SmallVec;
 use std::{
+    cell::Cell,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
+    marker::PhantomData,
     mem::MaybeUninit,
     ptr,
     sync::Arc,
@@ -38,6 +40,8 @@ pub struct DescriptorPool {
     max_sets: u32,
     pool_sizes: HashMap<DescriptorType, u32>,
     can_free_descriptor_sets: bool,
+    // Unimplement `Sync`, as Vulkan descriptor pools are not thread safe.
+    _marker: PhantomData<Cell<ash::vk::DescriptorPool>>,
 }
 
 impl DescriptorPool {
@@ -111,10 +115,10 @@ impl DescriptorPool {
         Ok(DescriptorPool {
             handle,
             device,
-
             max_sets,
             pool_sizes,
             can_free_descriptor_sets,
+            _marker: PhantomData,
         })
     }
 
@@ -140,10 +144,10 @@ impl DescriptorPool {
         DescriptorPool {
             handle,
             device,
-
             max_sets,
             pool_sizes,
             can_free_descriptor_sets,
+            _marker: PhantomData,
         }
     }
 
@@ -184,7 +188,7 @@ impl DescriptorPool {
     /// - You must ensure that the allocated descriptor sets are no longer in use when the pool
     ///   is destroyed, as destroying the pool is equivalent to freeing all the sets.
     pub unsafe fn allocate_descriptor_sets<'a>(
-        &mut self,
+        &self,
         allocate_info: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
     ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, DescriptorPoolAllocError> {
         let (layouts, variable_descriptor_counts): (SmallVec<[_; 1]>, SmallVec<[_; 1]>) =
@@ -282,7 +286,7 @@ impl DescriptorPool {
     /// - The descriptor sets must not be free'd twice.
     /// - The descriptor sets must not be in use by the GPU.
     pub unsafe fn free_descriptor_sets(
-        &mut self,
+        &self,
         descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
     ) -> Result<(), OomError> {
         let sets: SmallVec<[_; 8]> = descriptor_sets
@@ -308,7 +312,7 @@ impl DescriptorPool {
     ///
     /// This destroys all descriptor sets and empties the pool.
     #[inline]
-    pub unsafe fn reset(&mut self) -> Result<(), OomError> {
+    pub unsafe fn reset(&self) -> Result<(), OomError> {
         let fns = self.device.fns();
         (fns.v1_0.reset_descriptor_pool)(
             self.device.internal_object(),
@@ -529,7 +533,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut pool = DescriptorPool::new(
+        let pool = DescriptorPool::new(
             device,
             DescriptorPoolCreateInfo {
                 max_sets: 10,
@@ -571,7 +575,7 @@ mod tests {
         .unwrap();
 
         assert_should_panic!({
-            let mut pool = DescriptorPool::new(
+            let pool = DescriptorPool::new(
                 device2,
                 DescriptorPoolCreateInfo {
                     max_sets: 10,
@@ -594,7 +598,7 @@ mod tests {
     fn alloc_zero() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut pool = DescriptorPool::new(
+        let pool = DescriptorPool::new(
             device,
             DescriptorPoolCreateInfo {
                 max_sets: 1,

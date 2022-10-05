@@ -24,7 +24,7 @@ use crate::{
 };
 use crossbeam_queue::ArrayQueue;
 use std::{
-    cell::UnsafeCell,
+    cell::{Cell, UnsafeCell},
     hash::{Hash, Hasher},
     mem::ManuallyDrop,
     sync::Arc,
@@ -45,12 +45,16 @@ const MAX_POOLS: usize = 32;
 pub struct SingleLayoutDescSetPool {
     // The `SingleLayoutPool` struct contains an actual Vulkan pool. Every time it is full we create
     // a new pool and replace the current one with the new one.
-    inner: Arc<SingleLayoutPool>,
+    inner: UnsafeCell<Arc<SingleLayoutPool>>,
     // The amount of sets available to use when we create a new Vulkan pool.
-    set_count: usize,
+    set_count: Cell<usize>,
     // The descriptor set layout that this pool is for.
     layout: Arc<DescriptorSetLayout>,
 }
+
+// This is needed because of the blanket impl on `Arc<T>`, which requires that `T` is `Send + Sync`.
+// `SingleLayoutPool` is `Send + !Sync`.
+unsafe impl Send for SingleLayoutDescSetPool {}
 
 impl SingleLayoutDescSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
@@ -75,8 +79,8 @@ impl SingleLayoutDescSetPool {
         );
 
         Ok(Self {
-            inner: SingleLayoutPool::new(&layout, MAX_SETS)?,
-            set_count: MAX_SETS,
+            inner: UnsafeCell::new(SingleLayoutPool::new(&layout, MAX_SETS)?),
+            set_count: Cell::new(MAX_SETS),
             layout,
         })
     }
@@ -84,7 +88,7 @@ impl SingleLayoutDescSetPool {
     /// Returns a new descriptor set, either by creating a new one or returning an existing one
     /// from the internal reserve.
     pub fn next(
-        &mut self,
+        &self,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> Result<Arc<SingleLayoutDescSet>, DescriptorSetCreationError> {
         let alloc = self.next_alloc()?;
@@ -98,18 +102,19 @@ impl SingleLayoutDescSetPool {
         Ok(Arc::new(SingleLayoutDescSet { alloc, inner }))
     }
 
-    pub(crate) fn next_alloc(&mut self) -> Result<SingleLayoutPoolAlloc, OomError> {
+    pub(crate) fn next_alloc(&self) -> Result<SingleLayoutPoolAlloc, OomError> {
+        let inner = unsafe { &mut *self.inner.get() };
         loop {
-            if let Some(existing) = self.inner.reserve.pop() {
+            if let Some(existing) = inner.reserve.pop() {
                 return Ok(SingleLayoutPoolAlloc {
-                    pool: self.inner.clone(),
+                    pool: inner.clone(),
                     inner: ManuallyDrop::new(existing),
                 });
             }
 
-            self.set_count *= 2;
+            self.set_count.set(self.set_count.get() * 2);
 
-            self.inner = SingleLayoutPool::new(&self.layout, self.set_count)?;
+            *inner = SingleLayoutPool::new(&self.layout, self.set_count.get())?;
         }
     }
 }
@@ -126,7 +131,7 @@ struct SingleLayoutPool {
 
 impl SingleLayoutPool {
     fn new(layout: &Arc<DescriptorSetLayout>, set_count: usize) -> Result<Arc<Self>, OomError> {
-        let mut inner = DescriptorPool::new(
+        let inner = DescriptorPool::new(
             layout.device().clone(),
             DescriptorPoolCreateInfo {
                 max_sets: set_count as u32,
@@ -185,6 +190,11 @@ pub(crate) struct SingleLayoutPoolAlloc {
     // allocation so that we can put back the allocation in the list in our `Drop` impl.
     pool: Arc<SingleLayoutPool>,
 }
+
+// This is required for the same reason as for `SingleLayoutDescSetPool`.
+unsafe impl Send for SingleLayoutPoolAlloc {}
+// `DescriptorPool` is `!Sync`, but we never access it, only keep it alive.
+unsafe impl Sync for SingleLayoutPoolAlloc {}
 
 impl DescriptorSetAlloc for SingleLayoutPoolAlloc {
     fn inner(&self) -> &UnsafeDescriptorSet {
@@ -260,14 +270,18 @@ impl Hash for SingleLayoutDescSet {
 pub struct SingleLayoutVariableDescSetPool {
     // The `SingleLayoutVariablePool` struct contains an actual Vulkan pool. Every time it is full
     // we grab one from the reserve, or create a new pool if there are none.
-    inner: Arc<SingleLayoutVariablePool>,
+    inner: UnsafeCell<Arc<SingleLayoutVariablePool>>,
     // When a `SingleLayoutVariablePool` is dropped, it returns its Vulkan pool here for reuse.
     reserve: Arc<ArrayQueue<DescriptorPool>>,
     // The descriptor set layout that this pool is for.
     layout: Arc<DescriptorSetLayout>,
     // The number of sets currently allocated from the Vulkan pool.
-    allocated_sets: usize,
+    allocated_sets: Cell<usize>,
 }
+
+// This is needed because of the blanket impl on `Arc<T>`, which requires that `T` is `Send + Sync`.
+// `SingleLayoutVariablePool` is `Send + !Sync`.
+unsafe impl Send for SingleLayoutVariableDescSetPool {}
 
 impl SingleLayoutVariableDescSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
@@ -288,10 +302,10 @@ impl SingleLayoutVariableDescSetPool {
         let reserve = Arc::new(ArrayQueue::new(MAX_POOLS));
 
         Ok(Self {
-            inner: SingleLayoutVariablePool::new(&layout, reserve.clone())?,
+            inner: UnsafeCell::new(SingleLayoutVariablePool::new(&layout, reserve.clone())?),
             reserve,
             layout,
-            allocated_sets: 0,
+            allocated_sets: Cell::new(0),
         })
     }
 
@@ -301,7 +315,7 @@ impl SingleLayoutVariableDescSetPool {
     ///
     /// - Panics if the provided `variable_descriptor_count` exceeds the maximum for the layout.
     pub fn next(
-        &mut self,
+        &self,
         variable_descriptor_count: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> Result<SingleLayoutVariableDescSet, DescriptorSetCreationError> {
@@ -327,61 +341,56 @@ impl SingleLayoutVariableDescSetPool {
     }
 
     pub(crate) fn next_alloc(
-        &mut self,
+        &self,
         variable_descriptor_count: u32,
     ) -> Result<SingleLayoutVariablePoolAlloc, OomError> {
-        if self.allocated_sets >= MAX_SETS {
-            self.inner = if let Some(unsafe_pool) = self.reserve.pop() {
+        if self.allocated_sets.get() >= MAX_SETS {
+            *unsafe { &mut *self.inner.get() } = if let Some(unsafe_pool) = self.reserve.pop() {
                 Arc::new(SingleLayoutVariablePool {
-                    inner: UnsafeCell::new(ManuallyDrop::new(unsafe_pool)),
+                    inner: ManuallyDrop::new(unsafe_pool),
                     reserve: self.reserve.clone(),
                 })
             } else {
                 SingleLayoutVariablePool::new(&self.layout, self.reserve.clone())?
             };
-            self.allocated_sets = 0;
+            self.allocated_sets.set(0);
         }
 
-        let inner = {
-            let unsafe_pool = unsafe { &mut *self.inner.inner.get() };
+        let allocate_info = DescriptorSetAllocateInfo {
+            layout: &self.layout,
+            variable_descriptor_count,
+        };
 
-            let allocate_info = DescriptorSetAllocateInfo {
-                layout: &self.layout,
-                variable_descriptor_count,
-            };
+        let pool = unsafe { &*self.inner.get() }.clone();
 
-            match unsafe { unsafe_pool.allocate_descriptor_sets([allocate_info]) } {
-                Ok(mut sets) => sets.next().unwrap(),
-                Err(DescriptorPoolAllocError::OutOfHostMemory) => {
-                    return Err(OomError::OutOfHostMemory);
-                }
-                Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
-                    return Err(OomError::OutOfDeviceMemory);
-                }
-                Err(DescriptorPoolAllocError::FragmentedPool) => {
-                    // This can't happen as we don't free individual sets.
-                    unreachable!();
-                }
-                Err(DescriptorPoolAllocError::OutOfPoolMemory) => {
-                    // We created the pool to fit the maximum variable descriptor count.
-                    unreachable!();
-                }
+        let inner = match unsafe { pool.inner.allocate_descriptor_sets([allocate_info]) } {
+            Ok(mut sets) => sets.next().unwrap(),
+            Err(DescriptorPoolAllocError::OutOfHostMemory) => {
+                return Err(OomError::OutOfHostMemory);
+            }
+            Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
+                return Err(OomError::OutOfDeviceMemory);
+            }
+            Err(DescriptorPoolAllocError::FragmentedPool) => {
+                // This can't happen as we don't free individual sets.
+                unreachable!();
+            }
+            Err(DescriptorPoolAllocError::OutOfPoolMemory) => {
+                // We created the pool to fit the maximum variable descriptor count.
+                unreachable!();
             }
         };
 
-        self.allocated_sets += 1;
+        self.allocated_sets.set(self.allocated_sets.get() + 1);
 
-        Ok(SingleLayoutVariablePoolAlloc {
-            inner,
-            _pool: self.inner.clone(),
-        })
+        Ok(SingleLayoutVariablePoolAlloc { inner, _pool: pool })
     }
 }
 
 #[derive(Debug)]
 struct SingleLayoutVariablePool {
     // The actual Vulkan descriptor pool.
-    inner: UnsafeCell<ManuallyDrop<DescriptorPool>>,
+    inner: ManuallyDrop<DescriptorPool>,
     // Where we return the Vulkan descriptor pool in our `Drop` impl.
     reserve: Arc<ArrayQueue<DescriptorPool>>,
 }
@@ -405,7 +414,7 @@ impl SingleLayoutVariablePool {
         )?;
 
         Ok(Arc::new(Self {
-            inner: UnsafeCell::new(ManuallyDrop::new(unsafe_pool)),
+            inner: ManuallyDrop::new(unsafe_pool),
             reserve,
         }))
     }
@@ -413,7 +422,7 @@ impl SingleLayoutVariablePool {
 
 impl Drop for SingleLayoutVariablePool {
     fn drop(&mut self) {
-        let mut inner = unsafe { ManuallyDrop::take(&mut *self.inner.get()) };
+        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
         // TODO: This should not return `Result`, resetting a pool can't fail.
         unsafe { inner.reset() }.unwrap();
 
@@ -434,7 +443,9 @@ pub(crate) struct SingleLayoutVariablePoolAlloc {
     _pool: Arc<SingleLayoutVariablePool>,
 }
 
+// This is required for the same reason as for `SingleLayoutVariableDescSetPool`.
 unsafe impl Send for SingleLayoutVariablePoolAlloc {}
+// `DescriptorPool` is `!Sync`, but we never access it, only keep it alive.
 unsafe impl Sync for SingleLayoutVariablePoolAlloc {}
 
 impl DescriptorSetAlloc for SingleLayoutVariablePoolAlloc {

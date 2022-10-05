@@ -214,7 +214,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let (texture, tex_future) = {
@@ -276,7 +276,7 @@ fn main() {
 
     // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the layout.
     let set = PersistentDescriptorSet::new(
-        &mut descriptor_set_allocator,
+        &descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::image_view(0, texture)],
     )

@@ -44,7 +44,7 @@ pub unsafe trait DescriptorSetAllocator: DeviceOwned {
 
     /// Allocates a descriptor set.
     fn allocate(
-        &mut self,
+        &self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
     ) -> Result<Self::Alloc, OomError>;

@@ -319,7 +319,7 @@ fn main() {
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
-    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     #[repr(C)]
@@ -407,7 +407,7 @@ fn main() {
     // Create a new descriptor set for binding vertices as a Storage Buffer.
     use vulkano::pipeline::Pipeline; // Required to access layout() method of pipeline.
     let descriptor_set = PersistentDescriptorSet::new(
-        &mut descriptor_set_allocator,
+        &descriptor_set_allocator,
         compute_pipeline
             .layout()
             .set_layouts()
