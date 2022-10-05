@@ -9,14 +9,14 @@
 
 use crate::{
     command_buffer::{
+        allocator::CommandBufferAllocator,
         auto::{
             BeginRenderPassState, BeginRenderingAttachments, BeginRenderingState, RenderPassState,
             RenderPassStateType,
         },
-        pool::CommandPoolBuilderAlloc,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, SubpassContents,
     },
     device::DeviceOwned,
     format::{ClearColorValue, ClearValue, Format, NumericType},
@@ -40,9 +40,9 @@ use std::{
 /// # Commands for render passes.
 ///
 /// These commands require a graphics queue.
-impl<P> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<P::Alloc>, P>
+impl<L, A> AutoCommandBufferBuilder<L, A>
 where
-    P: CommandPoolBuilderAlloc,
+    A: CommandBufferAllocator,
 {
     /// Begins a render pass using a render pass object and framebuffer.
     ///
@@ -526,7 +526,10 @@ where
     }
 }
 
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Begins a render pass without a render pass object or framebuffer.
     ///
     /// You must call this or `begin_render_pass` before you can record draw commands.

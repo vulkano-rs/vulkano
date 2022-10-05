@@ -8,12 +8,12 @@
 // according to those terms.
 
 use bytemuck::{Pod, Zeroable};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferUsage,
-        SecondaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
+        CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
     },
     device::Queue,
     impl_vertex,
@@ -34,11 +34,16 @@ pub struct TriangleDrawSystem {
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
 }
 
 impl TriangleDrawSystem {
     /// Initializes a triangle drawing system.
-    pub fn new(gfx_queue: Arc<Queue>, subpass: Subpass) -> TriangleDrawSystem {
+    pub fn new(
+        gfx_queue: Arc<Queue>,
+        subpass: Subpass,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+    ) -> TriangleDrawSystem {
         let vertices = [
             Vertex {
                 position: [-0.5, -0.25],
@@ -84,13 +89,14 @@ impl TriangleDrawSystem {
             vertex_buffer,
             subpass,
             pipeline,
+            command_buffer_allocator,
         }
     }
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
     pub fn draw(&self, viewport_dimensions: [u32; 2]) -> SecondaryAutoCommandBuffer {
         let mut builder = AutoCommandBufferBuilder::secondary(
-            self.gfx_queue.device().clone(),
+            &*self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {

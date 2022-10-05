@@ -18,8 +18,8 @@ use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyImageToBufferInfo,
-        RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
+        CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo, SubpassContents,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
@@ -277,6 +277,8 @@ fn main() {
         .build(device.clone())
         .unwrap();
 
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     let create_buffer = || {
         CpuAccessibleBuffer::from_iter(
             device.clone(),
@@ -294,7 +296,7 @@ fn main() {
     let buffer2 = create_buffer();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        device.clone(),
+        &command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )

@@ -15,8 +15,9 @@ use super::{
 use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, BlitImageInfo, CommandBufferBeginError, CommandBufferExecFuture,
-        CommandBufferUsage, CopyBufferToImageInfo, ImageBlit, PrimaryCommandBuffer,
+        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
+        CommandBufferBeginError, CommandBufferExecFuture, CommandBufferUsage,
+        CopyBufferToImageInfo, ImageBlit, PrimaryCommandBuffer,
     },
     device::{Device, DeviceOwned, Queue},
     format::Format,
@@ -59,12 +60,14 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
     }
 }
 
-fn generate_mipmaps<L>(
-    cbb: &mut AutoCommandBufferBuilder<L>,
+fn generate_mipmaps<L, Cba>(
+    cbb: &mut AutoCommandBufferBuilder<L, Cba>,
     image: Arc<dyn ImageAccess>,
     dimensions: ImageDimensions,
     _layout: ImageLayout,
-) {
+) where
+    Cba: CommandBufferAllocator,
+{
     for level in 1..image.mip_levels() {
         let src_size = dimensions
             .mip_level_dimensions(level - 1)
@@ -98,53 +101,6 @@ fn generate_mipmaps<L>(
 }
 
 impl ImmutableImage {
-    #[deprecated(note = "use ImmutableImage::uninitialized instead")]
-    pub fn new(
-        device: Arc<Device>,
-        dimensions: ImageDimensions,
-        format: Format,
-        queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError> {
-        #[allow(deprecated)]
-        ImmutableImage::with_mipmaps(
-            device,
-            dimensions,
-            format,
-            MipmapsCount::One,
-            queue_family_indices,
-        )
-    }
-
-    #[deprecated(note = "use ImmutableImage::uninitialized instead")]
-    pub fn with_mipmaps(
-        device: Arc<Device>,
-        dimensions: ImageDimensions,
-        format: Format,
-        mip_levels: impl Into<MipmapsCount>,
-        queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError> {
-        let usage = ImageUsage {
-            transfer_src: true, // for blits
-            transfer_dst: true,
-            sampled: true,
-            ..ImageUsage::empty()
-        };
-
-        let flags = ImageCreateFlags::empty();
-
-        let (image, _) = ImmutableImage::uninitialized(
-            device,
-            dimensions,
-            format,
-            mip_levels,
-            usage,
-            flags,
-            ImageLayout::ShaderReadOnlyOptimal,
-            queue_family_indices,
-        )?;
-        Ok(image)
-    }
-
     /// Builds an uninitialized immutable image.
     ///
     /// Returns two things: the image, and a special access that should be used for the initial
@@ -226,6 +182,7 @@ impl ImmutableImage {
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError>
     where
@@ -242,7 +199,14 @@ impl ImmutableImage {
             false,
             iter,
         )?;
-        ImmutableImage::from_buffer(source, dimensions, mip_levels, format, queue)
+        ImmutableImage::from_buffer(
+            source,
+            dimensions,
+            mip_levels,
+            format,
+            command_buffer_allocator,
+            queue,
+        )
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
@@ -251,6 +215,7 @@ impl ImmutableImage {
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError> {
         let need_to_generate_mipmaps = has_mipmaps(mip_levels);
@@ -279,7 +244,7 @@ impl ImmutableImage {
         )?;
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            source.device().clone(),
+            command_buffer_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )?;

@@ -10,6 +10,7 @@
 use crate::{
     buffer::TypedBufferAccess,
     command_buffer::{
+        allocator::CommandBufferAllocator,
         auto::QueryState,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
@@ -32,7 +33,10 @@ use std::{
 };
 
 /// # Commands related to queries.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Begins a query.
     ///
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.

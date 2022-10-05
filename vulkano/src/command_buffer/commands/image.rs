@@ -9,6 +9,7 @@
 
 use crate::{
     command_buffer::{
+        allocator::CommandBufferAllocator,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CopyError, CopyErrorResource,
@@ -33,7 +34,10 @@ use std::{
 ///
 /// Unlike transfer commands, these require a graphics queue, except for `clear_color_image`, which
 /// can also be called on a compute queue.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Blits an image to another.
     ///
     /// A *blit* is similar to an image copy operation, except that the portion of the image that

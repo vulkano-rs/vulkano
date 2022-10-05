@@ -8,9 +8,9 @@
 // according to those terms.
 
 use super::{
-    pool::{
-        standard::{StandardCommandPoolAlloc, StandardCommandPoolBuilder},
-        CommandPool, CommandPoolAlloc, CommandPoolBuilderAlloc,
+    allocator::{
+        CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc,
+        StandardCommandBufferAlloc, StandardCommandBufferAllocator,
     },
     synced::{CommandBufferState, SyncCommandBuffer, SyncCommandBufferBuilder},
     sys::{CommandBufferBeginInfo, UnsafeCommandBuffer},
@@ -41,13 +41,16 @@ use std::{
     },
 };
 
-/// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
-/// don't implement the `Send` and `Sync` traits. If you use this pool, then the
-/// `AutoCommandBufferBuilder` will not implement `Send` and `Sync` either. Once a command buffer
-/// is built, however, it *does* implement `Send` and `Sync`.
-pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
+/// Note that command buffers allocated from `StandardCommandBufferAllocator` don't implement
+/// the `Send` and `Sync` traits. If you use this allocator, then the `AutoCommandBufferBuilder`
+/// will not implement `Send` and `Sync` either. Once a command buffer is built, however, it *does*
+/// implement `Send` and `Sync`.
+pub struct AutoCommandBufferBuilder<L, A = StandardCommandBufferAllocator>
+where
+    A: CommandBufferAllocator,
+{
     pub(super) inner: SyncCommandBufferBuilder,
-    pool_builder_alloc: P, // Safety: must be dropped after `inner`
+    builder_alloc: A::Builder, // Safety: must be dropped after `inner`
 
     // The index of the queue family that this command buffer is being created for.
     queue_family_index: u32,
@@ -122,20 +125,23 @@ pub(super) struct QueryState {
     pub(super) in_subpass: bool,
 }
 
-impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder> {
+impl<A> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Starts recording a primary command buffer.
     #[inline]
     pub fn primary(
-        device: Arc<Device>,
+        allocator: &A,
         queue_family_index: u32,
         usage: CommandBufferUsage,
     ) -> Result<
-        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
+        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A::Alloc>, A>,
         CommandBufferBeginError,
     > {
         unsafe {
             AutoCommandBufferBuilder::begin(
-                device,
+                allocator,
                 queue_family_index,
                 CommandBufferLevel::Primary,
                 CommandBufferBeginInfo {
@@ -148,21 +154,24 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuild
     }
 }
 
-impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder> {
+impl<A> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Starts recording a secondary command buffer.
     #[inline]
     pub fn secondary(
-        device: Arc<Device>,
+        allocator: &A,
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
     ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
+        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A::Alloc>, A>,
         CommandBufferBeginError,
     > {
         unsafe {
             AutoCommandBufferBuilder::begin(
-                device,
+                allocator,
                 queue_family_index,
                 CommandBufferLevel::Secondary,
                 CommandBufferBeginInfo {
@@ -175,18 +184,20 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
     }
 }
 
-impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     // Actual constructor. Private.
     //
     // `begin_info.inheritance_info` must match `level`.
     unsafe fn begin(
-        device: Arc<Device>,
+        allocator: &A,
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, CommandBufferBeginError>
-    {
-        Self::validate_begin(&device, queue_family_index, level, &begin_info)?;
+    ) -> Result<AutoCommandBufferBuilder<L, A>, CommandBufferBeginError> {
+        Self::validate_begin(allocator.device(), queue_family_index, level, &begin_info)?;
 
         let &CommandBufferBeginInfo {
             usage,
@@ -250,25 +261,23 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             }
         }
 
-        device.with_standard_command_pool(queue_family_index, |pool| {
-            let pool_builder_alloc = pool
-                .allocate(level, 1)?
-                .next()
-                .expect("Requested one command buffer from the command pool, but got zero.");
+        let builder_alloc = allocator
+            .allocate(queue_family_index, level, 1)?
+            .next()
+            .expect("requested one command buffer from the command pool, but got zero");
 
-            let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), begin_info)?;
+        let inner = SyncCommandBufferBuilder::new(builder_alloc.inner(), begin_info)?;
 
-            Ok(AutoCommandBufferBuilder {
-                inner,
-                pool_builder_alloc,
-                queue_family_index,
-                render_pass_state,
-                query_state: HashMap::default(),
-                inheritance_info,
-                usage,
-                _data: PhantomData,
-            })
-        })?
+        Ok(AutoCommandBufferBuilder {
+            inner,
+            builder_alloc,
+            queue_family_index,
+            render_pass_state,
+            query_state: HashMap::default(),
+            inheritance_info,
+            usage,
+            _data: PhantomData,
+        })
     }
 
     fn validate_begin(
@@ -592,12 +601,12 @@ impl From<RequirementNotMet> for CommandBufferBeginError {
     }
 }
 
-impl<P> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<P::Alloc>, P>
+impl<A> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A::Alloc>, A>
 where
-    P: CommandPoolBuilderAlloc,
+    A: CommandBufferAllocator,
 {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<PrimaryAutoCommandBuffer<P::Alloc>, BuildError> {
+    pub fn build(self) -> Result<PrimaryAutoCommandBuffer<A::Alloc>, BuildError> {
         if self.render_pass_state.is_some() {
             return Err(BuildError::RenderPassActive);
         }
@@ -618,18 +627,18 @@ where
 
         Ok(PrimaryAutoCommandBuffer {
             inner: self.inner.build()?,
-            _pool_alloc: self.pool_builder_alloc.into_alloc(),
+            _alloc: self.builder_alloc.into_alloc(),
             submit_state,
         })
     }
 }
 
-impl<P> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<P::Alloc>, P>
+impl<A> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A::Alloc>, A>
 where
-    P: CommandPoolBuilderAlloc,
+    A: CommandBufferAllocator,
 {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<SecondaryAutoCommandBuffer<P::Alloc>, BuildError> {
+    pub fn build(self) -> Result<SecondaryAutoCommandBuffer<A::Alloc>, BuildError> {
         if !self.query_state.is_empty() {
             return Err(BuildError::QueryActive);
         }
@@ -646,7 +655,7 @@ where
 
         Ok(SecondaryAutoCommandBuffer {
             inner: self.inner.build()?,
-            _pool_alloc: self.pool_builder_alloc.into_alloc(),
+            _alloc: self.builder_alloc.into_alloc(),
             inheritance_info: self.inheritance_info.unwrap(),
             submit_state,
         })
@@ -692,7 +701,10 @@ impl From<OomError> for BuildError {
     }
 }
 
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     pub(super) fn queue_family_properties(&self) -> &QueueFamilyProperties {
         &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
     }
@@ -703,15 +715,18 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 }
 
-unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P> {
+unsafe impl<L, A> DeviceOwned for AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 }
 
-pub struct PrimaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
+pub struct PrimaryAutoCommandBuffer<A = StandardCommandBufferAlloc> {
     inner: SyncCommandBuffer,
-    _pool_alloc: P, // Safety: must be dropped after `inner`
+    _alloc: A, // Safety: must be dropped after `inner`
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
@@ -723,9 +738,9 @@ unsafe impl<P> DeviceOwned for PrimaryAutoCommandBuffer<P> {
     }
 }
 
-unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P>
+unsafe impl<A> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<A>
 where
-    P: CommandPoolAlloc,
+    A: CommandBufferAlloc,
 {
     fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()
@@ -817,24 +832,24 @@ where
     }
 }
 
-pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
+pub struct SecondaryAutoCommandBuffer<A = StandardCommandBufferAlloc> {
     inner: SyncCommandBuffer,
-    _pool_alloc: P, // Safety: must be dropped after `inner`
+    _alloc: A, // Safety: must be dropped after `inner`
     inheritance_info: CommandBufferInheritanceInfo,
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
 }
 
-unsafe impl<P> DeviceOwned for SecondaryAutoCommandBuffer<P> {
+unsafe impl<A> DeviceOwned for SecondaryAutoCommandBuffer<A> {
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 }
 
-unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P>
+unsafe impl<A> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<A>
 where
-    P: CommandPoolAlloc,
+    A: CommandBufferAlloc,
 {
     fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()
@@ -992,8 +1007,9 @@ mod tests {
         )
         .unwrap();
 
+        let allocator = StandardCommandBufferAllocator::new(device);
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device,
+            &allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -1029,9 +1045,11 @@ mod tests {
     fn secondary_nonconcurrent_conflict() {
         let (device, queue) = gfx_dev_and_queue!();
 
+        let allocator = StandardCommandBufferAllocator::new(device);
+
         // Make a secondary CB that doesn't support simultaneous use.
         let builder = AutoCommandBufferBuilder::secondary(
-            device.clone(),
+            &allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             Default::default(),
@@ -1041,7 +1059,7 @@ mod tests {
 
         {
             let mut builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                &allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -1064,7 +1082,7 @@ mod tests {
 
         {
             let mut builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                &allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -1073,7 +1091,7 @@ mod tests {
             let cb1 = builder.build().unwrap();
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                device,
+                &allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -1113,8 +1131,9 @@ mod tests {
         )
         .unwrap();
 
+        let allocator = StandardCommandBufferAllocator::new(device);
         let mut builder = AutoCommandBufferBuilder::primary(
-            device,
+            &allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -1163,8 +1182,9 @@ mod tests {
         )
         .unwrap();
 
+        let allocator = StandardCommandBufferAllocator::new(device);
         let mut builder = AutoCommandBufferBuilder::primary(
-            device,
+            &allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

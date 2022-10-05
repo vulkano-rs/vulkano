@@ -10,6 +10,7 @@
 use crate::{
     buffer::{view::BufferViewAbstract, BufferAccess, TypedBufferAccess},
     command_buffer::{
+        allocator::CommandBufferAllocator,
         auto::{RenderPassState, RenderPassStateType},
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
@@ -49,7 +50,10 @@ use std::{
 /// # Commands to execute a bound pipeline.
 ///
 /// Dispatch commands require a compute queue, draw commands require a graphics queue.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Perform a single compute operation using a compute pipeline.
     ///
     /// A compute pipeline must have been bound using

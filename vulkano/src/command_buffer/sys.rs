@@ -12,8 +12,7 @@ pub use super::commands::{
     secondary::UnsafeCommandBufferBuilderExecuteCommands,
 };
 use super::{
-    pool::UnsafeCommandPoolAlloc, CommandBufferInheritanceInfo, CommandBufferLevel,
-    CommandBufferUsage,
+    pool::CommandPoolAlloc, CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
 };
 use crate::{
     command_buffer::{
@@ -52,7 +51,7 @@ impl UnsafeCommandBufferBuilder {
     /// - `kind` must match how `pool_alloc` was created.
     #[inline]
     pub unsafe fn new(
-        pool_alloc: &UnsafeCommandPoolAlloc,
+        pool_alloc: &CommandPoolAlloc,
         begin_info: CommandBufferBeginInfo,
     ) -> Result<UnsafeCommandBufferBuilder, OomError> {
         let CommandBufferBeginInfo {
