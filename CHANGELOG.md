@@ -26,6 +26,20 @@ Changes to `GpuFuture`:
 - Added required method `check_swapchain_image_acquired`.
 - `AccessError::SwapchainImageAcquireOnly` has been renamed to `SwapchainImageNotAcquired`.
 
+Changes to command buffers and command pools:
+- Renamed `CommandPool` to `CommandBufferAllocator`, `StandardCommandPool` to `StandardCommandBufferAllocator`, and `UnsafeCommandPool` to `CommandPool` to better reflect their action.
+- Removed `Device::with_standard_command_pool`.
+- Command buffer allocators must now be managed manually.
+  - `AutoCommandBufferBuilder::{primary, secondary}` now take an implementation of `CommandBufferAllocator` instead of the `Device`.
+  - `DeviceLocalBuffer::{from_buffer, from_data, from_iter}` and `ImmutableImage::{from_iter, from_buffer}` now take an implementation of `CommandBufferAllocator`.
+
+Changes to descriptor sets and descriptor pools:
+- Renamed `DescriptorPool` to `DescriptorSetAllocator`, `StandardDescriptorPool` to `StandardDescriptorSetAllocator`, and `UnsafeDescriptorPool` to `DescriptorPool` to better reflect their action.
+- Renamed `SingleLayout[Variable]DescPool` to `SingleLayout[Variable]DescriptorSetPool` for consistency.
+- Removed `Device::with_standard_descriptor_pool`.
+- Descriptor set allocators must now be managed manually.
+  - `PersistentDescriptorSet::{new, new_variable}` now take an implementation of `DescriptorSetAllocator`, `PersistentDescriptorSet::new_with_pool` has been removed.
+
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
 - Added the `device_coherent`, `device_uncached` and `rdma_capable` flags to `MemoryPropertyFlags`, and improved the documentation of all flags with additional usage advice.
