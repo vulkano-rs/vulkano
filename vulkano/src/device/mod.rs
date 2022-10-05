@@ -105,6 +105,7 @@ use self::physical::PhysicalDevice;
 pub(crate) use self::{features::FeaturesFfi, properties::PropertiesFfi};
 pub use self::{
     features::{FeatureRestriction, FeatureRestrictionError, Features},
+    properties::Properties,
     queue::{Queue, QueueError, QueueFamilyProperties, QueueFlags, QueueGuard},
 };
 pub use crate::{

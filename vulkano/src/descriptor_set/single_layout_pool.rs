@@ -40,7 +40,7 @@ const MAX_POOLS: usize = 32;
 /// If you need a variable descriptor count see [`SingleLayoutVariableDescriptorSetPool`]. For a
 /// general-purpose descriptor set allocator see [`StandardDescriptorSetAllocator`].
 ///
-/// [`StandardDescriptorSetAllocator`]: super::allocator::standard::StandardDescriptorSetAllocator
+/// [`StandardDescriptorSetAllocator`]: super::allocator::StandardDescriptorSetAllocator
 #[derive(Debug)]
 pub struct SingleLayoutDescriptorSetPool {
     // The `SingleLayoutPool` struct contains an actual Vulkan pool. Every time it is full we create
@@ -265,7 +265,7 @@ impl Hash for SingleLayoutDescSet {
 /// if you need the functionality and prefer [`SingleLayoutDescriptorSetPool`] otherwise. For a
 /// more general purpose descriptor set allocator see [`StandardDescriptorSetAllocator`].
 ///
-/// [`StandardDescriptorSetAllocator`]: super::allocator::standard::StandardDescriptorSetAllocator
+/// [`StandardDescriptorSetAllocator`]: super::allocator::StandardDescriptorSetAllocator
 #[derive(Debug)]
 pub struct SingleLayoutVariableDescriptorSetPool {
     // The `SingleLayoutVariablePool` struct contains an actual Vulkan pool. Every time it is full

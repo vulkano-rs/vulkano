@@ -2610,7 +2610,8 @@ vulkan_bitflags! {
     /// The tool modifies the API features, limits or extensions presented to the application.
     modifying_features = MODIFYING_FEATURES,
 
-    /// The tool reports information to the user via a [`DebugUtilsMessenger`].
+    /// The tool reports information to the user via a
+    /// [`DebugUtilsMessenger`](crate::instance::debug::DebugUtilsMessenger).
     debug_reporting = DEBUG_REPORTING_EXT {
         instance_extensions: [ext_debug_utils, ext_debug_report],
     },
