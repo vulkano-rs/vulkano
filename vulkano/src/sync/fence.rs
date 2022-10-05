@@ -572,7 +572,7 @@ impl Fence {
     ///
     /// The [`khr_external_fence_fd`](crate::device::DeviceExtensions::khr_external_fence_fd)
     /// extension must be enabled on the device.
-    #[cfg(any(doc, unix))]
+    #[cfg(unix)]
     #[inline]
     pub fn export_fd(&self, handle_type: ExternalFenceHandleType) -> Result<File, FenceError> {
         let mut state = self.state.lock();
@@ -581,7 +581,7 @@ impl Fence {
         unsafe { Ok(self.export_fd_unchecked_locked(handle_type, &mut state)?) }
     }
 
-    #[cfg(any(doc, unix))]
+    #[cfg(unix)]
     fn validate_export_fd(
         &self,
         handle_type: ExternalFenceHandleType,
@@ -650,7 +650,7 @@ impl Fence {
         Ok(())
     }
 
-    #[cfg(any(doc, unix))]
+    #[cfg(unix)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn export_fd_unchecked(
@@ -661,7 +661,7 @@ impl Fence {
         self.export_fd_unchecked_locked(handle_type, &mut state)
     }
 
-    #[cfg(any(doc, unix))]
+    #[cfg(unix)]
     unsafe fn export_fd_unchecked_locked(
         &self,
         handle_type: ExternalFenceHandleType,
@@ -694,7 +694,7 @@ impl Fence {
     ///
     /// The [`khr_external_fence_win32`](crate::device::DeviceExtensions::khr_external_fence_win32)
     /// extension must be enabled on the device.
-    #[cfg(any(doc, windows))]
+    #[cfg(windows)]
     #[inline]
     pub fn export_win32_handle(
         &self,
@@ -706,7 +706,7 @@ impl Fence {
         unsafe { Ok(self.export_win32_handle_unchecked_locked(handle_type, &mut state)?) }
     }
 
-    #[cfg(any(doc, windows))]
+    #[cfg(windows)]
     fn validate_export_win32_handle(
         &self,
         handle_type: ExternalFenceHandleType,
@@ -782,7 +782,7 @@ impl Fence {
         Ok(())
     }
 
-    #[cfg(any(doc, windows))]
+    #[cfg(windows)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn export_win32_handle_unchecked(
@@ -793,7 +793,7 @@ impl Fence {
         self.export_win32_handle_unchecked_locked(handle_type, &mut state)
     }
 
-    #[cfg(any(doc, windows))]
+    #[cfg(windows)]
     unsafe fn export_win32_handle_unchecked_locked(
         &self,
         handle_type: ExternalFenceHandleType,
@@ -830,7 +830,7 @@ impl Fence {
     /// - If in `import_fence_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`,
     ///   then `file` must have been exported from Vulkan or a compatible API,
     ///   with a driver and device UUID equal to those of the device that owns `self`.
-    #[cfg(any(doc, unix))]
+    #[cfg(unix)]
     #[inline]
     pub unsafe fn import_fd(
         &self,
@@ -842,7 +842,7 @@ impl Fence {
         Ok(self.import_fd_unchecked_locked(import_fence_fd_info, &mut state)?)
     }
 
-    #[cfg(any(doc, unix))]
+    #[cfg(unix)]
     fn validate_import_fd(
         &self,
         import_fence_fd_info: &ImportFenceFdInfo,
@@ -895,7 +895,7 @@ impl Fence {
         Ok(())
     }
 
-    #[cfg(any(doc, unix))]
+    #[cfg(unix)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn import_fd_unchecked(
@@ -906,7 +906,7 @@ impl Fence {
         self.import_fd_unchecked_locked(import_fence_fd_info, &mut state)
     }
 
-    #[cfg(any(doc, unix))]
+    #[cfg(unix)]
     #[cfg(unix)]
     unsafe fn import_fd_unchecked_locked(
         &self,
@@ -951,7 +951,7 @@ impl Fence {
     ///   `ExternalHandleType::OpaqueWin32` or `ExternalHandleType::OpaqueWin32Kmt`,
     ///   then `handle` must have been exported from Vulkan or a compatible API,
     ///   with a driver and device UUID equal to those of the device that owns `self`.
-    #[cfg(any(doc, windows))]
+    #[cfg(windows)]
     #[inline]
     pub unsafe fn import_win32_handle(
         &self,
@@ -963,7 +963,7 @@ impl Fence {
         Ok(self.import_win32_handle_unchecked_locked(import_fence_win32_handle_info, &mut state)?)
     }
 
-    #[cfg(any(doc, windows))]
+    #[cfg(windows)]
     fn validate_import_win32_handle(
         &self,
         import_fence_win32_handle_info: &ImportFenceWin32HandleInfo,
@@ -1016,7 +1016,7 @@ impl Fence {
         Ok(())
     }
 
-    #[cfg(any(doc, windows))]
+    #[cfg(windows)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn import_win32_handle_unchecked(
@@ -1027,7 +1027,7 @@ impl Fence {
         self.import_win32_handle_unchecked_locked(import_fence_win32_handle_info, &mut state)
     }
 
-    #[cfg(any(doc, windows))]
+    #[cfg(windows)]
     unsafe fn import_win32_handle_unchecked_locked(
         &self,
         import_fence_win32_handle_info: ImportFenceWin32HandleInfo,
@@ -1372,7 +1372,7 @@ vulkan_bitflags! {
     temporary = TEMPORARY,
 }
 
-#[cfg(any(doc, unix))]
+#[cfg(unix)]
 #[derive(Debug)]
 pub struct ImportFenceFdInfo {
     /// Additional parameters for the import operation.
@@ -1400,7 +1400,7 @@ pub struct ImportFenceFdInfo {
     pub _ne: crate::NonExhaustive,
 }
 
-#[cfg(any(doc, unix))]
+#[cfg(unix)]
 impl ImportFenceFdInfo {
     /// Returns an `ImportFenceFdInfo` with the specified `handle_type`.
     #[inline]
@@ -1414,7 +1414,7 @@ impl ImportFenceFdInfo {
     }
 }
 
-#[cfg(any(doc, windows))]
+#[cfg(windows)]
 #[derive(Debug)]
 pub struct ImportFenceWin32HandleInfo {
     /// Additional parameters for the import operation.
@@ -1437,7 +1437,7 @@ pub struct ImportFenceWin32HandleInfo {
     pub _ne: crate::NonExhaustive,
 }
 
-#[cfg(any(doc, windows))]
+#[cfg(windows)]
 impl ImportFenceWin32HandleInfo {
     /// Returns an `ImportFenceWin32HandleInfo` with the specified `handle_type`.
     #[inline]

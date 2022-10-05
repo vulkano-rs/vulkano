@@ -104,9 +104,9 @@
 //! TODO: talk about using fences to clean up
 
 pub(crate) use self::fence::FenceState;
-#[cfg(any(doc, unix))]
+#[cfg(unix)]
 pub use self::fence::ImportFenceFdInfo;
-#[cfg(any(doc, windows))]
+#[cfg(windows)]
 pub use self::fence::ImportFenceWin32HandleInfo;
 pub use self::{
     event::{Event, EventCreateInfo},
