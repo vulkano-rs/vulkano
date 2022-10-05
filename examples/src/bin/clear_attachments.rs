@@ -153,8 +153,7 @@ fn main() {
     )
     .unwrap();
 
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let mut width = swapchain.image_extent()[0];
     let mut height = swapchain.image_extent()[1];

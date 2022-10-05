@@ -21,41 +21,91 @@ use crate::{
     OomError,
 };
 use crossbeam_queue::SegQueue;
-use std::{marker::PhantomData, mem::ManuallyDrop, ptr, sync::Arc, vec::IntoIter as VecIntoIter};
+use smallvec::SmallVec;
+use std::{cell::UnsafeCell, marker::PhantomData, mem::ManuallyDrop, sync::Arc, vec::IntoIter};
 
 /// Standard implementation of a command buffer allocator.
 ///
-/// A thread can have as many `Arc<StandardCommandBufferAllocator>`s as needed, but they can't be
-/// shared between threads. This is done so that there are no locks involved when creating command
+/// A thread can have as many `StandardCommandBufferAllocator`s as needed, but they can't be shared
+/// between threads. This is done so that there are no locks involved when creating command
 /// buffers. You are encouraged to create one allocator per frame in flight per thread.
 ///
 /// Command buffers can't be moved between threads during the building process, but finished command
 /// buffers can. When a command buffer is dropped, it is returned back to the pool for reuse.
 #[derive(Debug)]
 pub struct StandardCommandBufferAllocator {
-    // The Vulkan pool specific to a device's queue family.
-    inner: CommandPool,
-    // List of existing primary command buffers that are available for reuse.
-    available_primary_command_buffers: SegQueue<CommandPoolAlloc>,
-    // List of existing secondary command buffers that are available for reuse.
-    available_secondary_command_buffers: SegQueue<CommandPoolAlloc>,
+    device: Arc<Device>,
+    /// Each queue family index points directly to its pool.
+    pools: SmallVec<[UnsafeCell<Option<Arc<Pool>>>; 8]>,
 }
 
 impl StandardCommandBufferAllocator {
-    /// Builds a new allocator.
-    ///
+    /// Creates a new `StandardCommandBufferAllocator`.
+    #[inline]
+    pub fn new(device: Arc<Device>) -> Self {
+        let pools = device
+            .physical_device()
+            .queue_family_properties()
+            .iter()
+            .map(|_| UnsafeCell::new(None))
+            .collect();
+
+        StandardCommandBufferAllocator { device, pools }
+    }
+}
+
+unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
+    type Iter = IntoIter<StandardCommandBufferBuilderAlloc>;
+
+    type Builder = StandardCommandBufferBuilderAlloc;
+
+    type Alloc = StandardCommandBufferAlloc;
+
     /// # Panics
     ///
-    /// - Panics if the device and the queue family don't belong to the same physical device.
-    pub fn new(
-        device: Arc<Device>,
+    /// - Panics if the queue family index is not active on the device.
+    #[inline]
+    fn allocate(
+        &self,
         queue_family_index: u32,
-    ) -> Result<Arc<StandardCommandBufferAllocator>, OomError> {
-        assert!(
-            queue_family_index < device.physical_device().queue_family_properties().len() as u32
-        );
+        level: CommandBufferLevel,
+        command_buffer_count: u32,
+    ) -> Result<Self::Iter, OomError> {
+        // VUID-vkCreateCommandPool-queueFamilyIndex-01937
+        assert!(self
+            .device
+            .active_queue_family_indices()
+            .contains(&queue_family_index));
 
-        let inner = CommandPool::new(
+        let pool = unsafe { &mut *self.pools[queue_family_index as usize].get() };
+        if pool.is_none() {
+            *pool = Some(Pool::new(self.device.clone(), queue_family_index)?);
+        }
+
+        pool.as_ref().unwrap().allocate(level, command_buffer_count)
+    }
+}
+
+unsafe impl DeviceOwned for StandardCommandBufferAllocator {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+#[derive(Debug)]
+struct Pool {
+    // The Vulkan pool specific to a device's queue family.
+    inner: CommandPool,
+    // List of existing primary command buffers that are available for reuse.
+    primary_pool: SegQueue<CommandPoolAlloc>,
+    // List of existing secondary command buffers that are available for reuse.
+    secondary_pool: SegQueue<CommandPoolAlloc>,
+}
+
+impl Pool {
+    fn new(device: Arc<Device>, queue_family_index: u32) -> Result<Arc<Self>, OomError> {
+        CommandPool::new(
             device,
             CommandPoolCreateInfo {
                 queue_family_index,
@@ -63,38 +113,34 @@ impl StandardCommandBufferAllocator {
                 ..Default::default()
             },
         )
+        .map(|inner| {
+            Arc::new(Pool {
+                inner,
+                primary_pool: Default::default(),
+                secondary_pool: Default::default(),
+            })
+        })
         .map_err(|err| match err {
             CommandPoolCreationError::OomError(err) => err,
-            _ => panic!("Unexpected error: {}", err),
-        })?;
-
-        Ok(Arc::new(StandardCommandBufferAllocator {
-            inner,
-            available_primary_command_buffers: Default::default(),
-            available_secondary_command_buffers: Default::default(),
-        }))
+            // We check that the provided queue family index is active on the device, so it can't
+            // be out of range.
+            CommandPoolCreationError::QueueFamilyIndexOutOfRange { .. } => unreachable!(),
+        })
     }
-}
 
-unsafe impl CommandBufferAllocator for Arc<StandardCommandBufferAllocator> {
-    type Iter = VecIntoIter<StandardCommandBufferBuilderAlloc>;
-    type Builder = StandardCommandBufferBuilderAlloc;
-    type Alloc = StandardCommandBufferAlloc;
-
-    #[inline]
     fn allocate(
-        &self,
+        self: &Arc<Self>,
         level: CommandBufferLevel,
         mut command_buffer_count: u32,
-    ) -> Result<Self::Iter, OomError> {
+    ) -> Result<IntoIter<StandardCommandBufferBuilderAlloc>, OomError> {
         // The final output.
         let mut output = Vec::with_capacity(command_buffer_count as usize);
 
         // First, pick from already-existing command buffers.
         {
             let existing = match level {
-                CommandBufferLevel::Primary => &self.available_primary_command_buffers,
-                CommandBufferLevel::Secondary => &self.available_secondary_command_buffers,
+                CommandBufferLevel::Primary => &self.primary_pool,
+                CommandBufferLevel::Secondary => &self.secondary_pool,
             };
 
             for _ in 0..command_buffer_count as usize {
@@ -136,18 +182,6 @@ unsafe impl CommandBufferAllocator for Arc<StandardCommandBufferAllocator> {
 
         // Final output.
         Ok(output.into_iter())
-    }
-
-    #[inline]
-    fn queue_family_index(&self) -> u32 {
-        self.inner.queue_family_index()
-    }
-}
-
-unsafe impl DeviceOwned for StandardCommandBufferAllocator {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.inner.device()
     }
 }
 
@@ -193,7 +227,7 @@ pub struct StandardCommandBufferAlloc {
     // The actual command buffer. Extracted in the `Drop` implementation.
     cmd: ManuallyDrop<CommandPoolAlloc>,
     // We hold a reference to the command pool for our destructor.
-    pool: Arc<StandardCommandBufferAllocator>,
+    pool: Arc<Pool>,
 }
 
 unsafe impl Send for StandardCommandBufferAlloc {}
@@ -207,28 +241,25 @@ unsafe impl CommandBufferAlloc for StandardCommandBufferAlloc {
 
     #[inline]
     fn queue_family_index(&self) -> u32 {
-        self.pool.queue_family_index()
+        self.pool.inner.queue_family_index()
     }
 }
 
 unsafe impl DeviceOwned for StandardCommandBufferAlloc {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.pool.device()
+        self.pool.inner.device()
     }
 }
 
 impl Drop for StandardCommandBufferAlloc {
     #[inline]
     fn drop(&mut self) {
-        // Safe because `self.cmd` is wrapped in a `ManuallyDrop`.
-        let cmd: CommandPoolAlloc = unsafe { ptr::read(&*self.cmd) };
+        let cmd = unsafe { ManuallyDrop::take(&mut self.cmd) };
 
         match cmd.level() {
-            CommandBufferLevel::Primary => self.pool.available_primary_command_buffers.push(cmd),
-            CommandBufferLevel::Secondary => {
-                self.pool.available_secondary_command_buffers.push(cmd)
-            }
+            CommandBufferLevel::Primary => self.pool.primary_pool.push(cmd),
+            CommandBufferLevel::Secondary => self.pool.secondary_pool.push(cmd),
         }
     }
 }
@@ -244,11 +275,10 @@ mod tests {
     fn reuse_command_buffers() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let allocator = StandardCommandBufferAllocator::new(device);
 
         let cb = allocator
-            .allocate(CommandBufferLevel::Primary, 1)
+            .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
             .unwrap()
             .next()
             .unwrap();
@@ -256,7 +286,7 @@ mod tests {
         drop(cb);
 
         let cb2 = allocator
-            .allocate(CommandBufferLevel::Primary, 1)
+            .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
             .unwrap()
             .next()
             .unwrap();

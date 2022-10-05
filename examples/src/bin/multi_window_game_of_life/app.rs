@@ -11,7 +11,8 @@ use crate::{
     game_of_life::GameOfLifeComputePipeline, render_pass::RenderPassPlaceOverFrame, SCALING,
     WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, rc::Rc, sync::Arc};
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::{device::Queue, format::Format};
 use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 use vulkano_util::window::{VulkanoWindows, WindowDescriptor};
@@ -29,9 +30,21 @@ impl RenderPipeline {
         size: [u32; 2],
         swapchain_format: Format,
     ) -> RenderPipeline {
+        let command_buffer_allocator = Rc::new(StandardCommandBufferAllocator::new(
+            gfx_queue.device().clone(),
+        ));
+
         RenderPipeline {
-            compute: GameOfLifeComputePipeline::new(compute_queue, size),
-            place_over_frame: RenderPassPlaceOverFrame::new(gfx_queue, swapchain_format),
+            compute: GameOfLifeComputePipeline::new(
+                compute_queue,
+                command_buffer_allocator.clone(),
+                size,
+            ),
+            place_over_frame: RenderPassPlaceOverFrame::new(
+                gfx_queue,
+                command_buffer_allocator,
+                swapchain_format,
+            ),
         }
     }
 }

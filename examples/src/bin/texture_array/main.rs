@@ -211,8 +211,7 @@ fn main() {
     .unwrap();
 
     let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let (texture, tex_future) = {
         let image_array_data: Vec<_> = vec![

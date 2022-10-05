@@ -8,7 +8,7 @@
 // according to those terms.
 
 use bytemuck::{Pod, Zeroable};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
@@ -34,7 +34,7 @@ pub struct TriangleDrawSystem {
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
-    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
 }
 
 impl TriangleDrawSystem {
@@ -42,7 +42,7 @@ impl TriangleDrawSystem {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     ) -> TriangleDrawSystem {
         let vertices = [
             Vertex {
@@ -96,7 +96,7 @@ impl TriangleDrawSystem {
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
     pub fn draw(&self, viewport_dimensions: [u32; 2]) -> SecondaryAutoCommandBuffer {
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &self.command_buffer_allocator,
+            &*self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {

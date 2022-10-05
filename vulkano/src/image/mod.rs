@@ -976,8 +976,7 @@ mod tests {
     fn mipmap_working_immutable_image() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         let dimensions = ImageDimensions::Dim2d {
             width: 512,

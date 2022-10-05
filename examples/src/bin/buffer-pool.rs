@@ -240,8 +240,7 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     event_loop.run(move |event, _, control_flow| {
         match event {

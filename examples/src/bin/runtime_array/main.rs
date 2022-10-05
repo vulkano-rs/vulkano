@@ -271,8 +271,7 @@ fn main() {
     .unwrap();
 
     let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let mascot_texture = {
         let png_bytes = include_bytes!("rust_mascot.png").to_vec();

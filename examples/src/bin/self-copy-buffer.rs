@@ -117,8 +117,7 @@ fn main() {
     };
 
     let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let data_buffer = {
         // we intitialize half of the array and leave the other half to 0, we will use copy later to fill it

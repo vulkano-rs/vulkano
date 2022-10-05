@@ -215,8 +215,7 @@ fn main() {
     .unwrap();
 
     let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let (texture, tex_future) = {
         let png_bytes = include_bytes!("image_img.png").to_vec();
@@ -292,9 +291,6 @@ fn main() {
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(tex_future.boxed());
-
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {

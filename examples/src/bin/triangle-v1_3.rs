@@ -412,8 +412,7 @@ fn main() {
     //
     // A Vulkan command pool only works for one queue family, and vulkano's command buffer allocator
     // reflects that, therefore we need to pass the queue family during creation.
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     // Initialization is finally finished!
 

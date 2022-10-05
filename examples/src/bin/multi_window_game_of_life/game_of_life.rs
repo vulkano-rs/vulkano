@@ -9,7 +9,7 @@
 
 use cgmath::Vector2;
 use rand::Rng;
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::image::{ImageUsage, StorageImage};
@@ -33,7 +33,7 @@ use vulkano_util::renderer::DeviceImageView;
 pub struct GameOfLifeComputePipeline {
     compute_queue: Arc<Queue>,
     compute_life_pipeline: Arc<ComputePipeline>,
-    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
     life_in: Arc<CpuAccessibleBuffer<[u32]>>,
     life_out: Arc<CpuAccessibleBuffer<[u32]>>,
@@ -56,7 +56,11 @@ fn rand_grid(compute_queue: &Arc<Queue>, size: [u32; 2]) -> Arc<CpuAccessibleBuf
 }
 
 impl GameOfLifeComputePipeline {
-    pub fn new(compute_queue: Arc<Queue>, size: [u32; 2]) -> GameOfLifeComputePipeline {
+    pub fn new(
+        compute_queue: Arc<Queue>,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        size: [u32; 2],
+    ) -> GameOfLifeComputePipeline {
         let life_in = rand_grid(&compute_queue, size);
         let life_out = rand_grid(&compute_queue, size);
 
@@ -83,12 +87,6 @@ impl GameOfLifeComputePipeline {
                 transfer_dst: true,
                 ..ImageUsage::empty()
             },
-        )
-        .unwrap();
-
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(
-            compute_queue.device().clone(),
-            compute_queue.queue_family_index(),
         )
         .unwrap();
 
@@ -127,7 +125,7 @@ impl GameOfLifeComputePipeline {
         dead_color: [f32; 4],
     ) -> Box<dyn GpuFuture> {
         let mut builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            &*self.command_buffer_allocator,
             self.compute_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

@@ -79,7 +79,7 @@ use std::{
 /// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
-/// # let cb_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
+/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 ///
 /// // Simple iterator to construct test data.
 /// let data = (0..10_000).map(|i| i as f32);
@@ -108,7 +108,7 @@ use std::{
 ///
 /// // Create a one-time command to copy between the buffers.
 /// let mut cbb = AutoCommandBufferBuilder::primary(
-///     &cb_allocator,
+///     &command_buffer_allocator,
 ///     queue.queue_family_index(),
 ///     CommandBufferUsage::OneTimeSubmit,
 /// )
@@ -600,9 +600,7 @@ mod tests {
     fn from_data_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
-                .unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
 
         let (buffer, _) = DeviceLocalBuffer::from_data(
             12u32,
@@ -650,9 +648,7 @@ mod tests {
     fn from_iter_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
-                .unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
 
         let (buffer, _) = DeviceLocalBuffer::from_iter(
             (0..512u32).map(|n| n * 2),
@@ -703,8 +699,7 @@ mod tests {
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         assert_should_panic!({
             DeviceLocalBuffer::from_data(

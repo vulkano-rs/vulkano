@@ -10,8 +10,9 @@
 use crate::fractal_compute_pipeline::FractalComputePipeline;
 use crate::place_over_frame::RenderPassPlaceOverFrame;
 use cgmath::Vector2;
-use std::sync::Arc;
 use std::time::Instant;
+use std::{rc::Rc, sync::Arc};
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::device::Queue;
 use vulkano::sync::GpuFuture;
 use vulkano_util::renderer::{DeviceImageView, VulkanoWindowRenderer};
@@ -58,9 +59,20 @@ pub struct FractalApp {
 
 impl FractalApp {
     pub fn new(gfx_queue: Arc<Queue>, image_format: vulkano::format::Format) -> FractalApp {
+        let command_buffer_allocator = Rc::new(StandardCommandBufferAllocator::new(
+            gfx_queue.device().clone(),
+        ));
+
         FractalApp {
-            fractal_pipeline: FractalComputePipeline::new(gfx_queue.clone()),
-            place_over_frame: RenderPassPlaceOverFrame::new(gfx_queue, image_format),
+            fractal_pipeline: FractalComputePipeline::new(
+                gfx_queue.clone(),
+                command_buffer_allocator.clone(),
+            ),
+            place_over_frame: RenderPassPlaceOverFrame::new(
+                gfx_queue,
+                command_buffer_allocator,
+                image_format,
+            ),
             is_julia: false,
             is_c_paused: false,
             c: Vector2::new(0.0, 0.0),

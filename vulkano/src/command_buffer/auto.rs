@@ -41,11 +41,11 @@ use std::{
     },
 };
 
-/// Note that command buffers allocated from `Arc<StandardCommandBufferAllocator>` don't implement
+/// Note that command buffers allocated from `StandardCommandBufferAllocator` don't implement
 /// the `Send` and `Sync` traits. If you use this allocator, then the `AutoCommandBufferBuilder`
 /// will not implement `Send` and `Sync` either. Once a command buffer is built, however, it *does*
 /// implement `Send` and `Sync`.
-pub struct AutoCommandBufferBuilder<L, A = Arc<StandardCommandBufferAllocator>>
+pub struct AutoCommandBufferBuilder<L, A = StandardCommandBufferAllocator>
 where
     A: CommandBufferAllocator,
 {
@@ -262,9 +262,9 @@ where
         }
 
         let builder_alloc = allocator
-            .allocate(level, 1)?
+            .allocate(queue_family_index, level, 1)?
             .next()
-            .expect("Requested one command buffer from the command pool, but got zero.");
+            .expect("requested one command buffer from the command pool, but got zero");
 
         let inner = SyncCommandBufferBuilder::new(builder_alloc.inner(), begin_info)?;
 
@@ -1007,8 +1007,7 @@ mod tests {
         )
         .unwrap();
 
-        let allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let allocator = StandardCommandBufferAllocator::new(device);
         let mut cbb = AutoCommandBufferBuilder::primary(
             &allocator,
             queue.queue_family_index(),
@@ -1046,8 +1045,7 @@ mod tests {
     fn secondary_nonconcurrent_conflict() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let allocator = StandardCommandBufferAllocator::new(device);
 
         // Make a secondary CB that doesn't support simultaneous use.
         let builder = AutoCommandBufferBuilder::secondary(
@@ -1133,8 +1131,7 @@ mod tests {
         )
         .unwrap();
 
-        let allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let allocator = StandardCommandBufferAllocator::new(device);
         let mut builder = AutoCommandBufferBuilder::primary(
             &allocator,
             queue.queue_family_index(),
@@ -1185,8 +1182,7 @@ mod tests {
         )
         .unwrap();
 
-        let allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let allocator = StandardCommandBufferAllocator::new(device);
         let mut builder = AutoCommandBufferBuilder::primary(
             &allocator,
             queue.queue_family_index(),

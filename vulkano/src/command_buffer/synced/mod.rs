@@ -556,11 +556,10 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let allocator =
-                StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+            let allocator = StandardCommandBufferAllocator::new(device);
 
             let builder_alloc = allocator
-                .allocate(CommandBufferLevel::Primary, 1)
+                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
                 .unwrap()
                 .next()
                 .unwrap();
@@ -581,9 +580,7 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let allocator =
-                StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
-                    .unwrap();
+            let allocator = StandardCommandBufferAllocator::new(device.clone());
 
             // Create a tiny test buffer
             let (buf, future) = DeviceLocalBuffer::from_data(
@@ -623,7 +620,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let allocs = allocator
-                .allocate(CommandBufferLevel::Primary, 2)
+                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 2)
                 .unwrap()
                 .collect::<Vec<_>>();
 
@@ -681,12 +678,10 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let allocator =
-                StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
-                    .unwrap();
+            let allocator = StandardCommandBufferAllocator::new(device.clone());
 
             let builder_alloc = allocator
-                .allocate(CommandBufferLevel::Primary, 1)
+                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
                 .unwrap()
                 .next()
                 .unwrap();
@@ -723,11 +718,9 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator =
-                StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index())
-                    .unwrap();
+            let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
             let builder_alloc = cb_allocator
-                .allocate(CommandBufferLevel::Primary, 1)
+                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
                 .unwrap()
                 .next()
                 .unwrap();

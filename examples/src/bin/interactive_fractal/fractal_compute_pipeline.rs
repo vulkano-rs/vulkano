@@ -9,7 +9,7 @@
 
 use cgmath::Vector2;
 use rand::Rng;
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
@@ -29,7 +29,7 @@ use vulkano_util::renderer::DeviceImageView;
 pub struct FractalComputePipeline {
     queue: Arc<Queue>,
     pipeline: Arc<ComputePipeline>,
-    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
     palette: Arc<CpuAccessibleBuffer<[[f32; 4]]>>,
     palette_size: i32,
@@ -37,7 +37,10 @@ pub struct FractalComputePipeline {
 }
 
 impl FractalComputePipeline {
-    pub fn new(queue: Arc<Queue>) -> FractalComputePipeline {
+    pub fn new(
+        queue: Arc<Queue>,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+    ) -> FractalComputePipeline {
         // Initial colors
         let colors = vec![
             [1.0, 0.0, 0.0, 1.0],
@@ -73,9 +76,6 @@ impl FractalComputePipeline {
         };
 
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(queue.device().clone());
-        let command_buffer_allocator =
-            StandardCommandBufferAllocator::new(queue.device().clone(), queue.queue_family_index())
-                .unwrap();
 
         FractalComputePipeline {
             queue,
@@ -133,7 +133,7 @@ impl FractalComputePipeline {
         )
         .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            &*self.command_buffer_allocator,
             self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

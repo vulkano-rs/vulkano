@@ -322,8 +322,7 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 

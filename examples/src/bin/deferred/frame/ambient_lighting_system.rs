@@ -8,7 +8,7 @@
 // according to those terms.
 
 use bytemuck::{Pod, Zeroable};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
@@ -39,7 +39,7 @@ pub struct AmbientLightingSystem {
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
-    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
 }
 
@@ -48,7 +48,7 @@ impl AmbientLightingSystem {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     ) -> AmbientLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader

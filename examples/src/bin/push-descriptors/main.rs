@@ -204,8 +204,7 @@ fn main() {
     )
     .unwrap();
 
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let (texture, tex_future) = {
         let png_bytes = include_bytes!("image_img.png").to_vec();

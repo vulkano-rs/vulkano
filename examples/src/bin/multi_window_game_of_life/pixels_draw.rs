@@ -8,7 +8,7 @@
 // according to those terms.
 
 use bytemuck::{Pod, Zeroable};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
@@ -71,7 +71,7 @@ pub struct PixelsDrawPipeline {
     gfx_queue: Arc<Queue>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
-    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
     vertices: Arc<CpuAccessibleBuffer<[TexturedVertex]>>,
     indices: Arc<CpuAccessibleBuffer<[u32]>>,
@@ -81,7 +81,7 @@ impl PixelsDrawPipeline {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     ) -> PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let vertex_buffer = CpuAccessibleBuffer::<[TexturedVertex]>::from_iter(
@@ -169,7 +169,7 @@ impl PixelsDrawPipeline {
         image: Arc<dyn ImageViewAbstract>,
     ) -> SecondaryAutoCommandBuffer {
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &self.command_buffer_allocator,
+            &*self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {

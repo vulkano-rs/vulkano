@@ -51,12 +51,10 @@ pub unsafe trait CommandBufferAllocator: DeviceOwned {
     /// Returns an iterator that contains the requested amount of allocated command buffers.
     fn allocate(
         &self,
+        queue_family_index: u32,
         level: CommandBufferLevel,
         command_buffer_count: u32,
     ) -> Result<Self::Iter, OomError>;
-
-    /// Returns the index of the queue family that this pool targets.
-    fn queue_family_index(&self) -> u32;
 }
 
 /// A command buffer allocated from a pool and that can be recorded.

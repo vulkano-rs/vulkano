@@ -198,7 +198,7 @@ fn main() {
         queue: Arc<Queue>,
         data_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
         parameters: shaders::ty::Parameters,
-        command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+        command_buffer_allocator: &StandardCommandBufferAllocator,
         descriptor_set_allocator: &mut StandardDescriptorSetAllocator,
     ) {
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
@@ -237,8 +237,7 @@ fn main() {
         future.wait(None).unwrap();
     }
 
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), queue.queue_family_index()).unwrap();
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
     let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
     // Preparing test data array `[0, 1, 2, 3....]`

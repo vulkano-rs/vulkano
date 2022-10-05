@@ -13,7 +13,7 @@ use super::{
     point_lighting_system::PointLightingSystem,
 };
 use cgmath::{Matrix4, SquareMatrix, Vector3};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
@@ -36,7 +36,7 @@ pub struct FrameSystem {
     // in of a change in the dimensions.
     render_pass: Arc<RenderPass>,
 
-    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
 
     // Intermediate render target that will contain the albedo of each pixel of the scene.
     diffuse_buffer: Arc<ImageView<AttachmentImage>>,
@@ -69,7 +69,7 @@ impl FrameSystem {
     pub fn new(
         gfx_queue: Arc<Queue>,
         final_output_format: Format,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     ) -> FrameSystem {
         // Creating the render pass.
         //
@@ -321,7 +321,7 @@ impl FrameSystem {
 
         // Start the command buffer builder that will be filled throughout the frame handling.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            &*self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

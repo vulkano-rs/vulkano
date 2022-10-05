@@ -26,16 +26,16 @@
 //!
 //! # let device: Arc<vulkano::device::Device> = return;
 //! # let queue: Arc<vulkano::device::Queue> = return;
-//! # let cb_allocator: Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
+//! # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 //! let usage = BufferUsage {
 //!     storage_texel_buffer: true,
-//!     .. BufferUsage::empty()
+//!     ..BufferUsage::empty()
 //! };
 //!
 //! let (buffer, _future) = DeviceLocalBuffer::<[u32]>::from_iter(
 //!     (0..128).map(|n| n),
 //!     usage,
-//!     &cb_allocator,
+//!     &command_buffer_allocator,
 //!     queue.clone()
 //! ).unwrap();
 //! let _view = BufferView::new(
@@ -497,8 +497,7 @@ mod tests {
             ..BufferUsage::empty()
         };
 
-        let cb_allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
@@ -527,8 +526,7 @@ mod tests {
             ..BufferUsage::empty()
         };
 
-        let cb_allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
@@ -557,8 +555,7 @@ mod tests {
             ..BufferUsage::empty()
         };
 
-        let cb_allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         let (buffer, _) =
             DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, &cb_allocator, queue)
@@ -578,8 +575,7 @@ mod tests {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
@@ -611,8 +607,7 @@ mod tests {
             ..BufferUsage::empty()
         };
 
-        let cb_allocator =
-            StandardCommandBufferAllocator::new(device, queue.queue_family_index()).unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         let (buffer, _) = DeviceLocalBuffer::<[[f64; 4]]>::from_iter(
             (0..128).map(|_| [0.0; 4]),
