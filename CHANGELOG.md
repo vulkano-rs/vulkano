@@ -35,6 +35,7 @@ Changes to command buffers and command pools:
 
 Changes to descriptor sets and descriptor pools:
 - Renamed `DescriptorPool` to `DescriptorSetAllocator`, `StandardDescriptorPool` to `StandardDescriptorSetAllocator`, and `UnsafeDescriptorPool` to `DescriptorPool` to better reflect their action.
+- `DescriptorPool` methods now take `&self` and the type itself is `!Sync`.
 - Renamed `SingleLayout[Variable]DescPool` to `SingleLayout[Variable]DescriptorSetPool` for consistency.
 - Removed `Device::with_standard_descriptor_pool`.
 - Descriptor set allocators must now be managed manually.
