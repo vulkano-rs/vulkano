@@ -1785,131 +1785,139 @@ impl PhysicalDevice {
         surface: &Surface<W>,
         surface_info: SurfaceInfo,
     ) -> Result<Vec<(Format, ColorSpace)>, VulkanError> {
-        let SurfaceInfo {
-            full_screen_exclusive,
-            win32_monitor,
-            _ne: _,
-        } = surface_info;
+        surface.surface_formats.get_or_try_insert(
+            (self.handle, surface_info),
+            |(_, surface_info)| {
+                let &SurfaceInfo {
+                    full_screen_exclusive,
+                    win32_monitor,
+                    _ne: _,
+                } = surface_info;
 
-        let mut surface_full_screen_exclusive_info = (full_screen_exclusive
-            != FullScreenExclusive::Default)
-            .then(|| ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                full_screen_exclusive: full_screen_exclusive.into(),
-                ..Default::default()
-            });
+                let mut surface_full_screen_exclusive_info = (full_screen_exclusive
+                    != FullScreenExclusive::Default)
+                    .then(|| ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                        full_screen_exclusive: full_screen_exclusive.into(),
+                        ..Default::default()
+                    });
 
-        let mut surface_full_screen_exclusive_win32_info =
-            win32_monitor.map(
-                |win32_monitor| ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                    hmonitor: win32_monitor.0,
+                let mut surface_full_screen_exclusive_win32_info =
+                    win32_monitor.map(|win32_monitor| {
+                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                            hmonitor: win32_monitor.0,
+                            ..Default::default()
+                        }
+                    });
+
+                let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
+                    surface: surface.internal_object(),
                     ..Default::default()
-                },
-            );
+                };
 
-        let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-            surface: surface.internal_object(),
-            ..Default::default()
-        };
+                if let Some(surface_full_screen_exclusive_info) =
+                    surface_full_screen_exclusive_info.as_mut()
+                {
+                    surface_full_screen_exclusive_info.p_next = surface_info2.p_next as *mut _;
+                    surface_info2.p_next =
+                        surface_full_screen_exclusive_info as *const _ as *const _;
+                }
 
-        if let Some(surface_full_screen_exclusive_info) =
-            surface_full_screen_exclusive_info.as_mut()
-        {
-            surface_full_screen_exclusive_info.p_next = surface_info2.p_next as *mut _;
-            surface_info2.p_next = surface_full_screen_exclusive_info as *const _ as *const _;
-        }
+                if let Some(surface_full_screen_exclusive_win32_info) =
+                    surface_full_screen_exclusive_win32_info.as_mut()
+                {
+                    surface_full_screen_exclusive_win32_info.p_next =
+                        surface_info2.p_next as *mut _;
+                    surface_info2.p_next =
+                        surface_full_screen_exclusive_win32_info as *const _ as *const _;
+                }
 
-        if let Some(surface_full_screen_exclusive_win32_info) =
-            surface_full_screen_exclusive_win32_info.as_mut()
-        {
-            surface_full_screen_exclusive_win32_info.p_next = surface_info2.p_next as *mut _;
-            surface_info2.p_next = surface_full_screen_exclusive_win32_info as *const _ as *const _;
-        }
+                let fns = self.instance.fns();
 
-        let fns = self.instance.fns();
-
-        if self
-            .instance
-            .enabled_extensions()
-            .khr_get_surface_capabilities2
-        {
-            let surface_format2s = loop {
-                let mut count = 0;
-                (fns.khr_get_surface_capabilities2
-                    .get_physical_device_surface_formats2_khr)(
-                    self.internal_object(),
-                    &surface_info2,
-                    &mut count,
-                    ptr::null_mut(),
-                )
-                .result()
-                .map_err(VulkanError::from)?;
-
-                let mut surface_format2s =
-                    vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
-                let result = (fns
+                if self
+                    .instance
+                    .enabled_extensions()
                     .khr_get_surface_capabilities2
-                    .get_physical_device_surface_formats2_khr)(
-                    self.internal_object(),
-                    &surface_info2,
-                    &mut count,
-                    surface_format2s.as_mut_ptr(),
-                );
+                {
+                    let surface_format2s = loop {
+                        let mut count = 0;
+                        (fns.khr_get_surface_capabilities2
+                            .get_physical_device_surface_formats2_khr)(
+                            self.internal_object(),
+                            &surface_info2,
+                            &mut count,
+                            ptr::null_mut(),
+                        )
+                        .result()
+                        .map_err(VulkanError::from)?;
 
-                match result {
-                    ash::vk::Result::SUCCESS => {
-                        surface_format2s.set_len(count as usize);
-                        break surface_format2s;
-                    }
-                    ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err)),
+                        let mut surface_format2s =
+                            vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
+                        let result = (fns
+                            .khr_get_surface_capabilities2
+                            .get_physical_device_surface_formats2_khr)(
+                            self.internal_object(),
+                            &surface_info2,
+                            &mut count,
+                            surface_format2s.as_mut_ptr(),
+                        );
+
+                        match result {
+                            ash::vk::Result::SUCCESS => {
+                                surface_format2s.set_len(count as usize);
+                                break surface_format2s;
+                            }
+                            ash::vk::Result::INCOMPLETE => (),
+                            err => return Err(VulkanError::from(err)),
+                        }
+                    };
+
+                    Ok(surface_format2s
+                        .into_iter()
+                        .filter_map(|surface_format2| {
+                            (surface_format2.surface_format.format.try_into().ok())
+                                .zip(surface_format2.surface_format.color_space.try_into().ok())
+                        })
+                        .collect())
+                } else {
+                    let surface_formats = loop {
+                        let mut count = 0;
+                        (fns.khr_surface.get_physical_device_surface_formats_khr)(
+                            self.internal_object(),
+                            surface.internal_object(),
+                            &mut count,
+                            ptr::null_mut(),
+                        )
+                        .result()
+                        .map_err(VulkanError::from)?;
+
+                        let mut surface_formats = Vec::with_capacity(count as usize);
+                        let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
+                            self.internal_object(),
+                            surface.internal_object(),
+                            &mut count,
+                            surface_formats.as_mut_ptr(),
+                        );
+
+                        match result {
+                            ash::vk::Result::SUCCESS => {
+                                surface_formats.set_len(count as usize);
+                                break surface_formats;
+                            }
+                            ash::vk::Result::INCOMPLETE => (),
+                            err => return Err(VulkanError::from(err)),
+                        }
+                    };
+
+                    Ok(surface_formats
+                        .into_iter()
+                        .filter_map(|surface_format| {
+                            (surface_format.format.try_into().ok())
+                                .zip(surface_format.color_space.try_into().ok())
+                        })
+                        .collect())
                 }
-            };
-
-            Ok(surface_format2s
-                .into_iter()
-                .filter_map(|surface_format2| {
-                    (surface_format2.surface_format.format.try_into().ok())
-                        .zip(surface_format2.surface_format.color_space.try_into().ok())
-                })
-                .collect())
-        } else {
-            let surface_formats = loop {
-                let mut count = 0;
-                (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                    self.internal_object(),
-                    surface.internal_object(),
-                    &mut count,
-                    ptr::null_mut(),
-                )
-                .result()
-                .map_err(VulkanError::from)?;
-
-                let mut surface_formats = Vec::with_capacity(count as usize);
-                let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                    self.internal_object(),
-                    surface.internal_object(),
-                    &mut count,
-                    surface_formats.as_mut_ptr(),
-                );
-
-                match result {
-                    ash::vk::Result::SUCCESS => {
-                        surface_formats.set_len(count as usize);
-                        break surface_formats;
-                    }
-                    ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err)),
-                }
-            };
-
-            Ok(surface_formats
-                .into_iter()
-                .filter_map(|surface_format| {
-                    (surface_format.format.try_into().ok())
-                        .zip(surface_format.color_space.try_into().ok())
-                })
-                .collect())
-        }
+            },
+        )
     }
 
     /// Returns the present modes that are supported by the physical device for the given surface.
@@ -1962,43 +1970,49 @@ impl PhysicalDevice {
         &self,
         surface: &Surface<W>,
     ) -> Result<impl Iterator<Item = PresentMode>, VulkanError> {
-        let fns = self.instance.fns();
+        surface
+            .surface_present_modes
+            .get_or_try_insert(self.handle, |_| {
+                let fns = self.instance.fns();
 
-        let modes = loop {
-            let mut count = 0;
-            (fns.khr_surface
-                .get_physical_device_surface_present_modes_khr)(
-                self.internal_object(),
-                surface.internal_object(),
-                &mut count,
-                ptr::null_mut(),
-            )
-            .result()
-            .map_err(VulkanError::from)?;
+                let modes = loop {
+                    let mut count = 0;
+                    (fns.khr_surface
+                        .get_physical_device_surface_present_modes_khr)(
+                        self.internal_object(),
+                        surface.internal_object(),
+                        &mut count,
+                        ptr::null_mut(),
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
 
-            let mut modes = Vec::with_capacity(count as usize);
-            let result = (fns
-                .khr_surface
-                .get_physical_device_surface_present_modes_khr)(
-                self.internal_object(),
-                surface.internal_object(),
-                &mut count,
-                modes.as_mut_ptr(),
-            );
+                    let mut modes = Vec::with_capacity(count as usize);
+                    let result = (fns
+                        .khr_surface
+                        .get_physical_device_surface_present_modes_khr)(
+                        self.internal_object(),
+                        surface.internal_object(),
+                        &mut count,
+                        modes.as_mut_ptr(),
+                    );
 
-            match result {
-                ash::vk::Result::SUCCESS => {
-                    modes.set_len(count as usize);
-                    break modes;
-                }
-                ash::vk::Result::INCOMPLETE => (),
-                err => return Err(VulkanError::from(err)),
-            }
-        };
+                    match result {
+                        ash::vk::Result::SUCCESS => {
+                            modes.set_len(count as usize);
+                            break modes;
+                        }
+                        ash::vk::Result::INCOMPLETE => (),
+                        err => return Err(VulkanError::from(err)),
+                    }
+                };
 
-        Ok(modes
-            .into_iter()
-            .filter_map(|mode_vk| mode_vk.try_into().ok()))
+                Ok(modes
+                    .into_iter()
+                    .filter_map(|mode_vk| mode_vk.try_into().ok())
+                    .collect())
+            })
+            .map(IntoIterator::into_iter)
     }
 
     /// Returns whether queues of the given queue family can draw on the given surface.
@@ -2048,19 +2062,23 @@ impl PhysicalDevice {
         queue_family_index: u32,
         surface: &Surface<W>,
     ) -> Result<bool, VulkanError> {
-        let fns = self.instance.fns();
+        surface
+            .surface_support
+            .get_or_try_insert((self.handle, queue_family_index), |_| {
+                let fns = self.instance.fns();
 
-        let mut output = MaybeUninit::uninit();
-        (fns.khr_surface.get_physical_device_surface_support_khr)(
-            self.handle,
-            queue_family_index,
-            surface.internal_object(),
-            output.as_mut_ptr(),
-        )
-        .result()
-        .map_err(VulkanError::from)?;
+                let mut output = MaybeUninit::uninit();
+                (fns.khr_surface.get_physical_device_surface_support_khr)(
+                    self.handle,
+                    queue_family_index,
+                    surface.internal_object(),
+                    output.as_mut_ptr(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
 
-        Ok(output.assume_init() != 0)
+                Ok(output.assume_init() != 0)
+            })
     }
 
     /// Retrieves the properties of tools that are currently active on the physical device.

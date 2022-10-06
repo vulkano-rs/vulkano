@@ -9,6 +9,8 @@
 
 use super::{FullScreenExclusive, Win32Monitor};
 use crate::{
+    cache::OnceCache,
+    format::Format,
     image::ImageUsage,
     instance::Instance,
     macros::{vulkan_bitflags, vulkan_enum},
@@ -44,6 +46,14 @@ pub struct Surface<W> {
     has_swapchain: AtomicBool,
     #[cfg(target_os = "ios")]
     metal_layer: IOSMetalLayer,
+
+    // Data queried by the user at runtime, cached for faster lookups.
+    // This is stored here rather than on `PhysicalDevice` to ensure that it's freed when the
+    // `Surface` is destroyed.
+    pub(crate) surface_formats:
+        OnceCache<(ash::vk::PhysicalDevice, SurfaceInfo), Vec<(Format, ColorSpace)>>,
+    pub(crate) surface_present_modes: OnceCache<ash::vk::PhysicalDevice, Vec<PresentMode>>,
+    pub(crate) surface_support: OnceCache<(ash::vk::PhysicalDevice, u32), bool>,
 }
 
 impl<W> Surface<W> {
@@ -70,6 +80,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }
     }
 
@@ -130,6 +144,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -223,6 +241,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -298,6 +320,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -381,6 +407,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -461,6 +491,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -541,6 +575,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -786,6 +824,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -871,6 +913,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -946,6 +992,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -1033,6 +1083,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -1118,6 +1172,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -1203,6 +1261,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -1288,6 +1350,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
