@@ -142,11 +142,13 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_private_data`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_private_data.html)
 - [`VK_EXT_subgroup_size_control`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_subgroup_size_control.html)
 
-## Unpromoted extensions
+## Extensions not promoted to core
 
 ### Fully supported
 
 - [`VK_KHR_android_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_android_surface.html)
+- [`VK_KHR_external_fence_fd`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence_fd.html)
+- [`VK_KHR_external_fence_win32`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence_win32.html)
 - [`VK_KHR_external_memory_fd`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory_fd.html)
 - [`VK_KHR_get_surface_capabilities2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_surface_capabilities2.html)
 - [`VK_KHR_incremental_present`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_incremental_present.html)
@@ -211,8 +213,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_acceleration_structure`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_acceleration_structure.html)
 - [`VK_KHR_deferred_host_operations`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_deferred_host_operations.html)
 - [`VK_KHR_display_swapchain`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_display_swapchain.html)
-- [`VK_KHR_external_fence_fd`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence_fd.html)
-- [`VK_KHR_external_fence_win32`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence_win32.html)
 - [`VK_KHR_external_semaphore_win32`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_win32.html)
 - [`VK_KHR_fragment_shader_barycentric`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shader_barycentric.html)
 - [`VK_KHR_fragment_shading_rate`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shading_rate.html)
