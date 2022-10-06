@@ -518,6 +518,31 @@ pub struct ImageSubresourceLayers {
     pub array_layers: Range<u32>,
 }
 
+impl ImageSubresourceLayers {
+    /// Returns an `ImageSubresourceLayers` from the given image parameters, covering the first
+    /// mip level of the image. All aspects of the image are selected, or `plane0` if the image
+    /// is multi-planar.
+    #[inline]
+    pub fn from_parameters(format: Format, array_layers: u32) -> Self {
+        Self {
+            aspects: {
+                let aspects = format.aspects();
+
+                if aspects.plane0 {
+                    ImageAspects {
+                        plane0: true,
+                        ..ImageAspects::empty()
+                    }
+                } else {
+                    aspects
+                }
+            },
+            mip_level: 0,
+            array_layers: 0..array_layers,
+        }
+    }
+}
+
 impl From<ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
     #[inline]
     fn from(val: ImageSubresourceLayers) -> Self {
@@ -548,6 +573,24 @@ pub struct ImageSubresourceRange {
     ///
     /// The range must not be empty.
     pub array_layers: Range<u32>,
+}
+
+impl ImageSubresourceRange {
+    /// Returns an `ImageSubresourceRange` from the given image parameters, covering the whole
+    /// image. If the image is multi-planar, only the `color` aspect is selected.
+    #[inline]
+    pub fn from_parameters(format: Format, mip_levels: u32, array_layers: u32) -> Self {
+        Self {
+            aspects: ImageAspects {
+                plane0: false,
+                plane1: false,
+                plane2: false,
+                ..format.aspects()
+            },
+            mip_levels: 0..mip_levels,
+            array_layers: 0..array_layers,
+        }
+    }
 }
 
 impl From<ImageSubresourceRange> for ash::vk::ImageSubresourceRange {

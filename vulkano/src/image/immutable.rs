@@ -16,7 +16,7 @@ use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
         allocator::CommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
-        CommandBufferBeginError, CommandBufferExecFuture, CommandBufferUsage,
+        BufferImageCopy, CommandBufferBeginError, CommandBufferExecFuture, CommandBufferUsage,
         CopyBufferToImageInfo, ImageBlit, PrimaryCommandBuffer,
     },
     device::{Device, DeviceOwned, Queue},
@@ -31,9 +31,9 @@ use crate::{
     },
     sampler::Filter,
     sync::{NowFuture, Sharing},
-    OomError,
+    DeviceSize, OomError,
 };
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
@@ -218,6 +218,23 @@ impl ImmutableImage {
         command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError> {
+        let region = BufferImageCopy {
+            image_subresource: ImageSubresourceLayers::from_parameters(
+                format,
+                dimensions.array_layers(),
+            ),
+            image_extent: dimensions.width_height_depth(),
+            ..Default::default()
+        };
+        let required_size = region.buffer_copy_size(format);
+
+        if source.size() < required_size {
+            return Err(ImmutableImageCreationError::SourceTooSmall {
+                source_size: source.size(),
+                required_size,
+            });
+        }
+
         let need_to_generate_mipmaps = has_mipmaps(mip_levels);
         let usage = ImageUsage {
             transfer_dst: true,
@@ -248,8 +265,11 @@ impl ImmutableImage {
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )?;
-        cbb.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(source, initializer))
-            .unwrap();
+        cbb.copy_buffer_to_image(CopyBufferToImageInfo {
+            regions: smallvec![region],
+            ..CopyBufferToImageInfo::buffer_image(source, initializer)
+        })
+        .unwrap();
 
         if need_to_generate_mipmaps {
             generate_mipmaps(
@@ -394,11 +414,19 @@ where
     }
 }
 
+/// Error that can happen when creating an `ImmutableImage`.
 #[derive(Clone, Debug)]
 pub enum ImmutableImageCreationError {
     ImageCreationError(ImageCreationError),
     DeviceMemoryAllocationError(DeviceMemoryError),
     CommandBufferBeginError(CommandBufferBeginError),
+
+    /// The size of the provided source data is less than the required size for an image with the
+    /// given format and dimensions.
+    SourceTooSmall {
+        source_size: DeviceSize,
+        required_size: DeviceSize,
+    },
 }
 
 impl Error for ImmutableImageCreationError {
@@ -407,6 +435,7 @@ impl Error for ImmutableImageCreationError {
             Self::ImageCreationError(err) => Some(err),
             Self::DeviceMemoryAllocationError(err) => Some(err),
             Self::CommandBufferBeginError(err) => Some(err),
+            _ => None,
         }
     }
 }
@@ -417,6 +446,15 @@ impl Display for ImmutableImageCreationError {
             Self::ImageCreationError(err) => err.fmt(f),
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),
             Self::CommandBufferBeginError(err) => err.fmt(f),
+
+            Self::SourceTooSmall {
+                source_size,
+                required_size,
+            } => write!(
+                f,
+                "the size of the provided source data ({} bytes) is less than the required size for an image of the given format and dimensions ({} bytes)",
+                source_size, required_size,
+            ),
         }
     }
 }
