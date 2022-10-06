@@ -403,8 +403,12 @@ impl From<VulkanError> for ComputePipelineCreationError {
 mod tests {
     use crate::{
         buffer::{BufferUsage, CpuAccessibleBuffer},
-        command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
-        descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+        command_buffer::{
+            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        },
+        descriptor_set::{
+            allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        },
         pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
         shader::{ShaderModule, SpecializationConstants, SpecializationMapEntry},
         sync::{now, GpuFuture},
@@ -498,14 +502,17 @@ mod tests {
         )
         .unwrap();
 
+        let ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
         let set = PersistentDescriptorSet::new(
+            &ds_allocator,
             pipeline.layout().set_layouts().get(0).unwrap().clone(),
             [WriteDescriptorSet::buffer(0, data_buffer.clone())],
         )
         .unwrap();
 
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device.clone(),
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

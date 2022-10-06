@@ -23,7 +23,7 @@
 
 use crate::{
     descriptor_set::{
-        pool::{standard::StandardDescriptorPoolAlloc, DescriptorPool, DescriptorPoolAlloc},
+        allocator::{DescriptorSetAlloc, DescriptorSetAllocator, StandardDescriptorSetAlloc},
         update::WriteDescriptorSet,
         DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetLayout,
         DescriptorSetResources, UnsafeDescriptorSet,
@@ -37,7 +37,7 @@ use std::{
 };
 
 /// A simple, immutable descriptor set that is expected to be long-lived.
-pub struct PersistentDescriptorSet<P = StandardDescriptorPoolAlloc> {
+pub struct PersistentDescriptorSet<P = StandardDescriptorSetAlloc> {
     alloc: P,
     inner: DescriptorSetInner,
 }
@@ -47,33 +47,15 @@ impl PersistentDescriptorSet {
     ///
     /// See `new_with_pool` for more.
     #[inline]
-    pub fn new(
+    pub fn new<A>(
+        allocator: &A,
         layout: Arc<DescriptorSetLayout>,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet>, DescriptorSetCreationError> {
-        layout
-            .device()
-            .clone()
-            .with_standard_descriptor_pool(|pool| {
-                Self::new_with_pool(layout, 0, pool, descriptor_writes)
-            })
-    }
-
-    /// Creates and returns a new descriptor set with the requested variable descriptor count.
-    ///
-    /// See `new_with_pool` for more.
-    #[inline]
-    pub fn new_variable(
-        layout: Arc<DescriptorSetLayout>,
-        variable_descriptor_count: u32,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet>, DescriptorSetCreationError> {
-        layout
-            .device()
-            .clone()
-            .with_standard_descriptor_pool(|pool| {
-                Self::new_with_pool(layout, variable_descriptor_count, pool, descriptor_writes)
-            })
+    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, DescriptorSetCreationError>
+    where
+        A: DescriptorSetAllocator + ?Sized,
+    {
+        Self::new_variable(allocator, layout, 0, descriptor_writes)
     }
 
     /// Creates and returns a new descriptor set with the requested variable descriptor count,
@@ -83,14 +65,14 @@ impl PersistentDescriptorSet {
     ///
     /// - Panics if `layout` was created for push descriptors rather than descriptor sets.
     /// - Panics if `variable_descriptor_count` is too large for the given `layout`.
-    pub fn new_with_pool<P>(
+    pub fn new_variable<A>(
+        allocator: &A,
         layout: Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-        pool: &mut P,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet<P::Alloc>>, DescriptorSetCreationError>
+    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, DescriptorSetCreationError>
     where
-        P: ?Sized + DescriptorPool,
+        A: DescriptorSetAllocator + ?Sized,
     {
         assert!(
             !layout.push_descriptor(),
@@ -108,7 +90,7 @@ impl PersistentDescriptorSet {
             max_count,
         );
 
-        let alloc = pool.allocate(&layout, variable_descriptor_count)?;
+        let alloc = allocator.allocate(&layout, variable_descriptor_count)?;
         let inner = DescriptorSetInner::new(
             alloc.inner().internal_object(),
             layout,
@@ -122,7 +104,7 @@ impl PersistentDescriptorSet {
 
 unsafe impl<P> DescriptorSet for PersistentDescriptorSet<P>
 where
-    P: DescriptorPoolAlloc,
+    P: DescriptorSetAlloc,
 {
     fn inner(&self) -> &UnsafeDescriptorSet {
         self.alloc.inner()
@@ -139,7 +121,7 @@ where
 
 unsafe impl<P> DeviceOwned for PersistentDescriptorSet<P>
 where
-    P: DescriptorPoolAlloc,
+    P: DescriptorSetAlloc,
 {
     fn device(&self) -> &Arc<Device> {
         self.inner.layout().device()
@@ -148,7 +130,7 @@ where
 
 impl<P> PartialEq for PersistentDescriptorSet<P>
 where
-    P: DescriptorPoolAlloc,
+    P: DescriptorSetAlloc,
 {
     fn eq(&self, other: &Self) -> bool {
         self.inner().internal_object() == other.inner().internal_object()
@@ -156,11 +138,11 @@ where
     }
 }
 
-impl<P> Eq for PersistentDescriptorSet<P> where P: DescriptorPoolAlloc {}
+impl<P> Eq for PersistentDescriptorSet<P> where P: DescriptorSetAlloc {}
 
 impl<P> Hash for PersistentDescriptorSet<P>
 where
-    P: DescriptorPoolAlloc,
+    P: DescriptorSetAlloc,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);

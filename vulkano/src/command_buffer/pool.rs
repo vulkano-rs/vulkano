@@ -14,6 +14,7 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::{
+    cell::Cell,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
@@ -23,7 +24,7 @@ use std::{
     sync::Arc,
 };
 
-/// Low-level implementation of a command pool.
+/// Represents a Vulkan command pool.
 ///
 /// A command pool is always tied to a specific queue family. Command buffers allocated from a pool
 /// can only be executed on the corresponding queue family.
@@ -31,44 +32,40 @@ use std::{
 /// This struct doesn't implement the `Sync` trait because Vulkan command pools are not thread
 /// safe. In other words, you can only use a pool from one thread at a time.
 #[derive(Debug)]
-pub struct UnsafeCommandPool {
+pub struct CommandPool {
     handle: ash::vk::CommandPool,
     device: Arc<Device>,
-    // We don't want `UnsafeCommandPool` to implement Sync.
-    // This marker unimplements both Send and Sync, but we reimplement Send manually right under.
-    dummy_avoid_sync: PhantomData<*const u8>,
 
     queue_family_index: u32,
     _transient: bool,
     _reset_command_buffer: bool,
+    // Unimplement `Sync`, as Vulkan command pools are not thread-safe.
+    _marker: PhantomData<Cell<ash::vk::CommandPool>>,
 }
 
-unsafe impl Send for UnsafeCommandPool {}
-
-impl UnsafeCommandPool {
-    /// Creates a new `UnsafeCommandPool`.
+impl CommandPool {
+    /// Creates a new `CommandPool`.
     pub fn new(
         device: Arc<Device>,
-        mut create_info: UnsafeCommandPoolCreateInfo,
-    ) -> Result<UnsafeCommandPool, UnsafeCommandPoolCreationError> {
+        mut create_info: CommandPoolCreateInfo,
+    ) -> Result<CommandPool, CommandPoolCreationError> {
         Self::validate(&device, &mut create_info)?;
         let handle = unsafe { Self::create(&device, &create_info)? };
 
-        let UnsafeCommandPoolCreateInfo {
+        let CommandPoolCreateInfo {
             queue_family_index,
             transient,
             reset_command_buffer,
             _ne: _,
         } = create_info;
 
-        Ok(UnsafeCommandPool {
+        Ok(CommandPool {
             handle,
             device,
-            dummy_avoid_sync: PhantomData,
-
             queue_family_index,
             _transient: transient,
             _reset_command_buffer: reset_command_buffer,
+            _marker: PhantomData,
         })
     }
 
@@ -82,31 +79,30 @@ impl UnsafeCommandPool {
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::CommandPool,
-        create_info: UnsafeCommandPoolCreateInfo,
-    ) -> UnsafeCommandPool {
-        let UnsafeCommandPoolCreateInfo {
+        create_info: CommandPoolCreateInfo,
+    ) -> CommandPool {
+        let CommandPoolCreateInfo {
             queue_family_index,
             transient,
             reset_command_buffer,
             _ne: _,
         } = create_info;
 
-        UnsafeCommandPool {
+        CommandPool {
             handle,
             device,
-            dummy_avoid_sync: PhantomData,
-
             queue_family_index,
             _transient: transient,
             _reset_command_buffer: reset_command_buffer,
+            _marker: PhantomData,
         }
     }
 
     fn validate(
         device: &Device,
-        create_info: &mut UnsafeCommandPoolCreateInfo,
-    ) -> Result<(), UnsafeCommandPoolCreationError> {
-        let &mut UnsafeCommandPoolCreateInfo {
+        create_info: &mut CommandPoolCreateInfo,
+    ) -> Result<(), CommandPoolCreationError> {
+        let &mut CommandPoolCreateInfo {
             queue_family_index,
             transient: _,
             reset_command_buffer: _,
@@ -115,7 +111,7 @@ impl UnsafeCommandPool {
 
         // VUID-vkCreateCommandPool-queueFamilyIndex-01937
         if queue_family_index >= device.physical_device().queue_family_properties().len() as u32 {
-            return Err(UnsafeCommandPoolCreationError::QueueFamilyIndexOutOfRange {
+            return Err(CommandPoolCreationError::QueueFamilyIndexOutOfRange {
                 queue_family_index,
                 queue_family_count: device.physical_device().queue_family_properties().len() as u32,
             });
@@ -126,9 +122,9 @@ impl UnsafeCommandPool {
 
     unsafe fn create(
         device: &Device,
-        create_info: &UnsafeCommandPoolCreateInfo,
-    ) -> Result<ash::vk::CommandPool, UnsafeCommandPoolCreationError> {
-        let &UnsafeCommandPoolCreateInfo {
+        create_info: &CommandPoolCreateInfo,
+    ) -> Result<ash::vk::CommandPool, CommandPoolCreationError> {
+        let &CommandPoolCreateInfo {
             queue_family_index,
             transient,
             reset_command_buffer,
@@ -197,7 +193,7 @@ impl UnsafeCommandPool {
     pub fn allocate_command_buffers(
         &self,
         allocate_info: CommandBufferAllocateInfo,
-    ) -> Result<impl ExactSizeIterator<Item = UnsafeCommandPoolAlloc>, OomError> {
+    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc>, OomError> {
         let CommandBufferAllocateInfo {
             level,
             command_buffer_count,
@@ -232,14 +228,12 @@ impl UnsafeCommandPool {
 
         let device = self.device.clone();
 
-        Ok(out
-            .into_iter()
-            .map(move |command_buffer| UnsafeCommandPoolAlloc {
-                handle: command_buffer,
-                device: device.clone(),
+        Ok(out.into_iter().map(move |command_buffer| CommandPoolAlloc {
+            handle: command_buffer,
+            device: device.clone(),
 
-                level,
-            }))
+            level,
+        }))
     }
 
     /// Frees individual command buffers.
@@ -250,7 +244,7 @@ impl UnsafeCommandPool {
     /// - The `command_buffers` must not be in the pending state.
     pub unsafe fn free_command_buffers(
         &self,
-        command_buffers: impl IntoIterator<Item = UnsafeCommandPoolAlloc>,
+        command_buffers: impl IntoIterator<Item = CommandPoolAlloc>,
     ) {
         let command_buffers: SmallVec<[_; 4]> =
             command_buffers.into_iter().map(|cb| cb.handle).collect();
@@ -316,7 +310,7 @@ impl UnsafeCommandPool {
     }
 }
 
-impl Drop for UnsafeCommandPool {
+impl Drop for CommandPool {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -330,7 +324,7 @@ impl Drop for UnsafeCommandPool {
     }
 }
 
-unsafe impl VulkanObject for UnsafeCommandPool {
+unsafe impl VulkanObject for CommandPool {
     type Object = ash::vk::CommandPool;
 
     #[inline]
@@ -339,32 +333,32 @@ unsafe impl VulkanObject for UnsafeCommandPool {
     }
 }
 
-unsafe impl DeviceOwned for UnsafeCommandPool {
+unsafe impl DeviceOwned for CommandPool {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl PartialEq for UnsafeCommandPool {
+impl PartialEq for CommandPool {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.device() == other.device()
     }
 }
 
-impl Eq for UnsafeCommandPool {}
+impl Eq for CommandPool {}
 
-impl Hash for UnsafeCommandPool {
+impl Hash for CommandPool {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
     }
 }
 
-/// Error that can happen when creating an `UnsafeCommandPool`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum UnsafeCommandPoolCreationError {
+/// Error that can happen when creating a `CommandPool`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CommandPoolCreationError {
     /// Not enough memory.
     OomError(OomError),
 
@@ -376,7 +370,7 @@ pub enum UnsafeCommandPoolCreationError {
     },
 }
 
-impl Error for UnsafeCommandPoolCreationError {
+impl Error for CommandPoolCreationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::OomError(err) => Some(err),
@@ -385,7 +379,7 @@ impl Error for UnsafeCommandPoolCreationError {
     }
 }
 
-impl Display for UnsafeCommandPoolCreationError {
+impl Display for CommandPoolCreationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory",),
@@ -402,7 +396,7 @@ impl Display for UnsafeCommandPoolCreationError {
     }
 }
 
-impl From<VulkanError> for UnsafeCommandPoolCreationError {
+impl From<VulkanError> for CommandPoolCreationError {
     fn from(err: VulkanError) -> Self {
         match err {
             err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
@@ -411,9 +405,9 @@ impl From<VulkanError> for UnsafeCommandPoolCreationError {
     }
 }
 
-/// Parameters to create an `UnsafeCommandPool`.
+/// Parameters to create an `CommandPool`.
 #[derive(Clone, Debug)]
-pub struct UnsafeCommandPoolCreateInfo {
+pub struct CommandPoolCreateInfo {
     /// The index of the queue family that this pool is created for. All command buffers allocated
     /// from this pool must be submitted on a queue belonging to that family.
     ///
@@ -434,7 +428,7 @@ pub struct UnsafeCommandPoolCreateInfo {
     pub _ne: crate::NonExhaustive,
 }
 
-impl Default for UnsafeCommandPoolCreateInfo {
+impl Default for CommandPoolCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
@@ -475,13 +469,13 @@ impl Default for CommandBufferAllocateInfo {
 
 /// Opaque type that represents a command buffer allocated from a pool.
 #[derive(Debug)]
-pub struct UnsafeCommandPoolAlloc {
+pub struct CommandPoolAlloc {
     handle: ash::vk::CommandBuffer,
     device: Arc<Device>,
     level: CommandBufferLevel,
 }
 
-impl UnsafeCommandPoolAlloc {
+impl CommandPoolAlloc {
     /// Returns the level of the command buffer.
     #[inline]
     pub fn level(&self) -> CommandBufferLevel {
@@ -489,7 +483,7 @@ impl UnsafeCommandPoolAlloc {
     }
 }
 
-unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
+unsafe impl VulkanObject for CommandPoolAlloc {
     type Object = ash::vk::CommandBuffer;
 
     #[inline]
@@ -498,23 +492,23 @@ unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
     }
 }
 
-unsafe impl DeviceOwned for UnsafeCommandPoolAlloc {
+unsafe impl DeviceOwned for CommandPoolAlloc {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl PartialEq for UnsafeCommandPoolAlloc {
+impl PartialEq for CommandPoolAlloc {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.device() == other.device()
     }
 }
 
-impl Eq for UnsafeCommandPoolAlloc {}
+impl Eq for CommandPoolAlloc {}
 
-impl Hash for UnsafeCommandPoolAlloc {
+impl Hash for CommandPoolAlloc {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -556,20 +550,19 @@ impl From<VulkanError> for CommandPoolTrimError {
 #[cfg(test)]
 mod tests {
     use super::{
-        CommandPoolTrimError, UnsafeCommandPool, UnsafeCommandPoolCreateInfo,
-        UnsafeCommandPoolCreationError,
+        CommandPool, CommandPoolCreateInfo, CommandPoolCreationError, CommandPoolTrimError,
     };
     use crate::{
-        command_buffer::{pool::sys::CommandBufferAllocateInfo, CommandBufferLevel},
+        command_buffer::{pool::CommandBufferAllocateInfo, CommandBufferLevel},
         RequiresOneOf, Version,
     };
 
     #[test]
     fn basic_create() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _ = UnsafeCommandPool::new(
+        let _ = CommandPool::new(
             device,
-            UnsafeCommandPoolCreateInfo {
+            CommandPoolCreateInfo {
                 queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
@@ -580,9 +573,9 @@ mod tests {
     #[test]
     fn queue_family_getter() {
         let (device, queue) = gfx_dev_and_queue!();
-        let pool = UnsafeCommandPool::new(
+        let pool = CommandPool::new(
             device,
-            UnsafeCommandPoolCreateInfo {
+            CommandPoolCreateInfo {
                 queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
@@ -595,13 +588,13 @@ mod tests {
     fn check_queue_family_too_high() {
         let (device, _) = gfx_dev_and_queue!();
 
-        match UnsafeCommandPool::new(
+        match CommandPool::new(
             device,
-            UnsafeCommandPoolCreateInfo {
+            CommandPoolCreateInfo {
                 ..Default::default()
             },
         ) {
-            Err(UnsafeCommandPoolCreationError::QueueFamilyIndexOutOfRange { .. }) => (),
+            Err(CommandPoolCreationError::QueueFamilyIndexOutOfRange { .. }) => (),
             _ => panic!(),
         }
     }
@@ -609,9 +602,9 @@ mod tests {
     #[test]
     fn check_maintenance_when_trim() {
         let (device, queue) = gfx_dev_and_queue!();
-        let pool = UnsafeCommandPool::new(
+        let pool = CommandPool::new(
             device.clone(),
-            UnsafeCommandPoolCreateInfo {
+            CommandPoolCreateInfo {
                 queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
@@ -651,9 +644,9 @@ mod tests {
     #[test]
     fn basic_alloc() {
         let (device, queue) = gfx_dev_and_queue!();
-        let pool = UnsafeCommandPool::new(
+        let pool = CommandPool::new(
             device,
-            UnsafeCommandPoolCreateInfo {
+            CommandPoolCreateInfo {
                 queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },

@@ -11,7 +11,7 @@ use super::QueueFamilyProperties;
 use crate::{
     buffer::{ExternalBufferInfo, ExternalBufferProperties},
     cache::OnceCache,
-    device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi},
+    device::{properties::Properties, DeviceExtensions, Features, FeaturesFfi, PropertiesFfi},
     format::{Format, FormatProperties},
     image::{
         ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage,

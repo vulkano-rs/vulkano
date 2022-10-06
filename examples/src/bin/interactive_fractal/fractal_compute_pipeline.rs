@@ -9,11 +9,16 @@
 
 use cgmath::Vector2;
 use rand::Rng;
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer},
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        PrimaryCommandBuffer,
+    },
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::Queue,
     image::ImageAccess,
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
@@ -24,13 +29,19 @@ use vulkano_util::renderer::DeviceImageView;
 pub struct FractalComputePipeline {
     queue: Arc<Queue>,
     pipeline: Arc<ComputePipeline>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     palette: Arc<CpuAccessibleBuffer<[[f32; 4]]>>,
     palette_size: i32,
     end_color: [f32; 4],
 }
 
 impl FractalComputePipeline {
-    pub fn new(queue: Arc<Queue>) -> FractalComputePipeline {
+    pub fn new(
+        queue: Arc<Queue>,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+    ) -> FractalComputePipeline {
         // Initial colors
         let colors = vec![
             [1.0, 0.0, 0.0, 1.0],
@@ -64,9 +75,12 @@ impl FractalComputePipeline {
             )
             .unwrap()
         };
+
         FractalComputePipeline {
             queue,
             pipeline,
+            command_buffer_allocator,
+            descriptor_set_allocator,
             palette,
             palette_size,
             end_color,
@@ -96,7 +110,7 @@ impl FractalComputePipeline {
     }
 
     pub fn compute(
-        &mut self,
+        &self,
         image: DeviceImageView,
         c: Vector2<f32>,
         scale: Vector2<f32>,
@@ -109,6 +123,7 @@ impl FractalComputePipeline {
         let pipeline_layout = self.pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
+            &*self.descriptor_set_allocator,
             desc_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, image),
@@ -117,7 +132,7 @@ impl FractalComputePipeline {
         )
         .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(
-            self.queue.device().clone(),
+            &*self.command_buffer_allocator,
             self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

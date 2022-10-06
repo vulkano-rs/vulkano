@@ -105,28 +105,22 @@ use self::physical::PhysicalDevice;
 pub(crate) use self::{features::FeaturesFfi, properties::PropertiesFfi};
 pub use self::{
     features::{FeatureRestriction, FeatureRestrictionError, Features},
-    properties::Properties,
     queue::{Queue, QueueError, QueueFamilyProperties, QueueFlags, QueueGuard},
-};
-use crate::{
-    command_buffer::pool::StandardCommandPool,
-    descriptor_set::pool::StandardDescriptorPool,
-    instance::Instance,
-    memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
-    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 pub use crate::{
     device::extensions::DeviceExtensions,
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
     fns::DeviceFunctions,
 };
-use ahash::HashMap;
+use crate::{
+    instance::Instance,
+    memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+};
 use ash::vk::Handle;
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
-    cell::RefCell,
-    collections::hash_map::Entry,
     error::Error,
     ffi::CString,
     fmt::{Display, Error as FmtError, Formatter},
@@ -509,72 +503,6 @@ impl Device {
         *pool = Arc::downgrade(&new_pool);
 
         new_pool
-    }
-
-    /// Gives you access to the standard descriptor pool that is used by default if you don't
-    /// provide any other pool.
-    ///
-    /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
-    /// dropped once both the thread exits and all descriptor sets allocated from it are dropped.
-    /// A pool is created lazily for each thread.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if called again from within the callback.
-    pub fn with_standard_descriptor_pool<T>(
-        self: &Arc<Self>,
-        f: impl FnOnce(&mut StandardDescriptorPool) -> T,
-    ) -> T {
-        thread_local! {
-            static TLS: RefCell<HashMap<ash::vk::Device, StandardDescriptorPool>> =
-                RefCell::new(HashMap::default());
-        }
-
-        TLS.with(|tls| {
-            let mut tls = tls.borrow_mut();
-            let pool = match tls.entry(self.internal_object()) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => entry.insert(StandardDescriptorPool::new(self.clone())),
-            };
-
-            f(pool)
-        })
-    }
-
-    /// Gives you access to the standard command buffer pool used by default if you don't provide
-    /// any other pool.
-    ///
-    /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
-    /// dropped once both the thread exits and all command buffers allocated from it are dropped.
-    /// A pool is created lazily for each thread, device and queue family combination as needed,
-    /// which is why this function might return an `OomError`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the device and the queue family don't belong to the same physical device.
-    /// - Panics if called again from within the callback.
-    pub fn with_standard_command_pool<T>(
-        self: &Arc<Self>,
-        queue_family_index: u32,
-        f: impl FnOnce(&Arc<StandardCommandPool>) -> T,
-    ) -> Result<T, OomError> {
-        thread_local! {
-            static TLS: RefCell<HashMap<(ash::vk::Device, u32), Arc<StandardCommandPool>>> =
-                RefCell::new(Default::default());
-        }
-
-        TLS.with(|tls| {
-            let mut tls = tls.borrow_mut();
-            let pool = match tls.entry((self.internal_object(), queue_family_index)) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => entry.insert(Arc::new(StandardCommandPool::new(
-                    self.clone(),
-                    queue_family_index,
-                )?)),
-            };
-
-            Ok(f(pool))
-        })
     }
 
     /// Used to track the number of allocations on this device.

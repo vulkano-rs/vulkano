@@ -13,9 +13,12 @@
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, BufferCopy, CommandBufferUsage, CopyBufferInfoTyped,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferCopy,
+        CommandBufferUsage, CopyBufferInfoTyped,
     },
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
@@ -113,6 +116,9 @@ fn main() {
         .unwrap()
     };
 
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     let data_buffer = {
         // we intitialize half of the array and leave the other half to 0, we will use copy later to fill it
         let data_iter = (0..65536u32).map(|n| if n < 65536 / 2 { n } else { 0 });
@@ -132,13 +138,14 @@ fn main() {
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(
+        &descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::buffer(0, data_buffer.clone())],
     )
     .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        device.clone(),
+        &command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )

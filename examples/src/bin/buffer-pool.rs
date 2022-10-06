@@ -27,7 +27,8 @@ use std::{
 use vulkano::{
     buffer::CpuBufferPool,
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassContents,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -239,6 +240,8 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
@@ -330,7 +333,7 @@ fn main() {
                 // Allocate a new chunk from buffer_pool
                 let buffer = buffer_pool.from_iter(data.to_vec()).unwrap();
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    device.clone(),
+                    &command_buffer_allocator,
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )

@@ -17,7 +17,7 @@ pub use crate::command_buffer::commands::{
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     command_buffer::{
-        pool::UnsafeCommandPoolAlloc,
+        pool::CommandPoolAlloc,
         synced::{BufferFinalState, BufferUse, ImageFinalState, ImageUse},
         sys::{CommandBufferBeginInfo, UnsafeCommandBufferBuilder},
         CommandBufferExecError, CommandBufferLevel,
@@ -121,7 +121,7 @@ impl SyncCommandBufferBuilder {
     /// See `UnsafeCommandBufferBuilder::new()`.
     #[inline]
     pub unsafe fn new(
-        pool_alloc: &UnsafeCommandPoolAlloc,
+        pool_alloc: &CommandPoolAlloc,
         begin_info: CommandBufferBeginInfo,
     ) -> Result<SyncCommandBufferBuilder, OomError> {
         let level = pool_alloc.level();

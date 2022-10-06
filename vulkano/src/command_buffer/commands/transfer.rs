@@ -10,6 +10,7 @@
 use crate::{
     buffer::{BufferAccess, BufferContents, TypedBufferAccess},
     command_buffer::{
+        allocator::CommandBufferAllocator,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CopyError, CopyErrorResource,
@@ -33,7 +34,10 @@ use std::{
 /// # Commands to transfer data to a resource, either from the host or from another resource.
 ///
 /// These commands can be called on a transfer queue, in addition to a compute or graphics queue.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Copies data from a buffer to another buffer.
     ///
     /// # Panics

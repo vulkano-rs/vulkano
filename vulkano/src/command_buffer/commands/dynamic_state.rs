@@ -9,6 +9,7 @@
 
 use crate::{
     command_buffer::{
+        allocator::CommandBufferAllocator,
         synced::{Command, SyncCommandBufferBuilder},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
@@ -37,7 +38,10 @@ use std::{
 /// # Commands to set dynamic state for pipelines.
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     // Helper function for dynamic state setting.
     fn validate_pipeline_fixed_state(
         &self,

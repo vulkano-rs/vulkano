@@ -9,7 +9,9 @@
 
 use cgmath::Vector2;
 use rand::Rng;
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::image::{ImageUsage, StorageImage};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -31,6 +33,8 @@ use vulkano_util::renderer::DeviceImageView;
 pub struct GameOfLifeComputePipeline {
     compute_queue: Arc<Queue>,
     compute_life_pipeline: Arc<ComputePipeline>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     life_in: Arc<CpuAccessibleBuffer<[u32]>>,
     life_out: Arc<CpuAccessibleBuffer<[u32]>>,
     image: DeviceImageView,
@@ -52,7 +56,12 @@ fn rand_grid(compute_queue: &Arc<Queue>, size: [u32; 2]) -> Arc<CpuAccessibleBuf
 }
 
 impl GameOfLifeComputePipeline {
-    pub fn new(compute_queue: Arc<Queue>, size: [u32; 2]) -> GameOfLifeComputePipeline {
+    pub fn new(
+        compute_queue: Arc<Queue>,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+        size: [u32; 2],
+    ) -> GameOfLifeComputePipeline {
         let life_in = rand_grid(&compute_queue, size);
         let life_out = rand_grid(&compute_queue, size);
 
@@ -81,9 +90,12 @@ impl GameOfLifeComputePipeline {
             },
         )
         .unwrap();
+
         GameOfLifeComputePipeline {
             compute_queue,
             compute_life_pipeline,
+            command_buffer_allocator,
+            descriptor_set_allocator,
             life_in,
             life_out,
             image,
@@ -94,7 +106,7 @@ impl GameOfLifeComputePipeline {
         self.image.clone()
     }
 
-    pub fn draw_life(&mut self, pos: Vector2<i32>) {
+    pub fn draw_life(&self, pos: Vector2<i32>) {
         let mut life_in = self.life_in.write().unwrap();
         let size = self.image.image().dimensions().width_height();
         if pos.y < 0 || pos.y >= size[1] as i32 || pos.x < 0 || pos.x >= size[0] as i32 {
@@ -111,7 +123,7 @@ impl GameOfLifeComputePipeline {
         dead_color: [f32; 4],
     ) -> Box<dyn GpuFuture> {
         let mut builder = AutoCommandBufferBuilder::primary(
-            self.compute_queue.device().clone(),
+            &*self.command_buffer_allocator,
             self.compute_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -140,7 +152,7 @@ impl GameOfLifeComputePipeline {
 
     /// Build the command for a dispatch.
     fn dispatch(
-        &mut self,
+        &self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         life_color: [f32; 4],
         dead_color: [f32; 4],
@@ -152,6 +164,7 @@ impl GameOfLifeComputePipeline {
         let pipeline_layout = self.compute_life_pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
+            &*self.descriptor_set_allocator,
             desc_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, self.image.clone()),
@@ -202,7 +215,7 @@ int get_index(ivec2 pos) {
 void compute_life() {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
     int index = get_index(pos);
-    
+
     ivec2 up_left = pos + ivec2(-1, 1);
     ivec2 up = pos + ivec2(0, 1);
     ivec2 up_right = pos + ivec2(1, 1);
@@ -230,7 +243,7 @@ void compute_life() {
         life_out[index] = 0;
     } // Else Do nothing
     else {
-       
+
         life_out[index] = life_in[index];
     }
 }

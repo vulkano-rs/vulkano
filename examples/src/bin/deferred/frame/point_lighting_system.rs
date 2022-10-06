@@ -9,14 +9,16 @@
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{Matrix4, Vector3};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferUsage,
-        SecondaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
+        CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
     },
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::Queue,
     image::ImageViewAbstract,
     impl_vertex,
@@ -37,11 +39,18 @@ pub struct PointLightingSystem {
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
 }
 
 impl PointLightingSystem {
     /// Initializes the point lighting system.
-    pub fn new(gfx_queue: Arc<Queue>, subpass: Subpass) -> PointLightingSystem {
+    pub fn new(
+        gfx_queue: Arc<Queue>,
+        subpass: Subpass,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+    ) -> PointLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader
         let vertices = [
@@ -98,6 +107,8 @@ impl PointLightingSystem {
             vertex_buffer,
             subpass,
             pipeline,
+            command_buffer_allocator,
+            descriptor_set_allocator,
         }
     }
 
@@ -148,6 +159,7 @@ impl PointLightingSystem {
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
         let descriptor_set = PersistentDescriptorSet::new(
+            &*self.descriptor_set_allocator,
             layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, color_input),
@@ -164,7 +176,7 @@ impl PointLightingSystem {
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary(
-            self.gfx_queue.device().clone(),
+            &*self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
