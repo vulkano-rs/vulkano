@@ -1548,159 +1548,148 @@ impl PhysicalDevice {
         surface: &Surface<W>,
         surface_info: SurfaceInfo,
     ) -> Result<SurfaceCapabilities, VulkanError> {
-        surface.surface_capabilities.get_or_try_insert(
-            (self.handle, surface_info),
-            |(_, surface_info)| {
-                /* Input */
+        /* Input */
 
-                let &SurfaceInfo {
-                    full_screen_exclusive,
-                    win32_monitor,
-                    _ne: _,
-                } = surface_info;
+        let SurfaceInfo {
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = surface_info;
 
-                let mut info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-                    surface: surface.internal_object(),
+        let mut info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
+            surface: surface.internal_object(),
+            ..Default::default()
+        };
+        let mut full_screen_exclusive_info = None;
+        let mut full_screen_exclusive_win32_info = None;
+
+        if self.supported_extensions().ext_full_screen_exclusive {
+            let next =
+                full_screen_exclusive_info.insert(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                    full_screen_exclusive: full_screen_exclusive.into(),
                     ..Default::default()
-                };
-                let mut full_screen_exclusive_info = None;
-                let mut full_screen_exclusive_win32_info = None;
+                });
 
-                if self.supported_extensions().ext_full_screen_exclusive {
-                    let next = full_screen_exclusive_info.insert(
-                        ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                            full_screen_exclusive: full_screen_exclusive.into(),
-                            ..Default::default()
-                        },
-                    );
+            next.p_next = info2.p_next as *mut _;
+            info2.p_next = next as *const _ as *const _;
+        }
 
-                    next.p_next = info2.p_next as *mut _;
-                    info2.p_next = next as *const _ as *const _;
-                }
+        if let Some(win32_monitor) = win32_monitor {
+            let next = full_screen_exclusive_win32_info.insert(
+                ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                    hmonitor: win32_monitor.0,
+                    ..Default::default()
+                },
+            );
 
-                if let Some(win32_monitor) = win32_monitor {
-                    let next = full_screen_exclusive_win32_info.insert(
-                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                            hmonitor: win32_monitor.0,
-                            ..Default::default()
-                        },
-                    );
+            next.p_next = info2.p_next as *mut _;
+            info2.p_next = next as *const _ as *const _;
+        }
 
-                    next.p_next = info2.p_next as *mut _;
-                    info2.p_next = next as *const _ as *const _;
-                }
+        /* Output */
 
-                /* Output */
+        let mut capabilities2 = ash::vk::SurfaceCapabilities2KHR::default();
+        let mut capabilities_full_screen_exclusive = None;
+        let mut protected_capabilities = None;
 
-                let mut capabilities2 = ash::vk::SurfaceCapabilities2KHR::default();
-                let mut capabilities_full_screen_exclusive = None;
-                let mut protected_capabilities = None;
+        if full_screen_exclusive_info.is_some() {
+            let next = capabilities_full_screen_exclusive
+                .insert(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default());
 
-                if full_screen_exclusive_info.is_some() {
-                    let next = capabilities_full_screen_exclusive
-                        .insert(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default());
+            next.p_next = info2.p_next as *mut _;
+            info2.p_next = next as *const _ as *const _;
+        }
 
-                    next.p_next = info2.p_next as *mut _;
-                    info2.p_next = next as *const _ as *const _;
-                }
+        if self
+            .instance
+            .enabled_extensions()
+            .khr_surface_protected_capabilities
+        {
+            let next =
+                protected_capabilities.insert(ash::vk::SurfaceProtectedCapabilitiesKHR::default());
 
-                if self
-                    .instance
-                    .enabled_extensions()
-                    .khr_surface_protected_capabilities
-                {
-                    let next = protected_capabilities
-                        .insert(ash::vk::SurfaceProtectedCapabilitiesKHR::default());
+            next.p_next = info2.p_next as *mut _;
+            info2.p_next = next as *const _ as *const _;
+        }
 
-                    next.p_next = info2.p_next as *mut _;
-                    info2.p_next = next as *const _ as *const _;
-                }
+        let fns = self.instance.fns();
 
-                let fns = self.instance.fns();
+        if self
+            .instance
+            .enabled_extensions()
+            .khr_get_surface_capabilities2
+        {
+            (fns.khr_get_surface_capabilities2
+                .get_physical_device_surface_capabilities2_khr)(
+                self.internal_object(),
+                &info2,
+                &mut capabilities2,
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+        } else {
+            (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
+                self.internal_object(),
+                info2.surface,
+                &mut capabilities2.surface_capabilities,
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+        };
 
-                if self
-                    .instance
-                    .enabled_extensions()
-                    .khr_get_surface_capabilities2
-                {
-                    (fns.khr_get_surface_capabilities2
-                        .get_physical_device_surface_capabilities2_khr)(
-                        self.internal_object(),
-                        &info2,
-                        &mut capabilities2,
-                    )
-                    .result()
-                    .map_err(VulkanError::from)?;
-                } else {
-                    (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
-                        self.internal_object(),
-                        info2.surface,
-                        &mut capabilities2.surface_capabilities,
-                    )
-                    .result()
-                    .map_err(VulkanError::from)?;
-                };
-
-                Ok(SurfaceCapabilities {
-                    min_image_count: capabilities2.surface_capabilities.min_image_count,
-                    max_image_count: if capabilities2.surface_capabilities.max_image_count == 0 {
-                        None
-                    } else {
-                        Some(capabilities2.surface_capabilities.max_image_count)
-                    },
-                    current_extent: if capabilities2.surface_capabilities.current_extent.width
-                        == 0xffffffff
-                        && capabilities2.surface_capabilities.current_extent.height == 0xffffffff
-                    {
-                        None
-                    } else {
-                        Some([
-                            capabilities2.surface_capabilities.current_extent.width,
-                            capabilities2.surface_capabilities.current_extent.height,
-                        ])
-                    },
-                    min_image_extent: [
-                        capabilities2.surface_capabilities.min_image_extent.width,
-                        capabilities2.surface_capabilities.min_image_extent.height,
-                    ],
-                    max_image_extent: [
-                        capabilities2.surface_capabilities.max_image_extent.width,
-                        capabilities2.surface_capabilities.max_image_extent.height,
-                    ],
-                    max_image_array_layers: capabilities2
-                        .surface_capabilities
-                        .max_image_array_layers,
-                    supported_transforms: capabilities2
-                        .surface_capabilities
-                        .supported_transforms
-                        .into(),
-
-                    current_transform: SupportedSurfaceTransforms::from(
-                        capabilities2.surface_capabilities.current_transform,
-                    )
-                    .iter()
-                    .next()
-                    .unwrap(), // TODO:
-                    supported_composite_alpha: capabilities2
-                        .surface_capabilities
-                        .supported_composite_alpha
-                        .into(),
-                    supported_usage_flags: {
-                        let usage = ImageUsage::from(
-                            capabilities2.surface_capabilities.supported_usage_flags,
-                        );
-                        debug_assert!(usage.color_attachment); // specs say that this must be true
-                        usage
-                    },
-
-                    supports_protected: protected_capabilities
-                        .map_or(false, |c| c.supports_protected != 0),
-
-                    full_screen_exclusive_supported: capabilities_full_screen_exclusive
-                        .map_or(false, |c| c.full_screen_exclusive_supported != 0),
-                })
+        Ok(SurfaceCapabilities {
+            min_image_count: capabilities2.surface_capabilities.min_image_count,
+            max_image_count: if capabilities2.surface_capabilities.max_image_count == 0 {
+                None
+            } else {
+                Some(capabilities2.surface_capabilities.max_image_count)
             },
-        )
+            current_extent: if capabilities2.surface_capabilities.current_extent.width == 0xffffffff
+                && capabilities2.surface_capabilities.current_extent.height == 0xffffffff
+            {
+                None
+            } else {
+                Some([
+                    capabilities2.surface_capabilities.current_extent.width,
+                    capabilities2.surface_capabilities.current_extent.height,
+                ])
+            },
+            min_image_extent: [
+                capabilities2.surface_capabilities.min_image_extent.width,
+                capabilities2.surface_capabilities.min_image_extent.height,
+            ],
+            max_image_extent: [
+                capabilities2.surface_capabilities.max_image_extent.width,
+                capabilities2.surface_capabilities.max_image_extent.height,
+            ],
+            max_image_array_layers: capabilities2.surface_capabilities.max_image_array_layers,
+            supported_transforms: capabilities2
+                .surface_capabilities
+                .supported_transforms
+                .into(),
+
+            current_transform: SupportedSurfaceTransforms::from(
+                capabilities2.surface_capabilities.current_transform,
+            )
+            .iter()
+            .next()
+            .unwrap(), // TODO:
+            supported_composite_alpha: capabilities2
+                .surface_capabilities
+                .supported_composite_alpha
+                .into(),
+            supported_usage_flags: {
+                let usage =
+                    ImageUsage::from(capabilities2.surface_capabilities.supported_usage_flags);
+                debug_assert!(usage.color_attachment); // specs say that this must be true
+                usage
+            },
+
+            supports_protected: protected_capabilities.map_or(false, |c| c.supports_protected != 0),
+
+            full_screen_exclusive_supported: capabilities_full_screen_exclusive
+                .map_or(false, |c| c.full_screen_exclusive_supported != 0),
+        })
     }
 
     /// Returns the combinations of format and color space that are supported by the physical device
