@@ -52,6 +52,7 @@ Changes to descriptor sets and descriptor pools:
 - Added the remaining missing variants of the `ColorSpace` enum.
 - Added a `supports_protected` member to `SurfaceCapabilities` for the `khr_surface_protected_capabilities` extension.
 - Support for the `ext_validation_features` extension.
+- Support for the `khr_external_fence_fd` and `khr_external_fence_win32` extensions.
 
 ### Bugs fixed
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
