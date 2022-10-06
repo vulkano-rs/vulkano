@@ -309,7 +309,9 @@ where
                                 true,
                             ) {
                                 Ok(_) => (),
-                                Err(AccessCheckError::Unknown) => return Err(AccessError::SwapchainImageNotAcquired.into()),
+                                Err(AccessCheckError::Unknown) => {
+                                    return Err(AccessError::SwapchainImageNotAcquired.into())
+                                }
                                 Err(AccessCheckError::Denied(e)) => return Err(e.into()),
                             }
                         }

@@ -69,8 +69,8 @@ use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, CopyImageToBufferInfo, PrimaryCommandBuffer,
-        RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        CopyImageToBufferInfo, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -314,8 +314,10 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     let buf = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        device,
         BufferUsage {
             transfer_dst: true,
             ..BufferUsage::empty()
@@ -326,7 +328,7 @@ fn main() {
     .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        device,
+        &command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )

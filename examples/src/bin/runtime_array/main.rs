@@ -12,9 +12,11 @@ use std::{io::Cursor, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassContents,
     },
     descriptor_set::{
+        allocator::StandardDescriptorSetAllocator,
         layout::{
             DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
         },
@@ -268,6 +270,9 @@ fn main() {
     )
     .unwrap();
 
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     let mascot_texture = {
         let png_bytes = include_bytes!("rust_mascot.png").to_vec();
         let cursor = Cursor::new(png_bytes);
@@ -288,6 +293,7 @@ fn main() {
             dimensions,
             MipmapsCount::One,
             Format::R8G8B8A8_SRGB,
+            &command_buffer_allocator,
             queue.clone(),
         )
         .unwrap()
@@ -316,6 +322,7 @@ fn main() {
             dimensions,
             MipmapsCount::One,
             Format::R8G8B8A8_SRGB,
+            &command_buffer_allocator,
             queue.clone(),
         )
         .unwrap()
@@ -381,6 +388,7 @@ fn main() {
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new_variable(
+        &descriptor_set_allocator,
         layout.clone(),
         2,
         [WriteDescriptorSet::image_view_sampler_array(
@@ -457,7 +465,7 @@ fn main() {
             }
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                &command_buffer_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )

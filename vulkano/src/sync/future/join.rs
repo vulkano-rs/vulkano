@@ -287,9 +287,7 @@ where
                 Err(AccessCheckError::Denied(e1))
             } // TODO: which one?
             (Ok(_), Err(AccessCheckError::Denied(_)))
-            | (Err(AccessCheckError::Denied(_)), Ok(_)) => {
-                panic!("Contradictory information between two futures")
-            }
+            | (Err(AccessCheckError::Denied(_)), Ok(_)) => Ok(()),
             (Ok(_), Ok(_)) => Ok(()), // TODO: Double Acquired?
         }
     }

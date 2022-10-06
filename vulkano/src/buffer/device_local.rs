@@ -21,8 +21,8 @@ use super::{
 };
 use crate::{
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferBeginError, CommandBufferExecFuture,
-        CommandBufferUsage, CopyBufferInfo, PrimaryCommandBuffer,
+        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferBeginError,
+        CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo, PrimaryCommandBuffer,
     },
     device::{Device, DeviceOwned, Queue},
     memory::{
@@ -79,6 +79,7 @@ use std::{
 /// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 ///
 /// // Simple iterator to construct test data.
 /// let data = (0..10_000).map(|i| i as f32);
@@ -107,7 +108,7 @@ use std::{
 ///
 /// // Create a one-time command to copy between the buffers.
 /// let mut cbb = AutoCommandBufferBuilder::primary(
-///     device.clone(),
+///     &command_buffer_allocator,
 ///     queue.queue_family_index(),
 ///     CommandBufferUsage::OneTimeSubmit,
 /// )
@@ -170,9 +171,6 @@ where
     }
 }
 
-// TODO: make this prettier
-type DeviceLocalBufferFromBufferFuture = CommandBufferExecFuture<NowFuture>;
-
 impl<T> DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
@@ -186,9 +184,13 @@ where
     pub fn from_buffer<B>(
         source: Arc<B>,
         usage: BufferUsage,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<
-        (Arc<DeviceLocalBuffer<T>>, DeviceLocalBufferFromBufferFuture),
+        (
+            Arc<DeviceLocalBuffer<T>>,
+            CommandBufferExecFuture<NowFuture>,
+        ),
         DeviceLocalBufferCreationError,
     >
     where
@@ -213,7 +215,7 @@ where
             )?;
 
             let mut cbb = AutoCommandBufferBuilder::primary(
-                source.device().clone(),
+                command_buffer_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )?;
@@ -252,9 +254,13 @@ where
     pub fn from_data(
         data: T,
         usage: BufferUsage,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<
-        (Arc<DeviceLocalBuffer<T>>, DeviceLocalBufferFromBufferFuture),
+        (
+            Arc<DeviceLocalBuffer<T>>,
+            CommandBufferExecFuture<NowFuture>,
+        ),
         DeviceLocalBufferCreationError,
     > {
         let source = CpuAccessibleBuffer::from_data(
@@ -266,7 +272,7 @@ where
             false,
             data,
         )?;
-        DeviceLocalBuffer::from_buffer(source, usage, queue)
+        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_allocator, queue)
     }
 }
 
@@ -281,11 +287,12 @@ where
     pub fn from_iter<D>(
         data: D,
         usage: BufferUsage,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<
         (
             Arc<DeviceLocalBuffer<[T]>>,
-            DeviceLocalBufferFromBufferFuture,
+            CommandBufferExecFuture<NowFuture>,
         ),
         DeviceLocalBufferCreationError,
     >
@@ -302,7 +309,7 @@ where
             false,
             data,
         )?;
-        DeviceLocalBuffer::from_buffer(source, usage, queue)
+        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_allocator, queue)
     }
 }
 
@@ -587,11 +594,13 @@ impl From<CommandBufferBeginError> for DeviceLocalBufferCreationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::GpuFuture;
+    use crate::{command_buffer::allocator::StandardCommandBufferAllocator, sync::GpuFuture};
 
     #[test]
     fn from_data_working() {
         let (device, queue) = gfx_dev_and_queue!();
+
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
 
         let (buffer, _) = DeviceLocalBuffer::from_data(
             12u32,
@@ -599,12 +608,13 @@ mod tests {
                 transfer_src: true,
                 ..BufferUsage::empty()
             },
+            &cb_allocator,
             queue.clone(),
         )
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_data(
-            device.clone(),
+            device,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
@@ -615,7 +625,7 @@ mod tests {
         .unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device,
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
@@ -638,18 +648,21 @@ mod tests {
     fn from_iter_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+
         let (buffer, _) = DeviceLocalBuffer::from_iter(
             (0..512u32).map(|n| n * 2),
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
             },
+            &cb_allocator,
             queue.clone(),
         )
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            device,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
@@ -660,7 +673,7 @@ mod tests {
         .unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device,
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
@@ -686,6 +699,8 @@ mod tests {
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
+
         assert_should_panic!({
             DeviceLocalBuffer::from_data(
                 (),
@@ -693,6 +708,7 @@ mod tests {
                     transfer_dst: true,
                     ..BufferUsage::empty()
                 },
+                &cb_allocator,
                 queue.clone(),
             )
             .unwrap();

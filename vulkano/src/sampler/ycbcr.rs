@@ -26,6 +26,8 @@
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let image_data: Vec<u8> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+//! # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
+//! # let descriptor_set_allocator: vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator = return;
 //! use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 //! use vulkano::descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType};
 //! use vulkano::format::Format;
@@ -69,6 +71,7 @@
 //!     ImageDimensions::Dim2d { width: 1920, height: 1080, array_layers: 1 },
 //!     MipmapsCount::One,
 //!     Format::G8_B8_R8_3PLANE_420_UNORM,
+//!     &command_buffer_allocator,
 //!     queue.clone(),
 //! ).unwrap();
 //!
@@ -79,6 +82,7 @@
 //! let image_view = ImageView::new(image, create_info).unwrap();
 //!
 //! let descriptor_set = PersistentDescriptorSet::new(
+//!     &descriptor_set_allocator,
 //!     descriptor_set_layout.clone(),
 //!     [WriteDescriptorSet::image_view(0, image_view)],
 //! ).unwrap();

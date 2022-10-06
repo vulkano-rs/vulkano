@@ -67,6 +67,7 @@ use std::{
 /// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 ///
 /// // Create the ring buffer.
 /// let buffer = CpuBufferPool::upload(device.clone());
@@ -77,20 +78,23 @@ use std::{
 ///     let sub_buffer = buffer.from_data(data).unwrap();
 ///
 ///     // You can then use `sub_buffer` as if it was an entirely separate buffer.
-///     AutoCommandBufferBuilder::primary(device.clone(), queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit)
-///         .unwrap()
-///         // For the sake of the example we just call `update_buffer` on the buffer, even though
-///         // it is pointless to do that.
-///         .update_buffer(&[0.2, 0.3, 0.4, 0.5], sub_buffer.clone(), 0)
-///         .unwrap()
-///         .build().unwrap()
-///         .execute(queue.clone())
-///         .unwrap()
-///         .then_signal_fence_and_flush()
-///         .unwrap();
+///     AutoCommandBufferBuilder::primary(
+///         &command_buffer_allocator,
+///         queue.queue_family_index(),
+///         CommandBufferUsage::OneTimeSubmit,
+///     )
+///     .unwrap()
+///     // For the sake of the example we just call `update_buffer` on the buffer, even though
+///     // it is pointless to do that.
+///     .update_buffer(&[0.2, 0.3, 0.4, 0.5], sub_buffer.clone(), 0)
+///     .unwrap()
+///     .build().unwrap()
+///     .execute(queue.clone())
+///     .unwrap()
+///     .then_signal_fence_and_flush()
+///     .unwrap();
 /// }
 /// ```
-///
 pub struct CpuBufferPool<T, A = Arc<StandardMemoryPool>>
 where
     [T]: BufferContents,

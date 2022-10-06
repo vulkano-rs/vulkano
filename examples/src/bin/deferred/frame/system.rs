@@ -13,12 +13,13 @@ use super::{
     point_lighting_system::PointLightingSystem,
 };
 use cgmath::{Matrix4, SquareMatrix, Vector3};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        RenderPassBeginInfo, SecondaryCommandBuffer, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryCommandBuffer, SubpassContents,
     },
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract},
@@ -35,6 +36,8 @@ pub struct FrameSystem {
     // We need to keep it in `FrameSystem` because we may want to recreate the intermediate buffers
     // in of a change in the dimensions.
     render_pass: Arc<RenderPass>,
+
+    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
 
     // Intermediate render target that will contain the albedo of each pixel of the scene.
     diffuse_buffer: Arc<ImageView<AttachmentImage>>,
@@ -64,7 +67,11 @@ impl FrameSystem {
     ///   `frame()` method. We need to know that in advance. If that format ever changes, we have
     ///   to create a new `FrameSystem`.
     ///
-    pub fn new(gfx_queue: Arc<Queue>, final_output_format: Format) -> FrameSystem {
+    pub fn new(
+        gfx_queue: Arc<Queue>,
+        final_output_format: Format,
+        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+    ) -> FrameSystem {
         // Creating the render pass.
         //
         // The render pass has two subpasses. In the first subpass, we draw all the objects of the
@@ -185,18 +192,36 @@ impl FrameSystem {
         )
         .unwrap();
 
+        let descriptor_set_allocator = Rc::new(StandardDescriptorSetAllocator::new(
+            gfx_queue.device().clone(),
+        ));
+
         // Initialize the three lighting systems.
         // Note that we need to pass to them the subpass where they will be executed.
         let lighting_subpass = Subpass::from(render_pass.clone(), 1).unwrap();
-        let ambient_lighting_system =
-            AmbientLightingSystem::new(gfx_queue.clone(), lighting_subpass.clone());
-        let directional_lighting_system =
-            DirectionalLightingSystem::new(gfx_queue.clone(), lighting_subpass.clone());
-        let point_lighting_system = PointLightingSystem::new(gfx_queue.clone(), lighting_subpass);
+        let ambient_lighting_system = AmbientLightingSystem::new(
+            gfx_queue.clone(),
+            lighting_subpass.clone(),
+            command_buffer_allocator.clone(),
+            descriptor_set_allocator.clone(),
+        );
+        let directional_lighting_system = DirectionalLightingSystem::new(
+            gfx_queue.clone(),
+            lighting_subpass.clone(),
+            command_buffer_allocator.clone(),
+            descriptor_set_allocator.clone(),
+        );
+        let point_lighting_system = PointLightingSystem::new(
+            gfx_queue.clone(),
+            lighting_subpass,
+            command_buffer_allocator.clone(),
+            descriptor_set_allocator,
+        );
 
         FrameSystem {
             gfx_queue,
             render_pass,
+            command_buffer_allocator,
             diffuse_buffer,
             normals_buffer,
             depth_buffer,
@@ -304,7 +329,7 @@ impl FrameSystem {
 
         // Start the command buffer builder that will be filled throughout the frame handling.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            self.gfx_queue.device().clone(),
+            &*self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

@@ -17,10 +17,13 @@ mod linux {
     use vulkano::{
         buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
         command_buffer::{
-            AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo,
-            SubmitInfo, SubpassContents,
+            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
+            CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
+            SubpassContents,
         },
-        descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+        descriptor_set::{
+            allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        },
         device::{
             physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
             QueueCreateInfo,
@@ -225,9 +228,13 @@ mod linux {
             }
         });
 
+        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
 
         let set = PersistentDescriptorSet::new(
+            &descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::image_view_sampler(
                 0, image_view, sampler,
@@ -324,7 +331,7 @@ mod linux {
                     }
 
                     let mut builder = AutoCommandBufferBuilder::primary(
-                        device.clone(),
+                        &command_buffer_allocator,
                         queue.queue_family_index(),
                         CommandBufferUsage::OneTimeSubmit,
                     )

@@ -52,32 +52,37 @@
 //!
 //! - A `DescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
 //!   layout of a future descriptor set. When you allocate a descriptor set, you have to pass an
-//!   instance of this object. This is represented with the `DescriptorSetLayout` type in
+//!   instance of this object. This is represented with the [`DescriptorSetLayout`] type in
 //!   vulkano.
 //! - A `DescriptorPool` is a Vulkan object that holds the memory of descriptor sets and that can
 //!   be used to allocate and free individual descriptor sets. This is represented with the
-//!   `UnsafeDescriptorPool` type in vulkano.
+//!   [`DescriptorPool`] type in vulkano.
 //! - A `DescriptorSet` contains the bindings to resources and is allocated from a pool. This is
-//!   represented with the `UnsafeDescriptorSet` type in vulkano.
+//!   represented with the [`UnsafeDescriptorSet`] type in vulkano.
 //!
 //! In addition to this, vulkano defines the following:
 //!
-//! - The `DescriptorPool` trait can be implemented on types from which you can allocate and free
-//!   descriptor sets. However it is different from Vulkan descriptor pools in the sense that an
-//!   implementation of the `DescriptorPool` trait can manage multiple Vulkan descriptor pools.
-//! - The `StandardDescriptorPool` type is a default implementation of the `DescriptorPool` trait.
-//! - The `DescriptorSet` trait is implemented on types that wrap around Vulkan descriptor sets in
+//! - The [`DescriptorSetAllocator`] trait can be implemented on types from which you can allocate
+//!   and free descriptor sets. However it is different from Vulkan descriptor pools in the sense
+//!   that an implementation of the [`DescriptorSetAllocator`] trait can manage multiple Vulkan
+//!   descriptor pools.
+//! - The [`StandardDescriptorSetAllocator`] type is a default implementation of the
+//!   [`DescriptorSetAllocator`] trait.
+//! - The [`DescriptorSet`] trait is implemented on types that wrap around Vulkan descriptor sets in
 //!   a safe way. A Vulkan descriptor set is inherently unsafe, so we need safe wrappers around
 //!   them.
-//! - The `SimpleDescriptorSet` type is a default implementation of the `DescriptorSet` trait.
-//! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
-//!   `DescriptorSet`. It is what you pass to the draw functions.
+//! - The [`DescriptorSetsCollection`] trait is implemented on collections of types that implement
+//!   [`DescriptorSet`]. It is what you pass to the draw functions.
+//!
+//! [`DescriptorPool`]: pool::DescriptorPool
+//! [`DescriptorSetAllocator`]: allocator::DescriptorSetAllocator
+//! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 
 pub(crate) use self::update::{check_descriptor_write, DescriptorWriteInfo};
 pub use self::{
     collection::DescriptorSetsCollection,
     persistent::PersistentDescriptorSet,
-    single_layout_pool::SingleLayoutDescSetPool,
+    single_layout_pool::{SingleLayoutDescriptorSetPool, SingleLayoutVariableDescriptorSetPool},
     update::{DescriptorSetUpdateError, WriteDescriptorSet, WriteDescriptorSetElements},
 };
 use self::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
@@ -99,6 +104,7 @@ use std::{
     sync::Arc,
 };
 
+pub mod allocator;
 mod collection;
 pub mod layout;
 pub mod persistent;

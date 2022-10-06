@@ -12,11 +12,14 @@ use std::{io::Cursor, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, BlitImageInfo, BufferImageCopy, ClearColorImageInfo,
-        CommandBufferUsage, CopyBufferToImageInfo, CopyImageInfo, ImageBlit, ImageCopy,
-        PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
+        BufferImageCopy, ClearColorImageInfo, CommandBufferUsage, CopyBufferToImageInfo,
+        CopyImageInfo, ImageBlit, ImageCopy, PrimaryCommandBuffer, RenderPassBeginInfo,
+        SubpassContents,
     },
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
@@ -207,6 +210,9 @@ fn main() {
     )
     .unwrap();
 
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     let (texture, tex_future) = {
         let png_bytes = include_bytes!("image_img.png").to_vec();
         let cursor = Cursor::new(png_bytes);
@@ -243,7 +249,7 @@ fn main() {
         .unwrap();
 
         let mut builder = AutoCommandBufferBuilder::primary(
-            device.clone(),
+            &command_buffer_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -339,6 +345,7 @@ fn main() {
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(
+        &descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::image_view_sampler(0, texture, sampler)],
     )
@@ -406,7 +413,7 @@ fn main() {
             }
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                &command_buffer_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )

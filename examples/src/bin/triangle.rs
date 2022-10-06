@@ -21,7 +21,8 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassContents,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -412,6 +413,14 @@ fn main() {
     // each image.
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
+    // Before we can start creating and recording command buffers, we need a way of allocating
+    // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
+    // underneath and provides a safe interface for them.
+    //
+    // A Vulkan command pool only works for one queue family, and vulkano's command buffer allocator
+    // reflects that, therefore we need to pass the queue family during creation.
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     // Initialization is finally finished!
 
     // In some situations, the swapchain will become invalid by itself. This includes for example
@@ -523,7 +532,7 @@ fn main() {
                 // Note that we have to pass a queue family when we create the command buffer. The command
                 // buffer will only be executable on that given queue family.
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    device.clone(),
+                    &command_buffer_allocator,
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )
