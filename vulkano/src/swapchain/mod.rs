@@ -406,7 +406,7 @@ pub struct SwapchainPresentInfo {
     /// going to be updated by the present operation.
     ///
     /// If `present_regions` is not empty, the
-    /// [`khr_incremental_present`](crate::device::DeviceExtension::khr_incremental_present)
+    /// [`khr_incremental_present`](crate::device::DeviceExtensions::khr_incremental_present)
     /// extension must be enabled on the device. The implementation will update the provided
     /// regions of the swapchain image, and _may_ ignore the other areas. However, as this is just
     /// a hint, the Vulkan implementation is free to ignore the regions altogether and update

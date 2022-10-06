@@ -579,7 +579,7 @@ impl From<FenceError> for FlushError {
             FenceError::OomError(err) => FlushError::OomError(err),
             FenceError::Timeout => FlushError::Timeout,
             FenceError::DeviceLost => FlushError::DeviceLost,
-            FenceError::RequirementNotMet { .. } | FenceError::InUse => unreachable!(),
+            _ => unreachable!(),
         }
     }
 }

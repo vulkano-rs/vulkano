@@ -168,7 +168,7 @@ impl<'a> QueueGuard<'a> {
         self.bind_sparse_unchecked_locked(
             bind_infos.into_iter().collect(),
             fence.as_ref().map(|fence| {
-                let state = fence.lock();
+                let state = fence.state();
                 (fence, state)
             }),
         )
@@ -583,7 +583,7 @@ impl<'a> QueueGuard<'a> {
         self.submit_unchecked_locked(
             submit_infos.into_iter().collect(),
             fence.as_ref().map(|fence| {
-                let state = fence.lock();
+                let state = fence.state();
                 (fence, state)
             }),
         )
@@ -1183,7 +1183,7 @@ impl QueueState {
                     operation.unlock();
 
                     if let Some(fence) = fence {
-                        fence.lock().set_finished();
+                        fence.state().set_finished();
                     }
                 }
             }

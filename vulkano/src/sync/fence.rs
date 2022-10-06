@@ -17,6 +17,7 @@ use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
+    fs::File,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -56,7 +57,7 @@ pub struct Fence {
     // If true, will be put back into fence pool on drop.
     must_put_in_pool: bool,
 
-    _export_handle_types: ExternalFenceHandleTypes,
+    export_handle_types: ExternalFenceHandleTypes,
 
     state: Mutex<FenceState>,
 }
@@ -71,7 +72,7 @@ impl Fence {
     }
 
     fn validate_new(device: &Device, create_info: &FenceCreateInfo) -> Result<(), FenceError> {
-        let FenceCreateInfo {
+        let &FenceCreateInfo {
             signaled: _,
             export_handle_types,
             _ne: _,
@@ -95,8 +96,26 @@ impl Fence {
             export_handle_types.validate_device(device)?;
 
             // VUID-VkExportFenceCreateInfo-handleTypes-01446
-            // TODO: `vkGetPhysicalDeviceExternalFenceProperties` can only be called with one
-            // handle type, so which one do we give it?
+            for handle_type in export_handle_types.into_iter() {
+                let external_fence_properties = unsafe {
+                    device
+                        .physical_device()
+                        .external_fence_properties_unchecked(ExternalFenceInfo::handle_type(
+                            handle_type,
+                        ))
+                };
+
+                if !external_fence_properties.exportable {
+                    return Err(FenceError::HandleTypeNotExportable { handle_type });
+                }
+
+                if !external_fence_properties
+                    .compatible_handle_types
+                    .contains(&export_handle_types)
+                {
+                    return Err(FenceError::ExportHandleTypesNotCompatible);
+                }
+            }
         }
 
         Ok(())
@@ -158,7 +177,7 @@ impl Fence {
             device,
             must_put_in_pool: false,
 
-            _export_handle_types: export_handle_types,
+            export_handle_types,
 
             state: Mutex::new(FenceState {
                 is_signaled: signaled,
@@ -191,7 +210,7 @@ impl Fence {
                     device,
                     must_put_in_pool: true,
 
-                    _export_handle_types: ExternalFenceHandleTypes::empty(),
+                    export_handle_types: ExternalFenceHandleTypes::empty(),
 
                     state: Mutex::new(Default::default()),
                 }
@@ -230,7 +249,7 @@ impl Fence {
             device,
             must_put_in_pool: false,
 
-            _export_handle_types: export_handle_types,
+            export_handle_types,
 
             state: Mutex::new(FenceState {
                 is_signaled: signaled,
@@ -243,11 +262,11 @@ impl Fence {
     #[inline]
     pub fn is_signaled(&self) -> Result<bool, OomError> {
         let queue_to_signal = {
-            let mut state = self.lock();
+            let mut state = self.state();
 
             // If the fence is already signaled, or it's unsignaled but there's no queue that
             // could signal it, return the currently known value.
-            if let Some(is_signaled) = state.status() {
+            if let Some(is_signaled) = state.is_signaled() {
                 return Ok(is_signaled);
             }
 
@@ -285,7 +304,7 @@ impl Fence {
             let mut state = self.state.lock();
 
             // If the fence is already signaled, we don't need to wait.
-            if let Some(true) = state.status() {
+            if state.is_signaled().unwrap_or(false) {
                 return Ok(());
             }
 
@@ -373,7 +392,7 @@ impl Fence {
                 let state = fence.state.lock();
 
                 // Skip the fences that are already signaled.
-                if !state.status().unwrap_or(false) {
+                if !state.is_signaled().unwrap_or(false) {
                     fences_vk.push(fence.handle);
                     fences.push(fence);
                     states.push(state);
@@ -438,8 +457,8 @@ impl Fence {
 
     fn validate_reset(&self, state: &FenceState) -> Result<(), FenceError> {
         // VUID-vkResetFences-pFences-01123
-        if state.is_in_use() {
-            return Err(FenceError::InUse);
+        if state.is_in_queue() {
+            return Err(FenceError::InQueue);
         }
 
         Ok(())
@@ -499,8 +518,8 @@ impl Fence {
             assert_eq!(device, &fence.device);
 
             // VUID-vkResetFences-pFences-01123
-            if state.is_in_use() {
-                return Err(FenceError::InUse);
+            if state.is_in_queue() {
+                return Err(FenceError::InQueue);
             }
         }
 
@@ -549,7 +568,501 @@ impl Fence {
         Ok(())
     }
 
-    pub(crate) fn lock(&self) -> MutexGuard<'_, FenceState> {
+    /// Exports the fence into a POSIX file descriptor. The caller owns the returned `File`.
+    ///
+    /// The [`khr_external_fence_fd`](crate::device::DeviceExtensions::khr_external_fence_fd)
+    /// extension must be enabled on the device.
+    #[cfg(unix)]
+    #[inline]
+    pub fn export_fd(&self, handle_type: ExternalFenceHandleType) -> Result<File, FenceError> {
+        let mut state = self.state.lock();
+        self.validate_export_fd(handle_type, &state)?;
+
+        unsafe { Ok(self.export_fd_unchecked_locked(handle_type, &mut state)?) }
+    }
+
+    #[cfg(unix)]
+    fn validate_export_fd(
+        &self,
+        handle_type: ExternalFenceHandleType,
+        state: &FenceState,
+    ) -> Result<(), FenceError> {
+        if !self.device.enabled_extensions().khr_external_fence_fd {
+            return Err(FenceError::RequirementNotMet {
+                required_for: "`export_fd`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["khr_external_fence_fd"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkFenceGetFdInfoKHR-handleType-parameter
+        handle_type.validate_device(&self.device)?;
+
+        // VUID-VkFenceGetFdInfoKHR-handleType-01453
+        if !self.export_handle_types.intersects(&handle_type.into()) {
+            return Err(FenceError::HandleTypeNotEnabled);
+        }
+
+        // VUID-VkFenceGetFdInfoKHR-handleType-01454
+        if handle_type.has_copy_transference()
+            && !(state.is_signaled().unwrap_or(false) || state.is_in_queue())
+        {
+            return Err(FenceError::HandleTypeCopyNotSignaled);
+        }
+
+        // VUID-VkFenceGetFdInfoKHR-fence-01455
+        if let Some(imported_handle_type) = state.current_import {
+            match imported_handle_type {
+                ImportType::SwapchainAcquire => {
+                    return Err(FenceError::ImportedForSwapchainAcquire)
+                }
+                ImportType::ExternalFence(imported_handle_type) => {
+                    let external_fence_properties = unsafe {
+                        self.device
+                            .physical_device()
+                            .external_fence_properties_unchecked(ExternalFenceInfo::handle_type(
+                                handle_type,
+                            ))
+                    };
+
+                    if !external_fence_properties
+                        .export_from_imported_handle_types
+                        .intersects(&imported_handle_type.into())
+                    {
+                        return Err(FenceError::ExportFromImportedNotSupported {
+                            imported_handle_type,
+                        });
+                    }
+                }
+            }
+        }
+
+        // VUID-VkFenceGetFdInfoKHR-handleType-01456
+        if !matches!(
+            handle_type,
+            ExternalFenceHandleType::OpaqueFd | ExternalFenceHandleType::SyncFd
+        ) {
+            return Err(FenceError::HandleTypeNotFd);
+        }
+
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn export_fd_unchecked(
+        &self,
+        handle_type: ExternalFenceHandleType,
+    ) -> Result<File, VulkanError> {
+        let mut state = self.state.lock();
+        self.export_fd_unchecked_locked(handle_type, &mut state)
+    }
+
+    #[cfg(unix)]
+    unsafe fn export_fd_unchecked_locked(
+        &self,
+        handle_type: ExternalFenceHandleType,
+        state: &mut FenceState,
+    ) -> Result<File, VulkanError> {
+        use std::os::unix::io::FromRawFd;
+
+        let info_vk = ash::vk::FenceGetFdInfoKHR {
+            fence: self.handle,
+            handle_type: handle_type.into(),
+            ..Default::default()
+        };
+
+        let mut output = MaybeUninit::uninit();
+        let fns = self.device.fns();
+        (fns.khr_external_fence_fd.get_fence_fd_khr)(
+            self.device.internal_object(),
+            &info_vk,
+            output.as_mut_ptr(),
+        )
+        .result()
+        .map_err(VulkanError::from)?;
+
+        state.export(handle_type);
+
+        Ok(File::from_raw_fd(output.assume_init()))
+    }
+
+    /// Exports the fence into a Win32 handle.
+    ///
+    /// The [`khr_external_fence_win32`](crate::device::DeviceExtensions::khr_external_fence_win32)
+    /// extension must be enabled on the device.
+    #[cfg(windows)]
+    #[inline]
+    pub fn export_win32_handle(
+        &self,
+        handle_type: ExternalFenceHandleType,
+    ) -> Result<*mut std::ffi::c_void, FenceError> {
+        let mut state = self.state.lock();
+        self.validate_export_win32_handle(handle_type, &state)?;
+
+        unsafe { Ok(self.export_win32_handle_unchecked_locked(handle_type, &mut state)?) }
+    }
+
+    #[cfg(windows)]
+    fn validate_export_win32_handle(
+        &self,
+        handle_type: ExternalFenceHandleType,
+        state: &FenceState,
+    ) -> Result<(), FenceError> {
+        if !self.device.enabled_extensions().khr_external_fence_win32 {
+            return Err(FenceError::RequirementNotMet {
+                required_for: "`export_win32_handle`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["khr_external_fence_win32"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkFenceGetWin32HandleInfoKHR-handleType-parameter
+        handle_type.validate_device(&self.device)?;
+
+        // VUID-VkFenceGetWin32HandleInfoKHR-handleType-01448
+        if !self.export_handle_types.intersects(&handle_type.into()) {
+            return Err(FenceError::HandleTypeNotEnabled);
+        }
+
+        // VUID-VkFenceGetWin32HandleInfoKHR-handleType-01449
+        if matches!(handle_type, ExternalFenceHandleType::OpaqueWin32)
+            && state.opaque_win32_exported()
+        {
+            return Err(FenceError::AlreadyExported);
+        }
+
+        // VUID-VkFenceGetWin32HandleInfoKHR-handleType-01451
+        if handle_type.has_copy_transference()
+            && !(state.is_signaled().unwrap_or(false) || state.is_in_queue())
+        {
+            return Err(FenceError::HandleTypeCopyNotSignaled);
+        }
+
+        // VUID-VkFenceGetWin32HandleInfoKHR-fence-01450
+        if let Some(imported_handle_type) = state.current_import {
+            match imported_handle_type {
+                ImportType::SwapchainAcquire => {
+                    return Err(FenceError::ImportedForSwapchainAcquire)
+                }
+                ImportType::ExternalFence(imported_handle_type) => {
+                    let external_fence_properties = unsafe {
+                        self.device
+                            .physical_device()
+                            .external_fence_properties_unchecked(ExternalFenceInfo::handle_type(
+                                handle_type,
+                            ))
+                    };
+
+                    if !external_fence_properties
+                        .export_from_imported_handle_types
+                        .intersects(&imported_handle_type.into())
+                    {
+                        return Err(FenceError::ExportFromImportedNotSupported {
+                            imported_handle_type,
+                        });
+                    }
+                }
+            }
+        }
+
+        // VUID-VkFenceGetWin32HandleInfoKHR-handleType-01452
+        if !matches!(
+            handle_type,
+            ExternalFenceHandleType::OpaqueWin32 | ExternalFenceHandleType::OpaqueWin32Kmt
+        ) {
+            return Err(FenceError::HandleTypeNotWin32);
+        }
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn export_win32_handle_unchecked(
+        &self,
+        handle_type: ExternalFenceHandleType,
+    ) -> Result<*mut std::ffi::c_void, VulkanError> {
+        let mut state = self.state.lock();
+        self.export_win32_handle_unchecked_locked(handle_type, &mut state)
+    }
+
+    #[cfg(windows)]
+    unsafe fn export_win32_handle_unchecked_locked(
+        &self,
+        handle_type: ExternalFenceHandleType,
+        state: &mut FenceState,
+    ) -> Result<*mut std::ffi::c_void, VulkanError> {
+        let info_vk = ash::vk::FenceGetWin32HandleInfoKHR {
+            fence: self.handle,
+            handle_type: handle_type.into(),
+            ..Default::default()
+        };
+
+        let mut output = MaybeUninit::uninit();
+        let fns = self.device.fns();
+        (fns.khr_external_fence_win32.get_fence_win32_handle_khr)(
+            self.device.internal_object(),
+            &info_vk,
+            output.as_mut_ptr(),
+        )
+        .result()
+        .map_err(VulkanError::from)?;
+
+        state.export(handle_type);
+
+        Ok(output.assume_init())
+    }
+
+    /// Imports a fence from a POSIX file descriptor.
+    ///
+    /// The [`khr_external_fence_fd`](crate::device::DeviceExtensions::khr_external_fence_fd)
+    /// extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - If in `import_fence_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`,
+    ///   then `file` must have been exported from Vulkan or a compatible API,
+    ///   with a driver and device UUID equal to those of the device that owns `self`.
+    #[cfg(unix)]
+    #[inline]
+    pub unsafe fn import_fd(
+        &self,
+        import_fence_fd_info: ImportFenceFdInfo,
+    ) -> Result<(), FenceError> {
+        let mut state = self.state.lock();
+        self.validate_import_fd(&import_fence_fd_info, &state)?;
+
+        Ok(self.import_fd_unchecked_locked(import_fence_fd_info, &mut state)?)
+    }
+
+    #[cfg(unix)]
+    fn validate_import_fd(
+        &self,
+        import_fence_fd_info: &ImportFenceFdInfo,
+        state: &FenceState,
+    ) -> Result<(), FenceError> {
+        if !self.device.enabled_extensions().khr_external_fence_fd {
+            return Err(FenceError::RequirementNotMet {
+                required_for: "`import_fd`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["khr_external_fence_fd"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkImportFenceFdKHR-fence-01463
+        if state.is_in_queue() {
+            return Err(FenceError::InQueue);
+        }
+
+        let &ImportFenceFdInfo {
+            flags,
+            handle_type,
+            file: _,
+            _ne: _,
+        } = import_fence_fd_info;
+
+        // VUID-VkImportFenceFdInfoKHR-flags-parameter
+        flags.validate_device(&self.device)?;
+
+        // VUID-VkImportFenceFdInfoKHR-handleType-parameter
+        handle_type.validate_device(&self.device)?;
+
+        // VUID-VkImportFenceFdInfoKHR-handleType-01464
+        if !matches!(
+            handle_type,
+            ExternalFenceHandleType::OpaqueFd | ExternalFenceHandleType::SyncFd
+        ) {
+            return Err(FenceError::HandleTypeNotFd);
+        }
+
+        // VUID-VkImportFenceFdInfoKHR-fd-01541
+        // Can't validate, therefore unsafe
+
+        // VUID-VkImportFenceFdInfoKHR-handleType-07306
+        if handle_type.has_copy_transference() && !flags.temporary {
+            return Err(FenceError::HandletypeCopyNotTemporary);
+        }
+
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn import_fd_unchecked(
+        &self,
+        import_fence_fd_info: ImportFenceFdInfo,
+    ) -> Result<(), VulkanError> {
+        let mut state = self.state.lock();
+        self.import_fd_unchecked_locked(import_fence_fd_info, &mut state)
+    }
+
+    #[cfg(unix)]
+    #[cfg(unix)]
+    unsafe fn import_fd_unchecked_locked(
+        &self,
+        import_fence_fd_info: ImportFenceFdInfo,
+        state: &mut FenceState,
+    ) -> Result<(), VulkanError> {
+        use std::os::unix::io::IntoRawFd;
+
+        let ImportFenceFdInfo {
+            flags,
+            handle_type,
+            file,
+            _ne: _,
+        } = import_fence_fd_info;
+
+        let info_vk = ash::vk::ImportFenceFdInfoKHR {
+            fence: self.handle,
+            flags: flags.into(),
+            handle_type: handle_type.into(),
+            fd: file.map_or(-1, |file| file.into_raw_fd()),
+            ..Default::default()
+        };
+
+        let fns = self.device.fns();
+        (fns.khr_external_fence_fd.import_fence_fd_khr)(self.device.internal_object(), &info_vk)
+            .result()
+            .map_err(VulkanError::from)?;
+
+        state.import(handle_type, flags.temporary);
+
+        Ok(())
+    }
+
+    /// Imports a fence from a Win32 handle.
+    ///
+    /// The [`khr_external_fence_win32`](crate::device::DeviceExtensions::khr_external_fence_win32)
+    /// extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - If in `import_fence_win32_handle_info`, `handle_type` is
+    ///   `ExternalHandleType::OpaqueWin32` or `ExternalHandleType::OpaqueWin32Kmt`,
+    ///   then `handle` must have been exported from Vulkan or a compatible API,
+    ///   with a driver and device UUID equal to those of the device that owns `self`.
+    #[cfg(windows)]
+    #[inline]
+    pub unsafe fn import_win32_handle(
+        &self,
+        import_fence_win32_handle_info: ImportFenceWin32HandleInfo,
+    ) -> Result<(), FenceError> {
+        let mut state = self.state.lock();
+        self.validate_import_win32_handle(&import_fence_win32_handle_info, &state)?;
+
+        Ok(self.import_win32_handle_unchecked_locked(import_fence_win32_handle_info, &mut state)?)
+    }
+
+    #[cfg(windows)]
+    fn validate_import_win32_handle(
+        &self,
+        import_fence_win32_handle_info: &ImportFenceWin32HandleInfo,
+        state: &FenceState,
+    ) -> Result<(), FenceError> {
+        if !self.device.enabled_extensions().khr_external_fence_win32 {
+            return Err(FenceError::RequirementNotMet {
+                required_for: "`import_win32_handle`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["khr_external_fence_win32"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkImportFenceWin32HandleKHR-fence-04448
+        if state.is_in_queue() {
+            return Err(FenceError::InQueue);
+        }
+
+        let &ImportFenceWin32HandleInfo {
+            flags,
+            handle_type,
+            handle: _,
+            _ne: _,
+        } = import_fence_win32_handle_info;
+
+        // VUID-VkImportFenceWin32HandleInfoKHR-flags-parameter
+        flags.validate_device(&self.device)?;
+
+        // VUID-VkImportFenceWin32HandleInfoKHR-handleType-01457
+        handle_type.validate_device(&self.device)?;
+
+        // VUID-VkImportFenceWin32HandleInfoKHR-handleType-01457
+        if !matches!(
+            handle_type,
+            ExternalFenceHandleType::OpaqueWin32 | ExternalFenceHandleType::OpaqueWin32Kmt
+        ) {
+            return Err(FenceError::HandleTypeNotWin32);
+        }
+
+        // VUID-VkImportFenceWin32HandleInfoKHR-handle-01539
+        // Can't validate, therefore unsafe
+
+        // VUID?
+        if handle_type.has_copy_transference() && !flags.temporary {
+            return Err(FenceError::HandletypeCopyNotTemporary);
+        }
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn import_win32_handle_unchecked(
+        &self,
+        import_fence_win32_handle_info: ImportFenceWin32HandleInfo,
+    ) -> Result<(), VulkanError> {
+        let mut state = self.state.lock();
+        self.import_win32_handle_unchecked_locked(import_fence_win32_handle_info, &mut state)
+    }
+
+    #[cfg(windows)]
+    unsafe fn import_win32_handle_unchecked_locked(
+        &self,
+        import_fence_win32_handle_info: ImportFenceWin32HandleInfo,
+        state: &mut FenceState,
+    ) -> Result<(), VulkanError> {
+        let ImportFenceWin32HandleInfo {
+            flags,
+            handle_type,
+            handle,
+            _ne: _,
+        } = import_fence_win32_handle_info;
+
+        let info_vk = ash::vk::ImportFenceWin32HandleInfoKHR {
+            fence: self.handle,
+            flags: flags.into(),
+            handle_type: handle_type.into(),
+            handle,
+            name: ptr::null(), // TODO: support?
+            ..Default::default()
+        };
+
+        let fns = self.device.fns();
+        (fns.khr_external_fence_win32.import_fence_win32_handle_khr)(
+            self.device.internal_object(),
+            &info_vk,
+        )
+        .result()
+        .map_err(VulkanError::from)?;
+
+        state.import(handle_type, flags.temporary);
+
+        Ok(())
+    }
+
+    pub(crate) fn state(&self) -> MutexGuard<'_, FenceState> {
         self.state.lock()
     }
 }
@@ -602,43 +1115,120 @@ impl Hash for Fence {
 }
 
 #[derive(Debug, Default)]
-pub struct FenceState {
+pub(crate) struct FenceState {
     is_signaled: bool,
-    in_use_by: Option<Weak<Queue>>,
+    in_queue: Option<Weak<Queue>>,
+
+    reference_exported: bool,
+    opaque_win32_exported: bool,
+    current_import: Option<ImportType>,
+    permanent_import: Option<ExternalFenceHandleType>,
 }
 
 impl FenceState {
-    /// If the fence is already signaled, or it's unsignaled but there's no queue that
-    /// could signal it, returns the currently known value.
-    pub(crate) fn status(&self) -> Option<bool> {
-        (self.is_signaled || self.in_use_by.is_none()).then_some(self.is_signaled)
+    /// If the fence is not in a queue and has no external references, returns the current status.
+    #[inline]
+    fn is_signaled(&self) -> Option<bool> {
+        // If either of these is true, we can't be certain of the status.
+        if self.is_in_queue() || self.has_external_reference() {
+            None
+        } else {
+            Some(self.is_signaled)
+        }
     }
 
-    pub(crate) fn is_in_use(&self) -> bool {
-        self.in_use_by.is_some()
+    #[inline]
+    fn is_in_queue(&self) -> bool {
+        self.in_queue.is_some()
     }
 
+    /// Returns whether there are any potential external references to the fence payload.
+    /// That is, the fence has been exported by reference transference, or imported.
+    #[inline]
+    fn has_external_reference(&self) -> bool {
+        self.reference_exported || self.current_import.is_some()
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    fn opaque_win32_exported(&self) -> bool {
+        self.opaque_win32_exported
+    }
+
+    #[inline]
     pub(crate) unsafe fn add_to_queue(&mut self, queue: &Arc<Queue>) {
-        self.is_signaled = false;
-        self.in_use_by = Some(Arc::downgrade(queue));
+        self.in_queue = Some(Arc::downgrade(queue));
     }
 
     /// Called when a fence first discovers that it is signaled.
     /// Returns the queue that should be informed about it.
-    pub(crate) unsafe fn set_signaled(&mut self) -> Option<Arc<Queue>> {
+    #[inline]
+    unsafe fn set_signaled(&mut self) -> Option<Arc<Queue>> {
         self.is_signaled = true;
-        self.in_use_by.take().and_then(|queue| queue.upgrade())
+
+        // Fences with external references can't be used to determine queue completion.
+        if self.has_external_reference() {
+            self.in_queue = None;
+            None
+        } else {
+            self.in_queue.take().and_then(|queue| queue.upgrade())
+        }
     }
 
     /// Called when a queue is unlocking resources.
+    #[inline]
     pub(crate) unsafe fn set_finished(&mut self) {
         self.is_signaled = true;
-        self.in_use_by = None;
+        self.in_queue = None;
     }
 
-    pub(crate) unsafe fn reset(&mut self) {
-        debug_assert!(self.in_use_by.is_none());
+    #[inline]
+    unsafe fn reset(&mut self) {
+        debug_assert!(!self.is_in_queue());
+        self.current_import = self.permanent_import.map(Into::into);
         self.is_signaled = false;
+    }
+
+    #[inline]
+    unsafe fn export(&mut self, handle_type: ExternalFenceHandleType) {
+        if matches!(handle_type, ExternalFenceHandleType::OpaqueWin32) {
+            self.opaque_win32_exported = true;
+        }
+
+        if handle_type.has_copy_transference() {
+            self.reset();
+        } else {
+            self.reference_exported = true;
+        }
+    }
+
+    #[inline]
+    unsafe fn import(&mut self, handle_type: ExternalFenceHandleType, temporary: bool) {
+        debug_assert!(!self.is_in_queue());
+        self.current_import = Some(handle_type.into());
+
+        if !temporary {
+            self.permanent_import = Some(handle_type);
+        }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn import_swapchain_acquire(&mut self) {
+        debug_assert!(!self.is_in_queue());
+        self.current_import = Some(ImportType::SwapchainAcquire);
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ImportType {
+    SwapchainAcquire,
+    ExternalFence(ExternalFenceHandleType),
+}
+
+impl From<ExternalFenceHandleType> for ImportType {
+    #[inline]
+    fn from(handle_type: ExternalFenceHandleType) -> Self {
+        Self::ExternalFence(handle_type)
     }
 }
 
@@ -650,6 +1240,7 @@ pub struct FenceCreateInfo {
     /// The default value is `false`.
     pub signaled: bool,
 
+    /// The handle types that can be exported from the fence.
     pub export_handle_types: ExternalFenceHandleTypes,
 
     pub _ne: crate::NonExhaustive,
@@ -671,17 +1262,41 @@ vulkan_enum! {
     #[non_exhaustive]
     ExternalFenceHandleType = ExternalFenceHandleTypeFlags(u32);
 
-    // TODO: document
+    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     OpaqueFd = OPAQUE_FD,
 
-    // TODO: document
+    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     OpaqueWin32 = OPAQUE_WIN32,
 
-    // TODO: document
+    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
 
-    // TODO: document
+    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
+    ///
+    /// This handle type has *copy transference*.
     SyncFd = SYNC_FD,
+}
+
+impl ExternalFenceHandleType {
+    /// Returns whether the given handle type has *copy transference* rather than *reference
+    /// transference*.
+    ///
+    /// Imports of handles with copy transference must always be temporary. Exports of such
+    /// handles must only occur if the fence is already signaled, or if there is a fence signal
+    /// operation pending in a queue.
+    #[inline]
+    pub fn has_copy_transference(&self) -> bool {
+        // As defined by
+        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-win32
+        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-fd
+        matches!(self, Self::SyncFd)
+    }
 }
 
 vulkan_bitflags! {
@@ -689,16 +1304,24 @@ vulkan_bitflags! {
     #[non_exhaustive]
     ExternalFenceHandleTypes = ExternalFenceHandleTypeFlags(u32);
 
-    // TODO: document
+    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     opaque_fd = OPAQUE_FD,
 
-    // TODO: document
+    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     opaque_win32 = OPAQUE_WIN32,
 
-    // TODO: document
+    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     opaque_win32_kmt = OPAQUE_WIN32_KMT,
 
-    // TODO: document
+    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
+    ///
+    /// This handle type has *copy transference*.
     sync_fd = SYNC_FD,
 }
 
@@ -718,6 +1341,27 @@ impl From<ExternalFenceHandleType> for ExternalFenceHandleTypes {
     }
 }
 
+impl ExternalFenceHandleTypes {
+    fn into_iter(self) -> impl IntoIterator<Item = ExternalFenceHandleType> {
+        let Self {
+            opaque_fd,
+            opaque_win32,
+            opaque_win32_kmt,
+            sync_fd,
+            _ne: _,
+        } = self;
+
+        [
+            opaque_fd.then_some(ExternalFenceHandleType::OpaqueFd),
+            opaque_win32.then_some(ExternalFenceHandleType::OpaqueWin32),
+            opaque_win32_kmt.then_some(ExternalFenceHandleType::OpaqueWin32Kmt),
+            sync_fd.then_some(ExternalFenceHandleType::SyncFd),
+        ]
+        .into_iter()
+        .flatten()
+    }
+}
+
 vulkan_bitflags! {
     /// Additional parameters for a fence payload import.
     #[non_exhaustive]
@@ -726,6 +1370,85 @@ vulkan_bitflags! {
     /// The fence payload will be imported only temporarily, regardless of the permanence of the
     /// imported handle type.
     temporary = TEMPORARY,
+}
+
+#[cfg(unix)]
+#[derive(Debug)]
+pub struct ImportFenceFdInfo {
+    /// Additional parameters for the import operation.
+    ///
+    /// If `handle_type` has *copy transference*, this must include the `temporary` flag.
+    ///
+    /// The default value is [`FenceImportFlags::empty()`].
+    pub flags: FenceImportFlags,
+
+    /// The handle type of `file`.
+    ///
+    /// There is no default value.
+    pub handle_type: ExternalFenceHandleType,
+
+    /// The file to import the fence from.
+    ///
+    /// If `handle_type` is `ExternalFenceHandleType::SyncFd`, then `file` can be `None`.
+    /// Instead of an imported file descriptor, a dummy file descriptor `-1` is used,
+    /// which represents a fence that is always signaled.
+    ///
+    /// The default value is `None`, which must be overridden if `handle_type` is not
+    /// `ExternalFenceHandleType::SyncFd`.
+    pub file: Option<File>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+#[cfg(unix)]
+impl ImportFenceFdInfo {
+    /// Returns an `ImportFenceFdInfo` with the specified `handle_type`.
+    #[inline]
+    pub fn handle_type(handle_type: ExternalFenceHandleType) -> Self {
+        Self {
+            flags: FenceImportFlags::empty(),
+            handle_type,
+            file: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+pub struct ImportFenceWin32HandleInfo {
+    /// Additional parameters for the import operation.
+    ///
+    /// If `handle_type` has *copy transference*, this must include the `temporary` flag.
+    ///
+    /// The default value is [`FenceImportFlags::empty()`].
+    pub flags: FenceImportFlags,
+
+    /// The handle type of `handle`.
+    ///
+    /// There is no default value.
+    pub handle_type: ExternalFenceHandleType,
+
+    /// The file to import the fence from.
+    ///
+    /// The default value is `null`, which must be overridden.
+    pub handle: *mut std::ffi::c_void,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+#[cfg(windows)]
+impl ImportFenceWin32HandleInfo {
+    /// Returns an `ImportFenceWin32HandleInfo` with the specified `handle_type`.
+    #[inline]
+    pub fn handle_type(handle_type: ExternalFenceHandleType) -> Self {
+        Self {
+            flags: FenceImportFlags::empty(),
+            handle_type,
+            handle: ptr::null_mut(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 /// The fence configuration to query in
@@ -787,8 +1510,46 @@ pub enum FenceError {
         requires_one_of: RequiresOneOf,
     },
 
+    /// The provided handle type does not permit more than one export,
+    /// and a handle of this type was already exported previously.
+    AlreadyExported,
+
+    /// The provided handle type cannot be exported from the current import handle type.
+    ExportFromImportedNotSupported {
+        imported_handle_type: ExternalFenceHandleType,
+    },
+
+    /// One of the export handle types is not compatible with the other provided handles.
+    ExportHandleTypesNotCompatible,
+
+    /// A handle type with copy transference was provided, but the fence is not signaled and there
+    /// is no pending queue operation that will signal it.
+    HandleTypeCopyNotSignaled,
+
+    /// A handle type with copy transference was provided,
+    /// but the `temporary` import flag was not set.
+    HandletypeCopyNotTemporary,
+
+    /// The provided export handle type was not set in `export_handle_types` when creating the
+    /// fence.
+    HandleTypeNotEnabled,
+
+    /// Exporting is not supported for the provided handle type.
+    HandleTypeNotExportable {
+        handle_type: ExternalFenceHandleType,
+    },
+
+    /// The provided handle type is not a POSIX file descriptor handle.
+    HandleTypeNotFd,
+
+    /// The provided handle type is not a Win32 handle.
+    HandleTypeNotWin32,
+
+    /// The fence currently has a temporary import for a swapchain acquire operation.
+    ImportedForSwapchainAcquire,
+
     /// The fence is currently in use by a queue.
-    InUse,
+    InQueue,
 }
 
 impl Error for FenceError {
@@ -814,7 +1575,56 @@ impl Display for FenceError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-            Self::InUse => write!(f, "the fence is currently in use by a queue"),
+
+            Self::AlreadyExported => write!(
+                f,
+                "the provided handle type does not permit more than one export, and a handle of \
+                this type was already exported previously",
+            ),
+            Self::ExportFromImportedNotSupported {
+                imported_handle_type,
+            } => write!(
+                f,
+                "the provided handle type cannot be exported from the current imported handle type \
+                {:?}",
+                imported_handle_type,
+            ),
+            Self::ExportHandleTypesNotCompatible => write!(
+                f,
+                "one of the export handle types is not compatible with the other provided handles",
+            ),
+            Self::HandleTypeCopyNotSignaled => write!(
+                f,
+                "a handle type with copy transference was provided, but the fence is not signaled \
+                and there is no pending queue operation that will signal it",
+            ),
+            Self::HandletypeCopyNotTemporary => write!(
+                f,
+                "a handle type with copy transference was provided, but the `temporary` \
+                import flag was not set",
+            ),
+            Self::HandleTypeNotEnabled => write!(
+                f,
+                "the provided export handle type was not set in `export_handle_types` when \
+                creating the fence",
+            ),
+            Self::HandleTypeNotExportable { handle_type } => write!(
+                f,
+                "exporting is not supported for handles of type {:?}",
+                handle_type,
+            ),
+            Self::HandleTypeNotFd => write!(
+                f,
+                "the provided handle type is not a POSIX file descriptor handle",
+            ),
+            Self::HandleTypeNotWin32 => {
+                write!(f, "the provided handle type is not a Win32 handle")
+            }
+            Self::ImportedForSwapchainAcquire => write!(
+                f,
+                "the fence currently has a temporary import for a swapchain acquire operation",
+            ),
+            Self::InQueue => write!(f, "the fence is currently in use by a queue"),
         }
     }
 }
