@@ -111,7 +111,7 @@ Usage:
     }
 
     /// Run our compute pipeline and return a future of when the compute is finished
-    pub fn compute(&mut self, image_target: DeviceImageView) -> Box<dyn GpuFuture> {
+    pub fn compute(&self, image_target: DeviceImageView) -> Box<dyn GpuFuture> {
         self.fractal_pipeline.compute(
             image_target,
             self.c,

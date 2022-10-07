@@ -162,7 +162,7 @@ impl PixelsDrawPipeline {
 
     /// Draw input `image` over a quad of size -1.0 to 1.0
     pub fn draw(
-        &mut self,
+        &self,
         viewport_dimensions: [u32; 2],
         image: Arc<dyn ImageViewAbstract>,
     ) -> SecondaryAutoCommandBuffer {

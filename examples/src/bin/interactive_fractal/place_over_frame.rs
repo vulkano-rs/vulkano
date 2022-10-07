@@ -72,7 +72,7 @@ impl RenderPassPlaceOverFrame {
     /// Place view exactly over swapchain image target.
     /// Texture draw pipeline uses a quad onto which it places the view.
     pub fn render<F>(
-        &mut self,
+        &self,
         before_future: F,
         view: DeviceImageView,
         target: SwapchainImageView,
