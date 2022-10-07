@@ -21,8 +21,8 @@ use super::{
 };
 use crate::{
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferBeginError, CommandBufferExecFuture,
-        CommandBufferUsage, CopyBufferInfo, PrimaryCommandBuffer,
+        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferBeginError,
+        CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo, PrimaryCommandBuffer,
     },
     device::{Device, DeviceOwned, Queue},
     memory::{
@@ -59,17 +59,19 @@ use std::{
 ///
 /// # Usage
 ///
-/// Since a `DeviceLocalBuffer` can only be directly accessed by the GPU, data cannot be transfered between
-/// the host process and the buffer alone. One must use additional buffers which are accessible to the CPU as
-/// staging areas, then use command buffers to execute the necessary data transfers.
+/// Since a `DeviceLocalBuffer` can only be directly accessed by the GPU, data cannot be transfered
+/// between the host process and the buffer alone. One must use additional buffers which are
+/// accessible to the CPU as staging areas, then use command buffers to execute the necessary data
+/// transfers.
 ///
-/// Despite this, if one knows in advance that a buffer will not need to be frequently accessed by the host,
-/// then there may be significant performance gains by using a `DeviceLocalBuffer` over a buffer type which
-/// allows host access.
+/// Despite this, if one knows in advance that a buffer will not need to be frequently accessed by
+/// the host, then there may be significant performance gains by using a `DeviceLocalBuffer` over a
+/// buffer type which allows host access.
 ///
-/// # Example
+/// # Examples
 ///
-/// The following example outlines the general strategy one may take when initializing a `DeviceLocalBuffer`.
+/// The following example outlines the general strategy one may take when initializing a
+/// `DeviceLocalBuffer`.
 ///
 /// ```
 /// use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
@@ -77,6 +79,7 @@ use std::{
 /// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 ///
 /// // Simple iterator to construct test data.
 /// let data = (0..10_000).map(|i| i as f32);
@@ -105,27 +108,26 @@ use std::{
 ///
 /// // Create a one-time command to copy between the buffers.
 /// let mut cbb = AutoCommandBufferBuilder::primary(
-///     device.clone(),
+///     &command_buffer_allocator,
 ///     queue.queue_family_index(),
 ///     CommandBufferUsage::OneTimeSubmit,
 /// )
 /// .unwrap();
 /// cbb.copy_buffer(CopyBufferInfo::buffers(
-///     temporary_accessible_buffer,
-///     device_local_buffer.clone(),
-/// ))
-/// .unwrap();
+///         temporary_accessible_buffer,
+///         device_local_buffer.clone(),
+///     ))
+///     .unwrap();
 /// let cb = cbb.build().unwrap();
 ///
 /// // Execute copy command and wait for completion before proceeding.
 /// cb.execute(queue.clone())
-/// .unwrap()
-/// .then_signal_fence_and_flush()
-/// .unwrap()
-/// .wait(None /* timeout */)
-/// .unwrap()
+///     .unwrap()
+///     .then_signal_fence_and_flush()
+///     .unwrap()
+///     .wait(None /* timeout */)
+///     .unwrap()
 /// ```
-///
 #[derive(Debug)]
 pub struct DeviceLocalBuffer<T, A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>>
 where
@@ -153,7 +155,6 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    #[inline]
     pub fn new(
         device: Arc<Device>,
         usage: BufferUsage,
@@ -170,9 +171,6 @@ where
     }
 }
 
-// TODO: make this prettier
-type DeviceLocalBufferFromBufferFuture = CommandBufferExecFuture<NowFuture>;
-
 impl<T> DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
@@ -180,15 +178,19 @@ where
     /// Builds a `DeviceLocalBuffer` that copies its data from another buffer.
     ///
     /// This function returns two objects: the newly-created buffer, and a future representing
-    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you must
-    /// either submit your operation after this future, or execute this future and wait for it to
-    /// be finished before submitting your own operation.
+    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you
+    /// must either submit your operation after this future, or execute this future and wait for it
+    /// to be finished before submitting your own operation.
     pub fn from_buffer<B>(
         source: Arc<B>,
         usage: BufferUsage,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<
-        (Arc<DeviceLocalBuffer<T>>, DeviceLocalBufferFromBufferFuture),
+        (
+            Arc<DeviceLocalBuffer<T>>,
+            CommandBufferExecFuture<NowFuture>,
+        ),
         DeviceLocalBufferCreationError,
     >
     where
@@ -213,7 +215,7 @@ where
             )?;
 
             let mut cbb = AutoCommandBufferBuilder::primary(
-                source.device().clone(),
+                command_buffer_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )?;
@@ -242,9 +244,9 @@ where
     /// submits the command buffer as a future.
     ///
     /// This function returns two objects: the newly-created buffer, and a future representing
-    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you must
-    /// either submit your operation after this future, or execute this future and wait for it to
-    /// be finished before submitting your own operation.
+    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you
+    /// must either submit your operation after this future, or execute this future and wait for it
+    /// to be finished before submitting your own operation.
     ///
     /// # Panics
     ///
@@ -252,9 +254,13 @@ where
     pub fn from_data(
         data: T,
         usage: BufferUsage,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<
-        (Arc<DeviceLocalBuffer<T>>, DeviceLocalBufferFromBufferFuture),
+        (
+            Arc<DeviceLocalBuffer<T>>,
+            CommandBufferExecFuture<NowFuture>,
+        ),
         DeviceLocalBufferCreationError,
     > {
         let source = CpuAccessibleBuffer::from_data(
@@ -266,7 +272,7 @@ where
             false,
             data,
         )?;
-        DeviceLocalBuffer::from_buffer(source, usage, queue)
+        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_allocator, queue)
     }
 }
 
@@ -281,11 +287,12 @@ where
     pub fn from_iter<D>(
         data: D,
         usage: BufferUsage,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<
         (
             Arc<DeviceLocalBuffer<[T]>>,
-            DeviceLocalBufferFromBufferFuture,
+            CommandBufferExecFuture<NowFuture>,
         ),
         DeviceLocalBufferCreationError,
     >
@@ -302,7 +309,7 @@ where
             false,
             data,
         )?;
-        DeviceLocalBuffer::from_buffer(source, usage, queue)
+        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_allocator, queue)
     }
 }
 
@@ -316,7 +323,6 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `len` is zero.
-    #[inline]
     pub fn array(
         device: Arc<Device>,
         len: DeviceSize,
@@ -453,6 +459,7 @@ where
             }
         };
         let mem_reqs = buffer.memory_requirements();
+
         Ok((buffer, mem_reqs))
     }
 
@@ -471,7 +478,6 @@ where
     T: BufferContents + ?Sized,
 {
     /// Returns the queue families this buffer can be used on.
-    #[inline]
     pub fn queue_family_indices(&self) -> &[u32] {
         &self.queue_family_indices
     }
@@ -481,7 +487,6 @@ unsafe impl<T, A> DeviceOwned for DeviceLocalBuffer<T, A>
 where
     T: BufferContents + ?Sized,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
@@ -492,15 +497,13 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync,
 {
-    #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.inner,
             offset: 0,
         }
     }
 
-    #[inline]
     fn size(&self) -> DeviceSize {
         self.inner.size()
     }
@@ -511,7 +514,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync + 'static,
 {
-    #[inline]
     fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
         self.clone()
     }
@@ -530,7 +532,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
@@ -548,7 +549,6 @@ where
     T: BufferContents + ?Sized,
     A: Send + Sync,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);
@@ -562,7 +562,6 @@ pub enum DeviceLocalBufferCreationError {
 }
 
 impl Error for DeviceLocalBufferCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::DeviceMemoryAllocationError(err) => Some(err),
@@ -572,8 +571,7 @@ impl Error for DeviceLocalBufferCreationError {
 }
 
 impl Display for DeviceLocalBufferCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),
             Self::CommandBufferBeginError(err) => err.fmt(f),
@@ -582,14 +580,12 @@ impl Display for DeviceLocalBufferCreationError {
 }
 
 impl From<DeviceMemoryError> for DeviceLocalBufferCreationError {
-    #[inline]
     fn from(e: DeviceMemoryError) -> Self {
         Self::DeviceMemoryAllocationError(e)
     }
 }
 
 impl From<CommandBufferBeginError> for DeviceLocalBufferCreationError {
-    #[inline]
     fn from(e: CommandBufferBeginError) -> Self {
         Self::CommandBufferBeginError(e)
     }
@@ -598,11 +594,13 @@ impl From<CommandBufferBeginError> for DeviceLocalBufferCreationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::GpuFuture;
+    use crate::{command_buffer::allocator::StandardCommandBufferAllocator, sync::GpuFuture};
 
     #[test]
     fn from_data_working() {
         let (device, queue) = gfx_dev_and_queue!();
+
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
 
         let (buffer, _) = DeviceLocalBuffer::from_data(
             12u32,
@@ -610,12 +608,13 @@ mod tests {
                 transfer_src: true,
                 ..BufferUsage::empty()
             },
+            &cb_allocator,
             queue.clone(),
         )
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_data(
-            device.clone(),
+            device,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
@@ -626,7 +625,7 @@ mod tests {
         .unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device,
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
@@ -649,18 +648,21 @@ mod tests {
     fn from_iter_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+
         let (buffer, _) = DeviceLocalBuffer::from_iter(
             (0..512u32).map(|n| n * 2),
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
             },
+            &cb_allocator,
             queue.clone(),
         )
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            device,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
@@ -671,7 +673,7 @@ mod tests {
         .unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device,
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
@@ -697,6 +699,8 @@ mod tests {
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
+
         assert_should_panic!({
             DeviceLocalBuffer::from_data(
                 (),
@@ -704,6 +708,7 @@ mod tests {
                     transfer_dst: true,
                     ..BufferUsage::empty()
                 },
+                &cb_allocator,
                 queue.clone(),
             )
             .unwrap();

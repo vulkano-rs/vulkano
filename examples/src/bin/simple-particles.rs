@@ -18,10 +18,12 @@ use std::{sync::Arc, time::SystemTime};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, PrimaryCommandBuffer,
-        RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        CopyBufferInfo, PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents,
     },
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
@@ -202,12 +204,12 @@ fn main() {
                 #version 450
 
                 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
-                
+
                 struct VertexData {
                     vec2 pos;
                     vec2 vel;
                 };
-                
+
                 // Storage buffer binding, which we optimize by using a DeviceLocalBuffer.
                 layout (binding = 0) buffer VertexBuffer {
                     VertexData verticies[];
@@ -303,9 +305,9 @@ fn main() {
                 #version 450
 
                 layout(location = 0) in vec4 outColor;
-                
+
                 layout(location = 0) out vec4 fragColor;
-                
+
                 void main() {
                     fragColor = outColor;
                 }
@@ -316,6 +318,9 @@ fn main() {
     let cs = cs::load(device.clone()).unwrap();
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
+
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     #[repr(C)]
     #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
@@ -366,7 +371,7 @@ fn main() {
 
         // Create one-time command to copy between the buffers.
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device.clone(),
+            &command_buffer_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -402,6 +407,7 @@ fn main() {
     // Create a new descriptor set for binding vertices as a Storage Buffer.
     use vulkano::pipeline::Pipeline; // Required to access layout() method of pipeline.
     let descriptor_set = PersistentDescriptorSet::new(
+        &descriptor_set_allocator,
         compute_pipeline
             .layout()
             .set_layouts()
@@ -497,7 +503,7 @@ fn main() {
                 };
 
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    device.clone(),
+                    &command_buffer_allocator,
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )

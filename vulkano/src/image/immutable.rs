@@ -15,8 +15,9 @@ use super::{
 use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, BlitImageInfo, CommandBufferBeginError, CommandBufferExecFuture,
-        CommandBufferUsage, CopyBufferToImageInfo, ImageBlit, PrimaryCommandBuffer,
+        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
+        BufferImageCopy, CommandBufferBeginError, CommandBufferExecFuture, CommandBufferUsage,
+        CopyBufferToImageInfo, ImageBlit, PrimaryCommandBuffer,
     },
     device::{Device, DeviceOwned, Queue},
     format::Format,
@@ -30,9 +31,9 @@ use crate::{
     },
     sampler::Filter,
     sync::{NowFuture, Sharing},
-    OomError,
+    DeviceSize, OomError,
 };
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
@@ -59,12 +60,14 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
     }
 }
 
-fn generate_mipmaps<L>(
-    cbb: &mut AutoCommandBufferBuilder<L>,
+fn generate_mipmaps<L, Cba>(
+    cbb: &mut AutoCommandBufferBuilder<L, Cba>,
     image: Arc<dyn ImageAccess>,
     dimensions: ImageDimensions,
     _layout: ImageLayout,
-) {
+) where
+    Cba: CommandBufferAllocator,
+{
     for level in 1..image.mip_levels() {
         let src_size = dimensions
             .mip_level_dimensions(level - 1)
@@ -98,58 +101,10 @@ fn generate_mipmaps<L>(
 }
 
 impl ImmutableImage {
-    #[deprecated(note = "use ImmutableImage::uninitialized instead")]
-    #[inline]
-    pub fn new(
-        device: Arc<Device>,
-        dimensions: ImageDimensions,
-        format: Format,
-        queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError> {
-        #[allow(deprecated)]
-        ImmutableImage::with_mipmaps(
-            device,
-            dimensions,
-            format,
-            MipmapsCount::One,
-            queue_family_indices,
-        )
-    }
-
-    #[deprecated(note = "use ImmutableImage::uninitialized instead")]
-    #[inline]
-    pub fn with_mipmaps(
-        device: Arc<Device>,
-        dimensions: ImageDimensions,
-        format: Format,
-        mip_levels: impl Into<MipmapsCount>,
-        queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError> {
-        let usage = ImageUsage {
-            transfer_src: true, // for blits
-            transfer_dst: true,
-            sampled: true,
-            ..ImageUsage::empty()
-        };
-
-        let flags = ImageCreateFlags::empty();
-
-        let (image, _) = ImmutableImage::uninitialized(
-            device,
-            dimensions,
-            format,
-            mip_levels,
-            usage,
-            flags,
-            ImageLayout::ShaderReadOnlyOptimal,
-            queue_family_indices,
-        )?;
-        Ok(image)
-    }
-
     /// Builds an uninitialized immutable image.
     ///
-    /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
+    /// Returns two things: the image, and a special access that should be used for the initial
+    /// upload to the image.
     pub fn uninitialized(
         device: Arc<Device>,
         dimensions: ImageDimensions,
@@ -222,12 +177,12 @@ impl ImmutableImage {
     }
 
     /// Construct an ImmutableImage from the contents of `iter`.
-    #[inline]
     pub fn from_iter<Px, I>(
         iter: I,
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError>
     where
@@ -244,7 +199,14 @@ impl ImmutableImage {
             false,
             iter,
         )?;
-        ImmutableImage::from_buffer(source, dimensions, mip_levels, format, queue)
+        ImmutableImage::from_buffer(
+            source,
+            dimensions,
+            mip_levels,
+            format,
+            command_buffer_allocator,
+            queue,
+        )
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
@@ -253,8 +215,26 @@ impl ImmutableImage {
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
+        command_buffer_allocator: &impl CommandBufferAllocator,
         queue: Arc<Queue>,
     ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError> {
+        let region = BufferImageCopy {
+            image_subresource: ImageSubresourceLayers::from_parameters(
+                format,
+                dimensions.array_layers(),
+            ),
+            image_extent: dimensions.width_height_depth(),
+            ..Default::default()
+        };
+        let required_size = region.buffer_copy_size(format);
+
+        if source.size() < required_size {
+            return Err(ImmutableImageCreationError::SourceTooSmall {
+                source_size: source.size(),
+                required_size,
+            });
+        }
+
         let need_to_generate_mipmaps = has_mipmaps(mip_levels);
         let usage = ImageUsage {
             transfer_dst: true,
@@ -281,12 +261,15 @@ impl ImmutableImage {
         )?;
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            source.device().clone(),
+            command_buffer_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )?;
-        cbb.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(source, initializer))
-            .unwrap();
+        cbb.copy_buffer_to_image(CopyBufferToImageInfo {
+            regions: smallvec![region],
+            ..CopyBufferToImageInfo::buffer_image(source, initializer)
+        })
+        .unwrap();
 
         if need_to_generate_mipmaps {
             generate_mipmaps(
@@ -318,8 +301,7 @@ unsafe impl<A> ImageAccess for ImmutableImage<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         ImageInner {
             image: &self.image,
             first_layer: 0,
@@ -329,22 +311,18 @@ where
         }
     }
 
-    #[inline]
     fn is_layout_initialized(&self) -> bool {
         true
     }
 
-    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         self.layout
     }
 
-    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.layout
     }
 
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
             storage_image: ImageLayout::General,
@@ -359,7 +337,6 @@ unsafe impl<P, A> ImageContent<P> for ImmutableImage<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
     }
@@ -369,7 +346,6 @@ impl<A> PartialEq for ImmutableImage<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
@@ -381,7 +357,6 @@ impl<A> Hash for ImmutableImage<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
@@ -402,22 +377,18 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         self.image.inner()
     }
 
-    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         ImageLayout::Undefined
     }
 
-    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.layout
     }
 
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         None
     }
@@ -427,7 +398,6 @@ impl<A> PartialEq for ImmutableImageInitialization<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
@@ -439,64 +409,75 @@ impl<A> Hash for ImmutableImageInitialization<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
 }
 
+/// Error that can happen when creating an `ImmutableImage`.
 #[derive(Clone, Debug)]
 pub enum ImmutableImageCreationError {
     ImageCreationError(ImageCreationError),
     DeviceMemoryAllocationError(DeviceMemoryError),
     CommandBufferBeginError(CommandBufferBeginError),
+
+    /// The size of the provided source data is less than the required size for an image with the
+    /// given format and dimensions.
+    SourceTooSmall {
+        source_size: DeviceSize,
+        required_size: DeviceSize,
+    },
 }
 
 impl Error for ImmutableImageCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::ImageCreationError(err) => Some(err),
             Self::DeviceMemoryAllocationError(err) => Some(err),
             Self::CommandBufferBeginError(err) => Some(err),
+            _ => None,
         }
     }
 }
 
 impl Display for ImmutableImageCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::ImageCreationError(err) => err.fmt(f),
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),
             Self::CommandBufferBeginError(err) => err.fmt(f),
+
+            Self::SourceTooSmall {
+                source_size,
+                required_size,
+            } => write!(
+                f,
+                "the size of the provided source data ({} bytes) is less than the required size for an image of the given format and dimensions ({} bytes)",
+                source_size, required_size,
+            ),
         }
     }
 }
 
 impl From<ImageCreationError> for ImmutableImageCreationError {
-    #[inline]
     fn from(err: ImageCreationError) -> Self {
         Self::ImageCreationError(err)
     }
 }
 
 impl From<DeviceMemoryError> for ImmutableImageCreationError {
-    #[inline]
     fn from(err: DeviceMemoryError) -> Self {
         Self::DeviceMemoryAllocationError(err)
     }
 }
 
 impl From<OomError> for ImmutableImageCreationError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::DeviceMemoryAllocationError(err.into())
     }
 }
 
 impl From<CommandBufferBeginError> for ImmutableImageCreationError {
-    #[inline]
     fn from(err: CommandBufferBeginError) -> Self {
         Self::CommandBufferBeginError(err)
     }

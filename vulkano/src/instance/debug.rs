@@ -17,7 +17,7 @@
 //! Note that the vulkano library can also emit messages to warn you about performance issues.
 //! TODO: ^ that's not the case yet, need to choose whether we keep this idea
 //!
-//! # Example
+//! # Examples
 //!
 //! ```
 //! # use vulkano::instance::Instance;
@@ -40,10 +40,12 @@
 //! Note that you must keep the `_callback` object alive for as long as you want your callback to
 //! be callable. If you don't store the return value of `DebugUtilsMessenger`'s constructor in a
 //! variable, it will be immediately destroyed and your callback will not work.
-//!
 
 use super::Instance;
-use crate::{macros::vulkan_bitflags, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject};
+use crate::{
+    macros::{vulkan_bitflags, vulkan_enum},
+    RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
+};
 use std::{
     error::Error,
     ffi::{c_void, CStr},
@@ -54,7 +56,7 @@ use std::{
     sync::Arc,
 };
 
-pub(super) type UserCallback = Arc<dyn Fn(&Message) + RefUnwindSafe + Send + Sync>;
+pub(super) type UserCallback = Arc<dyn Fn(&Message<'_>) + RefUnwindSafe + Send + Sync>;
 
 /// Registration of a callback called by validation layers.
 ///
@@ -190,7 +192,7 @@ impl Drop for DebugUtilsMessenger {
 }
 
 impl Debug for DebugUtilsMessenger {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             instance,
@@ -254,8 +256,7 @@ pub enum DebugUtilsMessengerCreationError {
 impl Error for DebugUtilsMessengerCreationError {}
 
 impl Display for DebugUtilsMessengerCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
                 required_for,
@@ -270,14 +271,12 @@ impl Display for DebugUtilsMessengerCreationError {
 }
 
 impl From<VulkanError> for DebugUtilsMessengerCreationError {
-    #[inline]
     fn from(err: VulkanError) -> DebugUtilsMessengerCreationError {
         panic!("unexpected error: {:?}", err)
     }
 }
 
 impl From<RequirementNotMet> for DebugUtilsMessengerCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -336,7 +335,7 @@ impl DebugUtilsMessengerCreateInfo {
 }
 
 impl Debug for DebugUtilsMessengerCreateInfo {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             message_severity,
             message_type,
@@ -428,21 +427,112 @@ impl Default for DebugUtilsLabel {
     }
 }
 
+vulkan_enum! {
+    /// Features of the validation layer to enable.
+    ValidationFeatureEnable = ValidationFeatureEnableEXT(i32);
+
+    /// The validation layer will use shader programs running on the GPU to provide additional
+    /// validation.
+    ///
+    /// This must not be used together with `DebugPrintf`.
+    GpuAssisted = GPU_ASSISTED,
+
+    /// The validation layer will reserve and use one descriptor set slot for its own use.
+    /// The limit reported by
+    /// [`max_bound_descriptor_sets`](crate::device::Properties::max_bound_descriptor_sets)
+    /// will be reduced by 1.
+    ///
+    /// `GpuAssisted` must also be enabled.
+    GpuAssistedReserveBindingSlot = GPU_ASSISTED_RESERVE_BINDING_SLOT,
+
+    /// The validation layer will report recommendations that are not strictly errors,
+    /// but that may be considered good Vulkan practice.
+    BestPractices = BEST_PRACTICES,
+
+    /// The validation layer will process `debugPrintfEXT` operations in shaders, and send them
+    /// to the debug callback.
+    ///
+    /// This must not be used together with `GpuAssisted`.
+    DebugPrintf = DEBUG_PRINTF,
+
+    /// The validation layer will report errors relating to synchronization, such as data races and
+    /// the use of synchronization primitives.
+    SynchronizationValidation = SYNCHRONIZATION_VALIDATION,
+}
+
+vulkan_enum! {
+    /// Features of the validation layer to disable.
+    ValidationFeatureDisable = ValidationFeatureDisableEXT(i32);
+
+    /// All validation is disabled.
+    All = ALL,
+
+    /// Shader validation is disabled.
+    Shaders = SHADERS,
+
+    /// Thread safety validation is disabled.
+    ThreadSafety = THREAD_SAFETY,
+
+    /// Stateless parameter validation is disabled.
+    ApiParameters = API_PARAMETERS,
+
+    /// Object lifetime validation is disabled.
+    ObjectLifetimes = OBJECT_LIFETIMES,
+
+    /// Core validation checks are disabled.
+    ///
+    /// This also disables shader validation and GPU-assisted validation.
+    CoreChecks = CORE_CHECKS,
+
+    /// Protection against duplicate non-dispatchable handles is disabled.
+    UniqueHandles = UNIQUE_HANDLES,
+
+    /// Results of shader validation will not be cached, and are validated from scratch each time.
+    ShaderValidationCache = SHADER_VALIDATION_CACHE,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        instance::{InstanceCreateInfo, InstanceExtensions},
+        VulkanLibrary,
+    };
     use std::thread;
 
     #[test]
     fn ensure_sendable() {
         // It's useful to be able to initialize a DebugUtilsMessenger on one thread
         // and keep it alive on another thread.
-        let instance = instance!();
+        let instance = {
+            let library = match VulkanLibrary::new() {
+                Ok(x) => x,
+                Err(_) => return,
+            };
+
+            match Instance::new(
+                library,
+                InstanceCreateInfo {
+                    enabled_extensions: InstanceExtensions {
+                        ext_debug_utils: true,
+                        ..InstanceExtensions::empty()
+                    },
+                    ..Default::default()
+                },
+            ) {
+                Ok(x) => x,
+                Err(_) => return,
+            }
+        };
+
         let callback = unsafe {
             DebugUtilsMessenger::new(
                 instance,
                 DebugUtilsMessengerCreateInfo {
-                    message_severity: DebugUtilsMessageSeverity::empty(),
+                    message_severity: DebugUtilsMessageSeverity {
+                        error: true,
+                        ..DebugUtilsMessageSeverity::empty()
+                    },
                     message_type: DebugUtilsMessageType {
                         general: true,
                         validation: true,
@@ -452,9 +542,10 @@ mod tests {
                     ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|_| {}))
                 },
             )
-        };
+        }
+        .unwrap();
         thread::spawn(move || {
-            let _ = callback;
+            drop(callback);
         });
     }
 }

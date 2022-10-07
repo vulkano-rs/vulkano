@@ -16,7 +16,8 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassContents,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned,
@@ -38,8 +39,8 @@ use vulkano::{
     query::{QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryResultFlags, QueryType},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract,
-        SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -321,6 +322,8 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
     let mut recreate_swapchain = false;
@@ -378,7 +381,7 @@ fn main() {
             }
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                &command_buffer_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )

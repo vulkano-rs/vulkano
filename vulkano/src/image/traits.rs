@@ -25,7 +25,7 @@ use std::{
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// Returns the inner unsafe image object used by this image.
-    fn inner(&self) -> ImageInner;
+    fn inner(&self) -> ImageInner<'_>;
 
     /// Returns the dimensions of the image.
     #[inline]
@@ -107,22 +107,7 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// of the image are selected, or `plane0` if the image is multi-planar.
     #[inline]
     fn subresource_layers(&self) -> ImageSubresourceLayers {
-        ImageSubresourceLayers {
-            aspects: {
-                let aspects = self.format().aspects();
-
-                if aspects.plane0 {
-                    ImageAspects {
-                        plane0: true,
-                        ..ImageAspects::empty()
-                    }
-                } else {
-                    aspects
-                }
-            },
-            mip_level: 0,
-            array_layers: 0..self.dimensions().array_layers(),
-        }
+        ImageSubresourceLayers::from_parameters(self.format(), self.dimensions().array_layers())
     }
 
     /// Returns an `ImageSubresourceRange` covering the whole image. If the image is multi-planar,
@@ -230,7 +215,7 @@ pub struct ImageInner<'a> {
 }
 
 impl Debug for dyn ImageAccess {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.debug_struct("dyn ImageAccess")
             .field("inner", &self.inner())
             .finish()
@@ -247,7 +232,6 @@ impl PartialEq for dyn ImageAccess {
 impl Eq for dyn ImageAccess {}
 
 impl Hash for dyn ImageAccess {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
@@ -274,12 +258,10 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
 where
     I: ImageAccess,
 {
-    #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         self.image.inner()
     }
 
-    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         if self.preinitialized {
             ImageLayout::Preinitialized
@@ -288,12 +270,10 @@ where
         }
     }
 
-    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.final_layout_requirement()
     }
 
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         self.image.descriptor_layouts()
     }
@@ -303,7 +283,6 @@ impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
 where
     I: ImageAccess,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
@@ -315,7 +294,6 @@ impl<I> Hash for ImageAccessFromUndefinedLayout<I>
 where
     I: ImageAccess,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
@@ -331,32 +309,26 @@ where
     T: SafeDeref + Send + Sync,
     T::Target: ImageAccess,
 {
-    #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         (**self).inner()
     }
 
-    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         (**self).initial_layout_requirement()
     }
 
-    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         (**self).final_layout_requirement()
     }
 
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         (**self).descriptor_layouts()
     }
 
-    #[inline]
     unsafe fn layout_initialized(&self) {
         (**self).layout_initialized();
     }
 
-    #[inline]
     fn is_layout_initialized(&self) -> bool {
         (**self).is_layout_initialized()
     }

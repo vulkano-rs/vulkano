@@ -124,7 +124,8 @@ pub enum CopyError {
         max: DeviceSize,
     },
 
-    /// Depth/stencil images are not supported by the queue family of this command buffer; a graphics queue family is required.
+    /// Depth/stencil images are not supported by the queue family of this command buffer; a
+    /// graphics queue family is required.
     DepthStencilNotSupportedByQueueFamily,
 
     /// The image extent of a region is not a multiple of the required image alignment.
@@ -275,7 +276,6 @@ pub enum CopyError {
 }
 
 impl Error for CopyError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::SyncCommandBufferBuilderError(err) => Some(err),
@@ -285,11 +285,9 @@ impl Error for CopyError {
 }
 
 impl Display for CopyError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -298,21 +296,20 @@ impl Display for CopyError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::ForbiddenInsideRenderPass => {
                 write!(f, "operation forbidden inside of a render pass")
             }
             Self::NotSupportedByQueueFamily => {
                 write!(f, "the queue family doesn't allow this operation")
             }
-
             Self::ArrayLayerCountMismatch {
                 region_index,
                 src_layer_count,
                 dst_layer_count,
             } => write!(
                 f,
-                "the array layer counts of the source and destination subresource ranges of region {} do not match (source: {}; destination: {})",
+                "the array layer counts of the source and destination subresource ranges of region \
+                {} do not match (source: {}; destination: {})",
                 region_index, src_layer_count, dst_layer_count,
             ),
             Self::ArrayLayersOutOfRange {
@@ -322,7 +319,8 @@ impl Display for CopyError {
                 image_array_layers,
             } => write!(
                 f,
-                "the end of the range of accessed array layers ({}) of the {} subresource range of region {} is greater than the number of array layers in the {} image ({})",
+                "the end of the range of accessed array layers ({}) of the {} subresource range of \
+                region {} is greater than the number of array layers in the {} image ({})",
                 array_layers_range_end, resource, region_index, resource, image_array_layers,
             ),
             Self::AspectsMismatch {
@@ -331,7 +329,8 @@ impl Display for CopyError {
                 dst_aspects,
             } => write!(
                 f,
-                "the aspects of the source and destination subresource ranges of region {} do not match (source: {:?}; destination: {:?})",
+                "the aspects of the source and destination subresource ranges of region {} do not \
+                match (source: {:?}; destination: {:?})",
                 region_index, src_aspects, dst_aspects,
             ),
             Self::AspectsNotAllowed {
@@ -341,7 +340,8 @@ impl Display for CopyError {
                 allowed_aspects,
             } => write!(
                 f,
-                "the aspects ({:?}) of the {} subresource range of region {} contain aspects that are not present in the {} image, or that are not allowed ({:?})",
+                "the aspects ({:?}) of the {} subresource range of region {} contain aspects that \
+                are not present in the {} image, or that are not allowed ({:?})",
                 aspects, resource, region_index, resource, allowed_aspects,
             ),
             Self::BufferImageHeightNotAligned {
@@ -351,7 +351,8 @@ impl Display for CopyError {
                 required_alignment,
             } => write!(
                 f,
-                "the {} buffer image height ({}) of region {} is not a multiple of the required {} buffer alignment ({})",
+                "the {} buffer image height ({}) of region {} is not a multiple of the required {} \
+                buffer alignment ({})",
                 resource, image_height, region_index, resource, required_alignment,
             ),
             Self::BufferRowLengthTooLarge {
@@ -360,7 +361,8 @@ impl Display for CopyError {
                 buffer_row_length,
             } => write!(
                 f,
-                "the {} buffer row length ({}) of region {} specifies a row of texels that is greater than 0x7FFFFFFF bytes in size",
+                "the {} buffer row length ({}) of region {} specifies a row of texels that is \
+                greater than 0x7FFFFFFF bytes in size",
                 resource, buffer_row_length, region_index,
             ),
             Self::BufferImageHeightTooSmall {
@@ -370,7 +372,8 @@ impl Display for CopyError {
                 min,
             } => write!(
                 f,
-                "the {} buffer image height ({}) of region {} is smaller than the {} image extent height ({})",
+                "the {} buffer image height ({}) of region {} is smaller than the {} image extent \
+                height ({})",
                 resource, image_height, region_index, resource, min,
             ),
             Self::BufferRowLengthNotAligned {
@@ -380,7 +383,8 @@ impl Display for CopyError {
                 required_alignment,
             } => write!(
                 f,
-                "the {} buffer row length ({}) of region {} is not a multiple of the required {} buffer alignment ({})",
+                "the {} buffer row length ({}) of region {} is not a multiple of the required {} \
+                buffer alignment ({})",
                 resource, row_length, region_index, resource, required_alignment,
             ),
             Self::BufferRowLengthTooSmall {
@@ -390,20 +394,19 @@ impl Display for CopyError {
                 min,
             } => write!(
                 f,
-                "the {} buffer row length length ({}) of region {} is smaller than the {} image extent width ({})",
+                "the {} buffer row length length ({}) of region {} is smaller than the {} image \
+                extent width ({})",
                 resource, row_length, region_index, resource, min,
             ),
-            Self::DataTooLarge {
-                size,
-                max,
-            } => write!(
+            Self::DataTooLarge { size, max } => write!(
                 f,
                 "the provided data has a size ({}) greater than the maximum allowed ({})",
                 size, max,
             ),
             Self::DepthStencilNotSupportedByQueueFamily => write!(
                 f,
-                "depth/stencil images are not supported by the queue family of this command buffer; a graphics queue family is required",
+                "depth/stencil images are not supported by the queue family of this command \
+                buffer; a graphics queue family is required",
             ),
             Self::ExtentNotAlignedForImage {
                 resource,
@@ -412,21 +415,19 @@ impl Display for CopyError {
                 required_alignment,
             } => write!(
                 f,
-                "the {} image extent ({:?}) of region {} is not a multiple of the required {} image alignment ({:?})",
+                "the {} image extent ({:?}) of region {} is not a multiple of the required {} \
+                image alignment ({:?})",
                 resource, extent, region_index, resource, required_alignment,
             ),
             Self::FilterNotSupportedForImageType => write!(
                 f,
-                "the chosen filter is not supported for the source image type"
+                "the chosen filter is not supported for the source image type",
             ),
             Self::FilterNotSupportedByFormat => write!(
                 f,
-                "the chosen filter is not supported by the format of the source image"
+                "the chosen filter is not supported by the format of the source image",
             ),
-            Self::FormatNotSupported {
-                resource,
-                format,
-            } => write!(
+            Self::FormatNotSupported { resource, format } => write!(
                 f,
                 "the format of the {} image ({:?}) is not supported for this operation",
                 resource, format,
@@ -436,7 +437,8 @@ impl Display for CopyError {
                 dst_format,
             } => write!(
                 f,
-                "the format of the source image ({:?}) does not match the format of the destination image ({:?})",
+                "the format of the source image ({:?}) does not match the format of the \
+                destination image ({:?})",
                 src_format, dst_format,
             ),
             Self::FormatsNotCompatible {
@@ -444,7 +446,8 @@ impl Display for CopyError {
                 dst_format,
             } => write!(
                 f,
-                "the format of the source image subresource ({:?}) is not compatible with the format of the destination image subresource ({:?})",
+                "the format of the source image subresource ({:?}) is not compatible with the \
+                format of the destination image subresource ({:?})",
                 src_format, dst_format,
             ),
             Self::ImageLayoutInvalid {
@@ -462,7 +465,8 @@ impl Display for CopyError {
                 image_mip_levels,
             } => write!(
                 f,
-                "the end of the range of accessed mip levels ({}) of the {} subresource range of region {} is not less than the number of mip levels in the {} image ({})",
+                "the end of the range of accessed mip levels ({}) of the {} subresource range of \
+                region {} is not less than the number of mip levels in the {} image ({})",
                 mip_levels_range_end, resource, region_index, resource, image_mip_levels,
             ),
             Self::MissingFormatFeature {
@@ -484,7 +488,8 @@ impl Display for CopyError {
                 aspects,
             } => write!(
                 f,
-                "the {} subresource range of region {} specifies multiple aspects ({:?}), but only one aspect can be selected for the {} image",
+                "the {} subresource range of region {} specifies multiple aspects ({:?}), but only \
+                one aspect can be selected for the {} image",
                 resource, region_index, aspects, resource,
             ),
             Self::OffsetNotAlignedForBuffer {
@@ -494,7 +499,8 @@ impl Display for CopyError {
                 required_alignment,
             } => write!(
                 f,
-                "the {} buffer offset ({}) of region {} is not a multiple of the required {} buffer alignment ({})",
+                "the {} buffer offset ({}) of region {} is not a multiple of the required {} \
+                buffer alignment ({})",
                 resource, offset, region_index, resource, required_alignment,
             ),
             Self::OffsetNotAlignedForImage {
@@ -504,7 +510,8 @@ impl Display for CopyError {
                 required_alignment,
             } => write!(
                 f,
-                "the {} image offset ({:?}) of region {} is not a multiple of the required {} image alignment ({:?})",
+                "the {} image offset ({:?}) of region {} is not a multiple of the required {} \
+                image alignment ({:?})",
                 resource, offset, region_index, resource, required_alignment,
             ),
             Self::OffsetsInvalidForImageType {
@@ -513,7 +520,8 @@ impl Display for CopyError {
                 offsets,
             } => write!(
                 f,
-                "the {} image offsets ({:?}) of region {} are not the values required for that axis ([0, 1]) for the type of the {} image",
+                "the {} image offsets ({:?}) of region {} are not the values required for that \
+                axis ([0, 1]) for the type of the {} image",
                 resource, offsets, region_index, resource,
             ),
             Self::OverlappingRegions {
@@ -531,7 +539,9 @@ impl Display for CopyError {
                 dst_image_layout,
             } => write!(
                 f,
-                "the source subresources of region {} overlap with the destination subresources of region {}, but the source image layout ({:?}) does not equal the destination image layout ({:?})",
+                "the source subresources of region {} overlap with the destination subresources of \
+                region {}, but the source image layout ({:?}) does not equal the destination image \
+                layout ({:?})",
                 src_region_index, dst_region_index, src_image_layout, dst_image_layout,
             ),
             Self::RegionOutOfBufferBounds {
@@ -541,7 +551,8 @@ impl Display for CopyError {
                 buffer_size,
             } => write!(
                 f,
-                "the end of the range of accessed {} byte offsets ({}) of region {} is greater than the size of the {} buffer ({})",
+                "the end of the range of accessed {} byte offsets ({}) of region {} is greater \
+                than the size of the {} buffer ({})",
                 resource, offset_range_end, region_index, resource, buffer_size,
             ),
             Self::RegionOutOfImageBounds {
@@ -551,7 +562,8 @@ impl Display for CopyError {
                 subresource_extent,
             } => write!(
                 f,
-                "the end of the range of accessed {} texel offsets ({:?}) of region {} is greater than the extent of the selected subresource of the {} image ({:?})",
+                "the end of the range of accessed {} texel offsets ({:?}) of region {} is greater \
+                than the extent of the selected subresource of the {} image ({:?})",
                 resource, offset_range_end, region_index, resource, subresource_extent,
             ),
             Self::SampleCountInvalid {
@@ -560,7 +572,8 @@ impl Display for CopyError {
                 allowed_sample_counts,
             } => write!(
                 f,
-                "the {} image has a sample count ({:?}) that is not valid for this operation ({:?})",
+                "the {} image has a sample count ({:?}) that is not valid for this operation \
+                ({:?})",
                 resource, sample_count, allowed_sample_counts,
             ),
             Self::SampleCountMismatch {
@@ -568,7 +581,8 @@ impl Display for CopyError {
                 dst_sample_count,
             } => write!(
                 f,
-                "the source image has a different sample count ({:?}) than the destination image ({:?})",
+                "the source image has a different sample count ({:?}) than the destination image \
+                ({:?})",
                 src_sample_count, dst_sample_count,
             ),
             Self::SizeNotAlignedForBuffer {
@@ -578,7 +592,8 @@ impl Display for CopyError {
                 required_alignment,
             } => write!(
                 f,
-                "the {} buffer size ({}) of region {} is not a multiple of the required {} buffer alignment ({})",
+                "the {} buffer size ({}) of region {} is not a multiple of the required {} buffer \
+                alignment ({})",
                 resource, size, region_index, resource, required_alignment,
             ),
         }
@@ -586,14 +601,12 @@ impl Display for CopyError {
 }
 
 impl From<SyncCommandBufferBuilderError> for CopyError {
-    #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
     }
 }
 
 impl From<RequirementNotMet> for CopyError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -610,8 +623,7 @@ pub enum CopyErrorResource {
 }
 
 impl Display for CopyErrorResource {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::Source => write!(f, "source"),
             Self::Destination => write!(f, "destination"),

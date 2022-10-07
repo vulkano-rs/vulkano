@@ -17,10 +17,13 @@ mod linux {
     use vulkano::{
         buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
         command_buffer::{
-            AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo,
-            SubmitInfo, SubpassContents,
+            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
+            CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
+            SubpassContents,
         },
-        descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+        descriptor_set::{
+            allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        },
         device::{
             physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
             QueueCreateInfo,
@@ -225,9 +228,13 @@ mod linux {
             }
         });
 
+        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
 
         let set = PersistentDescriptorSet::new(
+            &descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::image_view_sampler(
                 0, image_view, sampler,
@@ -254,10 +261,9 @@ mod linux {
                     recreate_swapchain = true;
                 }
                 Event::RedrawEventsCleared => {
-                    unsafe {
-                        let mut queue_guard = queue.lock();
-                        queue_guard
-                            .submit_unchecked(
+                    queue
+                        .with(|mut q| unsafe {
+                            q.submit_unchecked(
                                 [SubmitInfo {
                                     signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
                                         acquire_sem.clone(),
@@ -266,16 +272,15 @@ mod linux {
                                 }],
                                 None,
                             )
-                            .unwrap();
-                    };
+                        })
+                        .unwrap();
 
                     barrier.wait();
                     barrier_2.wait();
 
-                    unsafe {
-                        let mut queue_guard = queue.lock();
-                        queue_guard
-                            .submit_unchecked(
+                    queue
+                        .with(|mut q| unsafe {
+                            q.submit_unchecked(
                                 [SubmitInfo {
                                     wait_semaphores: vec![SemaphoreSubmitInfo::semaphore(
                                         release_sem.clone(),
@@ -284,8 +289,8 @@ mod linux {
                                 }],
                                 None,
                             )
-                            .unwrap();
-                    };
+                        })
+                        .unwrap();
 
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
 
@@ -326,7 +331,7 @@ mod linux {
                     }
 
                     let mut builder = AutoCommandBufferBuilder::primary(
-                        device.clone(),
+                        &command_buffer_allocator,
                         queue.queue_family_index(),
                         CommandBufferUsage::OneTimeSubmit,
                     )

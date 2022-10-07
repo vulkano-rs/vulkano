@@ -55,22 +55,18 @@ where
     }
 
     /// Returns the swapchain this image belongs to.
-    #[inline]
     pub fn swapchain(&self) -> &Arc<Swapchain<W>> {
         &self.swapchain
     }
 
-    #[inline]
-    fn my_image(&self) -> ImageInner {
+    fn my_image(&self) -> ImageInner<'_> {
         self.swapchain.raw_image(self.image_index).unwrap()
     }
 
-    #[inline]
     fn layout_initialized(&self) {
         self.swapchain.image_layout_initialized(self.image_index);
     }
 
-    #[inline]
     fn is_layout_initialized(&self) -> bool {
         self.swapchain.is_image_layout_initialized(self.image_index)
     }
@@ -86,22 +82,18 @@ unsafe impl<W> ImageAccess for SwapchainImage<W>
 where
     W: Send + Sync,
 {
-    #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         self.my_image()
     }
 
-    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         ImageLayout::PresentSrc
     }
 
-    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         ImageLayout::PresentSrc
     }
 
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
             storage_image: ImageLayout::General,
@@ -111,12 +103,10 @@ where
         })
     }
 
-    #[inline]
     unsafe fn layout_initialized(&self) {
         self.layout_initialized();
     }
 
-    #[inline]
     fn is_layout_initialized(&self) -> bool {
         self.is_layout_initialized()
     }
@@ -126,7 +116,6 @@ unsafe impl<P, W> ImageContent<P> for SwapchainImage<W>
 where
     W: Send + Sync,
 {
-    #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
     }
@@ -136,7 +125,6 @@ impl<W> PartialEq for SwapchainImage<W>
 where
     W: Send + Sync,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
@@ -148,7 +136,6 @@ impl<W> Hash for SwapchainImage<W>
 where
     W: Send + Sync,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }

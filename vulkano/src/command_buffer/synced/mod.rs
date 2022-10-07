@@ -84,9 +84,9 @@ use crate::{
     },
     DeviceSize,
 };
+use ahash::HashMap;
 use std::{
     borrow::Cow,
-    collections::HashMap,
     fmt::{Debug, Error as FmtError, Formatter},
     ops::Range,
     sync::Arc,
@@ -131,6 +131,7 @@ impl SyncCommandBuffer {
     /// Tries to lock the resources used by the command buffer.
     ///
     /// > **Note**: You should call this in the implementation of the `CommandBuffer` trait.
+    #[inline]
     pub fn lock_submit(
         &self,
         future: &dyn GpuFuture,
@@ -281,7 +282,7 @@ impl SyncCommandBuffer {
     /// # Safety
     ///
     /// The command buffer must have been successfully locked with `lock_submit()`.
-    ///
+    #[inline]
     pub unsafe fn unlock(&self) {
         for (buffer, range_map) in &self.buffers2 {
             let mut buffer_state = buffer.state();
@@ -520,7 +521,7 @@ pub(super) trait Command: Send + Sync {
 }
 
 impl Debug for dyn Command {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.write_str(self.name())
     }
 }
@@ -531,11 +532,14 @@ mod tests {
     use crate::{
         buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
         command_buffer::{
-            pool::{CommandPool, CommandPoolBuilderAlloc},
+            allocator::{
+                CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
+            },
             sys::CommandBufferBeginInfo,
             AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage, FillBufferInfo,
         },
         descriptor_set::{
+            allocator::StandardDescriptorSetAllocator,
             layout::{
                 DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
                 DescriptorType,
@@ -552,17 +556,16 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let pool_builder_alloc = device
-                .with_standard_command_pool(queue.queue_family_index(), |pool| {
-                    pool.allocate(CommandBufferLevel::Primary, 1)
-                        .unwrap()
-                        .next()
-                        .unwrap()
-                })
+            let allocator = StandardCommandBufferAllocator::new(device);
+
+            let builder_alloc = allocator
+                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
                 .unwrap();
 
             SyncCommandBufferBuilder::new(
-                pool_builder_alloc.inner(),
+                builder_alloc.inner(),
                 CommandBufferBeginInfo {
                     usage: CommandBufferUsage::MultipleSubmit,
                     ..Default::default()
@@ -577,6 +580,8 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
+            let allocator = StandardCommandBufferAllocator::new(device);
+
             // Create a tiny test buffer
             let (buf, future) = DeviceLocalBuffer::from_data(
                 0u32,
@@ -584,6 +589,7 @@ mod tests {
                     transfer_dst: true,
                     ..BufferUsage::empty()
                 },
+                &allocator,
                 queue.clone(),
             )
             .unwrap();
@@ -597,7 +603,7 @@ mod tests {
             let secondary = (0..2)
                 .map(|_| {
                     let mut builder = AutoCommandBufferBuilder::secondary(
-                        device.clone(),
+                        &allocator,
                         queue.queue_family_index(),
                         CommandBufferUsage::SimultaneousUse,
                         Default::default(),
@@ -613,13 +619,10 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            let allocs = device
-                .with_standard_command_pool(queue.queue_family_index(), |pool| {
-                    pool.allocate(CommandBufferLevel::Primary, 2)
-                        .unwrap()
-                        .collect::<Vec<_>>()
-                })
-                .unwrap();
+            let allocs = allocator
+                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 2)
+                .unwrap()
+                .collect::<Vec<_>>();
 
             {
                 let mut builder = SyncCommandBufferBuilder::new(
@@ -675,16 +678,15 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let pool_builder_alloc = device
-                .with_standard_command_pool(queue.queue_family_index(), |pool| {
-                    pool.allocate(CommandBufferLevel::Primary, 1)
-                        .unwrap()
-                        .next()
-                        .unwrap()
-                })
+            let allocator = StandardCommandBufferAllocator::new(device.clone());
+
+            let builder_alloc = allocator
+                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
                 .unwrap();
             let mut sync = SyncCommandBufferBuilder::new(
-                pool_builder_alloc.inner(),
+                builder_alloc.inner(),
                 CommandBufferBeginInfo {
                     usage: CommandBufferUsage::MultipleSubmit,
                     ..Default::default()
@@ -716,16 +718,14 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let pool_builder_alloc = device
-                .with_standard_command_pool(queue.queue_family_index(), |pool| {
-                    pool.allocate(CommandBufferLevel::Primary, 1)
-                        .unwrap()
-                        .next()
-                        .unwrap()
-                })
+            let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+            let builder_alloc = cb_allocator
+                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
                 .unwrap();
             let mut sync = SyncCommandBufferBuilder::new(
-                pool_builder_alloc.inner(),
+                builder_alloc.inner(),
                 CommandBufferBeginInfo {
                     usage: CommandBufferUsage::MultipleSubmit,
                     ..Default::default()
@@ -756,7 +756,10 @@ mod tests {
             )
             .unwrap();
 
+            let ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
+
             let set = PersistentDescriptorSet::new(
+                &ds_allocator,
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
                     0,
@@ -814,6 +817,7 @@ mod tests {
             .unwrap();
 
             let set = PersistentDescriptorSet::new(
+                &ds_allocator,
                 set_layout,
                 [WriteDescriptorSet::sampler(
                     0,

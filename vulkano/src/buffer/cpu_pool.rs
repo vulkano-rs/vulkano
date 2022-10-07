@@ -67,6 +67,7 @@ use std::{
 /// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 ///
 /// // Create the ring buffer.
 /// let buffer = CpuBufferPool::upload(device.clone());
@@ -77,20 +78,23 @@ use std::{
 ///     let sub_buffer = buffer.from_data(data).unwrap();
 ///
 ///     // You can then use `sub_buffer` as if it was an entirely separate buffer.
-///     AutoCommandBufferBuilder::primary(device.clone(), queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit)
-///         .unwrap()
-///         // For the sake of the example we just call `update_buffer` on the buffer, even though
-///         // it is pointless to do that.
-///         .update_buffer(&[0.2, 0.3, 0.4, 0.5], sub_buffer.clone(), 0)
-///         .unwrap()
-///         .build().unwrap()
-///         .execute(queue.clone())
-///         .unwrap()
-///         .then_signal_fence_and_flush()
-///         .unwrap();
+///     AutoCommandBufferBuilder::primary(
+///         &command_buffer_allocator,
+///         queue.queue_family_index(),
+///         CommandBufferUsage::OneTimeSubmit,
+///     )
+///     .unwrap()
+///     // For the sake of the example we just call `update_buffer` on the buffer, even though
+///     // it is pointless to do that.
+///     .update_buffer(&[0.2, 0.3, 0.4, 0.5], sub_buffer.clone(), 0)
+///     .unwrap()
+///     .build().unwrap()
+///     .execute(queue.clone())
+///     .unwrap()
+///     .then_signal_fence_and_flush()
+///     .unwrap();
 /// }
 /// ```
-///
 pub struct CpuBufferPool<T, A = Arc<StandardMemoryPool>>
 where
     [T]: BufferContents,
@@ -419,7 +423,7 @@ where
     // `cur_buf_mutex` must be an active lock of `self.current_buffer`.
     fn reset_buf(
         &self,
-        cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
+        cur_buf_mutex: &mut MutexGuard<'_, Option<Arc<ActualBuffer<A>>>>,
         capacity: DeviceSize,
     ) -> Result<(), DeviceMemoryError> {
         let size = match (size_of::<T>() as DeviceSize).checked_mul(capacity) {
@@ -478,7 +482,7 @@ where
     //
     fn try_next_impl<I>(
         &self,
-        cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
+        cur_buf_mutex: &mut MutexGuard<'_, Option<Arc<ActualBuffer<A>>>>,
         data: I,
     ) -> Result<CpuBufferPoolChunk<T, A>, I::IntoIter>
     where
@@ -688,7 +692,7 @@ where
     A: MemoryPool,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.buffer.inner,
             offset: self.index * size_of::<T>() as DeviceSize + self.align_offset,
@@ -810,7 +814,7 @@ where
     A: MemoryPool,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         self.chunk.inner()
     }
 

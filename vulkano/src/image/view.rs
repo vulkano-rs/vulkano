@@ -69,7 +69,6 @@ where
     ///   `stencil`, `plane0`, `plane1` or `plane2`.
     /// - Panics if `create_info.aspects` contains more more than one aspect, unless `depth` and
     ///   `stencil` are the only aspects selected.
-    #[inline]
     pub fn new(
         image: Arc<I>,
         create_info: ImageViewCreateInfo,
@@ -468,7 +467,6 @@ where
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn new_unchecked(
         image: Arc<I>,
         create_info: ImageViewCreateInfo,
@@ -557,7 +555,6 @@ where
 
     /// Creates a default `ImageView`. Equivalent to
     /// `ImageView::new(image, ImageViewCreateInfo::from_image(image))`.
-    #[inline]
     pub fn new_default(image: Arc<I>) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
         let create_info = ImageViewCreateInfo::from_image(&image);
         Self::new(image, create_info)
@@ -569,7 +566,6 @@ where
     ///
     /// - `handle` must be a valid Vulkan object handle created from `image`.
     /// - `create_info` must match the info used to create the object.
-    #[inline]
     pub unsafe fn from_handle(
         image: Arc<I>,
         handle: ash::vk::ImageView,
@@ -653,7 +649,6 @@ where
     }
 
     // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkImageViewCreateInfo.html#_description
-    #[inline]
     fn get_default_usage(aspects: ImageAspects, image: &UnsafeImage) -> ImageUsage {
         let has_stencil_aspect = aspects.stencil;
         let has_non_stencil_aspect = !(ImageAspects {
@@ -674,7 +669,6 @@ where
     }
 
     // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap12.html#resources-image-view-format-features
-    #[inline]
     unsafe fn get_format_features(format: Format, image: &UnsafeImage) -> FormatFeatures {
         let device = image.device();
 
@@ -712,7 +706,6 @@ where
     }
 
     /// Returns the wrapped image that this image view was created from.
-    #[inline]
     pub fn image(&self) -> &Arc<I> {
         &self.image
     }
@@ -722,7 +715,6 @@ impl<I> Drop for ImageView<I>
 where
     I: ImageAccess + ?Sized,
 {
-    #[inline]
     fn drop(&mut self) {
         unsafe {
             let device = self.device();
@@ -738,7 +730,6 @@ where
 {
     type Object = ash::vk::ImageView;
 
-    #[inline]
     fn internal_object(&self) -> ash::vk::ImageView {
         self.handle
     }
@@ -748,7 +739,6 @@ unsafe impl<I> DeviceOwned for ImageView<I>
 where
     I: ImageAccess + ?Sized,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.image.inner().image.device()
     }
@@ -758,7 +748,6 @@ impl<I> PartialEq for ImageView<I>
 where
     I: ImageAccess + ?Sized,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.device() == other.device()
     }
@@ -770,7 +759,6 @@ impl<I> Hash for ImageView<I>
 where
     I: ImageAccess + ?Sized,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -859,10 +847,7 @@ impl ImageViewCreateInfo {
     /// Returns an `ImageViewCreateInfo` with the `view_type` determined from the image type and
     /// array layers, and `subresource_range` determined from the image format and covering the
     /// whole image.
-    pub fn from_image<I>(image: &I) -> Self
-    where
-        I: ImageAccess + ?Sized,
-    {
+    pub fn from_image(image: &(impl ImageAccess + ?Sized)) -> Self {
         Self {
             view_type: match image.dimensions() {
                 ImageDimensions::Dim1d {
@@ -984,24 +969,18 @@ pub enum ImageViewCreationError {
 }
 
 impl Error for ImageViewCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            ImageViewCreationError::OomError(ref err) => Some(err),
+        match self {
+            ImageViewCreationError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for ImageViewCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::OomError(_) => write!(
-                f,
-                "allocating memory failed",
-            ),
-
+            Self::OomError(_) => write!(f, "allocating memory failed",),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -1010,10 +989,10 @@ impl Display for ImageViewCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::Array2dCompatibleMultipleMipLevels => write!(
                 f,
-                "a 2D image view was requested from a 3D image, but a range of multiple mip levels was specified",
+                "a 2D image view was requested from a 3D image, but a range of multiple mip levels \
+                was specified",
             ),
             Self::ArrayLayersOutOfRange { .. } => write!(
                 f,
@@ -1021,35 +1000,37 @@ impl Display for ImageViewCreationError {
             ),
             Self::BlockTexelViewCompatibleMultipleArrayLayers => write!(
                 f,
-                "the image has the `block_texel_view_compatible` flag, but a range of multiple array layers was specified",
+                "the image has the `block_texel_view_compatible` flag, but a range of multiple \
+                array layers was specified",
             ),
             Self::BlockTexelViewCompatibleMultipleMipLevels => write!(
                 f,
-                "the image has the `block_texel_view_compatible` flag, but a range of multiple mip levels was specified",
+                "the image has the `block_texel_view_compatible` flag, but a range of multiple mip \
+                levels was specified",
             ),
             Self::BlockTexelViewCompatibleUncompressedIs3d => write!(
                 f,
-                "the image has the `block_texel_view_compatible` flag, and an uncompressed format was requested, and the image view type was `Dim3d`",
+                "the image has the `block_texel_view_compatible` flag, and an uncompressed format \
+                was requested, and the image view type was `Dim3d`",
             ),
             Self::FormatChromaSubsamplingInvalidImageDimensions => write!(
                 f,
-                "the requested format has chroma subsampling, but the width and/or height of the image was not a multiple of 2",
+                "the requested format has chroma subsampling, but the width and/or height of the \
+                image was not a multiple of 2",
             ),
-            Self::FormatNotCompatible => write!(
-                f,
-                "the requested format was not compatible with the image",
-            ),
-            Self::FormatNotSupported => write!(
-                f,
-                "the given format was not supported by the device"
-            ),
+            Self::FormatNotCompatible => {
+                write!(f, "the requested format was not compatible with the image")
+            }
+            Self::FormatNotSupported => {
+                write!(f, "the given format was not supported by the device")
+            }
             Self::FormatRequiresSamplerYcbcrConversion { .. } => write!(
                 f,
                 "the format requires a sampler YCbCr conversion, but none was provided",
             ),
             Self::FormatUsageNotSupported { .. } => write!(
                 f,
-                "a requested usage flag was not supported by the given format"
+                "a requested usage flag was not supported by the given format",
             ),
             Self::ImageAspectsNotCompatible { .. } => write!(
                 f,
@@ -1061,11 +1042,13 @@ impl Display for ImageViewCreationError {
             ),
             Self::ImageNotArray2dCompatible => write!(
                 f,
-                "a 2D image view was requested from a 3D image, but the image was not created with the `array_2d_compatible` flag",
+                "a 2D image view was requested from a 3D image, but the image was not created with \
+                the `array_2d_compatible` flag",
             ),
             Self::ImageNotCubeCompatible => write!(
                 f,
-                "a cube image view type was requested, but the image was not created with the `cube_compatible` flag",
+                "a cube image view type was requested, but the image was not created with the \
+                `cube_compatible` flag",
             ),
             Self::ImageTypeNotCompatible => write!(
                 f,
@@ -1081,23 +1064,28 @@ impl Display for ImageViewCreationError {
             ),
             Self::MultisamplingNot2d => write!(
                 f,
-                "the image has multisampling enabled, but the image view type was not `Dim2d` or `Dim2dArray`",
+                "the image has multisampling enabled, but the image view type was not `Dim2d` or \
+                `Dim2dArray`",
             ),
             Self::SamplerYcbcrConversionComponentMappingNotIdentity { .. } => write!(
                 f,
-                "sampler YCbCr conversion was enabled, but `component_mapping` was not the identity mapping",
+                "sampler YCbCr conversion was enabled, but `component_mapping` was not the \
+                identity mapping",
             ),
             Self::TypeCubeArrayNotMultipleOf6ArrayLayers => write!(
                 f,
-                "the `CubeArray` image view type was specified, but the range of array layers did not have a size that is a multiple 6"
+                "the `CubeArray` image view type was specified, but the range of array layers did \
+                not have a size that is a multiple 6",
             ),
             Self::TypeCubeNot6ArrayLayers => write!(
                 f,
-                "the `Cube` image view type was specified, but the range of array layers did not have a size of 6"
+                "the `Cube` image view type was specified, but the range of array layers did not \
+                have a size of 6",
             ),
             Self::TypeNonArrayedMultipleArrayLayers => write!(
                 f,
-                "a non-arrayed image view type was specified, but a range of multiple array layers was specified"
+                "a non-arrayed image view type was specified, but a range of multiple array layers \
+                was specified",
             ),
             Self::UsageNotSupportedByImage {
                 usage: _,
@@ -1111,14 +1099,12 @@ impl Display for ImageViewCreationError {
 }
 
 impl From<OomError> for ImageViewCreationError {
-    #[inline]
     fn from(err: OomError) -> ImageViewCreationError {
         ImageViewCreationError::OomError(err)
     }
 }
 
 impl From<VulkanError> for ImageViewCreationError {
-    #[inline]
     fn from(err: VulkanError) -> ImageViewCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => OomError::from(err).into(),
@@ -1129,7 +1115,6 @@ impl From<VulkanError> for ImageViewCreationError {
 }
 
 impl From<RequirementNotMet> for ImageViewCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -1205,6 +1190,7 @@ pub unsafe trait ImageViewAbstract:
     fn component_mapping(&self) -> ComponentMapping;
 
     /// Returns the dimensions of this view.
+    #[inline]
     fn dimensions(&self) -> ImageDimensions {
         let subresource_range = self.subresource_range();
         let array_layers =
@@ -1265,52 +1251,42 @@ unsafe impl<I> ImageViewAbstract for ImageView<I>
 where
     I: ImageAccess + Debug + 'static,
 {
-    #[inline]
     fn image(&self) -> Arc<dyn ImageAccess> {
         self.image.clone()
     }
 
-    #[inline]
     fn component_mapping(&self) -> ComponentMapping {
         self.component_mapping
     }
 
-    #[inline]
     fn filter_cubic(&self) -> bool {
         self.filter_cubic
     }
 
-    #[inline]
     fn filter_cubic_minmax(&self) -> bool {
         self.filter_cubic_minmax
     }
 
-    #[inline]
     fn format(&self) -> Option<Format> {
         self.format
     }
 
-    #[inline]
     fn format_features(&self) -> &FormatFeatures {
         &self.format_features
     }
 
-    #[inline]
     fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
         self.sampler_ycbcr_conversion.as_ref()
     }
 
-    #[inline]
     fn subresource_range(&self) -> &ImageSubresourceRange {
         &self.subresource_range
     }
 
-    #[inline]
     fn usage(&self) -> &ImageUsage {
         &self.usage
     }
 
-    #[inline]
     fn view_type(&self) -> ImageViewType {
         self.view_type
     }
@@ -1378,7 +1354,6 @@ impl PartialEq for dyn ImageViewAbstract {
 impl Eq for dyn ImageViewAbstract {}
 
 impl Hash for dyn ImageViewAbstract {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.internal_object().hash(state);
         self.device().hash(state);

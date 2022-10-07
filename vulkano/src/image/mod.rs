@@ -379,7 +379,7 @@ impl ImageDimensions {
     ///
     /// The returned value is always at least 1.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use vulkano::image::ImageDimensions;
@@ -392,7 +392,6 @@ impl ImageDimensions {
     ///
     /// assert_eq!(dims.max_mip_levels(), 6);
     /// ```
-    ///
     #[inline]
     pub fn max_mip_levels(&self) -> u32 {
         // This calculates `log2(max(width, height, depth)) + 1` using fast integer operations.
@@ -413,7 +412,7 @@ impl ImageDimensions {
     ///
     /// Returns `None` if `level` is superior or equal to `max_mip_levels()`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// use vulkano::image::ImageDimensions;
@@ -443,11 +442,11 @@ impl ImageDimensions {
     /// assert_eq!(dims.mip_level_dimensions(11), None);
     /// ```
     ///
-    /// # Panic
+    /// # Panics
     ///
-    /// In debug mode, Panics if `width`, `height` or `depth` is equal to 0. In release, returns
-    /// an unspecified value.
-    ///
+    /// - In debug mode, panics if `width`, `height` or `depth` is equal to 0. In release, returns
+    ///   an unspecified value.
+    #[inline]
     pub fn mip_level_dimensions(&self, level: u32) -> Option<ImageDimensions> {
         if level == 0 {
             return Some(*self);
@@ -519,7 +518,33 @@ pub struct ImageSubresourceLayers {
     pub array_layers: Range<u32>,
 }
 
+impl ImageSubresourceLayers {
+    /// Returns an `ImageSubresourceLayers` from the given image parameters, covering the first
+    /// mip level of the image. All aspects of the image are selected, or `plane0` if the image
+    /// is multi-planar.
+    #[inline]
+    pub fn from_parameters(format: Format, array_layers: u32) -> Self {
+        Self {
+            aspects: {
+                let aspects = format.aspects();
+
+                if aspects.plane0 {
+                    ImageAspects {
+                        plane0: true,
+                        ..ImageAspects::empty()
+                    }
+                } else {
+                    aspects
+                }
+            },
+            mip_level: 0,
+            array_layers: 0..array_layers,
+        }
+    }
+}
+
 impl From<ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
+    #[inline]
     fn from(val: ImageSubresourceLayers) -> Self {
         Self {
             aspect_mask: val.aspects.into(),
@@ -548,6 +573,24 @@ pub struct ImageSubresourceRange {
     ///
     /// The range must not be empty.
     pub array_layers: Range<u32>,
+}
+
+impl ImageSubresourceRange {
+    /// Returns an `ImageSubresourceRange` from the given image parameters, covering the whole
+    /// image. If the image is multi-planar, only the `color` aspect is selected.
+    #[inline]
+    pub fn from_parameters(format: Format, mip_levels: u32, array_layers: u32) -> Self {
+        Self {
+            aspects: ImageAspects {
+                plane0: false,
+                plane1: false,
+                plane2: false,
+                ..format.aspects()
+            },
+            mip_levels: 0..mip_levels,
+            array_layers: 0..array_layers,
+        }
+    }
 }
 
 impl From<ImageSubresourceRange> for ash::vk::ImageSubresourceRange {
@@ -605,7 +648,7 @@ pub struct SubresourceLayout {
 
 /// The image configuration to query in
 /// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageFormatInfo {
     /// The `format` that the image will have.
     ///
@@ -762,7 +805,7 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
 
 /// The image configuration to query in
 /// [`PhysicalDevice::sparse_image_format_properties`](crate::device::physical::PhysicalDevice::sparse_image_format_properties).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SparseImageFormatInfo {
     /// The `format` that the image will have.
     ///
@@ -867,6 +910,7 @@ pub struct SparseImageMemoryRequirements {
 #[cfg(test)]
 mod tests {
     use crate::{
+        command_buffer::allocator::StandardCommandBufferAllocator,
         format::Format,
         image::{ImageAccess, ImageDimensions, ImmutableImage, MipmapsCount},
     };
@@ -973,7 +1017,9 @@ mod tests {
 
     #[test]
     fn mipmap_working_immutable_image() {
-        let (_device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         let dimensions = ImageDimensions::Dim2d {
             width: 512,
@@ -990,6 +1036,7 @@ mod tests {
                 dimensions,
                 MipmapsCount::One,
                 Format::R8_UNORM,
+                &cb_allocator,
                 queue.clone(),
             )
             .unwrap();
@@ -1005,6 +1052,7 @@ mod tests {
                 dimensions,
                 MipmapsCount::Log2,
                 Format::R8_UNORM,
+                &cb_allocator,
                 queue,
             )
             .unwrap();

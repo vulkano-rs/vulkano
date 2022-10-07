@@ -24,7 +24,7 @@ use std::{
 ///
 /// This object doesn't correspond to any Vulkan object. It exists for API convenience.
 ///
-/// # Example
+/// # Examples
 ///
 /// Creating a slice:
 ///
@@ -41,7 +41,7 @@ use std::{
 /// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> = return;
 /// let _slice = BufferSlice::from(&buffer).slice(12 .. 14).unwrap();
 /// ```
-///
+#[derive(Debug)]
 pub struct BufferSlice<T: ?Sized, B> {
     marker: PhantomData<T>,
     resource: Arc<B>,
@@ -51,7 +51,6 @@ pub struct BufferSlice<T: ?Sized, B> {
 
 // We need to implement `Clone` manually, otherwise the derive adds a `T: Clone` requirement.
 impl<T: ?Sized, B> Clone for BufferSlice<T, B> {
-    #[inline]
     fn clone(&self) -> Self {
         BufferSlice {
             marker: PhantomData,
@@ -63,7 +62,6 @@ impl<T: ?Sized, B> Clone for BufferSlice<T, B> {
 }
 
 impl<T: ?Sized, B> BufferSlice<T, B> {
-    #[inline]
     pub fn from_typed_buffer_access(r: Arc<B>) -> Arc<BufferSlice<T, B>>
     where
         B: TypedBufferAccess<Content = T>,
@@ -84,13 +82,11 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     }
 
     /// Returns the offset of that slice within the buffer.
-    #[inline]
     pub fn offset(&self) -> DeviceSize {
         self.offset
     }
 
     /// Returns the size of that slice in bytes.
-    #[inline]
     pub fn size(&self) -> DeviceSize {
         self.size
     }
@@ -100,7 +96,7 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     /// This method builds an object that represents a slice of the buffer. No actual operation
     /// is performed.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// TODO
     ///
@@ -111,7 +107,6 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     ///
     /// You **must** return a reference to an element from the parameter. The closure **must not**
     /// panic.
-    #[inline]
     pub unsafe fn slice_custom<F, R: ?Sized>(&self, f: F) -> Arc<BufferSlice<R, B>>
     where
         F: for<'r> FnOnce(&'r T) -> &'r R, // TODO: bounds on R
@@ -136,7 +131,7 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     /// useful when you have a buffer with various types of data and want to create a typed slice
     /// of a region that contains a single type of data.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// # use std::sync::Arc;
@@ -153,7 +148,6 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     ///
     /// Correct `offset` and `size` must be ensured before using this `BufferSlice` on the device.
     /// See `BufferSlice::slice` for adjusting these properties.
-    #[inline]
     pub unsafe fn reinterpret<R: ?Sized>(&self) -> Arc<BufferSlice<R, B>> {
         Arc::new(BufferSlice {
             marker: PhantomData,
@@ -166,7 +160,6 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
 
 impl<T, B> BufferSlice<[T], B> {
     /// Returns the number of elements in this slice.
-    #[inline]
     pub fn len(&self) -> DeviceSize {
         debug_assert_eq!(self.size() % size_of::<T>() as DeviceSize, 0);
         self.size() / size_of::<T>() as DeviceSize
@@ -175,7 +168,6 @@ impl<T, B> BufferSlice<[T], B> {
     /// Reduces the slice to just one element of the array.
     ///
     /// Returns `None` if out of range.
-    #[inline]
     pub fn index(&self, index: DeviceSize) -> Option<Arc<BufferSlice<T, B>>> {
         if index >= self.len() {
             return None;
@@ -192,7 +184,6 @@ impl<T, B> BufferSlice<[T], B> {
     /// Reduces the slice to just a range of the array.
     ///
     /// Returns `None` if out of range.
-    #[inline]
     pub fn slice(&self, range: Range<DeviceSize>) -> Option<Arc<BufferSlice<[T], B>>> {
         if range.end > self.len() {
             return None;
@@ -212,8 +203,7 @@ where
     B: BufferAccess,
     T: Send + Sync + ?Sized,
 {
-    #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         let inner = self.resource.inner();
         BufferInner {
             buffer: inner.buffer,
@@ -221,7 +211,6 @@ where
         }
     }
 
-    #[inline]
     fn size(&self) -> DeviceSize {
         self.size
     }
@@ -232,7 +221,6 @@ where
     B: BufferAccess + 'static,
     T: Send + Sync + ?Sized + 'static,
 {
-    #[inline]
     fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
         self.clone()
     }
@@ -250,14 +238,12 @@ unsafe impl<T: ?Sized, B> DeviceOwned for BufferSlice<T, B>
 where
     B: DeviceOwned,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.resource.device()
     }
 }
 
 impl<T, B> From<BufferSlice<T, B>> for BufferSlice<[T], B> {
-    #[inline]
     fn from(r: BufferSlice<T, B>) -> BufferSlice<[T], B> {
         BufferSlice {
             marker: PhantomData,
@@ -273,7 +259,6 @@ where
     T: Send + Sync,
     B: BufferAccess,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
@@ -291,7 +276,6 @@ where
     T: Send + Sync,
     B: BufferAccess,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);

@@ -7,15 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use ahash::HashMap;
 use proc_macro2::TokenStream;
-use std::collections::HashMap;
-use vulkano::pipeline::layout::PushConstantRange;
-use vulkano::shader::spirv::ExecutionModel;
-use vulkano::shader::{
-    DescriptorIdentifier, DescriptorRequirements, ShaderExecution, ShaderInterfaceEntry,
-    ShaderInterfaceEntryType, SpecializationConstantRequirements,
+use vulkano::{
+    pipeline::layout::PushConstantRange,
+    shader::{
+        spirv::ExecutionModel, DescriptorIdentifier, DescriptorRequirements, EntryPointInfo,
+        ShaderExecution, ShaderInterface, ShaderInterfaceEntry, ShaderInterfaceEntryType,
+        ShaderStages, SpecializationConstantRequirements,
+    },
 };
-use vulkano::shader::{EntryPointInfo, ShaderInterface, ShaderStages};
 
 pub(super) fn write_entry_point(
     name: &str,

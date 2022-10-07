@@ -83,6 +83,7 @@ impl Semaphore {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: SemaphoreCreateInfo,
@@ -140,6 +141,7 @@ impl Semaphore {
     ///
     /// For most applications, using the pool should be preferred,
     /// in order to avoid creating new semaphores every frame.
+    #[inline]
     pub fn from_pool(device: Arc<Device>) -> Result<Semaphore, SemaphoreError> {
         let handle = device.semaphore_pool().lock().pop();
         let semaphore = match handle {
@@ -168,6 +170,7 @@ impl Semaphore {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Semaphore,
@@ -217,7 +220,7 @@ impl Semaphore {
             });
         }
 
-        // VUID-VkMemoryGetFdInfoKHR-handleType-parameter
+        // VUID-VkSemaphoreGetFdInfoKHR-handleType-parameter
         handle_type.validate_device(&self.device)?;
 
         // VUID-VkSemaphoreGetFdInfoKHR-handleType-01132
@@ -253,6 +256,7 @@ impl Semaphore {
 
     #[cfg(not(unix))]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn export_fd_unchecked(
         &self,
         _handle_type: ExternalSemaphoreHandleType,
@@ -262,6 +266,7 @@ impl Semaphore {
 
     #[cfg(unix)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn export_fd_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
@@ -333,7 +338,6 @@ impl PartialEq for Semaphore {
 impl Eq for Semaphore {}
 
 impl Hash for Semaphore {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -366,27 +370,58 @@ vulkan_enum! {
     #[non_exhaustive]
     ExternalSemaphoreHandleType = ExternalSemaphoreHandleTypeFlags(u32);
 
-    // TODO: document
+    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     OpaqueFd = OPAQUE_FD,
 
-    // TODO: document
+    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     OpaqueWin32 = OPAQUE_WIN32,
 
-    // TODO: document
+    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
 
-    // TODO: document
+    /// A Windows NT handle that refers to a Direct3D 11 or 12 fence.
+    ///
+    /// This handle type has *reference transference*.
     D3D12Fence = D3D12_FENCE,
 
-    // TODO: document
+    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
+    ///
+    /// This handle type has *copy transference*.
     SyncFd = SYNC_FD,
 
-    /*
-    // TODO: document
+    /// A handle to a Zircon event object.
+    ///
+    /// This handle type has *reference transference*.
+    ///
+    /// The
+    /// [`fuchsia_external_semaphore`](crate::device::DeviceExtensions::fuchsia_external_semaphore)
+    /// extension must be enabled on the device.
     ZirconEvent = ZIRCON_EVENT_FUCHSIA {
         device_extensions: [fuchsia_external_semaphore],
     },
-     */
+}
+
+impl ExternalSemaphoreHandleType {
+    /// Returns whether the given handle type has *copy transference* rather than *reference
+    /// transference*.
+    ///
+    /// Imports of handles with copy transference must always be temporary. Exports of such
+    /// handles must only occur if no queue is waiting on the semaphore, and only if the semaphore
+    /// is already signaled, or if there is a semaphore signal operation pending in a queue.
+    #[inline]
+    pub fn has_copy_transference(&self) -> bool {
+        // As defined by
+        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-win32
+        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fd
+        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fuchsia
+        matches!(self, Self::SyncFd)
+    }
 }
 
 vulkan_bitflags! {
@@ -394,27 +429,41 @@ vulkan_bitflags! {
     #[non_exhaustive]
     ExternalSemaphoreHandleTypes = ExternalSemaphoreHandleTypeFlags(u32);
 
-    // TODO: document
+    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     opaque_fd = OPAQUE_FD,
 
-    // TODO: document
+    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     opaque_win32 = OPAQUE_WIN32,
 
-    // TODO: document
+    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
     opaque_win32_kmt = OPAQUE_WIN32_KMT,
 
-    // TODO: document
+    /// A Windows NT handle that refers to a Direct3D 11 or 12 fence.
+    ///
+    /// This handle type has *reference transference*.
     d3d12_fence = D3D12_FENCE,
 
-    // TODO: document
+    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
+    ///
+    /// This handle type has *copy transference*.
     sync_fd = SYNC_FD,
 
-    /*
-    // TODO: document
+    /// A handle to a Zircon event object.
+    ///
+    /// This handle type has *reference transference*.
+    ///
+    /// The
+    /// [`fuchsia_external_semaphore`](crate::device::DeviceExtensions::fuchsia_external_semaphore)
+    /// extension must be enabled on the device.
     zircon_event = ZIRCON_EVENT_FUCHSIA {
         device_extensions: [fuchsia_external_semaphore],
     },
-     */
 }
 
 impl From<ExternalSemaphoreHandleType> for ExternalSemaphoreHandleTypes {
@@ -428,6 +477,7 @@ impl From<ExternalSemaphoreHandleType> for ExternalSemaphoreHandleTypes {
             ExternalSemaphoreHandleType::OpaqueWin32Kmt => result.opaque_win32_kmt = true,
             ExternalSemaphoreHandleType::D3D12Fence => result.d3d12_fence = true,
             ExternalSemaphoreHandleType::SyncFd => result.sync_fd = true,
+            ExternalSemaphoreHandleType::ZirconEvent => result.zircon_event = true,
         }
 
         result
@@ -446,7 +496,7 @@ vulkan_bitflags! {
 
 /// The semaphore configuration to query in
 /// [`PhysicalDevice::external_semaphore_properties`](crate::device::physical::PhysicalDevice::external_semaphore_properties).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalSemaphoreInfo {
     /// The external handle type that will be used with the semaphore.
     pub handle_type: ExternalSemaphoreHandleType,
@@ -506,20 +556,18 @@ pub enum SemaphoreError {
 }
 
 impl Error for SemaphoreError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for SemaphoreError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -528,10 +576,10 @@ impl Display for SemaphoreError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::HandleTypeNotSupported { handle_type } => write!(
                 f,
-                "the requested export handle type ({:?}) was not provided in `export_handle_types` when creating the semaphore",
+                "the requested export handle type ({:?}) was not provided in `export_handle_types` \
+                when creating the semaphore",
                 handle_type,
             ),
         }
@@ -539,7 +587,6 @@ impl Display for SemaphoreError {
 }
 
 impl From<VulkanError> for SemaphoreError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
@@ -551,14 +598,12 @@ impl From<VulkanError> for SemaphoreError {
 }
 
 impl From<OomError> for SemaphoreError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<RequirementNotMet> for SemaphoreError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

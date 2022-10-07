@@ -10,6 +10,7 @@
 use crate::{
     buffer::{view::BufferViewAbstract, BufferAccess, TypedBufferAccess},
     command_buffer::{
+        allocator::CommandBufferAllocator,
         auto::{RenderPassState, RenderPassStateType},
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
@@ -49,13 +50,15 @@ use std::{
 /// # Commands to execute a bound pipeline.
 ///
 /// Dispatch commands require a compute queue, draw commands require a graphics queue.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Perform a single compute operation using a compute pipeline.
     ///
     /// A compute pipeline must have been bound using
     /// [`bind_pipeline_compute`](Self::bind_pipeline_compute). Any resources used by the compute
     /// pipeline, such as descriptor sets, must have been set beforehand.
-    #[inline]
     pub fn dispatch(
         &mut self,
         group_counts: [u32; 3],
@@ -116,7 +119,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// A compute pipeline must have been bound using
     /// [`bind_pipeline_compute`](Self::bind_pipeline_compute). Any resources used by the compute
     /// pipeline, such as descriptor sets, must have been set beforehand.
-    #[inline]
     pub fn dispatch_indirect<Inb>(
         &mut self,
         indirect_buffer: Arc<Inb>,
@@ -173,7 +175,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided vertex and
     /// instance ranges must be in range of the bound vertex buffers.
-    #[inline]
     pub fn draw(
         &mut self,
         vertex_count: u32,
@@ -244,7 +245,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the vertex and instance
     /// ranges of each `DrawIndirectCommand` in the indirect buffer must be in range of the bound
     /// vertex buffers.
-    #[inline]
     pub fn draw_indirect<Inb>(
         &mut self,
         indirect_buffer: Arc<Inb>,
@@ -342,7 +342,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided instance
     /// range must be in range of the bound vertex buffers. The vertex indices in the index buffer
     /// must be in range of the bound vertex buffers.
-    #[inline]
     pub fn draw_indexed(
         &mut self,
         index_count: u32,
@@ -435,7 +434,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the instance ranges of
     /// each `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound
     /// vertex buffers.
-    #[inline]
     pub fn draw_indexed_indirect<Inb>(
         &mut self,
         indirect_buffer: Arc<Inb>,
@@ -2345,7 +2343,8 @@ pub enum PipelineExecutionError {
     /// An indexed draw command was recorded, but no index buffer was bound.
     IndexBufferNotBound,
 
-    /// The highest index to be drawn exceeds the available number of indices in the bound index buffer.
+    /// The highest index to be drawn exceeds the available number of indices in the bound index
+    /// buffer.
     IndexBufferRangeOutOfBounds {
         highest_index: u32,
         max_index_count: u32,
@@ -2459,7 +2458,6 @@ pub enum PipelineExecutionError {
 }
 
 impl Error for PipelineExecutionError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::SyncCommandBufferBuilderError(err) => Some(err),
@@ -2470,11 +2468,9 @@ impl Error for PipelineExecutionError {
 }
 
 impl Display for PipelineExecutionError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -2483,17 +2479,21 @@ impl Display for PipelineExecutionError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::DescriptorResourceInvalid { set_num, binding_num, index, .. } => write!(
-                f,
-                "the resource bound to descriptor set {} binding {} at index {} is not compatible with the requirements of the pipeline and shaders",
-                set_num, binding_num, index,
-            ),
-            Self::DescriptorSetNotBound {
+            Self::DescriptorResourceInvalid {
                 set_num,
+                binding_num,
+                index,
+                ..
             } => write!(
                 f,
-                "the pipeline layout requires a descriptor set bound to set number {}, but none was bound",
+                "the resource bound to descriptor set {} binding {} at index {} is not compatible \
+                with the requirements of the pipeline and shaders",
+                set_num, binding_num, index,
+            ),
+            Self::DescriptorSetNotBound { set_num } => write!(
+                f,
+                "the pipeline layout requires a descriptor set bound to set number {}, but none \
+                was bound",
                 set_num,
             ),
             Self::DynamicColorWriteEnableNotEnoughValues {
@@ -2501,23 +2501,24 @@ impl Display for PipelineExecutionError {
                 attachment_count,
             } => write!(
                 f,
-                "the bound pipeline uses a dynamic color write enable setting, but the number of provided enable values ({}) is less than the number of attachments in the current render subpass ({})",
-                color_write_enable_count,
-                attachment_count,
+                "the bound pipeline uses a dynamic color write enable setting, but the number of \
+                provided enable values ({}) is less than the number of attachments in the current \
+                render subpass ({})",
+                color_write_enable_count, attachment_count,
             ),
             Self::DynamicPrimitiveTopologyClassMismatch {
                 provided_class,
                 required_class,
             } => write!(
                 f,
-                "The bound pipeline uses a dynamic primitive topology, but the provided topology is of a different topology class ({:?}) than what the pipeline requires ({:?})",
+                "The bound pipeline uses a dynamic primitive topology, but the provided topology \
+                is of a different topology class ({:?}) than what the pipeline requires ({:?})",
                 provided_class, required_class,
             ),
-            Self::DynamicPrimitiveTopologyInvalid {
-                topology,
-            } => write!(
+            Self::DynamicPrimitiveTopologyInvalid { topology } => write!(
                 f,
-                "the bound pipeline uses a dynamic primitive topology, but the provided topology ({:?}) is not compatible with the shader stages in the pipeline",
+                "the bound pipeline uses a dynamic primitive topology, but the provided topology \
+                ({:?}) is not compatible with the shader stages in the pipeline",
                 topology,
             ),
             Self::DynamicStateNotSet { dynamic_state } => write!(
@@ -2530,18 +2531,16 @@ impl Display for PipelineExecutionError {
                 scissor_count,
             } => write!(
                 f,
-                "the bound pipeline uses a dynamic scissor and/or viewport count, but the scissor count ({}) does not match the viewport count ({})",
-                scissor_count,
-                viewport_count,
+                "the bound pipeline uses a dynamic scissor and/or viewport count, but the scissor \
+                count ({}) does not match the viewport count ({})",
+                scissor_count, viewport_count,
             ),
-            Self::ForbiddenInsideRenderPass => write!(
-                f,
-                "operation forbidden inside a render pass",
-            ),
-            Self::ForbiddenOutsideRenderPass => write!(
-                f,
-                "operation forbidden outside a render pass",
-            ),
+            Self::ForbiddenInsideRenderPass => {
+                write!(f, "operation forbidden inside a render pass")
+            }
+            Self::ForbiddenOutsideRenderPass => {
+                write!(f, "operation forbidden outside a render pass")
+            }
             Self::ForbiddenWithSubpassContents { subpass_contents } => write!(
                 f,
                 "operation forbidden inside a render subpass with contents {:?}",
@@ -2556,9 +2555,9 @@ impl Display for PipelineExecutionError {
                 max_index_count,
             } => write!(
                 f,
-                "the highest index to be drawn ({}) exceeds the available number of indices in the bound index buffer ({})",
-                highest_index,
-                max_index_count,
+                "the highest index to be drawn ({}) exceeds the available number of indices in the \
+                bound index buffer ({})",
+                highest_index, max_index_count,
             ),
             Self::IndirectBufferMissingUsage => write!(
                 f,
@@ -2568,24 +2567,23 @@ impl Display for PipelineExecutionError {
                 f,
                 "the `max_compute_work_group_count` limit has been exceeded",
             ),
-            Self::MaxDrawIndirectCountExceeded { .. } => write!(
-                f,
-                "the `max_draw_indirect_count` limit has been exceeded",
-            ),
+            Self::MaxDrawIndirectCountExceeded { .. } => {
+                write!(f, "the `max_draw_indirect_count` limit has been exceeded")
+            }
             Self::MaxMultiviewInstanceIndexExceeded { .. } => write!(
                 f,
                 "the `max_multiview_instance_index` limit has been exceeded",
             ),
-            Self::NotSupportedByQueueFamily => write!(
-                f,
-                "the queue family doesn't allow this operation",
-            ),
+            Self::NotSupportedByQueueFamily => {
+                write!(f, "the queue family doesn't allow this operation")
+            }
             Self::PipelineColorAttachmentCountMismatch {
                 pipeline_count,
                 required_count,
             } => write!(
                 f,
-                "the color attachment count in the bound pipeline ({}) does not match the count of the current render pass ({})",
+                "the color attachment count in the bound pipeline ({}) does not match the count of \
+                the current render pass ({})",
                 pipeline_count, required_count,
             ),
             Self::PipelineColorAttachmentFormatMismatch {
@@ -2594,7 +2592,8 @@ impl Display for PipelineExecutionError {
                 required_format,
             } => write!(
                 f,
-                "the format of color attachment {} in the bound pipeline ({:?}) does not match the format of the corresponding color attachment in the current render pass ({:?})",
+                "the format of color attachment {} in the bound pipeline ({:?}) does not match the \
+                format of the corresponding color attachment in the current render pass ({:?})",
                 color_attachment_index, pipeline_format, required_format,
             ),
             Self::PipelineDepthAttachmentFormatMismatch {
@@ -2602,12 +2601,14 @@ impl Display for PipelineExecutionError {
                 required_format,
             } => write!(
                 f,
-                "the format of the depth attachment in the bound pipeline ({:?}) does not match the format of the depth attachment in the current render pass ({:?})",
+                "the format of the depth attachment in the bound pipeline ({:?}) does not match \
+                the format of the depth attachment in the current render pass ({:?})",
                 pipeline_format, required_format,
             ),
             Self::PipelineLayoutNotCompatible => write!(
                 f,
-                "the bound pipeline is not compatible with the layout used to bind the descriptor sets",
+                "the bound pipeline is not compatible with the layout used to bind the descriptor \
+                sets",
             ),
             Self::PipelineNotBound => write!(
                 f,
@@ -2615,27 +2616,27 @@ impl Display for PipelineExecutionError {
             ),
             Self::PipelineRenderPassNotCompatible => write!(
                 f,
-                "the bound graphics pipeline uses a render pass that is not compatible with the currently active render pass",
+                "the bound graphics pipeline uses a render pass that is not compatible with the \
+                currently active render pass",
             ),
             Self::PipelineRenderPassTypeMismatch => write!(
                 f,
-                "the bound graphics pipeline uses a render pass of a different type than the currently active render pass",
+                "the bound graphics pipeline uses a render pass of a different type than the \
+                currently active render pass",
             ),
-            Self::PipelineSubpassMismatch {
-                pipeline,
-                current,
-            } => write!(
+            Self::PipelineSubpassMismatch { pipeline, current } => write!(
                 f,
-                "the bound graphics pipeline uses a render subpass index ({}) that doesn't match the currently active subpass index ({})",
-                pipeline,
-                current,
+                "the bound graphics pipeline uses a render subpass index ({}) that doesn't match \
+                the currently active subpass index ({})",
+                pipeline, current,
             ),
             Self::PipelineStencilAttachmentFormatMismatch {
                 pipeline_format,
                 required_format,
             } => write!(
                 f,
-                "the format of the stencil attachment in the bound pipeline ({:?}) does not match the format of the stencil attachment in the current render pass ({:?})",
+                "the format of the stencil attachment in the bound pipeline ({:?}) does not match \
+                the format of the stencil attachment in the current render pass ({:?})",
                 pipeline_format, required_format,
             ),
             Self::PipelineViewMaskMismatch {
@@ -2643,7 +2644,8 @@ impl Display for PipelineExecutionError {
                 required_view_mask,
             } => write!(
                 f,
-                "the view mask of the bound pipeline ({}) does not match the view mask of the current render pass ({})",
+                "the view mask of the bound pipeline ({}) does not match the view mask of the \
+                current render pass ({})",
                 pipeline_view_mask, required_view_mask,
             ),
             Self::PushConstantsNotCompatible => write!(
@@ -2654,11 +2656,10 @@ impl Display for PipelineExecutionError {
                 f,
                 "not all push constants used by the pipeline have been set",
             ),
-            Self::VertexBufferNotBound {
-                binding_num,
-            } => write!(
+            Self::VertexBufferNotBound { binding_num } => write!(
                 f,
-                "the bound graphics pipeline requires a vertex buffer bound to binding number {}, but none was bound",
+                "the bound graphics pipeline requires a vertex buffer bound to binding number {}, \
+                but none was bound",
                 binding_num,
             ),
             Self::VertexBufferInstanceRangeOutOfBounds {
@@ -2666,7 +2667,8 @@ impl Display for PipelineExecutionError {
                 instances_in_buffers,
             } => write!(
                 f,
-                "the number of instances to be drawn ({}) exceeds the available number of instances in the bound vertex buffers ({}) used by the pipeline",
+                "the number of instances to be drawn ({}) exceeds the available number of \
+                instances in the bound vertex buffers ({}) used by the pipeline",
                 instances_needed, instances_in_buffers,
             ),
             Self::VertexBufferVertexRangeOutOfBounds {
@@ -2674,7 +2676,8 @@ impl Display for PipelineExecutionError {
                 vertices_in_buffers,
             } => write!(
                 f,
-                "the number of vertices to be drawn ({}) exceeds the available number of vertices in the bound vertex buffers ({}) used by the pipeline",
+                "the number of vertices to be drawn ({}) exceeds the available number of vertices \
+                in the bound vertex buffers ({}) used by the pipeline",
                 vertices_needed, vertices_in_buffers,
             ),
         }
@@ -2682,7 +2685,6 @@ impl Display for PipelineExecutionError {
 }
 
 impl From<SyncCommandBufferBuilderError> for PipelineExecutionError {
-    #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
     }
@@ -2734,40 +2736,41 @@ impl Error for DescriptorResourceInvalidError {
 }
 
 impl Display for DescriptorResourceInvalidError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::ImageViewFormatMismatch { provided, required } => write!(
                 f,
-                "the format of the bound image view ({:?}) does not match what the pipeline requires ({:?})",
-                provided, required
+                "the format of the bound image view ({:?}) does not match what the pipeline \
+                requires ({:?})",
+                provided, required,
             ),
             Self::ImageViewMultisampledMismatch { provided, required } => write!(
                 f,
-                "the multisampling of the bound image ({}) does not match what the pipeline requires ({})",
+                "the multisampling of the bound image ({}) does not match what the pipeline \
+                requires ({})",
                 provided, required,
             ),
             Self::ImageViewScalarTypeMismatch { provided, required } => write!(
                 f,
-                "the scalar type of the format and aspect of the bound image view ({:?}) does not match what the pipeline requires ({:?})",
+                "the scalar type of the format and aspect of the bound image view ({:?}) does not \
+                match what the pipeline requires ({:?})",
                 provided, required,
             ),
             Self::ImageViewTypeMismatch { provided, required } => write!(
                 f,
-                "the image view type of the bound image view ({:?}) does not match what the pipeline requires ({:?})",
+                "the image view type of the bound image view ({:?}) does not match what the \
+                pipeline requires ({:?})",
                 provided, required,
             ),
-            Self::Missing => write!(
-                f,
-                "no resource was bound",
-            ),
+            Self::Missing => write!(f, "no resource was bound"),
             Self::SamplerImageViewIncompatible { .. } => write!(
                 f,
                 "the bound sampler samples an image view that is not compatible with that sampler",
             ),
             Self::SamplerCompareMismatch { provided, required } => write!(
                 f,
-                "the depth comparison state of the bound sampler ({}) does not match what the pipeline requires ({})",
+                "the depth comparison state of the bound sampler ({}) does not match what the \
+                pipeline requires ({})",
                 provided, required,
             ),
             Self::SamplerUnnormalizedCoordinatesNotAllowed => write!(
@@ -2784,11 +2787,13 @@ impl Display for DescriptorResourceInvalidError {
             ),
             Self::StorageReadWithoutFormatNotSupported => write!(
                 f,
-                "the bound image view or buffer view does not support the `storage_read_without_format` format feature",
+                "the bound image view or buffer view does not support the \
+                `storage_read_without_format` format feature",
             ),
             Self::StorageWriteWithoutFormatNotSupported => write!(
                 f,
-                "the bound image view or buffer view does not support the `storage_write_without_format` format feature",
+                "the bound image view or buffer view does not support the \
+                `storage_write_without_format` format feature",
             ),
         }
     }

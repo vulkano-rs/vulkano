@@ -269,7 +269,6 @@ pub enum StateMode<F> {
 }
 
 impl<T> From<Option<T>> for StateMode<T> {
-    #[inline]
     fn from(val: Option<T>) -> Self {
         match val {
             Some(x) => StateMode::Fixed(x),
@@ -279,7 +278,6 @@ impl<T> From<Option<T>> for StateMode<T> {
 }
 
 impl<T> From<StateMode<T>> for Option<T> {
-    #[inline]
     fn from(val: StateMode<T>) -> Self {
         match val {
             StateMode::Fixed(x) => Some(x),

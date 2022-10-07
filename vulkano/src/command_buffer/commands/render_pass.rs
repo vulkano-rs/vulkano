@@ -9,14 +9,14 @@
 
 use crate::{
     command_buffer::{
+        allocator::CommandBufferAllocator,
         auto::{
             BeginRenderPassState, BeginRenderingAttachments, BeginRenderingState, RenderPassState,
             RenderPassStateType,
         },
-        pool::CommandPoolBuilderAlloc,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, SubpassContents,
     },
     device::DeviceOwned,
     format::{ClearColorValue, ClearValue, Format, NumericType},
@@ -40,9 +40,9 @@ use std::{
 /// # Commands for render passes.
 ///
 /// These commands require a graphics queue.
-impl<P> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<P::Alloc>, P>
+impl<L, A> AutoCommandBufferBuilder<L, A>
 where
-    P: CommandPoolBuilderAlloc,
+    A: CommandBufferAllocator,
 {
     /// Begins a render pass using a render pass object and framebuffer.
     ///
@@ -50,7 +50,6 @@ where
     ///
     /// `contents` specifies what kinds of commands will be recorded in the render pass, either
     /// draw commands or executions of secondary command buffers.
-    #[inline]
     pub fn begin_render_pass(
         &mut self,
         mut render_pass_begin_info: RenderPassBeginInfo,
@@ -59,14 +58,14 @@ where
         self.validate_begin_render_pass(&mut render_pass_begin_info, contents)?;
 
         unsafe {
-            let &RenderPassBeginInfo {
+            let RenderPassBeginInfo {
                 ref render_pass,
                 ref framebuffer,
                 render_area_offset,
                 render_area_extent,
                 clear_values: _,
                 _ne: _,
-            } = &render_pass_begin_info;
+            } = render_pass_begin_info;
 
             let subpass = render_pass.clone().first_subpass();
             let view_mask = subpass.subpass_desc().view_mask;
@@ -85,8 +84,8 @@ where
 
             self.inner
                 .begin_render_pass(render_pass_begin_info, contents)?;
-
             self.render_pass_state = Some(render_pass_state);
+
             Ok(self)
         }
     }
@@ -113,12 +112,12 @@ where
             return Err(RenderPassError::ForbiddenInsideRenderPass);
         }
 
-        let &mut RenderPassBeginInfo {
-            ref render_pass,
-            ref framebuffer,
+        let RenderPassBeginInfo {
+            render_pass,
+            framebuffer,
             render_area_offset,
             render_area_extent,
-            ref clear_values,
+            clear_values,
             _ne: _,
         } = render_pass_begin_info;
 
@@ -208,12 +207,12 @@ where
         }
 
         for subpass_desc in render_pass.subpasses() {
-            let &SubpassDescription {
+            let SubpassDescription {
                 view_mask: _,
-                ref input_attachments,
-                ref color_attachments,
-                ref resolve_attachments,
-                ref depth_stencil_attachment,
+                input_attachments,
+                color_attachments,
+                resolve_attachments,
+                depth_stencil_attachment,
                 preserve_attachments: _,
                 _ne: _,
             } = subpass_desc;
@@ -288,7 +287,7 @@ where
         }
 
         // VUID-VkRenderPassBeginInfo-clearValueCount-04962
-        for (attachment_index, (attachment_desc, &clear_value)) in render_pass
+        for (attachment_index, (attachment_desc, &mut clear_value)) in render_pass
             .attachments()
             .iter()
             .zip(clear_values)
@@ -396,7 +395,6 @@ where
     }
 
     /// Advances to the next subpass of the render pass previously begun with `begin_render_pass`.
-    #[inline]
     pub fn next_subpass(
         &mut self,
         contents: SubpassContents,
@@ -472,7 +470,6 @@ where
     /// Ends the render pass previously begun with `begin_render_pass`.
     ///
     /// This must be called after you went through all the subpasses.
-    #[inline]
     pub fn end_render_pass(&mut self) -> Result<&mut Self, RenderPassError> {
         self.validate_end_render_pass()?;
 
@@ -529,7 +526,10 @@ where
     }
 }
 
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Begins a render pass without a render pass object or framebuffer.
     ///
     /// You must call this or `begin_render_pass` before you can record draw commands.
@@ -538,7 +538,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         mut rendering_info: RenderingInfo,
     ) -> Result<&mut Self, RenderPassError> {
         {
-            let &mut RenderingInfo {
+            let RenderingInfo {
                 render_area_offset,
                 ref mut render_area_extent,
                 ref mut layer_count,
@@ -548,7 +548,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 ref stencil_attachment,
                 contents: _,
                 _ne: _,
-            } = &mut rendering_info;
+            } = rendering_info;
 
             let auto_extent = render_area_extent[0] == 0 || render_area_extent[1] == 0;
             let auto_layers = *layer_count == 0;
@@ -622,7 +622,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_begin_rendering(&mut rendering_info)?;
 
         unsafe {
-            let &RenderingInfo {
+            let RenderingInfo {
                 render_area_offset,
                 render_area_extent,
                 layer_count: _,
@@ -632,7 +632,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 ref stencil_attachment,
                 contents,
                 _ne: _,
-            } = &rendering_info;
+            } = rendering_info;
 
             let render_pass_state = RenderPassState {
                 contents,
@@ -765,10 +765,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 })
         {
             let attachment_index = attachment_index as u32;
-            let &RenderingAttachmentInfo {
-                ref image_view,
+            let RenderingAttachmentInfo {
+                image_view,
                 image_layout,
-                ref resolve_info,
+                resolve_info,
                 load_op,
                 store_op,
                 clear_value: _,
@@ -920,10 +920,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         if let Some(attachment_info) = depth_attachment {
-            let &RenderingAttachmentInfo {
-                ref image_view,
+            let RenderingAttachmentInfo {
+                image_view,
                 image_layout,
-                ref resolve_info,
+                resolve_info,
                 load_op,
                 store_op,
                 clear_value: _,
@@ -1047,10 +1047,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         if let Some(attachment_info) = stencil_attachment {
-            let &RenderingAttachmentInfo {
-                ref image_view,
+            let RenderingAttachmentInfo {
+                image_view,
                 image_layout,
-                ref resolve_info,
+                resolve_info,
                 load_op,
                 store_op,
                 clear_value: _,
@@ -1537,9 +1537,9 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let &RenderPassBeginInfo {
-            ref render_pass,
-            ref framebuffer,
+        let RenderPassBeginInfo {
+            render_pass,
+            framebuffer,
             render_area_offset: _,
             render_area_extent: _,
             clear_values: _,
@@ -1658,14 +1658,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let &RenderingInfo {
+        let RenderingInfo {
             render_area_offset: _,
             render_area_extent: _,
             layer_count: _,
             view_mask: _,
-            ref color_attachments,
-            ref depth_attachment,
-            ref stencil_attachment,
+            color_attachments,
+            depth_attachment,
+            stencil_attachment,
             contents: _,
             _ne,
         } = &rendering_info;
@@ -2076,6 +2076,7 @@ impl UnsafeCommandBufferBuilder {
     }
 
     /// Calls `vkCmdBeginRendering` on the builder.
+    #[inline]
     pub unsafe fn begin_rendering(&mut self, rendering_info: &RenderingInfo) {
         let &RenderingInfo {
             render_area_offset,
@@ -2178,6 +2179,7 @@ impl UnsafeCommandBufferBuilder {
     }
 
     /// Calls `vkCmdEndRendering` on the builder.
+    #[inline]
     pub unsafe fn end_rendering(&mut self) {
         let fns = self.device.fns();
 
@@ -2193,7 +2195,6 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
     /// no-op and isn't a valid usage of the command anyway.
-    #[inline]
     pub unsafe fn clear_attachments(
         &mut self,
         attachments: impl IntoIterator<Item = ClearAttachment>,
@@ -2490,7 +2491,9 @@ impl RenderingAttachmentResolveInfo {
     }
 }
 
-/// Clear attachment type, used in [`clear_attachments`](crate::command_buffer::AutoCommandBufferBuilder::clear_attachments) command.
+/// Clear attachment type, used in [`clear_attachments`] command.
+///
+/// [`clear_attachments`]: crate::command_buffer::AutoCommandBufferBuilder::clear_attachments
 #[derive(Clone, Copy, Debug)]
 pub enum ClearAttachment {
     /// Clear the color attachment at the specified index, with the specified clear value.
@@ -2510,6 +2513,7 @@ pub enum ClearAttachment {
 }
 
 impl From<ClearAttachment> for ash::vk::ClearAttachment {
+    #[inline]
     fn from(v: ClearAttachment) -> Self {
         match v {
             ClearAttachment::Color {
@@ -2550,7 +2554,9 @@ impl From<ClearAttachment> for ash::vk::ClearAttachment {
     }
 }
 
-/// Specifies the clear region for the [`clear_attachments`](crate::command_buffer::AutoCommandBufferBuilder::clear_attachments) command.
+/// Specifies the clear region for the [`clear_attachments`] command.
+///
+/// [`clear_attachments`]: crate::command_buffer::AutoCommandBufferBuilder::clear_attachments
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClearRect {
     /// The rectangle offset.
@@ -2656,7 +2662,8 @@ pub enum RenderPassError {
         attachment_index: u32,
     },
 
-    /// The contents `SubpassContents::SecondaryCommandBuffers` is not allowed inside a secondary command buffer.
+    /// The contents `SubpassContents::SecondaryCommandBuffers` is not allowed inside a secondary
+    /// command buffer.
     ContentsForbiddenInSecondaryCommandBuffer,
 
     /// The depth attachment has a format that does not support that usage.
@@ -2816,7 +2823,6 @@ pub enum RenderPassError {
 }
 
 impl Error for RenderPassError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::SyncCommandBufferBuilderError(err) => Some(err),
@@ -2826,11 +2832,9 @@ impl Error for RenderPassError {
 }
 
 impl Display for RenderPassError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -2839,32 +2843,35 @@ impl Display for RenderPassError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::AttachmentImageMissingUsage { attachment_index, usage } => write!(
+            Self::AttachmentImageMissingUsage {
+                attachment_index,
+                usage,
+            } => write!(
                 f,
-                "the framebuffer image attached to attachment index {} did not have the required usage {} enabled",
+                "the framebuffer image attached to attachment index {} did not have the required \
+                usage {} enabled",
                 attachment_index, usage,
             ),
             Self::AutoExtentAttachmentsEmpty => write!(
                 f,
-                "one of the elements of `render_pass_extent` is zero, but no attachment images were given to calculate the extent from",
+                "one of the elements of `render_pass_extent` is zero, but no attachment images \
+                were given to calculate the extent from",
             ),
             Self::AutoLayersAttachmentsEmpty => write!(
                 f,
-                "`layer_count` is zero, but no attachment images were given to calculate the number of layers from",
+                "`layer_count` is zero, but no attachment images were given to calculate the \
+                number of layers from",
             ),
             Self::ClearAttachmentNotCompatible {
                 clear_attachment,
                 attachment_format,
             } => write!(
                 f,
-                "a clear attachment value ({:?}) is not compatible with the attachment's format ({:?})",
-                clear_attachment,
-                attachment_format,
+                "a clear attachment value ({:?}) is not compatible with the attachment's format \
+                ({:?})",
+                clear_attachment, attachment_format,
             ),
-            Self::ClearValueMissing {
-                attachment_index,
-            } => write!(
+            Self::ClearValueMissing { attachment_index } => write!(
                 f,
                 "a clear value for render pass attachment {} is missing",
                 attachment_index,
@@ -2875,7 +2882,8 @@ impl Display for RenderPassError {
                 attachment_format,
             } => write!(
                 f,
-                "a clear value ({:?}) provided for render pass attachment {} is not compatible with the attachment's format ({:?})",
+                "a clear value ({:?}) provided for render pass attachment {} is not compatible \
+                with the attachment's format ({:?})",
                 clear_value, attachment_index, attachment_format,
             ),
             Self::ColorAttachmentIndexOutOfRange {
@@ -2883,84 +2891,74 @@ impl Display for RenderPassError {
                 num_color_attachments,
             } => write!(
                 f,
-                "an attachment clear value specifies a `color_attachment` index {} that is not less than the number of color attachments in the subpass ({})",
+                "an attachment clear value specifies a `color_attachment` index {} that is not \
+                less than the number of color attachments in the subpass ({})",
                 color_attachment_index, num_color_attachments,
             ),
-            Self::ColorAttachmentLayoutInvalid {
-                attachment_index,
-            } => write!(
+            Self::ColorAttachmentLayoutInvalid { attachment_index } => write!(
                 f,
                 "color attachment {} has a layout that is not supported",
                 attachment_index,
             ),
-            Self::ColorAttachmentMissingUsage {
-                attachment_index,
-            } => write!(
+            Self::ColorAttachmentMissingUsage { attachment_index } => write!(
                 f,
                 "color attachment {} is missing the `color_attachment` usage",
                 attachment_index,
             ),
-            Self::ColorAttachmentResolveFormatMismatch {
-                attachment_index,
-            } => write!(
+            Self::ColorAttachmentResolveFormatMismatch { attachment_index } => write!(
                 f,
-                "color attachment {} has a `format` value different from the corresponding color attachment",
+                "color attachment {} has a `format` value different from the corresponding color \
+                attachment",
                 attachment_index,
             ),
-            Self::ColorAttachmentResolveLayoutInvalid {
-                attachment_index,
-            } => write!(
+            Self::ColorAttachmentResolveLayoutInvalid { attachment_index } => write!(
                 f,
                 "color resolve attachment {} has a layout that is not supported",
                 attachment_index,
             ),
-            Self::ColorAttachmentResolveModeNotSupported {
-                attachment_index,
-            } => write!(
+            Self::ColorAttachmentResolveModeNotSupported { attachment_index } => write!(
                 f,
                 "color resolve attachment {} has a resolve mode that is not supported",
                 attachment_index,
             ),
-            Self::ColorAttachmentResolveMultisampled {
-                attachment_index,
-            } => write!(
+            Self::ColorAttachmentResolveMultisampled { attachment_index } => write!(
                 f,
-                "color resolve attachment {} has a `samples` value other than `SampleCount::Sample1`",
+                "color resolve attachment {} has a `samples` value other than \
+                `SampleCount::Sample1`",
                 attachment_index,
             ),
-            Self::ColorAttachmentSamplesMismatch {
-                attachment_index,
-            } => write!(
+            Self::ColorAttachmentSamplesMismatch { attachment_index } => write!(
                 f,
-                "color attachment {} has a `samples` value that is different from the first color attachment",
+                "color attachment {} has a `samples` value that is different from the first color \
+                attachment",
                 attachment_index,
             ),
-            Self::ColorAttachmentWithResolveNotMultisampled {
-                attachment_index,
-            } => write!(
+            Self::ColorAttachmentWithResolveNotMultisampled { attachment_index } => write!(
                 f,
-                "color attachment {} with a resolve attachment has a `samples` value of `SampleCount::Sample1`",
+                "color attachment {} with a resolve attachment has a `samples` value of \
+                `SampleCount::Sample1`",
                 attachment_index,
             ),
             Self::ContentsForbiddenInSecondaryCommandBuffer => write!(
                 f,
-                "the contents `SubpassContents::SecondaryCommandBuffers` is not allowed inside a secondary command buffer",
+                "the contents `SubpassContents::SecondaryCommandBuffers` is not allowed inside a \
+                secondary command buffer",
             ),
             Self::DepthAttachmentFormatUsageNotSupported => write!(
                 f,
                 "the depth attachment has a format that does not support that usage",
             ),
-            Self::DepthAttachmentLayoutInvalid => write!(
-                f,
-                "the depth attachment has a layout that is not supported",
-            ),
+            Self::DepthAttachmentLayoutInvalid => {
+                write!(f, "the depth attachment has a layout that is not supported")
+            }
             Self::DepthAttachmentMissingUsage => write!(
                 f,
                 "the depth attachment is missing the `depth_stencil_attachment` usage",
             ),
             Self::DepthAttachmentResolveFormatMismatch => write!(
                 f,
-                "the depth resolve attachment has a `format` value different from the corresponding depth attachment",
+                "the depth resolve attachment has a `format` value different from the \
+                corresponding depth attachment",
             ),
             Self::DepthAttachmentResolveLayoutInvalid => write!(
                 f,
@@ -2972,15 +2970,18 @@ impl Display for RenderPassError {
             ),
             Self::DepthAttachmentResolveMultisampled => write!(
                 f,
-                "the depth resolve attachment has a `samples` value other than `SampleCount::Sample1`",
+                "the depth resolve attachment has a `samples` value other than \
+                `SampleCount::Sample1`",
             ),
             Self::DepthAttachmentSamplesMismatch => write!(
                 f,
-                "the depth attachment has a `samples` value that is different from the first color attachment",
+                "the depth attachment has a `samples` value that is different from the first color \
+                attachment",
             ),
             Self::DepthAttachmentWithResolveNotMultisampled => write!(
                 f,
-                "the depth attachment has a resolve attachment and has a `samples` value of `SampleCount::Sample1`",
+                "the depth attachment has a resolve attachment and has a `samples` value of \
+                `SampleCount::Sample1`",
             ),
             Self::DepthStencilAttachmentImageViewMismatch => write!(
                 f,
@@ -3002,45 +3003,49 @@ impl Display for RenderPassError {
             }
             Self::ForbiddenWithBeginRendering => write!(
                 f,
-                "operation forbidden inside a render pass instance that was begun with `begin_rendering`",
+                "operation forbidden inside a render pass instance that was begun with \
+                `begin_rendering`",
             ),
             Self::ForbiddenWithBeginRenderPass => write!(
                 f,
-                "operation forbidden inside a render pass instance that was begun with `begin_render_pass`",
+                "operation forbidden inside a render pass instance that was begun with \
+                `begin_render_pass`",
             ),
             Self::ForbiddenWithInheritedRenderPass => write!(
                 f,
-                "operation forbidden inside a render pass instance that is inherited by a secondary command buffer",
+                "operation forbidden inside a render pass instance that is inherited by a \
+                secondary command buffer",
             ),
-            Self::ForbiddenWithSubpassContents { contents: subpass_contents } => write!(
+            Self::ForbiddenWithSubpassContents {
+                contents: subpass_contents,
+            } => write!(
                 f,
                 "operation forbidden inside a render subpass with contents {:?}",
                 subpass_contents,
             ),
-            Self::FramebufferNotCompatible => write!(
-                f,
-                "the framebuffer is not compatible with the render pass",
-            ),
+            Self::FramebufferNotCompatible => {
+                write!(f, "the framebuffer is not compatible with the render pass")
+            }
             Self::MaxColorAttachmentsExceeded { .. } => {
-                write!(f, "the `max_color_attachments` limit has been exceeded",)
+                write!(f, "the `max_color_attachments` limit has been exceeded")
             }
             Self::MaxMultiviewViewCountExceeded { .. } => {
-                write!(f, "the `max_multiview_view_count` limit has been exceeded",)
-            },
+                write!(f, "the `max_multiview_view_count` limit has been exceeded")
+            }
             Self::MultiviewLayersInvalid => write!(
                 f,
                 "the render pass uses multiview, but `layer_count` was not 0 or 1",
             ),
             Self::MultiviewRectArrayLayersInvalid { rect_index } => write!(
                 f,
-                "the render pass uses multiview, and in clear rectangle index {}, `array_layers` was not `0..1`",
+                "the render pass uses multiview, and in clear rectangle index {}, `array_layers` \
+                was not `0..1`",
                 rect_index,
             ),
-            Self::NoSubpassesRemaining {
-                current_subpass,
-            } => write!(
+            Self::NoSubpassesRemaining { current_subpass } => write!(
                 f,
-                "tried to advance to the next subpass after subpass {}, but there are no subpasses remaining in the render pass",
+                "tried to advance to the next subpass after subpass {}, but there are no subpasses \
+                remaining in the render pass",
                 current_subpass,
             ),
             Self::NotSupportedByQueueFamily => {
@@ -3048,7 +3053,7 @@ impl Display for RenderPassError {
             }
             Self::QueryIsActive => write!(
                 f,
-                "a query is active that conflicts with the current operation"
+                "a query is active that conflicts with the current operation",
             ),
             Self::RectArrayLayersEmpty { rect_index } => write!(
                 f,
@@ -3057,17 +3062,17 @@ impl Display for RenderPassError {
             ),
             Self::RectArrayLayersOutOfBounds { rect_index } => write!(
                 f,
-                "clear rectangle index {} `array_layers` is outside the range of layers of the attachments",
+                "clear rectangle index {} `array_layers` is outside the range of layers of the \
+                attachments",
                 rect_index,
             ),
-            Self::RectExtentZero { rect_index } => write!(
-                f,
-                "clear rectangle index {} `extent` is zero",
-                rect_index,
-            ),
+            Self::RectExtentZero { rect_index } => {
+                write!(f, "clear rectangle index {} `extent` is zero", rect_index)
+            }
             Self::RectOutOfBounds { rect_index } => write!(
                 f,
-                "clear rectangle index {} `offset` and `extent` are outside the render area of the render pass instance",
+                "clear rectangle index {} `offset` and `extent` are outside the render area of the \
+                render pass instance",
                 rect_index,
             ),
             Self::RenderAreaOutOfBounds => write!(
@@ -3088,7 +3093,8 @@ impl Display for RenderPassError {
             ),
             Self::StencilAttachmentResolveFormatMismatch => write!(
                 f,
-                "the stencil resolve attachment has a `format` value different from the corresponding stencil attachment",
+                "the stencil resolve attachment has a `format` value different from the \
+                corresponding stencil attachment",
             ),
             Self::StencilAttachmentResolveLayoutInvalid => write!(
                 f,
@@ -3100,22 +3106,26 @@ impl Display for RenderPassError {
             ),
             Self::StencilAttachmentResolveMultisampled => write!(
                 f,
-                "the stencil resolve attachment has a `samples` value other than `SampleCount::Sample1`",
+                "the stencil resolve attachment has a `samples` value other than \
+                `SampleCount::Sample1`",
             ),
             Self::StencilAttachmentSamplesMismatch => write!(
                 f,
-                "the stencil attachment has a `samples` value that is different from the first color attachment",
+                "the stencil attachment has a `samples` value that is different from the first \
+                color attachment",
             ),
             Self::StencilAttachmentWithResolveNotMultisampled => write!(
                 f,
-                "the stencil attachment has a resolve attachment and has a `samples` value of `SampleCount::Sample1`",
+                "the stencil attachment has a resolve attachment and has a `samples` value of \
+                `SampleCount::Sample1`",
             ),
             Self::SubpassesRemaining {
                 current_subpass,
                 remaining_subpasses,
             } => write!(
                 f,
-                "tried to end a render pass at subpass {}, with {} subpasses still remaining in the render pass",
+                "tried to end a render pass at subpass {}, with {} subpasses still remaining in \
+                the render pass",
                 current_subpass, remaining_subpasses,
             ),
         }
@@ -3123,14 +3133,12 @@ impl Display for RenderPassError {
 }
 
 impl From<SyncCommandBufferBuilderError> for RenderPassError {
-    #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
     }
 }
 
 impl From<RequirementNotMet> for RenderPassError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

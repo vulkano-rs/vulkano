@@ -12,9 +12,12 @@ use std::{io::Cursor, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassContents,
     },
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
@@ -37,8 +40,8 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract,
-        SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -205,6 +208,9 @@ fn main() {
     )
     .unwrap();
 
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     let (texture, tex_future) = {
         let png_bytes = include_bytes!("image_img.png").to_vec();
         let cursor = Cursor::new(png_bytes);
@@ -225,6 +231,7 @@ fn main() {
             dimensions,
             MipmapsCount::One,
             Format::R8G8B8A8_SRGB,
+            &command_buffer_allocator,
             queue.clone(),
         )
         .unwrap();
@@ -256,6 +263,7 @@ fn main() {
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(
+        &descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::image_view_sampler(0, texture, sampler)],
     )
@@ -323,7 +331,7 @@ fn main() {
             }
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                &command_buffer_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )

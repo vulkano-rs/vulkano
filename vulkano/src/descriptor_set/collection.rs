@@ -25,7 +25,6 @@ unsafe impl<T> DescriptorSetsCollection for T
 where
     T: Into<DescriptorSetWithOffsets>,
 {
-    #[inline]
     fn into_vec(self) -> Vec<DescriptorSetWithOffsets> {
         vec![self.into()]
     }
@@ -35,7 +34,6 @@ unsafe impl<T> DescriptorSetsCollection for Vec<T>
 where
     T: Into<DescriptorSetWithOffsets>,
 {
-    #[inline]
     fn into_vec(self) -> Vec<DescriptorSetWithOffsets> {
         self.into_iter().map(|x| x.into()).collect()
     }

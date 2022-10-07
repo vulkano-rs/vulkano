@@ -10,6 +10,7 @@
 use crate::{
     buffer::{BufferAccess, BufferContents, TypedBufferAccess},
     command_buffer::{
+        allocator::CommandBufferAllocator,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CopyError, CopyErrorResource,
@@ -33,14 +34,16 @@ use std::{
 /// # Commands to transfer data to a resource, either from the host or from another resource.
 ///
 /// These commands can be called on a transfer queue, in addition to a compute or graphics queue.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Copies data from a buffer to another buffer.
     ///
     /// # Panics
     ///
     /// - Panics if `src_buffer` or `dst_buffer` were not created from the same device
     ///   as `self`.
-    #[inline]
     pub fn copy_buffer(
         &mut self,
         copy_buffer_info: impl Into<CopyBufferInfo>,
@@ -192,7 +195,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// - Panics if `src_image` or `dst_image` were not created from the same device
     ///   as `self`.
-    #[inline]
     pub fn copy_image(&mut self, copy_image_info: CopyImageInfo) -> Result<&mut Self, CopyError> {
         self.validate_copy_image(&copy_image_info)?;
 
@@ -872,7 +874,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Copies from a buffer to an image.
-    #[inline]
     pub fn copy_buffer_to_image(
         &mut self,
         copy_buffer_to_image_info: CopyBufferToImageInfo,
@@ -1304,7 +1305,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Copies from an image to a buffer.
-    #[inline]
     pub fn copy_image_to_buffer(
         &mut self,
         copy_image_to_buffer_info: CopyImageToBufferInfo,
@@ -1736,7 +1736,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if `dst_buffer` was not created from the same device as `self`.
-    #[inline]
     pub fn fill_buffer(
         &mut self,
         fill_buffer_info: FillBufferInfo,
@@ -1840,7 +1839,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if `dst_buffer` was not created from the same device as `self`.
-    #[inline]
     pub fn update_buffer<B, D, Dd>(
         &mut self,
         data: Dd,
@@ -2410,7 +2408,6 @@ impl SyncCommandBufferBuilder {
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
-    #[inline]
     pub unsafe fn update_buffer<D, Dd>(
         &mut self,
         data: Dd,
@@ -2998,7 +2995,6 @@ impl UnsafeCommandBufferBuilder {
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
-    #[inline]
     pub unsafe fn update_buffer<D>(
         &mut self,
         data: &D,
@@ -3098,7 +3094,6 @@ where
     D: TypedBufferAccess<Content = [T]>,
 {
     /// Returns a `CopyBufferInfoTyped` with the specified `src_buffer` and `dst_buffer`.
-    #[inline]
     pub fn buffers(src_buffer: Arc<S>, dst_buffer: Arc<D>) -> Self {
         let region = BufferCopy {
             size: min(src_buffer.len(), dst_buffer.len()),
@@ -3119,7 +3114,6 @@ where
     S: TypedBufferAccess<Content = [T]> + 'static,
     D: TypedBufferAccess<Content = [T]> + 'static,
 {
-    #[inline]
     fn from(typed: CopyBufferInfoTyped<S, D, T>) -> Self {
         let CopyBufferInfoTyped {
             src_buffer,

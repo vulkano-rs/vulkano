@@ -548,15 +548,17 @@ impl AttachmentImage {
         }))
     }
 
-    /// Exports posix file descriptor for the allocated memory
-    /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
+    /// Exports posix file descriptor for the allocated memory.
+    /// Requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
+    #[inline]
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
     }
 
-    /// Return the size of the allocated memory (used for e.g. with cuda)
+    /// Return the size of the allocated memory (used e.g. with cuda).
+    #[inline]
     pub fn mem_size(&self) -> DeviceSize {
         self.memory.memory().allocation_size()
     }
@@ -566,8 +568,7 @@ unsafe impl<A> ImageAccess for AttachmentImage<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         ImageInner {
             image: &self.image,
             first_layer: 0,
@@ -577,17 +578,14 @@ where
         }
     }
 
-    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         self.attachment_layout
     }
 
-    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.attachment_layout
     }
 
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
             storage_image: ImageLayout::General,
@@ -597,12 +595,10 @@ where
         })
     }
 
-    #[inline]
     unsafe fn layout_initialized(&self) {
         self.initialized.store(true, Ordering::SeqCst);
     }
 
-    #[inline]
     fn is_layout_initialized(&self) -> bool {
         self.initialized.load(Ordering::SeqCst)
     }
@@ -618,7 +614,6 @@ unsafe impl<P, A> ImageContent<P> for AttachmentImage<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
     }
@@ -628,7 +623,6 @@ impl<A> PartialEq for AttachmentImage<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
@@ -640,7 +634,6 @@ impl<A> Hash for AttachmentImage<A>
 where
     A: MemoryPoolAlloc,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }

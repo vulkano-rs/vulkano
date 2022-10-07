@@ -22,7 +22,7 @@
 //! that are often used together in the same set so that you can keep the same set binding through
 //! multiple draws.
 //!
-//! # Example
+//! # Examples
 //!
 //! > **Note**: This section describes the simple way to bind resources. There are more optimized
 //! > ways.
@@ -52,32 +52,37 @@
 //!
 //! - A `DescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
 //!   layout of a future descriptor set. When you allocate a descriptor set, you have to pass an
-//!   instance of this object. This is represented with the `DescriptorSetLayout` type in
+//!   instance of this object. This is represented with the [`DescriptorSetLayout`] type in
 //!   vulkano.
 //! - A `DescriptorPool` is a Vulkan object that holds the memory of descriptor sets and that can
 //!   be used to allocate and free individual descriptor sets. This is represented with the
-//!   `UnsafeDescriptorPool` type in vulkano.
+//!   [`DescriptorPool`] type in vulkano.
 //! - A `DescriptorSet` contains the bindings to resources and is allocated from a pool. This is
-//!   represented with the `UnsafeDescriptorSet` type in vulkano.
+//!   represented with the [`UnsafeDescriptorSet`] type in vulkano.
 //!
 //! In addition to this, vulkano defines the following:
 //!
-//! - The `DescriptorPool` trait can be implemented on types from which you can allocate and free
-//!   descriptor sets. However it is different from Vulkan descriptor pools in the sense that an
-//!   implementation of the `DescriptorPool` trait can manage multiple Vulkan descriptor pools.
-//! - The `StandardDescriptorPool` type is a default implementation of the `DescriptorPool` trait.
-//! - The `DescriptorSet` trait is implemented on types that wrap around Vulkan descriptor sets in
+//! - The [`DescriptorSetAllocator`] trait can be implemented on types from which you can allocate
+//!   and free descriptor sets. However it is different from Vulkan descriptor pools in the sense
+//!   that an implementation of the [`DescriptorSetAllocator`] trait can manage multiple Vulkan
+//!   descriptor pools.
+//! - The [`StandardDescriptorSetAllocator`] type is a default implementation of the
+//!   [`DescriptorSetAllocator`] trait.
+//! - The [`DescriptorSet`] trait is implemented on types that wrap around Vulkan descriptor sets in
 //!   a safe way. A Vulkan descriptor set is inherently unsafe, so we need safe wrappers around
 //!   them.
-//! - The `SimpleDescriptorSet` type is a default implementation of the `DescriptorSet` trait.
-//! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
-//!   `DescriptorSet`. It is what you pass to the draw functions.
+//! - The [`DescriptorSetsCollection`] trait is implemented on collections of types that implement
+//!   [`DescriptorSet`]. It is what you pass to the draw functions.
+//!
+//! [`DescriptorPool`]: pool::DescriptorPool
+//! [`DescriptorSetAllocator`]: allocator::DescriptorSetAllocator
+//! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 
 pub(crate) use self::update::{check_descriptor_write, DescriptorWriteInfo};
 pub use self::{
     collection::DescriptorSetsCollection,
     persistent::PersistentDescriptorSet,
-    single_layout_pool::SingleLayoutDescSetPool,
+    single_layout_pool::{SingleLayoutDescriptorSetPool, SingleLayoutVariableDescriptorSetPool},
     update::{DescriptorSetUpdateError, WriteDescriptorSet, WriteDescriptorSetElements},
 };
 use self::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
@@ -89,9 +94,9 @@ use crate::{
     sampler::Sampler,
     OomError, VulkanObject,
 };
+use ahash::HashMap;
 use smallvec::{smallvec, SmallVec};
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
@@ -99,6 +104,7 @@ use std::{
     sync::Arc,
 };
 
+pub mod allocator;
 mod collection;
 pub mod layout;
 pub mod persistent;
@@ -118,10 +124,12 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
     fn layout(&self) -> &Arc<DescriptorSetLayout>;
 
     /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
-    fn offsets<I>(self: Arc<Self>, dynamic_offsets: I) -> DescriptorSetWithOffsets
+    fn offsets(
+        self: Arc<Self>,
+        dynamic_offsets: impl IntoIterator<Item = u32>,
+    ) -> DescriptorSetWithOffsets
     where
         Self: Sized + 'static,
-        I: IntoIterator<Item = u32>,
     {
         DescriptorSetWithOffsets::new(self, dynamic_offsets)
     }
@@ -141,7 +149,6 @@ impl PartialEq for dyn DescriptorSet {
 impl Eq for dyn DescriptorSet {}
 
 impl Hash for dyn DescriptorSet {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
@@ -162,14 +169,16 @@ impl DescriptorSetInner {
     ) -> Result<Self, DescriptorSetUpdateError> {
         assert!(
             !layout.push_descriptor(),
-            "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
+            "the provided descriptor set layout is for push descriptors, and cannot be used to \
+            build a descriptor set object",
         );
 
         let max_count = layout.variable_descriptor_count();
 
         assert!(
             variable_descriptor_count <= max_count,
-            "the provided variable_descriptor_count ({}) is greater than the maximum number of variable count descriptors in the layout ({})",
+            "the provided variable_descriptor_count ({}) is greater than the maximum number of \
+            variable count descriptors in the layout ({})",
             variable_descriptor_count,
             max_count,
         );
@@ -245,6 +254,7 @@ pub struct DescriptorSetResources {
 impl DescriptorSetResources {
     /// Creates a new `DescriptorSetResources` matching the provided descriptor set layout, and
     /// all descriptors set to `None`.
+    #[inline]
     pub fn new(layout: &DescriptorSetLayout, variable_descriptor_count: u32) -> Self {
         assert!(variable_descriptor_count <= layout.variable_descriptor_count());
 
@@ -307,6 +317,7 @@ impl DescriptorSetResources {
     ///
     /// - Panics if the binding number of a write does not exist in the resources.
     /// - See also [`DescriptorBindingResources::update`].
+    #[inline]
     pub fn update(&mut self, write: &WriteDescriptorSet) {
         self.binding_resources
             .get_mut(&write.binding())
@@ -342,6 +353,7 @@ impl DescriptorBindingResources {
     ///
     /// - Panics if the resource types do not match.
     /// - Panics if the write goes out of bounds.
+    #[inline]
     pub fn update(&mut self, write: &WriteDescriptorSet) {
         fn write_resources<T: Clone>(first: usize, resources: &mut [Option<T>], elements: &[T]) {
             resources
@@ -404,11 +416,10 @@ pub struct DescriptorSetWithOffsets {
 }
 
 impl DescriptorSetWithOffsets {
-    #[inline]
-    pub fn new<O>(descriptor_set: Arc<dyn DescriptorSet>, dynamic_offsets: O) -> Self
-    where
-        O: IntoIterator<Item = u32>,
-    {
+    pub fn new(
+        descriptor_set: Arc<dyn DescriptorSet>,
+        dynamic_offsets: impl IntoIterator<Item = u32>,
+    ) -> Self {
         let dynamic_offsets: SmallVec<_> = dynamic_offsets.into_iter().collect();
         let layout = descriptor_set.layout();
         let properties = layout.device().physical_device().properties();
@@ -426,9 +437,10 @@ impl DescriptorSetWithOffsets {
                     if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
                             dynamic_offsets[dynamic_offset_index] % min_storage_off_align == 0,
-                            "Dynamic storage buffer offset must be a multiple of min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
+                            "Dynamic storage buffer offset must be a multiple of \
+                            min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
                             dynamic_offsets[dynamic_offset_index],
-                            min_storage_off_align
+                            min_storage_off_align,
                         );
                     }
                     dynamic_offset_index += 1;
@@ -438,9 +450,10 @@ impl DescriptorSetWithOffsets {
                     if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
                             dynamic_offsets[dynamic_offset_index] % min_uniform_off_align == 0,
-                            "Dynamic uniform buffer offset must be a multiple of min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
+                            "Dynamic uniform buffer offset must be a multiple of \
+                            min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
                             dynamic_offsets[dynamic_offset_index],
-                            min_uniform_off_align
+                            min_uniform_off_align,
                         );
                     }
                     dynamic_offset_index += 1;
@@ -453,13 +466,13 @@ impl DescriptorSetWithOffsets {
             dynamic_offsets.len() >= dynamic_offset_index,
             "Too few dynamic offsets: got {}, expected {}",
             dynamic_offsets.len(),
-            dynamic_offset_index
+            dynamic_offset_index,
         );
         assert!(
             dynamic_offsets.len() <= dynamic_offset_index,
             "Too many dynamic offsets: got {}, expected {}",
             dynamic_offsets.len(),
-            dynamic_offset_index
+            dynamic_offset_index,
         );
 
         DescriptorSetWithOffsets {
@@ -483,7 +496,6 @@ impl<S> From<Arc<S>> for DescriptorSetWithOffsets
 where
     S: DescriptorSet + 'static,
 {
-    #[inline]
     fn from(descriptor_set: Arc<S>) -> Self {
         DescriptorSetWithOffsets::new(descriptor_set, std::iter::empty())
     }
@@ -496,7 +508,6 @@ pub enum DescriptorSetCreationError {
 }
 
 impl Error for DescriptorSetCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::DescriptorSetUpdateError(err) => Some(err),
@@ -506,8 +517,7 @@ impl Error for DescriptorSetCreationError {
 }
 
 impl Display for DescriptorSetCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DescriptorSetUpdateError(_) => {
                 write!(f, "an error occurred while updating the descriptor set")
@@ -518,14 +528,12 @@ impl Display for DescriptorSetCreationError {
 }
 
 impl From<DescriptorSetUpdateError> for DescriptorSetCreationError {
-    #[inline]
     fn from(err: DescriptorSetUpdateError) -> Self {
         Self::DescriptorSetUpdateError(err)
     }
 }
 
 impl From<OomError> for DescriptorSetCreationError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }

@@ -108,24 +108,20 @@ pub use self::{
     properties::Properties,
     queue::{Queue, QueueError, QueueFamilyProperties, QueueFlags, QueueGuard},
 };
-use crate::{
-    command_buffer::pool::StandardCommandPool,
-    descriptor_set::pool::StandardDescriptorPool,
-    instance::Instance,
-    memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
-    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
-};
 pub use crate::{
     device::extensions::DeviceExtensions,
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
     fns::DeviceFunctions,
 };
+use crate::{
+    instance::Instance,
+    memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+};
 use ash::vk::Handle;
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
-    cell::RefCell,
-    collections::{hash_map::Entry, HashMap},
     error::Error,
     ffi::CString,
     fmt::{Display, Error as FmtError, Formatter},
@@ -510,72 +506,6 @@ impl Device {
         new_pool
     }
 
-    /// Gives you access to the standard descriptor pool that is used by default if you don't
-    /// provide any other pool.
-    ///
-    /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
-    /// dropped once both the thread exits and all descriptor sets allocated from it are dropped.
-    /// A pool is created lazily for each thread.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if called again from within the callback.
-    pub fn with_standard_descriptor_pool<T>(
-        self: &Arc<Self>,
-        f: impl FnOnce(&mut StandardDescriptorPool) -> T,
-    ) -> T {
-        thread_local! {
-            static TLS: RefCell<HashMap<ash::vk::Device, StandardDescriptorPool>> =
-                RefCell::new(HashMap::default());
-        }
-
-        TLS.with(|tls| {
-            let mut tls = tls.borrow_mut();
-            let pool = match tls.entry(self.internal_object()) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => entry.insert(StandardDescriptorPool::new(self.clone())),
-            };
-
-            f(pool)
-        })
-    }
-
-    /// Gives you access to the standard command buffer pool used by default if you don't provide
-    /// any other pool.
-    ///
-    /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
-    /// dropped once both the thread exits and all command buffers allocated from it are dropped.
-    /// A pool is created lazily for each thread, device and queue family combination as needed,
-    /// which is why this function might return an `OomError`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the device and the queue family don't belong to the same physical device.
-    /// - Panics if called again from within the callback.
-    pub fn with_standard_command_pool<T>(
-        self: &Arc<Self>,
-        queue_family_index: u32,
-        f: impl FnOnce(&Arc<StandardCommandPool>) -> T,
-    ) -> Result<T, OomError> {
-        thread_local! {
-            static TLS: RefCell<HashMap<(ash::vk::Device, u32), Arc<StandardCommandPool>>> =
-                RefCell::new(Default::default());
-        }
-
-        TLS.with(|tls| {
-            let mut tls = tls.borrow_mut();
-            let pool = match tls.entry((self.internal_object(), queue_family_index)) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => entry.insert(Arc::new(StandardCommandPool::new(
-                    self.clone(),
-                    queue_family_index,
-                )?)),
-            };
-
-            Ok(f(pool))
-        })
-    }
-
     /// Used to track the number of allocations on this device.
     ///
     /// To ensure valid usage of the Vulkan API, we cannot call `vkAllocateMemory` when
@@ -610,6 +540,7 @@ impl Device {
     ///
     /// - `file` must be a handle to external memory that was created outside the Vulkan API.
     #[cfg_attr(not(unix), allow(unused_variables))]
+    #[inline]
     pub unsafe fn memory_fd_properties(
         &self,
         handle_type: ExternalMemoryHandleType,
@@ -693,12 +624,13 @@ impl Device {
     /// This function is not thread-safe. You must not submit anything to any of the queue
     /// of the device (either explicitly or implicitly, for example with a future's destructor)
     /// while this function is waiting.
-    ///
+    #[inline]
     pub unsafe fn wait_idle(&self) -> Result<(), OomError> {
         let fns = self.fns();
         (fns.v1_0.device_wait_idle)(self.handle)
             .result()
             .map_err(VulkanError::from)?;
+
         Ok(())
     }
 }
@@ -742,7 +674,6 @@ impl PartialEq for Device {
 impl Eq for Device {}
 
 impl Hash for Device {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.physical_device.hash(state);
@@ -780,15 +711,12 @@ pub enum DeviceCreationError {
 impl Error for DeviceCreationError {}
 
 impl Display for DeviceCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
-            Self::InitializationFailed => {
-                write!(
-                    f,
-                    "failed to create the device for an implementation-specific reason"
-                )
-            }
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::InitializationFailed => write!(
+                f,
+                "failed to create the device for an implementation-specific reason",
+            ),
             Self::OutOfHostMemory => write!(f, "no memory available on the host"),
             Self::OutOfDeviceMemory => {
                 write!(f, "no memory available on the graphical device")
@@ -797,24 +725,23 @@ impl Display for DeviceCreationError {
             Self::TooManyQueuesForFamily => {
                 write!(f, "tried to create too many queues for a given family")
             }
-            Self::FeatureNotPresent => {
-                write!(
-                    f,
-                    "some of the requested features are unsupported by the physical device"
-                )
-            }
-            Self::PriorityOutOfRange => {
-                write!(
-                    f,
-                    "the priority of one of the queues is out of the [0.0; 1.0] range"
-                )
-            }
-            Self::ExtensionNotPresent => {
-                write!(f,"some of the requested device extensions are not supported by the physical device")
-            }
-            Self::TooManyObjects => {
-                write!(f,"you have reached the limit to the number of devices that can be created from the same physical device")
-            }
+            Self::FeatureNotPresent => write!(
+                f,
+                "some of the requested features are unsupported by the physical device",
+            ),
+            Self::PriorityOutOfRange => write!(
+                f,
+                "the priority of one of the queues is out of the [0.0; 1.0] range",
+            ),
+            Self::ExtensionNotPresent => write!(
+                f,
+                "some of the requested device extensions are not supported by the physical device",
+            ),
+            Self::TooManyObjects => write!(
+                f,
+                "you have reached the limit to the number of devices that can be created from the \
+                same physical device",
+            ),
             Self::ExtensionRestrictionNotMet(err) => err.fmt(f),
             Self::FeatureRestrictionNotMet(err) => err.fmt(f),
         }
@@ -822,7 +749,6 @@ impl Display for DeviceCreationError {
 }
 
 impl From<VulkanError> for DeviceCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             VulkanError::InitializationFailed => Self::InitializationFailed,
@@ -838,14 +764,12 @@ impl From<VulkanError> for DeviceCreationError {
 }
 
 impl From<ExtensionRestrictionError> for DeviceCreationError {
-    #[inline]
     fn from(err: ExtensionRestrictionError) -> Self {
         Self::ExtensionRestrictionNotMet(err)
     }
 }
 
 impl From<FeatureRestrictionError> for DeviceCreationError {
-    #[inline]
     fn from(err: FeatureRestrictionError) -> Self {
         Self::FeatureRestrictionNotMet(err)
     }
@@ -921,7 +845,6 @@ impl Default for QueueCreateInfo {
 /// # Safety
 ///
 /// - `device()` must return the correct device.
-///
 pub unsafe trait DeviceOwned {
     /// Returns the device that owns `Self`.
     fn device(&self) -> &Arc<Device>;
@@ -932,7 +855,6 @@ where
     T: Deref,
     T::Target: DeviceOwned,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         (**self).device()
     }
@@ -970,11 +892,9 @@ pub enum MemoryFdPropertiesError {
 impl Error for MemoryFdPropertiesError {}
 
 impl Display for MemoryFdPropertiesError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
             Self::OutOfHostMemory => write!(f, "no memory available on the host"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -983,7 +903,6 @@ impl Display for MemoryFdPropertiesError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::InvalidExternalHandle => {
                 write!(f, "the provided external handle was not valid")
             }
@@ -999,7 +918,6 @@ impl Display for MemoryFdPropertiesError {
 }
 
 impl From<VulkanError> for MemoryFdPropertiesError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             VulkanError::OutOfHostMemory => Self::OutOfHostMemory,
@@ -1010,7 +928,6 @@ impl From<VulkanError> for MemoryFdPropertiesError {
 }
 
 impl From<RequirementNotMet> for MemoryFdPropertiesError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

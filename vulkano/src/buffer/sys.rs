@@ -279,6 +279,7 @@ impl UnsafeBuffer {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Buffer,
@@ -307,7 +308,6 @@ impl UnsafeBuffer {
 
     /// Returns the memory requirements for this buffer.
     pub fn memory_requirements(&self) -> MemoryRequirements {
-        #[inline]
         fn align(val: DeviceSize, al: DeviceSize) -> DeviceSize {
             al * (1 + (val - 1) / al)
         }
@@ -443,10 +443,11 @@ impl UnsafeBuffer {
         )
         .result()
         .map_err(VulkanError::from)?;
+
         Ok(())
     }
 
-    pub(crate) fn state(&self) -> MutexGuard<BufferState> {
+    pub(crate) fn state(&self) -> MutexGuard<'_, BufferState> {
         self.state.lock()
     }
 
@@ -511,7 +512,6 @@ impl PartialEq for UnsafeBuffer {
 impl Eq for UnsafeBuffer {}
 
 impl Hash for UnsafeBuffer {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device.hash(state);
@@ -590,18 +590,16 @@ pub enum BufferCreationError {
 }
 
 impl Error for BufferCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            BufferCreationError::AllocError(ref err) => Some(err),
+        match self {
+            BufferCreationError::AllocError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for BufferCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::AllocError(_) => write!(f, "allocating memory failed"),
             Self::RequirementNotMet {
@@ -614,24 +612,24 @@ impl Display for BufferCreationError {
             ),
             Self::MaxBufferSizeExceeded { .. } => write!(
                 f,
-                "the specified size exceeded the value of the `max_buffer_size` limit"
+                "the specified size exceeded the value of the `max_buffer_size` limit",
             ),
-            Self::SharingQueueFamilyIndexOutOfRange { .. } => {
-                write!(f, "the sharing mode was set to `Concurrent`, but one of the specified queue family indices was out of range")
-            }
+            Self::SharingQueueFamilyIndexOutOfRange { .. } => write!(
+                f,
+                "the sharing mode was set to `Concurrent`, but one of the specified queue family \
+                indices was out of range",
+            ),
         }
     }
 }
 
 impl From<OomError> for BufferCreationError {
-    #[inline]
     fn from(err: OomError) -> BufferCreationError {
         BufferCreationError::AllocError(err.into())
     }
 }
 
 impl From<VulkanError> for BufferCreationError {
-    #[inline]
     fn from(err: VulkanError) -> BufferCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => {
@@ -646,7 +644,6 @@ impl From<VulkanError> for BufferCreationError {
 }
 
 impl From<RequirementNotMet> for BufferCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

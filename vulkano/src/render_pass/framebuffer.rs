@@ -336,6 +336,7 @@ impl Framebuffer {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `render_pass`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         render_pass: Arc<RenderPass>,
         handle: ash::vk::Framebuffer,
@@ -431,7 +432,6 @@ impl PartialEq for Framebuffer {
 impl Eq for Framebuffer {}
 
 impl Hash for Framebuffer {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -588,33 +588,28 @@ pub enum FramebufferCreationError {
 }
 
 impl From<OomError> for FramebufferCreationError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl Error for FramebufferCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for FramebufferCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
-            Self::OomError(_) => write!(
-                f,
-                "no memory available",
-            ),
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::OomError(_) => write!(f, "no memory available",),
             Self::Attachment2dArrayCompatibleDepthStencil { attachment } => write!(
                 f,
-                "attachment image {} is a 2D image view created from a 3D image, and has a depth/stencil format",
+                "attachment image {} is a 2D image view created from a 3D image, and has a \
+                depth/stencil format",
                 attachment,
             ),
             Self::AttachmentComponentMappingNotIdentity { attachment } => write!(
@@ -632,7 +627,8 @@ impl Display for FramebufferCreationError {
                 min,
             } => write!(
                 f,
-                "attachment image {} has an extent ({:?}) smaller than the provided `extent` ({:?})",
+                "attachment image {} has an extent ({:?}) smaller than the provided `extent` \
+                ({:?})",
                 attachment, provided, min,
             ),
             Self::AttachmentFormatMismatch {
@@ -641,24 +637,19 @@ impl Display for FramebufferCreationError {
                 required,
             } => write!(
                 f,
-                "attachment image {} has a `format` ({:?}) different from what the render pass requires ({:?})",
+                "attachment image {} has a `format` ({:?}) different from what the render pass \
+                requires ({:?})",
                 attachment, provided, required,
             ),
-            Self::AttachmentMissingUsage {
-                attachment,
-                usage,
-            } => write!(
+            Self::AttachmentMissingUsage { attachment, usage } => write!(
                 f,
-                "attachment image {} is missing usage `{}` that the render pass requires it to have",
+                "attachment image {} is missing usage `{}` that the render pass requires it to \
+                have",
                 attachment, usage,
             ),
-            Self::AttachmentMultipleMipLevels {
-                attachment,
-            } => write!(
-                f,
-                "attachment image {} has multiple mip levels",
-                attachment,
-            ),
+            Self::AttachmentMultipleMipLevels { attachment } => {
+                write!(f, "attachment image {} has multiple mip levels", attachment)
+            }
             Self::AttachmentNotEnoughLayers {
                 attachment,
                 provided,
@@ -674,27 +665,29 @@ impl Display for FramebufferCreationError {
                 required,
             } => write!(
                 f,
-                "attachment image {} has a `samples` ({:?}) different from what the render pass requires ({:?})",
+                "attachment image {} has a `samples` ({:?}) different from what the render pass \
+                requires ({:?})",
                 attachment, provided, required,
             ),
-            Self::AttachmentViewType3d {
-                attachment,
-            } => write!(
+            Self::AttachmentViewType3d { attachment } => write!(
                 f,
                 "attachment image {} has a `ty` of `ImageViewType::Dim3d`",
                 attachment,
             ),
             Self::AutoExtentAttachmentsEmpty => write!(
                 f,
-                "one of the elements of `extent` is zero, but no attachment images were given to calculate the extent from",
+                "one of the elements of `extent` is zero, but no attachment images were given to \
+                calculate the extent from",
             ),
             Self::AutoLayersAttachmentsEmpty => write!(
                 f,
-                "`layers` is zero, but no attachment images were given to calculate the number of layers from",
+                "`layers` is zero, but no attachment images were given to calculate the number of \
+                layers from",
             ),
             Self::MaxFramebufferExtentExceeded { provided, max } => write!(
                 f,
-                "the provided `extent` ({:?}) exceeds the `max_framebuffer_width` or `max_framebuffer_height` limits ({:?})",
+                "the provided `extent` ({:?}) exceeds the `max_framebuffer_width` or \
+                `max_framebuffer_height` limits ({:?})",
                 provided, max,
             ),
             Self::MaxFramebufferLayersExceeded { provided, max } => write!(
@@ -708,7 +701,8 @@ impl Display for FramebufferCreationError {
                 min,
             } => write!(
                 f,
-                "the render pass has multiview enabled, and attachment image {} has less layers ({}) than the number of views in the render pass ({})",
+                "the render pass has multiview enabled, and attachment image {} has less layers \
+                ({}) than the number of views in the render pass ({})",
                 attachment, provided, min,
             ),
             Self::MultiviewLayersInvalid => write!(
@@ -720,7 +714,6 @@ impl Display for FramebufferCreationError {
 }
 
 impl From<VulkanError> for FramebufferCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         Self::from(OomError::from(err))
     }

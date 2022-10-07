@@ -9,6 +9,7 @@
 
 use crate::{
     command_buffer::{
+        allocator::CommandBufferAllocator,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CopyError, CopyErrorResource,
@@ -33,7 +34,10 @@ use std::{
 ///
 /// Unlike transfer commands, these require a graphics queue, except for `clear_color_image`, which
 /// can also be called on a compute queue.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Blits an image to another.
     ///
     /// A *blit* is similar to an image copy operation, except that the portion of the image that
@@ -61,10 +65,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// If `layer_count` is greater than 1, the blit will happen between each individual layer as
     /// if they were separate images.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the source or the destination was not created with `device`.
-    #[inline]
     pub fn blit_image(&mut self, blit_image_info: BlitImageInfo) -> Result<&mut Self, CopyError> {
         self.validate_blit_image(&blit_image_info)?;
 
@@ -561,7 +564,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Clears a color image with a specific value.
-    #[inline]
     pub fn clear_color_image(
         &mut self,
         clear_info: ClearColorImageInfo,
@@ -714,7 +716,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Clears a depth/stencil image with a specific value.
-    #[inline]
     pub fn clear_depth_stencil_image(
         &mut self,
         clear_info: ClearDepthStencilImageInfo,
@@ -889,7 +890,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// - Panics if `src_image` or `dst_image` were not created from the same device
     ///   as `self`.
-    #[inline]
     pub fn resolve_image(
         &mut self,
         resolve_image_info: ResolveImageInfo,
@@ -1271,6 +1271,7 @@ impl SyncCommandBufferBuilder {
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
+    #[inline]
     pub unsafe fn clear_color_image(
         &mut self,
         clear_info: ClearColorImageInfo,
@@ -1341,6 +1342,7 @@ impl SyncCommandBufferBuilder {
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
+    #[inline]
     pub unsafe fn clear_depth_stencil_image(
         &mut self,
         clear_info: ClearDepthStencilImageInfo,
@@ -1678,6 +1680,7 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
+    #[inline]
     pub unsafe fn clear_color_image(&mut self, clear_info: &ClearColorImageInfo) {
         let &ClearColorImageInfo {
             ref image,
@@ -1713,6 +1716,7 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
+    #[inline]
     pub unsafe fn clear_depth_stencil_image(&mut self, clear_info: &ClearDepthStencilImageInfo) {
         let &ClearDepthStencilImageInfo {
             ref image,

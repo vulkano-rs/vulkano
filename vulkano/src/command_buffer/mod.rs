@@ -61,8 +61,9 @@
 //! # let vertex_buffer: std::sync::Arc<vulkano::buffer::CpuAccessibleBuffer<[Vertex]>> = return;
 //! # let render_pass_begin_info: vulkano::command_buffer::RenderPassBeginInfo = return;
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
+//! # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 //! let cb = AutoCommandBufferBuilder::primary(
-//!     device.clone(),
+//!     &command_buffer_allocator,
 //!     queue.queue_family_index(),
 //!     CommandBufferUsage::MultipleSubmit
 //! ).unwrap()
@@ -129,6 +130,7 @@ use crate::{
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 
+pub mod allocator;
 mod auto;
 mod commands;
 pub mod pool;

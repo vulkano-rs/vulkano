@@ -10,6 +10,7 @@
 use crate::{
     buffer::TypedBufferAccess,
     command_buffer::{
+        allocator::CommandBufferAllocator,
         auto::QueryState,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
@@ -32,13 +33,18 @@ use std::{
 };
 
 /// # Commands related to queries.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Begins a query.
     ///
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.
     ///
     /// # Safety
-    /// The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
+    ///
+    /// The query must be unavailable, ensured by calling
+    /// [`reset_query_pool`](Self::reset_query_pool).
     pub unsafe fn begin_query(
         &mut self,
         query_pool: Arc<QueryPool>,
@@ -211,7 +217,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Writes a timestamp to a timestamp query.
     ///
     /// # Safety
-    /// The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
+    ///
+    /// The query must be unavailable, ensured by calling
+    /// [`reset_query_pool`](Self::reset_query_pool).
     pub unsafe fn write_timestamp(
         &mut self,
         query_pool: Arc<QueryPool>,
@@ -669,7 +677,7 @@ impl SyncCommandBufferBuilder {
 impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdBeginQuery` on the builder.
     #[inline]
-    pub unsafe fn begin_query(&mut self, query: Query, flags: QueryControlFlags) {
+    pub unsafe fn begin_query(&mut self, query: Query<'_>, flags: QueryControlFlags) {
         let fns = self.device.fns();
         let flags = if flags.precise {
             ash::vk::QueryControlFlags::PRECISE
@@ -686,14 +694,14 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdEndQuery` on the builder.
     #[inline]
-    pub unsafe fn end_query(&mut self, query: Query) {
+    pub unsafe fn end_query(&mut self, query: Query<'_>) {
         let fns = self.device.fns();
         (fns.v1_0.cmd_end_query)(self.handle, query.pool().internal_object(), query.index());
     }
 
     /// Calls `vkCmdWriteTimestamp` on the builder.
     #[inline]
-    pub unsafe fn write_timestamp(&mut self, query: Query, stage: PipelineStage) {
+    pub unsafe fn write_timestamp(&mut self, query: Query<'_>, stage: PipelineStage) {
         let fns = self.device.fns();
         (fns.v1_0.cmd_write_timestamp)(
             self.handle,
@@ -704,10 +712,9 @@ impl UnsafeCommandBufferBuilder {
     }
 
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
-    #[inline]
     pub unsafe fn copy_query_pool_results<D, T>(
         &mut self,
-        queries: QueriesRange,
+        queries: QueriesRange<'_>,
         destination: &D,
         stride: DeviceSize,
         flags: QueryResultFlags,
@@ -737,7 +744,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdResetQueryPool` on the builder.
     #[inline]
-    pub unsafe fn reset_query_pool(&mut self, queries: QueriesRange) {
+    pub unsafe fn reset_query_pool(&mut self, queries: QueriesRange<'_>) {
         let range = queries.range();
         let fns = self.device.fns();
         (fns.v1_0.cmd_reset_query_pool)(
@@ -805,14 +812,9 @@ pub enum QueryError {
 impl Error for QueryError {}
 
 impl Display for QueryError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
-            Self::SyncCommandBufferBuilderError(_) => write!(
-                f,
-                "a SyncCommandBufferBuilderError",
-            ),
-
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -821,7 +823,6 @@ impl Display for QueryError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::BufferTooSmall { .. } => {
                 write!(f, "the buffer is too small for the copy operation")
             }
@@ -846,7 +847,8 @@ impl Display for QueryError {
             Self::OutOfRange => write!(f, "the provided query index is not valid for this pool"),
             Self::OutOfRangeMultiview => write!(
                 f,
-                "the provided query index plus the number of views in the current render subpass is greater than the number of queries in the pool",
+                "the provided query index plus the number of views in the current render subpass \
+                is greater than the number of queries in the pool",
             ),
             Self::QueryIsActive => write!(
                 f,
@@ -861,14 +863,12 @@ impl Display for QueryError {
 }
 
 impl From<SyncCommandBufferBuilderError> for QueryError {
-    #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
     }
 }
 
 impl From<RequirementNotMet> for QueryError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

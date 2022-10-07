@@ -125,22 +125,18 @@ unsafe impl<T> BufferContents for T
 where
     T: Pod + Send + Sync,
 {
-    #[inline]
     fn as_bytes(&self) -> &[u8] {
         bytes_of(self)
     }
 
-    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<&T, PodCastError> {
         try_from_bytes(bytes)
     }
 
-    #[inline]
     fn from_bytes_mut(bytes: &mut [u8]) -> Result<&mut T, PodCastError> {
         try_from_bytes_mut(bytes)
     }
 
-    #[inline]
     fn size_of_element() -> DeviceSize {
         1
     }
@@ -150,22 +146,18 @@ unsafe impl<T> BufferContents for [T]
 where
     T: Pod + Send + Sync,
 {
-    #[inline]
     fn as_bytes(&self) -> &[u8] {
         cast_slice(self)
     }
 
-    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<&[T], PodCastError> {
         try_cast_slice(bytes)
     }
 
-    #[inline]
     fn from_bytes_mut(bytes: &mut [u8]) -> Result<&mut [T], PodCastError> {
         try_cast_slice_mut(bytes)
     }
 
-    #[inline]
     fn size_of_element() -> DeviceSize {
         size_of::<T>() as DeviceSize
     }
@@ -173,7 +165,7 @@ where
 
 /// The buffer configuration to query in
 /// [`PhysicalDevice::external_buffer_properties`](crate::device::physical::PhysicalDevice::external_buffer_properties).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalBufferInfo {
     /// The external handle type that will be used with the buffer.
     pub handle_type: ExternalMemoryHandleType,

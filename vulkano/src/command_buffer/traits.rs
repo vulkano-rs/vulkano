@@ -68,9 +68,9 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
     ///
     /// > **Note**: This is just a shortcut for `execute_after(vulkano::sync::now(), queue)`.
     ///
-    /// # Panic
+    /// # Panics
     ///
-    /// Panics if the device of the command buffer is not the same as the device of the future.
+    /// - Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
     fn execute(
         self,
@@ -102,10 +102,9 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
     /// `std::mem::forget` on that object and "unlock" these resources. For more information about
     /// this problem, search the web for "rust thread scoped leakpocalypse".
     ///
-    /// # Panic
+    /// # Panics
     ///
-    /// Panics if the device of the command buffer is not the same as the device of the future.
-    #[inline]
+    /// - Panics if the device of the command buffer is not the same as the device of the future.
     fn execute_after<F>(
         self,
         future: F,
@@ -154,7 +153,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
 }
 
 impl Debug for dyn PrimaryCommandBuffer {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         Debug::fmt(self.inner(), f)
     }
 }
@@ -164,12 +163,10 @@ where
     T: SafeDeref + Send + Sync,
     T::Target: PrimaryCommandBuffer,
 {
-    #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
         (**self).inner()
     }
 
-    #[inline]
     fn lock_submit(
         &self,
         future: &dyn GpuFuture,
@@ -178,12 +175,10 @@ where
         (**self).lock_submit(future, queue)
     }
 
-    #[inline]
     unsafe fn unlock(&self) {
         (**self).unlock();
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -194,7 +189,6 @@ where
         (**self).check_buffer_access(buffer, range, exclusive, queue)
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -266,32 +260,26 @@ where
     T: SafeDeref + Send + Sync,
     T::Target: SecondaryCommandBuffer,
 {
-    #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
         (**self).inner()
     }
 
-    #[inline]
     fn lock_record(&self) -> Result<(), CommandBufferExecError> {
         (**self).lock_record()
     }
 
-    #[inline]
     unsafe fn unlock(&self) {
         (**self).unlock();
     }
 
-    #[inline]
     fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
         (**self).inheritance_info()
     }
 
-    #[inline]
     fn num_buffers(&self) -> usize {
         (**self).num_buffers()
     }
 
-    #[inline]
     fn buffer(
         &self,
         index: usize,
@@ -303,12 +291,10 @@ where
         (**self).buffer(index)
     }
 
-    #[inline]
     fn num_images(&self) -> usize {
         (**self).num_images()
     }
 
-    #[inline]
     fn image(
         &self,
         index: usize,
@@ -325,6 +311,7 @@ where
 
 /// Represents a command buffer being executed by the GPU and the moment when the execution
 /// finishes.
+#[derive(Debug)]
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
 pub struct CommandBufferExecFuture<F>
 where
@@ -399,7 +386,6 @@ unsafe impl<F> GpuFuture for CommandBufferExecFuture<F>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn cleanup_finished(&mut self) {
         self.previous.cleanup_finished();
     }
@@ -412,7 +398,6 @@ where
         self.build_submission_impl()
     }
 
-    #[inline]
     fn flush(&self) -> Result<(), FlushError> {
         unsafe {
             let mut submitted = self.submitted.lock();
@@ -425,8 +410,7 @@ where
             match self.build_submission_impl()? {
                 SubmitAnyBuilder::Empty => {}
                 SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
-                    let mut queue_guard = queue.lock();
-                    queue_guard.submit_unchecked([submit_info], fence)?;
+                    queue.with(|mut q| q.submit_unchecked([submit_info], fence))?;
                 }
                 _ => unreachable!(),
             };
@@ -437,23 +421,19 @@ where
         }
     }
 
-    #[inline]
     unsafe fn signal_finished(&self) {
         self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
 
-    #[inline]
     fn queue_change_allowed(&self) -> bool {
         false
     }
 
-    #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         Some(self.queue.clone())
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -473,7 +453,6 @@ where
         }
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -497,13 +476,21 @@ where
             }
         }
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        self.previous.check_swapchain_image_acquired(image, false)
+    }
 }
 
 unsafe impl<F> DeviceOwned for CommandBufferExecFuture<F>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.command_buffer.device()
     }
@@ -519,7 +506,7 @@ where
                 // TODO: handle errors?
                 self.flush().unwrap();
                 // Block until the queue finished.
-                self.queue.lock().wait_idle().unwrap();
+                self.queue.with(|mut q| q.wait_idle()).unwrap();
                 self.previous.signal_finished();
             }
         }
@@ -548,32 +535,30 @@ pub enum CommandBufferExecError {
 }
 
 impl Error for CommandBufferExecError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            CommandBufferExecError::AccessError { ref error, .. } => Some(error),
+        match self {
+            CommandBufferExecError::AccessError { error, .. } => Some(error),
             _ => None,
         }
     }
 }
 
 impl Display for CommandBufferExecError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 CommandBufferExecError::AccessError { .. } =>
                     "access to a resource has been denied",
                 CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
                     "the command buffer or one of the secondary command buffers it executes was \
-                 created with the \"one time submit\" flag, but has already been submitted in \
-                 the past"
+                    created with the \"one time submit\" flag, but has already been submitted in \
+                    the past"
                 }
                 CommandBufferExecError::ExclusiveAlreadyInUse => {
                     "the command buffer or one of the secondary command buffers it executes is \
-                 already in use was not created with the \"concurrent\" flag"
+                    already in use was not created with the \"concurrent\" flag"
                 }
             }
         )

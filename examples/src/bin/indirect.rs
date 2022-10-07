@@ -29,10 +29,12 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuBufferPool},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, DrawIndirectCommand, RenderPassBeginInfo,
-        SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        DrawIndirectCommand, RenderPassBeginInfo, SubpassContents,
     },
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
@@ -50,8 +52,8 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     single_pass_renderpass,
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract,
-        SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -315,6 +317,9 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
@@ -390,6 +395,7 @@ fn main() {
                 // Pass the two buffers to the compute shader
                 let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
                 let cs_desciptor_set = PersistentDescriptorSet::new(
+                    &descriptor_set_allocator,
                     layout.clone(),
                     [
                         WriteDescriptorSet::buffer(0, vertices.clone()),
@@ -399,7 +405,7 @@ fn main() {
                 .unwrap();
 
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    device.clone(),
+                    &command_buffer_allocator,
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )

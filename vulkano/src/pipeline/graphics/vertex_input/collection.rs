@@ -25,14 +25,12 @@ impl VertexBuffersCollection for () {
 }
 
 impl<T: BufferAccessObject> VertexBuffersCollection for T {
-    #[inline]
     fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
         vec![self.as_buffer_access_object()]
     }
 }
 
 impl<T: BufferAccessObject> VertexBuffersCollection for Vec<T> {
-    #[inline]
     fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
         self.into_iter()
             .map(|src| src.as_buffer_access_object())
@@ -41,7 +39,6 @@ impl<T: BufferAccessObject> VertexBuffersCollection for Vec<T> {
 }
 
 impl<T: BufferAccessObject, const N: usize> VertexBuffersCollection for [T; N] {
-    #[inline]
     fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
         self.into_iter()
             .map(|src| src.as_buffer_access_object())

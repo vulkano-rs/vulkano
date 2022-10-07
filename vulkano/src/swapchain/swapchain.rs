@@ -71,8 +71,9 @@ pub struct Swapchain<W> {
     // The images of this swapchain.
     images: Vec<ImageEntry>,
 
-    // If true, that means we have tried to use this swapchain to recreate a new swapchain. The current
-    // swapchain can no longer be used for anything except presenting already-acquired images.
+    // If true, that means we have tried to use this swapchain to recreate a new swapchain. The
+    // current swapchain can no longer be used for anything except presenting already-acquired
+    // images.
     //
     // We use a `Mutex` instead of an `AtomicBool` because we want to keep that locked while
     // we acquire the image.
@@ -177,7 +178,6 @@ where
     /// # Panics
     ///
     /// - Panics if `create_info.usage` is empty.
-    #[inline]
     pub fn recreate(
         self: &Arc<Self>,
         mut create_info: SwapchainCreateInfo,
@@ -346,6 +346,21 @@ where
         }
 
         // VUID-VkSwapchainCreateInfoKHR-surface-01270
+        if !device
+            .active_queue_family_indices()
+            .iter()
+            .copied()
+            .any(|index| unsafe {
+                // Use unchecked, because all validation has been done above.
+                device
+                    .physical_device()
+                    .surface_support_unchecked(index, surface)
+                    .unwrap_or_default()
+            })
+        {
+            return Err(SwapchainCreationError::SurfaceNotSupported);
+        }
+
         *image_format = Some({
             // Use unchecked, because all validation has been done above.
             let surface_formats = unsafe {
@@ -711,7 +726,6 @@ where
     }
 
     /// Returns the creation parameters of the swapchain.
-    #[inline]
     pub fn create_info(&self) -> SwapchainCreateInfo {
         SwapchainCreateInfo {
             min_image_count: self.min_image_count,
@@ -732,37 +746,31 @@ where
     }
 
     /// Returns the saved Surface, from the Swapchain creation.
-    #[inline]
     pub fn surface(&self) -> &Arc<Surface<W>> {
         &self.surface
     }
 
     /// Returns the pre-transform that was passed when creating the swapchain.
-    #[inline]
     pub fn pre_transform(&self) -> SurfaceTransform {
         self.pre_transform
     }
 
     /// Returns the alpha mode that was passed when creating the swapchain.
-    #[inline]
     pub fn composite_alpha(&self) -> CompositeAlpha {
         self.composite_alpha
     }
 
     /// Returns the present mode that was passed when creating the swapchain.
-    #[inline]
     pub fn present_mode(&self) -> PresentMode {
         self.present_mode
     }
 
     /// Returns the value of `clipped` that was passed when creating the swapchain.
-    #[inline]
     pub fn clipped(&self) -> bool {
         self.clipped
     }
 
     /// Returns the value of 'full_screen_exclusive` that was passed when creating the swapchain.
-    #[inline]
     pub fn full_screen_exclusive(&self) -> FullScreenExclusive {
         self.full_screen_exclusive
     }
@@ -860,7 +868,6 @@ where
 }
 
 impl<W> Drop for Swapchain<W> {
-    #[inline]
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
@@ -877,7 +884,6 @@ impl<W> Drop for Swapchain<W> {
 unsafe impl<W> VulkanObject for Swapchain<W> {
     type Object = ash::vk::SwapchainKHR;
 
-    #[inline]
     fn internal_object(&self) -> ash::vk::SwapchainKHR {
         self.handle
     }
@@ -890,7 +896,6 @@ unsafe impl<W> DeviceOwned for Swapchain<W> {
 }
 
 impl<W> PartialEq for Swapchain<W> {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.device() == other.device()
     }
@@ -899,7 +904,6 @@ impl<W> PartialEq for Swapchain<W> {
 impl<W> Eq for Swapchain<W> {}
 
 impl<W> Hash for Swapchain<W> {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -907,8 +911,7 @@ impl<W> Hash for Swapchain<W> {
 }
 
 impl<W> Debug for Swapchain<W> {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             device,
@@ -962,7 +965,7 @@ pub unsafe trait SwapchainAbstract:
     VulkanObject<Object = ash::vk::SwapchainKHR> + DeviceOwned + Debug + Send + Sync
 {
     /// Returns one of the images that belongs to this swapchain.
-    fn raw_image(&self, index: u32) -> Option<ImageInner>;
+    fn raw_image(&self, index: u32) -> Option<ImageInner<'_>>;
 
     /// Returns the number of images of the swapchain.
     fn image_count(&self) -> u32;
@@ -990,8 +993,7 @@ unsafe impl<W> SwapchainAbstract for Swapchain<W>
 where
     W: Send + Sync,
 {
-    #[inline]
-    fn raw_image(&self, image_index: u32) -> Option<ImageInner> {
+    fn raw_image(&self, image_index: u32) -> Option<ImageInner<'_>> {
         self.images.get(image_index as usize).map(|i| ImageInner {
             image: &i.image,
             first_layer: 0,
@@ -1001,37 +1003,30 @@ where
         })
     }
 
-    #[inline]
     fn image_count(&self) -> u32 {
         self.images.len() as u32
     }
 
-    #[inline]
     fn image_format(&self) -> Format {
         self.image_format
     }
 
-    #[inline]
     fn image_color_space(&self) -> ColorSpace {
         self.image_color_space
     }
 
-    #[inline]
     fn image_extent(&self) -> [u32; 2] {
         self.image_extent
     }
 
-    #[inline]
     fn image_array_layers(&self) -> u32 {
         self.image_array_layers
     }
 
-    #[inline]
     unsafe fn full_screen_exclusive_held(&self) -> &AtomicBool {
         &self.full_screen_exclusive_held
     }
 
-    #[inline]
     unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool {
         let present_id = u64::from(present_id);
         self.prev_present_id.fetch_max(present_id, Ordering::SeqCst) < present_id
@@ -1048,7 +1043,6 @@ impl PartialEq for dyn SwapchainAbstract {
 impl Eq for dyn SwapchainAbstract {}
 
 impl Hash for dyn SwapchainAbstract {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.internal_object().hash(state);
         self.device().hash(state);
@@ -1258,6 +1252,9 @@ pub enum SwapchainCreationError {
         supported: SupportedSurfaceTransforms,
     },
 
+    /// The provided `surface` is not supported by any of the device's queue families.
+    SurfaceNotSupported,
+
     /// The swapchain has already been used to create a new one.
     SwapchainAlreadyRetired,
 
@@ -1266,29 +1263,26 @@ pub enum SwapchainCreationError {
 }
 
 impl Error for SwapchainCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for SwapchainCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
-            Self::OomError(_) => write!(f, "not enough memory available",),
-            Self::DeviceLost => write!(f, "the device was lost",),
-            Self::SurfaceLost => write!(f, "the surface was lost",),
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::DeviceLost => write!(f, "the device was lost"),
+            Self::SurfaceLost => write!(f, "the surface was lost"),
             Self::SurfaceInUse => {
-                write!(f, "the surface is already used by another swapchain",)
+                write!(f, "the surface is already used by another swapchain")
             }
             Self::NativeWindowInUse => {
                 write!(f, "the window is already in use by another API")
             }
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -1297,23 +1291,32 @@ impl Display for SwapchainCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::CompositeAlphaNotSupported { .. } => write!(
                 f,
                 "the provided `composite_alpha` is not supported by the surface for this device",
             ),
             Self::FormatColorSpaceNotSupported => write!(
                 f,
-                "the provided `format` and `color_space` are not supported by the surface for this device",
+                "the provided `format` and `color_space` are not supported by the surface for this \
+                device",
             ),
-            Self::ImageArrayLayersNotSupported { provided, max_supported } => write!(
+            Self::ImageArrayLayersNotSupported {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the provided `image_array_layers` ({}) is greater than what is supported ({}) by the surface for this device",
+                "the provided `image_array_layers` ({}) is greater than what is supported ({}) by \
+                the surface for this device",
                 provided, max_supported,
             ),
-            Self::ImageExtentNotSupported { provided, min_supported, max_supported } => write!(
+            Self::ImageExtentNotSupported {
+                provided,
+                min_supported,
+                max_supported,
+            } => write!(
                 f,
-                "the provided `image_extent` ({:?}) is not within the range (min: {:?}, max: {:?}) supported by the surface for this device",
+                "the provided `image_extent` ({:?}) is not within the range (min: {:?}, max: {:?}) \
+                supported by the surface for this device",
                 provided, min_supported, max_supported,
             ),
             Self::ImageExtentZeroLengthDimensions => write!(
@@ -1322,20 +1325,31 @@ impl Display for SwapchainCreationError {
             ),
             Self::ImageFormatPropertiesNotSupported => write!(
                 f,
-                "the provided image parameters are not supported as queried from `image_format_properties`",
+                "the provided image parameters are not supported as queried from \
+                `image_format_properties`",
             ),
-            Self::ImageSharingQueueFamilyIndexOutOfRange { queue_family_index, queue_family_count: _ } => write!(
+            Self::ImageSharingQueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: _,
+            } => write!(
                 f,
-                "the provided `image_sharing` was set to `Concurrent`, but one of the specified queue family indices ({}) was out of range",
+                "the provided `image_sharing` was set to `Concurrent`, but one of the specified \
+                queue family indices ({}) was out of range",
                 queue_family_index,
             ),
             Self::ImageUsageNotSupported { .. } => write!(
                 f,
-                "the provided `image_usage` has fields set that are not supported by the surface for this device",
+                "the provided `image_usage` has fields set that are not supported by the surface \
+                for this device",
             ),
-            Self::MinImageCountNotSupported { provided, min_supported, max_supported } => write!(
+            Self::MinImageCountNotSupported {
+                provided,
+                min_supported,
+                max_supported,
+            } => write!(
                 f,
-                "the provided `min_image_count` ({}) is not within the range (min: {}, max: {:?}) supported by the surface for this device",
+                "the provided `min_image_count` ({}) is not within the range (min: {}, max: {:?}) \
+                supported by the surface for this device",
                 provided, min_supported, max_supported,
             ),
             Self::PresentModeNotSupported => write!(
@@ -1346,10 +1360,13 @@ impl Display for SwapchainCreationError {
                 f,
                 "the provided `pre_transform` is not supported by the surface for this device",
             ),
-            Self::SwapchainAlreadyRetired => write!(
+            Self::SurfaceNotSupported => write!(
                 f,
-                "the swapchain has already been used to create a new one",
+                "the provided `surface` is not supported by any of the device's queue families",
             ),
+            Self::SwapchainAlreadyRetired => {
+                write!(f, "the swapchain has already been used to create a new one")
+            }
             Self::Win32MonitorInvalid => write!(
                 f,
                 "the `win32_monitor` value was `Some` when it must be `None` or vice-versa",
@@ -1359,7 +1376,6 @@ impl Display for SwapchainCreationError {
 }
 
 impl From<VulkanError> for SwapchainCreationError {
-    #[inline]
     fn from(err: VulkanError) -> SwapchainCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
@@ -1373,14 +1389,12 @@ impl From<VulkanError> for SwapchainCreationError {
 }
 
 impl From<OomError> for SwapchainCreationError {
-    #[inline]
     fn from(err: OomError) -> SwapchainCreationError {
         Self::OomError(err)
     }
 }
 
 impl From<RequirementNotMet> for SwapchainCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -1424,7 +1438,6 @@ impl Win32Monitor {
     /// # Safety
     ///
     /// - `hmonitor` must be a valid handle as returned by the Win32 API.
-    #[inline]
     pub unsafe fn new<T>(hmonitor: *const T) -> Self {
         Self(hmonitor as _)
     }
@@ -1458,22 +1471,20 @@ pub enum FullScreenExclusiveError {
 }
 
 impl Error for FullScreenExclusiveError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            FullScreenExclusiveError::OomError(ref err) => Some(err),
+        match self {
+            FullScreenExclusiveError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for FullScreenExclusiveError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 FullScreenExclusiveError::OomError(_) => "not enough memory",
                 FullScreenExclusiveError::SurfaceLost => {
                     "the surface of this swapchain is no longer valid"
@@ -1494,7 +1505,6 @@ impl Display for FullScreenExclusiveError {
 }
 
 impl From<VulkanError> for FullScreenExclusiveError {
-    #[inline]
     fn from(err: VulkanError) -> FullScreenExclusiveError {
         match err {
             err @ VulkanError::OutOfHostMemory => {
@@ -1511,7 +1521,6 @@ impl From<VulkanError> for FullScreenExclusiveError {
 }
 
 impl From<OomError> for FullScreenExclusiveError {
-    #[inline]
     fn from(err: OomError) -> FullScreenExclusiveError {
         FullScreenExclusiveError::OomError(err)
     }
@@ -1575,8 +1584,7 @@ pub fn acquire_next_image<W>(
 
 /// Presents an image on the screen.
 ///
-/// The actual behavior depends on the present mode that you passed when creating the
-/// swapchain.
+/// The actual behavior depends on the present mode that you passed when creating the swapchain.
 pub fn present<F>(
     before: F,
     queue: Arc<Queue>,
@@ -1603,10 +1611,12 @@ where
     }
 }
 
-/// Wait for an image to be presented to the user. Must be used with a `present_id` given to `present_with_id`.
+/// Wait for an image to be presented to the user. Must be used with a `present_id` given to
+/// `present_with_id`.
 ///
-/// Returns a bool to represent if the presentation was suboptimal. In this case the swapchain is still
-/// usable, but the swapchain should be recreated as the Surface's properties no longer match the swapchain.
+/// Returns a bool to represent if the presentation was suboptimal. In this case the swapchain is
+/// still usable, but the swapchain should be recreated as the Surface's properties no longer match
+/// the swapchain.
 pub fn wait_for_present<W>(
     swapchain: Arc<Swapchain<W>>,
     present_id: u64,
@@ -1679,13 +1689,11 @@ pub struct SwapchainAcquireFuture<W> {
 
 impl<W> SwapchainAcquireFuture<W> {
     /// Returns the index of the image in the list of images returned when creating the swapchain.
-    #[inline]
     pub fn image_index(&self) -> u32 {
         self.image_index
     }
 
     /// Returns the corresponding swapchain.
-    #[inline]
     pub fn swapchain(&self) -> &Arc<Swapchain<W>> {
         &self.swapchain
     }
@@ -1695,10 +1703,8 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W>
 where
     W: Send + Sync,
 {
-    #[inline]
     fn cleanup_finished(&mut self) {}
 
-    #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         if let Some(ref semaphore) = self.semaphore {
             let sem = smallvec![semaphore.clone()];
@@ -1708,27 +1714,22 @@ where
         }
     }
 
-    #[inline]
     fn flush(&self) -> Result<(), FlushError> {
         Ok(())
     }
 
-    #[inline]
     unsafe fn signal_finished(&self) {
         self.finished.store(true, Ordering::SeqCst);
     }
 
-    #[inline]
     fn queue_change_allowed(&self) -> bool {
         true
     }
 
-    #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         None
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         _buffer: &UnsafeBuffer,
@@ -1739,7 +1740,6 @@ where
         Err(AccessCheckError::Unknown)
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -1774,6 +1774,25 @@ where
 
         Ok(None)
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError> {
+        if before {
+            Ok(())
+        } else {
+            let swapchain_image = self.swapchain.raw_image(self.image_index).unwrap();
+
+            if **swapchain_image.image == *image {
+                Ok(())
+            } else {
+                Err(AccessCheckError::Unknown)
+            }
+        }
+    }
 }
 
 impl<W> Drop for SwapchainAcquireFuture<W> {
@@ -1789,7 +1808,6 @@ impl<W> Drop for SwapchainAcquireFuture<W> {
 }
 
 unsafe impl<W> DeviceOwned for SwapchainAcquireFuture<W> {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.swapchain.device
     }
@@ -1827,22 +1845,20 @@ pub enum AcquireError {
 }
 
 impl Error for AcquireError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            AcquireError::OomError(ref err) => Some(err),
+        match self {
+            AcquireError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for AcquireError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 AcquireError::OomError(_) => "not enough memory",
                 AcquireError::DeviceLost => "the connection to the device has been lost",
                 AcquireError::Timeout => "no image is available for acquiring yet",
@@ -1871,14 +1887,12 @@ impl From<SemaphoreError> for AcquireError {
 }
 
 impl From<OomError> for AcquireError {
-    #[inline]
     fn from(err: OomError) -> AcquireError {
         AcquireError::OomError(err)
     }
 }
 
 impl From<VulkanError> for AcquireError {
-    #[inline]
     fn from(err: VulkanError) -> AcquireError {
         match err {
             err @ VulkanError::OutOfHostMemory => AcquireError::OomError(OomError::from(err)),
@@ -1926,19 +1940,17 @@ pub enum PresentWaitError {
 }
 
 impl Error for PresentWaitError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for PresentWaitError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
             Self::OomError(e) => write!(f, "{}", e),
             Self::DeviceLost => write!(f, "the connection to the device has been lost"),
             Self::Timeout => write!(f, "no image is available for acquiring yet"),
@@ -1961,14 +1973,12 @@ impl Display for PresentWaitError {
 }
 
 impl From<OomError> for PresentWaitError {
-    #[inline]
     fn from(err: OomError) -> PresentWaitError {
         Self::OomError(err)
     }
 }
 
 impl From<RequirementNotMet> for PresentWaitError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -1978,7 +1988,6 @@ impl From<RequirementNotMet> for PresentWaitError {
 }
 
 impl From<VulkanError> for PresentWaitError {
-    #[inline]
     fn from(err: VulkanError) -> PresentWaitError {
         match err {
             err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
@@ -2014,13 +2023,11 @@ where
     P: GpuFuture,
 {
     /// Returns the index of the image in the list of images returned when creating the swapchain.
-    #[inline]
     pub fn image_id(&self) -> u32 {
         self.swapchain_info.image_index
     }
 
     /// Returns the corresponding swapchain.
-    #[inline]
     pub fn swapchain(&self) -> &Arc<dyn SwapchainAbstract> {
         &self.swapchain_info.swapchain
     }
@@ -2030,12 +2037,10 @@ unsafe impl<P> GpuFuture for PresentFuture<P>
 where
     P: GpuFuture,
 {
-    #[inline]
     fn cleanup_finished(&mut self) {
         self.previous.cleanup_finished();
     }
 
-    #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         if self.flushed.load(Ordering::SeqCst) {
             return Ok(SubmitAnyBuilder::Empty);
@@ -2104,7 +2109,6 @@ where
         })
     }
 
-    #[inline]
     fn flush(&self) -> Result<(), FlushError> {
         unsafe {
             // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
@@ -2124,9 +2128,24 @@ where
                         }
                     }
 
-                    let mut queue_guard = self.queue.lock();
-                    Ok(queue_guard
-                        .present_unchecked(present_info)
+                    match self.previous.check_swapchain_image_acquired(
+                        self.swapchain_info
+                            .swapchain
+                            .raw_image(self.swapchain_info.image_index)
+                            .unwrap()
+                            .image,
+                        true,
+                    ) {
+                        Ok(_) => (),
+                        Err(AccessCheckError::Unknown) => {
+                            return Err(AccessError::SwapchainImageNotAcquired.into())
+                        }
+                        Err(AccessCheckError::Denied(e)) => return Err(e.into()),
+                    }
+
+                    Ok(self
+                        .queue
+                        .with(|mut q| q.present_unchecked(present_info))
                         .map(|r| r.map(|_| ()))
                         .fold(Ok(()), Result::and)?)
                 }
@@ -2135,19 +2154,16 @@ where
         }
     }
 
-    #[inline]
     unsafe fn signal_finished(&self) {
         self.flushed.store(true, Ordering::SeqCst);
         self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
 
-    #[inline]
     fn queue_change_allowed(&self) -> bool {
         false
     }
 
-    #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         debug_assert!(match self.previous.queue() {
             None => true,
@@ -2157,7 +2173,6 @@ where
         Some(self.queue.clone())
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -2169,7 +2184,6 @@ where
             .check_buffer_access(buffer, range, exclusive, queue)
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -2195,13 +2209,33 @@ where
                 .check_image_access(image, range, exclusive, expected_layout, queue)
         }
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError> {
+        let swapchain_image = self
+            .swapchain_info
+            .swapchain
+            .raw_image(self.swapchain_info.image_index)
+            .unwrap();
+
+        if before {
+            self.previous.check_swapchain_image_acquired(image, false)
+        } else if **swapchain_image.image == *image {
+            Err(AccessError::SwapchainImageNotAcquired.into())
+        } else {
+            self.previous.check_swapchain_image_acquired(image, false)
+        }
+    }
 }
 
 unsafe impl<P> DeviceOwned for PresentFuture<P>
 where
     P: GpuFuture,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.queue.device()
     }
@@ -2221,7 +2255,7 @@ where
 
             if !*self.finished.get_mut() {
                 // Block until the queue finished.
-                self.queue().unwrap().lock().wait_idle().unwrap();
+                self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
                 self.previous.signal_finished();
             }
         }
@@ -2278,6 +2312,11 @@ pub unsafe fn acquire_next_image_raw<W>(
         ash::vk::Result::TIMEOUT => return Err(AcquireError::Timeout),
         err => return Err(VulkanError::from(err).into()),
     };
+
+    if let Some(fence) = fence {
+        let mut state = fence.state();
+        state.import_swapchain_acquire();
+    }
 
     Ok(AcquiredImage {
         image_index: out.assume_init(),

@@ -183,7 +183,6 @@ pub enum PrimitiveTopologyClass {
 
 impl PrimitiveTopologyClass {
     /// Returns a representative example of this topology class.
-    #[inline]
     pub(crate) fn example(&self) -> PrimitiveTopology {
         match self {
             Self::Point => PrimitiveTopology::PointList,

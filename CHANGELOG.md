@@ -10,25 +10,59 @@
 ### Breaking changes
 
 Changes to queue operations:
-- When doing operations on a queue, you must now first call `lock()` on the queue, which prevents concurrent access.
+- To do operations on a queue, you must now call `with` to gain access. This takes a closure that is passed a 
 - The `wait` method of devices and queues is renamed to `wait_idle` to match Vulkan.
-- `PresentInfo` as been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
-- `acquire_next_image` returns an `u32` index to match Vulkan.
 - `Queue` now implements `VulkanObject` instead of `SynchronizedVulkanObject`, which is removed.
 - `Queue` now takes ownership of resources belonging to operations that you execute on it, to keep them from being destroyed while in use.
-- `QueueGuard` now has a `cleanup_finished` method, which does the same thing as on futures. Calling this method on a future will automatically forward it to its queue.
 - If `Queue` is dropped, it will call `wait_idle` to block the current thread until all operations on it have completed.
 - The `command_buffer::submit` module has been removed. The `SubmitAnyBuilder` enum is moved to the `sync` module, and no longer has a lifetime parameter.
 
-Changes to `Swapchain`:
+Changes to swapchains and operations:
 - The `W` parameter must now implement `Send + Sync`.
+- `PresentInfo` as been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
+- `acquire_next_image` returns an `u32` index to match Vulkan.
+
+Changes to `GpuFuture`:
+- Added required method `check_swapchain_image_acquired`.
+- `AccessError::SwapchainImageAcquireOnly` has been renamed to `SwapchainImageNotAcquired`.
+
+Changes to command buffers and command pools:
+- Renamed `CommandPool` to `CommandBufferAllocator`, `StandardCommandPool` to `StandardCommandBufferAllocator`, and `UnsafeCommandPool` to `CommandPool` to better reflect their action.
+- Removed `Device::with_standard_command_pool`.
+- Command buffer allocators must now be managed manually.
+  - `AutoCommandBufferBuilder::{primary, secondary}` now take an implementation of `CommandBufferAllocator` instead of the `Device`.
+  - `DeviceLocalBuffer::{from_buffer, from_data, from_iter}` and `ImmutableImage::{from_iter, from_buffer}` now take an implementation of `CommandBufferAllocator`.
+
+Changes to descriptor sets and descriptor pools:
+- Renamed `DescriptorPool` to `DescriptorSetAllocator`, `StandardDescriptorPool` to `StandardDescriptorSetAllocator`, and `UnsafeDescriptorPool` to `DescriptorPool` to better reflect their action.
+- `DescriptorPool` methods now take `&self` and the type itself is `!Sync`.
+- Renamed `SingleLayout[Variable]DescPool` to `SingleLayout[Variable]DescriptorSetPool` for consistency.
+- Removed `Device::with_standard_descriptor_pool`.
+- Descriptor set allocators must now be managed manually.
+  - `PersistentDescriptorSet::{new, new_variable}` now take an implementation of `DescriptorSetAllocator`, `PersistentDescriptorSet::new_with_pool` has been removed.
 
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
 - Added the `device_coherent`, `device_uncached` and `rdma_capable` flags to `MemoryPropertyFlags`, and improved the documentation of all flags with additional usage advice.
+- Some methods of `PhysicalDevice` now cache their results, so that another call with the same arguments will retrieve them faster.
+- Fence methods are now validated and synchronized, so they take `&self`.
+- When calling `Fence::is_signaled` or `Fence::wait`, if the fence is associated with a queue, any resources of the associated queue operation will be released.
+- `VulkanLibrary::extension_properties`, to mirror the equivalent function on `PhysicalDevice`.
+- `VulkanLibrary` methods `layer_extension_properties`, `supported_layer_extensions` and `supported_extensions_with_layers`, to query the extensions supported by layers.
+- Added the remaining missing variants of the `ColorSpace` enum.
+- Added a `supports_protected` member to `SurfaceCapabilities` for the `khr_surface_protected_capabilities` extension.
+- Support for the `ext_validation_features` extension.
+- Support for the `khr_external_fence_fd` and `khr_external_fence_win32` extensions.
+
+### Bugs fixed
+- [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
+- [#1871](https://github.com/vulkano-rs/vulkano/issues/1871): Layer extensions are not included when validating extensions to enable on an instance.
+
+# Version 0.31.1 (2022-10-04)
 
 ### Bugs fixed
 - Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
+- [#2018](https://github.com/vulkano-rs/vulkano/issues/2018): Incorrect handling of `VK_SUBOPTIMAL_KHR` caused a panic when presenting.
 
 # Version 0.31.0 (2022-09-18)
 

@@ -13,7 +13,7 @@ use crate::{
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
     device::{Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    sync::{AccessFlags, PipelineStages, Semaphore},
+    sync::{AccessError, AccessFlags, PipelineStages, Semaphore},
     DeviceSize,
 };
 use parking_lot::Mutex;
@@ -27,7 +27,6 @@ use std::{
 };
 
 /// Builds a new semaphore signal future.
-#[inline]
 pub fn then_signal_semaphore<F>(future: F) -> SemaphoreSignalFuture<F>
 where
     F: GpuFuture,
@@ -64,17 +63,15 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn cleanup_finished(&mut self) {
         self.previous.cleanup_finished();
     }
 
-    #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         // Flushing the signaling part, since it must always be submitted before the waiting part.
         self.flush()?;
-
         let sem = smallvec![self.semaphore.clone()];
+
         Ok(SubmitAnyBuilder::SemaphoresWait(sem))
     }
 
@@ -90,41 +87,43 @@ where
 
             match self.previous.build_submission()? {
                 SubmitAnyBuilder::Empty => {
-                    let mut queue_guard = queue.lock();
-                    queue_guard.submit_unchecked(
-                        [SubmitInfo {
-                            signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
-                                self.semaphore.clone(),
-                            )],
-                            ..Default::default()
-                        }],
-                        None,
-                    )?;
+                    queue.with(|mut q| {
+                        q.submit_unchecked(
+                            [SubmitInfo {
+                                signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                    self.semaphore.clone(),
+                                )],
+                                ..Default::default()
+                            }],
+                            None,
+                        )
+                    })?;
                 }
                 SubmitAnyBuilder::SemaphoresWait(semaphores) => {
-                    let mut queue_guard = queue.lock();
-                    queue_guard.submit_unchecked(
-                        [SubmitInfo {
-                            wait_semaphores: semaphores
-                                .into_iter()
-                                .map(|semaphore| {
-                                    SemaphoreSubmitInfo {
-                                        stages: PipelineStages {
-                                            // TODO: correct stages ; hard
-                                            all_commands: true,
-                                            ..PipelineStages::empty()
-                                        },
-                                        ..SemaphoreSubmitInfo::semaphore(semaphore)
-                                    }
-                                })
-                                .collect(),
-                            signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
-                                self.semaphore.clone(),
-                            )],
-                            ..Default::default()
-                        }],
-                        None,
-                    )?;
+                    queue.with(|mut q| {
+                        q.submit_unchecked(
+                            [SubmitInfo {
+                                wait_semaphores: semaphores
+                                    .into_iter()
+                                    .map(|semaphore| {
+                                        SemaphoreSubmitInfo {
+                                            stages: PipelineStages {
+                                                // TODO: correct stages ; hard
+                                                all_commands: true,
+                                                ..PipelineStages::empty()
+                                            },
+                                            ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                        }
+                                    })
+                                    .collect(),
+                                signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                    self.semaphore.clone(),
+                                )],
+                                ..Default::default()
+                            }],
+                            None,
+                        )
+                    })?;
                 }
                 SubmitAnyBuilder::CommandBuffer(mut submit_info, fence) => {
                     debug_assert!(submit_info.signal_semaphores.is_empty());
@@ -133,8 +132,7 @@ where
                         .signal_semaphores
                         .push(SemaphoreSubmitInfo::semaphore(self.semaphore.clone()));
 
-                    let mut queue_guard = queue.lock();
-                    queue_guard.submit_unchecked([submit_info], fence)?;
+                    queue.with(|mut q| q.submit_unchecked([submit_info], fence))?;
                 }
                 SubmitAnyBuilder::BindSparse(_, _) => {
                     unimplemented!() // TODO: how to do that?
@@ -150,24 +148,39 @@ where
                         }) {
                             return Err(FlushError::PresentIdLessThanOrEqual);
                         }
+
+                        match self.previous.check_swapchain_image_acquired(
+                            swapchain_info
+                                .swapchain
+                                .raw_image(swapchain_info.image_index)
+                                .unwrap()
+                                .image,
+                            true,
+                        ) {
+                            Ok(_) => (),
+                            Err(AccessCheckError::Unknown) => {
+                                return Err(AccessError::SwapchainImageNotAcquired.into())
+                            }
+                            Err(AccessCheckError::Denied(e)) => return Err(e.into()),
+                        }
                     }
 
-                    let mut queue_guard = queue.lock();
-                    queue_guard
-                        .present_unchecked(present_info)
-                        .map(|r| r.map(|_| ()))
-                        .fold(Ok(()), Result::and)?;
-
-                    // FIXME: problematic because if we return an error and flush() is called again, then we'll submit the present twice
-                    queue_guard.submit_unchecked(
-                        [SubmitInfo {
-                            signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
-                                self.semaphore.clone(),
-                            )],
-                            ..Default::default()
-                        }],
-                        None,
-                    )?;
+                    queue.with(|mut q| {
+                        q.present_unchecked(present_info)
+                            .map(|r| r.map(|_| ()))
+                            .fold(Ok(()), Result::and)?;
+                        // FIXME: problematic because if we return an error and flush() is called again, then we'll submit the present twice
+                        q.submit_unchecked(
+                            [SubmitInfo {
+                                signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                    self.semaphore.clone(),
+                                )],
+                                ..Default::default()
+                            }],
+                            None,
+                        )?;
+                        Ok::<_, FlushError>(())
+                    })?;
                 }
             };
 
@@ -177,24 +190,20 @@ where
         }
     }
 
-    #[inline]
     unsafe fn signal_finished(&self) {
         debug_assert!(*self.wait_submitted.lock());
         self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
 
-    #[inline]
     fn queue_change_allowed(&self) -> bool {
         true
     }
 
-    #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         self.previous.queue()
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -207,7 +216,6 @@ where
             .map(|_| None)
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -220,13 +228,21 @@ where
             .check_image_access(image, range, exclusive, expected_layout, queue)
             .map(|_| None)
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        self.previous.check_swapchain_image_acquired(image, false)
+    }
 }
 
 unsafe impl<F> DeviceOwned for SemaphoreSignalFuture<F>
 where
     F: GpuFuture,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.semaphore.device()
     }
@@ -242,7 +258,7 @@ where
                 // TODO: handle errors?
                 self.flush().unwrap();
                 // Block until the queue finished.
-                self.queue().unwrap().lock().wait_idle().unwrap();
+                self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
                 self.previous.signal_finished();
             }
         }

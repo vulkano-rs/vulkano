@@ -15,7 +15,7 @@
 //! In order to create a view from a buffer, the buffer must have been created with either the
 //! `uniform_texel_buffer` or the `storage_texel_buffer` usage.
 //!
-//! # Example
+//! # Examples
 //!
 //! ```
 //! # use std::sync::Arc;
@@ -26,13 +26,18 @@
 //!
 //! # let device: Arc<vulkano::device::Device> = return;
 //! # let queue: Arc<vulkano::device::Queue> = return;
+//! # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 //! let usage = BufferUsage {
 //!     storage_texel_buffer: true,
-//!     .. BufferUsage::empty()
+//!     ..BufferUsage::empty()
 //! };
 //!
-//! let (buffer, _future) = DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
-//!                                                             queue.clone()).unwrap();
+//! let (buffer, _future) = DeviceLocalBuffer::<[u32]>::from_iter(
+//!     (0..128).map(|n| n),
+//!     usage,
+//!     &command_buffer_allocator,
+//!     queue.clone()
+//! ).unwrap();
 //! let _view = BufferView::new(
 //!     buffer,
 //!     BufferViewCreateInfo {
@@ -235,7 +240,6 @@ where
     }
 
     /// Returns the buffer associated to this view.
-    #[inline]
     pub fn buffer(&self) -> &Arc<B> {
         &self.buffer
     }
@@ -245,7 +249,6 @@ impl<B> Drop for BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    #[inline]
     fn drop(&mut self) {
         unsafe {
             let fns = self.buffer.inner().buffer.device().fns();
@@ -264,7 +267,6 @@ where
 {
     type Object = ash::vk::BufferView;
 
-    #[inline]
     fn internal_object(&self) -> ash::vk::BufferView {
         self.handle
     }
@@ -274,7 +276,6 @@ unsafe impl<B> DeviceOwned for BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.buffer.device()
     }
@@ -284,7 +285,6 @@ impl<B> PartialEq for BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.device() == other.device()
     }
@@ -296,7 +296,6 @@ impl<B> Hash for BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -359,24 +358,18 @@ pub enum BufferViewCreationError {
 }
 
 impl Error for BufferViewCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            BufferViewCreationError::OomError(ref err) => Some(err),
+        match self {
+            BufferViewCreationError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for BufferViewCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::OomError(_) => write!(
-                f,
-                "out of memory when creating buffer view",
-            ),
-
+            Self::OomError(_) => write!(f, "out of memory when creating buffer view"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -385,10 +378,10 @@ impl Display for BufferViewCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::BufferMissingUsage => write!(
                 f,
-                "the buffer was not created with one of the `storage_texel_buffer` or `uniform_texel_buffer` usages",
+                "the buffer was not created with one of the `storage_texel_buffer` or \
+                `uniform_texel_buffer` usages",
             ),
             Self::OffsetNotAligned { .. } => write!(
                 f,
@@ -398,34 +391,29 @@ impl Display for BufferViewCreationError {
                 f,
                 "the range within the buffer is not a multiple of the required alignment",
             ),
-            Self::UnsupportedFormat => write!(
-                f,
-                "the requested format is not supported for this usage",
-            ),
-            Self::MaxTexelBufferElementsExceeded => write!(
-                f,
-                "the `max_texel_buffer_elements` limit has been exceeded",
-            ),
+            Self::UnsupportedFormat => {
+                write!(f, "the requested format is not supported for this usage")
+            }
+            Self::MaxTexelBufferElementsExceeded => {
+                write!(f, "the `max_texel_buffer_elements` limit has been exceeded")
+            }
         }
     }
 }
 
 impl From<OomError> for BufferViewCreationError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<VulkanError> for BufferViewCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         OomError::from(err).into()
     }
 }
 
 impl From<RequirementNotMet> for BufferViewCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -455,22 +443,18 @@ where
     B: BufferAccess + ?Sized + 'static,
     Arc<B>: BufferAccessObject,
 {
-    #[inline]
     fn buffer(&self) -> Arc<dyn BufferAccess> {
         self.buffer.as_buffer_access_object()
     }
 
-    #[inline]
     fn format(&self) -> Option<Format> {
         self.format
     }
 
-    #[inline]
     fn format_features(&self) -> &FormatFeatures {
         &self.format_features
     }
 
-    #[inline]
     fn range(&self) -> Range<DeviceSize> {
         self.range.clone()
     }
@@ -486,7 +470,6 @@ impl PartialEq for dyn BufferViewAbstract {
 impl Eq for dyn BufferViewAbstract {}
 
 impl Hash for dyn BufferViewAbstract {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.internal_object().hash(state);
         self.device().hash(state);
@@ -500,22 +483,29 @@ mod tests {
             view::{BufferView, BufferViewCreateInfo, BufferViewCreationError},
             BufferUsage, DeviceLocalBuffer,
         },
+        command_buffer::allocator::StandardCommandBufferAllocator,
         format::Format,
     };
 
     #[test]
     fn create_uniform() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
-        let (_device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let usage = BufferUsage {
             uniform_texel_buffer: true,
             ..BufferUsage::empty()
         };
 
-        let (buffer, _) =
-            DeviceLocalBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue)
-                .unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
+
+        let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
+            (0..128).map(|_| [0; 4]),
+            usage,
+            &cb_allocator,
+            queue,
+        )
+        .unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -529,16 +519,22 @@ mod tests {
     #[test]
     fn create_storage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
-        let (_device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
             ..BufferUsage::empty()
         };
 
-        let (buffer, _) =
-            DeviceLocalBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue)
-                .unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
+
+        let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
+            (0..128).map(|_| [0; 4]),
+            usage,
+            &cb_allocator,
+            queue,
+        )
+        .unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -552,15 +548,18 @@ mod tests {
     #[test]
     fn create_storage_atomic() {
         // `VK_FORMAT_R32_UINT` guaranteed to be a supported format for atomics
-        let (_device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
             ..BufferUsage::empty()
         };
 
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
+
         let (buffer, _) =
-            DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue).unwrap();
+            DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, &cb_allocator, queue)
+                .unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -574,11 +573,14 @@ mod tests {
     #[test]
     fn wrong_usage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
-        let (_device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
             BufferUsage::empty(),
+            &cb_allocator,
             queue,
         )
         .unwrap();
@@ -597,7 +599,7 @@ mod tests {
 
     #[test]
     fn unsupported_format() {
-        let (_device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let usage = BufferUsage {
             uniform_texel_buffer: true,
@@ -605,9 +607,15 @@ mod tests {
             ..BufferUsage::empty()
         };
 
-        let (buffer, _) =
-            DeviceLocalBuffer::<[[f64; 4]]>::from_iter((0..128).map(|_| [0.0; 4]), usage, queue)
-                .unwrap();
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
+
+        let (buffer, _) = DeviceLocalBuffer::<[[f64; 4]]>::from_iter(
+            (0..128).map(|_| [0.0; 4]),
+            usage,
+            &cb_allocator,
+            queue,
+        )
+        .unwrap();
 
         // TODO: what if R64G64B64A64_SFLOAT is supported?
         match BufferView::new(

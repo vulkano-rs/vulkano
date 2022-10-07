@@ -9,10 +9,10 @@
 
 use super::{
     spirv_grammar::{SpirvGrammar, SpirvKindEnumerant},
-    write_file, VkRegistryData,
+    write_file, IndexMap, VkRegistryData,
 };
 use heck::ToSnakeCase;
-use indexmap::{map::Entry, IndexMap};
+use indexmap::map::Entry;
 use lazy_static::lazy_static;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
@@ -148,7 +148,7 @@ fn spirv_capabilities_members(
     capabilities: &[&SpirvExtOrCap],
     grammar_enumerants: &[SpirvKindEnumerant],
 ) -> Vec<SpirvReqsMember> {
-    let mut members: IndexMap<String, SpirvReqsMember> = IndexMap::new();
+    let mut members: IndexMap<String, SpirvReqsMember> = IndexMap::default();
 
     for ext_or_cap in capabilities {
         let mut enables: Vec<_> = ext_or_cap.enables.iter().filter_map(make_enable).collect();

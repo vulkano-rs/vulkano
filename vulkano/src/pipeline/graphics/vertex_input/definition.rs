@@ -17,7 +17,7 @@
 //! The `Vertex` trait is unsafe, but can be implemented on a struct with the `impl_vertex!`
 //! macro.
 //!
-//! # Example
+//! # Examples
 //!
 //! ```ignore       // TODO:
 //! # #[macro_use] extern crate vulkano
@@ -40,11 +40,11 @@
 //!
 //! let usage = BufferUsage {
 //!     vertex_buffer: true,
-//!     .. BufferUsage::empty()
+//!     ..BufferUsage::empty()
 //! };
 //!
 //! let vertex_buffer = BufferAccess::<[Vertex], _>::array(&device, 128, &usage, HostVisible, &queue)
-//!                                                     .expect("failed to create buffer");
+//!     .expect("failed to create buffer");
 //!
 //! // TODO: finish example
 //! # }
@@ -103,11 +103,10 @@ pub enum IncompatibleVertexDefinitionError {
 impl Error for IncompatibleVertexDefinitionError {}
 
 impl Display for IncompatibleVertexDefinitionError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
             IncompatibleVertexDefinitionError::MissingAttribute { .. } => {
-                write!(f, "an attribute is missing",)
+                write!(f, "an attribute is missing")
             }
             IncompatibleVertexDefinitionError::FormatMismatch { .. } => {
                 write!(f, "the format of an attribute does not match")

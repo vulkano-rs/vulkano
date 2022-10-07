@@ -18,8 +18,9 @@ use crate::{
     shader::{DescriptorRequirements, ShaderStages},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
+use ahash::HashMap;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
@@ -42,6 +43,7 @@ pub struct DescriptorSetLayout {
 
 impl DescriptorSetLayout {
     /// Creates a new `DescriptorSetLayout`.
+    #[inline]
     pub fn new(
         device: Arc<Device>,
         mut create_info: DescriptorSetLayoutCreateInfo,
@@ -72,6 +74,7 @@ impl DescriptorSetLayout {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::DescriptorSetLayout,
@@ -460,7 +463,6 @@ impl PartialEq for DescriptorSetLayout {
 impl Eq for DescriptorSetLayout {}
 
 impl Hash for DescriptorSetLayout {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -519,13 +521,11 @@ impl From<VulkanError> for DescriptorSetLayoutCreationError {
 impl Error for DescriptorSetLayoutCreationError {}
 
 impl Display for DescriptorSetLayoutCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
             Self::OomError(_) => {
                 write!(f, "out of memory")
             }
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -534,15 +534,20 @@ impl Display for DescriptorSetLayoutCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::ImmutableSamplersCountMismatch { binding_num, sampler_count, descriptor_count } => write!(
+            Self::ImmutableSamplersCountMismatch {
+                binding_num,
+                sampler_count,
+                descriptor_count,
+            } => write!(
                 f,
-                "binding {} includes immutable samplers but their number ({}) differs from  `descriptor_count` ({})",
+                "binding {} includes immutable samplers but their number ({}) differs from \
+                `descriptor_count` ({})",
                 binding_num, sampler_count, descriptor_count,
             ),
             Self::ImmutableSamplersDescriptorTypeIncompatible { binding_num } => write!(
                 f,
-                "binding {} includes immutable samplers but it has an incompatible `descriptor_type`",
+                "binding {} includes immutable samplers but it has an incompatible \
+                `descriptor_type`",
                 binding_num,
             ),
             Self::MaxPushDescriptorsExceeded {
@@ -550,27 +555,35 @@ impl Display for DescriptorSetLayoutCreationError {
                 max_supported,
             } => write!(
                 f,
-                "more descriptors were provided in all bindings ({}) than the `max_push_descriptors` limit ({})",
+                "more descriptors were provided in all bindings ({}) than the \
+                `max_push_descriptors` limit ({})",
                 provided, max_supported,
             ),
             Self::PushDescriptorDescriptorTypeIncompatible { binding_num } => write!(
                 f,
-                "`push_descriptor` is enabled, but binding {} has an incompatible `descriptor_type`",
+                "`push_descriptor` is enabled, but binding {} has an incompatible \
+                `descriptor_type`",
                 binding_num,
             ),
             Self::PushDescriptorVariableDescriptorCount { binding_num } => write!(
                 f,
-                "`push_descriptor` is enabled, but binding {} has `variable_descriptor_count` enabled",
+                "`push_descriptor` is enabled, but binding {} has `variable_descriptor_count` \
+                enabled",
                 binding_num,
             ),
-            Self::VariableDescriptorCountBindingNotHighest { binding_num, highest_binding_num } => write!(
+            Self::VariableDescriptorCountBindingNotHighest {
+                binding_num,
+                highest_binding_num,
+            } => write!(
                 f,
-                "binding {} has `variable_descriptor_count` enabled, but it is not the highest-numbered binding ({})",
+                "binding {} has `variable_descriptor_count` enabled, but it is not the \
+                highest-numbered binding ({})",
                 binding_num, highest_binding_num,
             ),
             Self::VariableDescriptorCountDescriptorTypeIncompatible { binding_num } => write!(
                 f,
-                "binding {} has `variable_descriptor_count` enabled, but it has an incompatible `descriptor_type`",
+                "binding {} has `variable_descriptor_count` enabled, but it has an incompatible \
+                `descriptor_type`",
                 binding_num,
             ),
         }
@@ -578,7 +591,6 @@ impl Display for DescriptorSetLayoutCreationError {
 }
 
 impl From<RequirementNotMet> for DescriptorSetLayoutCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -632,7 +644,6 @@ impl Default for DescriptorSetLayoutCreateInfo {
 impl DescriptorSetLayoutCreateInfo {
     /// Builds a list of `DescriptorSetLayoutCreateInfo` from an iterator of `DescriptorRequirement`
     /// originating from a shader.
-    #[inline]
     pub fn from_requirements<'a>(
         descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
     ) -> Vec<Self> {
@@ -670,16 +681,17 @@ pub struct DescriptorSetLayoutBinding {
 
     /// Whether the binding has a variable number of descriptors.
     ///
-    /// If set to `true`, the
-    /// [`descriptor_binding_variable_descriptor_count`](crate::device::Features::descriptor_binding_variable_descriptor_count)
-    /// feature must be enabled. The value of `descriptor_count` specifies the maximum number of
-    /// descriptors allowed.
+    /// If set to `true`, the [`descriptor_binding_variable_descriptor_count`] feature must be
+    /// enabled. The value of `descriptor_count` specifies the maximum number of descriptors
+    /// allowed.
     ///
     /// There may only be one binding with a variable count in a descriptor set, and it must be the
     /// binding with the highest binding number. The `descriptor_type` must not be
     /// [`DescriptorType::UniformBufferDynamic`] or [`DescriptorType::StorageBufferDynamic`].
     ///
     /// The default value is `false`.
+    ///
+    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
     pub variable_descriptor_count: bool,
 
     /// Which shader stages are going to access the descriptors in this binding.
@@ -767,6 +779,7 @@ impl DescriptorSetLayoutBinding {
 }
 
 impl From<&DescriptorRequirements> for DescriptorSetLayoutBinding {
+    #[inline]
     fn from(reqs: &DescriptorRequirements) -> Self {
         Self {
             descriptor_type: reqs.descriptor_types[0],
@@ -801,18 +814,17 @@ pub enum DescriptorRequirementsNotMet {
 impl Error for DescriptorRequirementsNotMet {}
 
 impl Display for DescriptorRequirementsNotMet {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DescriptorType { required, obtained } => write!(
                 f,
                 "the descriptor's type ({:?}) is not one of those required ({:?})",
-                obtained, required
+                obtained, required,
             ),
             Self::DescriptorCount { required, obtained } => write!(
                 f,
                 "the descriptor count ({}) is less than what is required ({})",
-                obtained, required
+                obtained, required,
             ),
             Self::ShaderStages { .. } => write!(
                 f,
@@ -900,7 +912,7 @@ mod tests {
         },
         shader::ShaderStages,
     };
-    use std::collections::HashMap;
+    use ahash::HashMap;
 
     #[test]
     fn empty() {

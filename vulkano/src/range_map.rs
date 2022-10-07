@@ -37,6 +37,7 @@ where
     V: Eq + Clone,
 {
     /// Makes a new empty `RangeMap`.
+    #[inline]
     pub fn new() -> Self {
         RangeMap {
             btm: BTreeMap::new(),
@@ -45,12 +46,14 @@ where
 
     /// Returns a reference to the value corresponding to the given key,
     /// if the key is covered by any range in the map.
+    #[inline]
     pub fn get(&self, key: &K) -> Option<&V> {
         self.get_key_value(key).map(|(_range, value)| value)
     }
 
     /// Returns the range-value pair (as a pair of references) corresponding
     /// to the given key, if the key is covered by any range in the map.
+    #[inline]
     pub fn get_key_value(&self, key: &K) -> Option<(&Range<K>, &V)> {
         // The only stored range that could contain the given key is the
         // last stored range whose start is less than or equal to this key.
@@ -68,6 +71,7 @@ where
     }
 
     /// Returns `true` if any range in the map covers the specified key.
+    #[inline]
     pub fn contains_key(&self, key: &K) -> bool {
         self.get(key).is_some()
     }
@@ -88,6 +92,7 @@ where
     /// ordered by key range.
     ///
     /// The iterator element type is `(&'a Range<K>, &'a V)`.
+    #[inline]
     pub fn iter(&self) -> Iter<'_, K, V> {
         Iter {
             inner: self.btm.iter(),
@@ -98,6 +103,7 @@ where
     /// ordered by key range.
     ///
     /// The iterator element type is `(&'a Range<K>, &'a mut V)`.
+    #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
         IterMut {
             inner: self.btm.iter_mut(),
@@ -585,7 +591,7 @@ where
     K: Ord + Clone,
     V: Eq + Clone,
 {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.debug_map().entries(self.iter()).finish()
     }
 }
@@ -767,6 +773,7 @@ pub struct RangeStartWrapper<T> {
 }
 
 impl<T> RangeStartWrapper<T> {
+    #[inline]
     pub fn new(range: Range<T>) -> RangeStartWrapper<T> {
         RangeStartWrapper { range }
     }

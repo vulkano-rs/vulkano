@@ -29,7 +29,7 @@ use std::{
 ///
 /// The destructor of `DeviceMemory` automatically frees the memory.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use vulkano::memory::{DeviceMemory, MemoryAllocateInfo};
@@ -70,7 +70,7 @@ impl DeviceMemory {
     ///   image does not belong to `device`.
     pub fn allocate(
         device: Arc<Device>,
-        mut allocate_info: MemoryAllocateInfo,
+        mut allocate_info: MemoryAllocateInfo<'_>,
     ) -> Result<Self, DeviceMemoryError> {
         Self::validate(&device, &mut allocate_info, None)?;
         let handle = unsafe { Self::create(&device, &allocate_info, None)? };
@@ -93,6 +93,35 @@ impl DeviceMemory {
         })
     }
 
+    /// Creates a new `DeviceMemory` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `allocate_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        device: Arc<Device>,
+        handle: ash::vk::DeviceMemory,
+        allocate_info: MemoryAllocateInfo<'_>,
+    ) -> DeviceMemory {
+        let MemoryAllocateInfo {
+            allocation_size,
+            memory_type_index,
+            dedicated_allocation: _,
+            export_handle_types,
+            _ne: _,
+        } = allocate_info;
+
+        DeviceMemory {
+            handle,
+            device,
+
+            allocation_size,
+            memory_type_index,
+            export_handle_types,
+        }
+    }
+
     /// Imports a block of memory from an external source.
     ///
     /// # Safety
@@ -106,7 +135,7 @@ impl DeviceMemory {
     ///   image does not belong to `device`.
     pub unsafe fn import(
         device: Arc<Device>,
-        mut allocate_info: MemoryAllocateInfo,
+        mut allocate_info: MemoryAllocateInfo<'_>,
         mut import_info: MemoryImportInfo,
     ) -> Result<Self, DeviceMemoryError> {
         Self::validate(&device, &mut allocate_info, Some(&mut import_info))?;
@@ -132,7 +161,7 @@ impl DeviceMemory {
 
     fn validate(
         device: &Device,
-        allocate_info: &mut MemoryAllocateInfo,
+        allocate_info: &mut MemoryAllocateInfo<'_>,
         import_info: Option<&mut MemoryImportInfo>,
     ) -> Result<(), DeviceMemoryError> {
         let &mut MemoryAllocateInfo {
@@ -355,7 +384,7 @@ impl DeviceMemory {
 
     unsafe fn create(
         device: &Device,
-        allocate_info: &MemoryAllocateInfo,
+        allocate_info: &MemoryAllocateInfo<'_>,
         import_info: Option<MemoryImportInfo>,
     ) -> Result<ash::vk::DeviceMemory, DeviceMemoryError> {
         let &MemoryAllocateInfo {
@@ -518,6 +547,7 @@ impl DeviceMemory {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn commitment_unchecked(&self) -> DeviceSize {
         let mut output: DeviceSize = 0;
 
@@ -533,7 +563,7 @@ impl DeviceMemory {
 
     /// Exports the device memory into a Unix file descriptor. The caller owns the returned `File`.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the user requests an invalid handle type for this device memory object.
     #[inline]
@@ -588,6 +618,7 @@ impl DeviceMemory {
             };
 
             let file = unsafe { std::fs::File::from_raw_fd(fd) };
+
             Ok(file)
         }
     }
@@ -631,7 +662,6 @@ impl PartialEq for DeviceMemory {
 impl Eq for DeviceMemory {}
 
 impl Hash for DeviceMemory {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device.hash(state);
@@ -680,6 +710,7 @@ impl Default for MemoryAllocateInfo<'static> {
 
 impl<'d> MemoryAllocateInfo<'d> {
     /// Returns a `MemoryAllocateInfo` with the specified `dedicated_allocation`.
+    #[inline]
     pub fn dedicated_allocation(dedicated_allocation: DedicatedAllocation<'d>) -> Self {
         Self {
             allocation_size: 0,
@@ -719,6 +750,7 @@ pub enum MemoryImportInfo {
         handle_type: ExternalMemoryHandleType,
         file: File,
     },
+
     /// Import memory from a Windows handle.
     ///
     /// `handle_type` must be either [`ExternalMemoryHandleType::OpaqueWin32`] or
@@ -748,8 +780,8 @@ vulkan_enum! {
     /// Describes a handle type used for Vulkan external memory apis.  This is **not** just a
     /// suggestion.  Check out vkExternalMemoryHandleTypeFlagBits in the Vulkan spec.
     ///
-    /// If you specify an handle type that doesnt make sense (for example, using a dma-buf handle type
-    /// on Windows) when using this handle, a panic will happen.
+    /// If you specify an handle type that doesnt make sense (for example, using a dma-buf handle
+    /// type on Windows) when using this handle, a panic will happen.
     #[non_exhaustive]
     ExternalMemoryHandleType = ExternalMemoryHandleTypeFlags(u32);
 
@@ -971,26 +1003,23 @@ pub enum DeviceMemoryError {
 }
 
 impl Error for DeviceMemoryError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
-            Self::MemoryMapError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
+            Self::MemoryMapError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for DeviceMemoryError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::TooManyObjects => {
                 write!(f, "the maximum number of allocations has been exceeded")
             }
             Self::MemoryMapError(_) => write!(f, "error occurred when mapping the memory"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -999,22 +1028,25 @@ impl Display for DeviceMemoryError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::DedicatedAllocationSizeMismatch { allocation_size, required_size } => write!(
-                f,
-                "`dedicated_allocation` was `Some`, but the provided `allocation_size` ({}) was different from the required size of the buffer or image ({})",
-                allocation_size, required_size,
-            ),
-            Self::HandleTypeNotSupported {
-                handle_type,
+            Self::DedicatedAllocationSizeMismatch {
+                allocation_size,
+                required_size,
             } => write!(
                 f,
-                "the requested export handle type ({:?}) is not supported for this operation, or was not provided in `export_handle_types` when allocating the memory",
+                "`dedicated_allocation` was `Some`, but the provided `allocation_size` ({}) was \
+                different from the required size of the buffer or image ({})",
+                allocation_size, required_size,
+            ),
+            Self::HandleTypeNotSupported { handle_type } => write!(
+                f,
+                "the requested export handle type ({:?}) is not supported for this operation, or \
+                was not provided in `export_handle_types` when allocating the memory",
                 handle_type,
             ),
             Self::ImportFdHandleTypeNotSupported { handle_type } => write!(
                 f,
-                "the provided `MemoryImportInfo::Fd::handle_type` ({:?}) is not supported for file descriptors",
+                "the provided `MemoryImportInfo::Fd::handle_type` ({:?}) is not supported for file \
+                descriptors",
                 handle_type,
             ),
             Self::ImportWin32HandleTypeNotSupported { handle_type } => write!(
@@ -1022,19 +1054,28 @@ impl Display for DeviceMemoryError {
                 "the provided `MemoryImportInfo::Win32::handle_type` ({:?}) is not supported",
                 handle_type,
             ),
-            Self::MemoryTypeHeapSizeExceeded { allocation_size, heap_size } => write!(
+            Self::MemoryTypeHeapSizeExceeded {
+                allocation_size,
+                heap_size,
+            } => write!(
                 f,
-                "the provided `allocation_size` ({}) was greater than the memory type's heap size ({})",
+                "the provided `allocation_size` ({}) was greater than the memory type's heap size \
+                ({})",
                 allocation_size, heap_size,
             ),
-            Self::MemoryTypeIndexOutOfRange { memory_type_index, memory_type_count } => write!(
+            Self::MemoryTypeIndexOutOfRange {
+                memory_type_index,
+                memory_type_count,
+            } => write!(
                 f,
-                "the provided `memory_type_index` ({}) was not less than the number of memory types in the physical device ({})",
+                "the provided `memory_type_index` ({}) was not less than the number of memory \
+                types in the physical device ({})",
                 memory_type_index, memory_type_count,
             ),
             Self::NotLazilyAllocated => write!(
                 f,
-                "the memory type from which this memory was allocated does not have the `lazily_allocated` flag set",
+                "the memory type from which this memory was allocated does not have the \
+                `lazily_allocated` flag set",
             ),
 
             Self::SpecViolation(u) => {
@@ -1048,7 +1089,6 @@ impl Display for DeviceMemoryError {
 }
 
 impl From<VulkanError> for DeviceMemoryError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
@@ -1061,21 +1101,18 @@ impl From<VulkanError> for DeviceMemoryError {
 }
 
 impl From<OomError> for DeviceMemoryError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<MemoryMapError> for DeviceMemoryError {
-    #[inline]
     fn from(err: MemoryMapError) -> Self {
         Self::MemoryMapError(err)
     }
 }
 
 impl From<RequirementNotMet> for DeviceMemoryError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -1089,7 +1126,7 @@ impl From<RequirementNotMet> for DeviceMemoryError {
 /// In order to access the contents of the allocated memory, you can use the `read` and `write`
 /// methods.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use vulkano::memory::{DeviceMemory, MappedDeviceMemory, MemoryAllocateInfo};
@@ -1103,7 +1140,7 @@ impl From<RequirementNotMet> for DeviceMemoryError {
 ///     .iter()
 ///     .position(|t| t.property_flags.host_visible)
 ///     .map(|i| i as u32)
-///     .unwrap();    // Vk specs guarantee that this can't fail
+///     .unwrap(); // Vk specs guarantee that this can't fail
 ///
 /// // Allocates 1KB of memory.
 /// let memory = DeviceMemory::allocate(
@@ -1113,7 +1150,8 @@ impl From<RequirementNotMet> for DeviceMemoryError {
 ///         memory_type_index,
 ///         ..Default::default()
 ///     },
-/// ).unwrap();
+/// )
+/// .unwrap();
 /// let mapped_memory = MappedDeviceMemory::new(memory, 0..1024).unwrap();
 ///
 /// // Get access to the content.
@@ -1138,7 +1176,6 @@ pub struct MappedDeviceMemory {
 //
 // Vulkan specs, documentation of `vkFreeMemory`:
 // > If a memory object is mapped at the time it is freed, it is implicitly unmapped.
-//
 
 impl MappedDeviceMemory {
     /// Maps a range of memory to be accessed by the CPU.
@@ -1219,6 +1256,7 @@ impl MappedDeviceMemory {
     }
 
     /// Unmaps the memory. It will no longer be accessible from the CPU.
+    #[inline]
     pub fn unmap(self) -> DeviceMemory {
         unsafe {
             let device = self.memory.device();
@@ -1249,6 +1287,7 @@ impl MappedDeviceMemory {
     /// # Panics
     ///
     /// - Panics if `range` is empty.
+    #[inline]
     pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), MemoryMapError> {
         if self.coherent {
             return Ok(());
@@ -1298,6 +1337,7 @@ impl MappedDeviceMemory {
     /// # Panics
     ///
     /// - Panics if `range` is empty.
+    #[inline]
     pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), MemoryMapError> {
         self.check_range(range.clone())?;
 
@@ -1341,6 +1381,7 @@ impl MappedDeviceMemory {
     /// # Panics
     ///
     /// - Panics if `range` is empty.
+    #[inline]
     pub unsafe fn read(&self, range: Range<DeviceSize>) -> Result<&[u8], MemoryMapError> {
         self.check_range(range.clone())?;
 
@@ -1370,6 +1411,7 @@ impl MappedDeviceMemory {
     /// # Panics
     ///
     /// - Panics if `range` is empty.
+    #[inline]
     pub unsafe fn write(&self, range: Range<DeviceSize>) -> Result<&mut [u8], MemoryMapError> {
         self.check_range(range.clone())?;
 
@@ -1462,41 +1504,42 @@ pub enum MemoryMapError {
 }
 
 impl Error for MemoryMapError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for MemoryMapError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::MemoryMapFailed => write!(f, "memory map failed"),
-            Self::NotHostVisible => write!(
+            Self::NotHostVisible => {
+                write!(f, "tried to map memory whose type is not host-visible")
+            }
+            Self::OutOfRange {
+                provided_range,
+                allowed_range,
+            } => write!(
                 f,
-                "tried to map memory whose type is not host-visible",
-            ),
-            Self::OutOfRange { ref provided_range, ref allowed_range } => write!(
-                f,
-                "the specified `range` ({:?}) was not contained within the allocated or mapped memory range ({:?})",
+                "the specified `range` ({:?}) was not contained within the allocated or mapped \
+                memory range ({:?})",
                 provided_range, allowed_range,
             ),
-            Self::RangeNotAlignedToAtomSize { ref range, atom_size } => write!(
+            Self::RangeNotAlignedToAtomSize { range, atom_size } => write!(
                 f,
-                "the memory is not host-coherent, and the specified `range` bounds ({:?}) are not a multiple of the `non_coherent_atom_size` device property ({})",
+                "the memory is not host-coherent, and the specified `range` bounds ({:?}) are not \
+                a multiple of the `non_coherent_atom_size` device property ({})",
                 range, atom_size,
-            )
+            ),
         }
     }
 }
 
 impl From<VulkanError> for MemoryMapError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
@@ -1509,7 +1552,6 @@ impl From<VulkanError> for MemoryMapError {
 }
 
 impl From<OomError> for MemoryMapError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }

@@ -531,6 +531,7 @@ impl PipelineLayout {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::PipelineLayout,
@@ -587,6 +588,7 @@ impl PipelineLayout {
     }
 
     /// Returns whether `self` is compatible with `other` for the given number of sets.
+    #[inline]
     pub fn is_compatible_with(&self, other: &PipelineLayout, num_sets: u32) -> bool {
         let num_sets = num_sets as usize;
         assert!(num_sets >= self.set_layouts.len());
@@ -680,6 +682,7 @@ impl Drop for PipelineLayout {
 unsafe impl VulkanObject for PipelineLayout {
     type Object = ash::vk::PipelineLayout;
 
+    #[inline]
     fn internal_object(&self) -> Self::Object {
         self.handle
     }
@@ -702,7 +705,6 @@ impl PartialEq for PipelineLayout {
 impl Eq for PipelineLayout {}
 
 impl Hash for PipelineLayout {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -822,21 +824,18 @@ pub enum PipelineLayoutCreationError {
 }
 
 impl Error for PipelineLayoutCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for PipelineLayoutCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -845,90 +844,167 @@ impl Display for PipelineLayoutCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::MaxBoundDescriptorSetsExceeded { provided, max_supported } => write!(
+            Self::MaxBoundDescriptorSetsExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the number of elements in `set_layouts` ({}) is greater than the `max_bound_descriptor_sets` limit ({})",
+                "the number of elements in `set_layouts` ({}) is greater than the \
+                `max_bound_descriptor_sets` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxDescriptorSetSamplersExceeded { provided, max_supported } => write!(
+            Self::MaxDescriptorSetSamplersExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::Sampler` and `DescriptorType::CombinedImageSampler` descriptors ({}) than the `max_descriptor_set_samplers` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::Sampler` and \
+                `DescriptorType::CombinedImageSampler` descriptors ({}) than the \
+                `max_descriptor_set_samplers` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxDescriptorSetUniformBuffersExceeded { provided, max_supported } => write!(
+            Self::MaxDescriptorSetUniformBuffersExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::UniformBuffer` descriptors ({}) than the `max_descriptor_set_uniform_buffers` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::UniformBuffer` descriptors ({}) \
+                than the `max_descriptor_set_uniform_buffers` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxDescriptorSetUniformBuffersDynamicExceeded { provided, max_supported } => write!(
+            Self::MaxDescriptorSetUniformBuffersDynamicExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::UniformBufferDynamic` descriptors ({}) than the `max_descriptor_set_uniform_buffers_dynamic` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::UniformBufferDynamic` descriptors \
+                ({}) than the `max_descriptor_set_uniform_buffers_dynamic` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxDescriptorSetStorageBuffersExceeded { provided, max_supported } => write!(
+            Self::MaxDescriptorSetStorageBuffersExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::StorageBuffer` descriptors ({}) than the `max_descriptor_set_storage_buffers` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::StorageBuffer` descriptors ({}) \
+                than the `max_descriptor_set_storage_buffers` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxDescriptorSetStorageBuffersDynamicExceeded { provided, max_supported } => write!(
+            Self::MaxDescriptorSetStorageBuffersDynamicExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::StorageBufferDynamic` descriptors ({}) than the `max_descriptor_set_storage_buffers_dynamic` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::StorageBufferDynamic` descriptors \
+                ({}) than the `max_descriptor_set_storage_buffers_dynamic` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxDescriptorSetSampledImagesExceeded { provided, max_supported } => write!(
+            Self::MaxDescriptorSetSampledImagesExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::SampledImage`, `DescriptorType::CombinedImageSampler` and `DescriptorType::UniformTexelBuffer` descriptors ({}) than the `max_descriptor_set_sampled_images` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::SampledImage`, \
+                `DescriptorType::CombinedImageSampler` and `DescriptorType::UniformTexelBuffer` \
+                descriptors ({}) than the `max_descriptor_set_sampled_images` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxDescriptorSetStorageImagesExceeded { provided, max_supported } => write!(
+            Self::MaxDescriptorSetStorageImagesExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::StorageImage` and `DescriptorType::StorageTexelBuffer` descriptors ({}) than the `max_descriptor_set_storage_images` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::StorageImage` and \
+                `DescriptorType::StorageTexelBuffer` descriptors ({}) than the \
+                `max_descriptor_set_storage_images` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxDescriptorSetInputAttachmentsExceeded { provided, max_supported } => write!(
+            Self::MaxDescriptorSetInputAttachmentsExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::InputAttachment` descriptors ({}) than the `max_descriptor_set_input_attachments` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::InputAttachment` descriptors ({}) \
+                than the `max_descriptor_set_input_attachments` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxPerStageResourcesExceeded { provided, max_supported } => write!(
+            Self::MaxPerStageResourcesExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more bound resources ({}) in a single stage than the `max_per_stage_resources` limit ({})",
+                "the `set_layouts` contain more bound resources ({}) in a single stage than the \
+                `max_per_stage_resources` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxPerStageDescriptorSamplersExceeded { provided, max_supported } => write!(
+            Self::MaxPerStageDescriptorSamplersExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::Sampler` and `DescriptorType::CombinedImageSampler` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_samplers` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::Sampler` and \
+                `DescriptorType::CombinedImageSampler` descriptors ({}) in a single stage than the \
+                `max_per_stage_descriptor_set_samplers` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxPerStageDescriptorUniformBuffersExceeded { provided, max_supported } => write!(
+            Self::MaxPerStageDescriptorUniformBuffersExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::UniformBuffer` and `DescriptorType::UniformBufferDynamic` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_uniform_buffers` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::UniformBuffer` and \
+                `DescriptorType::UniformBufferDynamic` descriptors ({}) in a single stage than the \
+                `max_per_stage_descriptor_set_uniform_buffers` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxPerStageDescriptorStorageBuffersExceeded { provided, max_supported } => write!(
+            Self::MaxPerStageDescriptorStorageBuffersExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::StorageBuffer` and `DescriptorType::StorageBufferDynamic` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_storage_buffers` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::StorageBuffer` and \
+                `DescriptorType::StorageBufferDynamic` descriptors ({}) in a single stage than the \
+                `max_per_stage_descriptor_set_storage_buffers` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxPerStageDescriptorSampledImagesExceeded { provided, max_supported } => write!(
+            Self::MaxPerStageDescriptorSampledImagesExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::SampledImage`, `DescriptorType::CombinedImageSampler` and `DescriptorType::UniformTexelBuffer` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_sampled_images` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::SampledImage`, \
+                `DescriptorType::CombinedImageSampler` and `DescriptorType::UniformTexelBuffer` \
+                descriptors ({}) in a single stage than the \
+                `max_per_stage_descriptor_set_sampled_images` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxPerStageDescriptorStorageImagesExceeded { provided, max_supported } => write!(
+            Self::MaxPerStageDescriptorStorageImagesExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::StorageImage` and `DescriptorType::StorageTexelBuffer` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_storage_images` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::StorageImage` and \
+                `DescriptorType::StorageTexelBuffer` descriptors ({}) in a single stage than the \
+                `max_per_stage_descriptor_set_storage_images` limit ({})",
                 provided, max_supported,
             ),
-            Self::MaxPerStageDescriptorInputAttachmentsExceeded { provided, max_supported } => write!(
+            Self::MaxPerStageDescriptorInputAttachmentsExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "the `set_layouts` contain more `DescriptorType::InputAttachment` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_input_attachments` limit ({})",
+                "the `set_layouts` contain more `DescriptorType::InputAttachment` descriptors ({}) \
+                in a single stage than the `max_per_stage_descriptor_set_input_attachments` limit \
+                ({})",
                 provided, max_supported,
             ),
-            Self::MaxPushConstantsSizeExceeded { provided, max_supported } => write!(
+            Self::MaxPushConstantsSizeExceeded {
+                provided,
+                max_supported,
+            } => write!(
                 f,
-                "an element in `push_constant_ranges` has an `offset + size` ({}) greater than the `max_push_constants_size` limit ({})",
+                "an element in `push_constant_ranges` has an `offset + size` ({}) greater than the \
+                `max_push_constants_size` limit ({})",
                 provided, max_supported,
             ),
             Self::PushConstantRangesStageMultiple => write!(
@@ -937,21 +1013,19 @@ impl Display for PipelineLayoutCreationError {
             ),
             Self::SetLayoutsPushDescriptorMultiple => write!(
                 f,
-                "multiple elements of `set_layouts` have `push_descriptor` enabled"
+                "multiple elements of `set_layouts` have `push_descriptor` enabled",
             ),
         }
     }
 }
 
 impl From<OomError> for PipelineLayoutCreationError {
-    #[inline]
     fn from(err: OomError) -> PipelineLayoutCreationError {
         PipelineLayoutCreationError::OomError(err)
     }
 }
 
 impl From<VulkanError> for PipelineLayoutCreationError {
-    #[inline]
     fn from(err: VulkanError) -> PipelineLayoutCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => {
@@ -966,7 +1040,6 @@ impl From<VulkanError> for PipelineLayoutCreationError {
 }
 
 impl From<RequirementNotMet> for PipelineLayoutCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -994,55 +1067,53 @@ pub enum PipelineLayoutSupersetError {
 }
 
 impl Error for PipelineLayoutSupersetError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            PipelineLayoutSupersetError::DescriptorRequirementsNotMet { ref error, .. } => {
-                Some(error)
-            }
+        match self {
+            PipelineLayoutSupersetError::DescriptorRequirementsNotMet { error, .. } => Some(error),
             _ => None,
         }
     }
 }
 
 impl Display for PipelineLayoutSupersetError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            PipelineLayoutSupersetError::DescriptorRequirementsNotMet { set_num, binding_num, .. } => write!(
+            PipelineLayoutSupersetError::DescriptorRequirementsNotMet {
+                set_num,
+                binding_num,
+                ..
+            } => write!(
                 f,
                 "the descriptor at set {} binding {} does not meet the requirements",
-                set_num, binding_num
+                set_num, binding_num,
             ),
             PipelineLayoutSupersetError::DescriptorMissing {
                 set_num,
                 binding_num,
             } => write!(
                 f,
-                "a descriptor at set {} binding {} is required by the shaders, but is missing from the pipeline layout",
-                set_num, binding_num
+                "a descriptor at set {} binding {} is required by the shaders, but is missing from \
+                the pipeline layout",
+                set_num, binding_num,
             ),
             PipelineLayoutSupersetError::PushConstantRange {
                 first_range,
                 second_range,
             } => {
-                writeln!(
-                    f,
-                    "our range did not completely encompass the other range"
-                )?;
+                writeln!(f, "our range did not completely encompass the other range")?;
                 writeln!(f, "    our stages: {:?}", first_range.stages)?;
                 writeln!(
                     f,
                     "    our range: {} - {}",
                     first_range.offset,
-                    first_range.offset + first_range.size
+                    first_range.offset + first_range.size,
                 )?;
                 writeln!(f, "    other stages: {:?}", second_range.stages)?;
                 write!(
                     f,
                     "    other range: {} - {}",
                     second_range.offset,
-                    second_range.offset + second_range.size
+                    second_range.offset + second_range.size,
                 )
             }
         }

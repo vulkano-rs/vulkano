@@ -19,7 +19,6 @@ use std::{ops::Range, sync::Arc};
 
 /// Joins two futures together.
 // TODO: handle errors
-#[inline]
 pub fn join<F, S>(first: F, second: S) -> JoinFuture<F, S>
 where
     F: GpuFuture,
@@ -49,7 +48,6 @@ where
     A: DeviceOwned,
     B: DeviceOwned,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         let device = self.first.device();
         debug_assert_eq!(
@@ -65,22 +63,20 @@ where
     A: GpuFuture,
     B: GpuFuture,
 {
-    #[inline]
     fn cleanup_finished(&mut self) {
         self.first.cleanup_finished();
         self.second.cleanup_finished();
     }
 
-    #[inline]
     fn flush(&self) -> Result<(), FlushError> {
         // Since each future remembers whether it has been flushed, there's no safety issue here
         // if we call this function multiple times.
         self.first.flush()?;
         self.second.flush()?;
+
         Ok(())
     }
 
-    #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         // TODO: review this function
         let first = self.first.build_submission()?;
@@ -179,18 +175,15 @@ where
         })
     }
 
-    #[inline]
     unsafe fn signal_finished(&self) {
         self.first.signal_finished();
         self.second.signal_finished();
     }
 
-    #[inline]
     fn queue_change_allowed(&self) -> bool {
         self.first.queue_change_allowed() && self.second.queue_change_allowed()
     }
 
-    #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         match (self.first.queue(), self.second.queue()) {
             (Some(q1), Some(q2)) => {
@@ -210,7 +203,6 @@ where
         }
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -245,7 +237,6 @@ where
         }
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -271,13 +262,33 @@ where
                 Err(AccessCheckError::Denied(e1))
             } // TODO: which one?
             (Ok(_), Err(AccessCheckError::Denied(_)))
-            | (Err(AccessCheckError::Denied(_)), Ok(_)) => panic!(
-                "Contradictory information \
-                                                                 between two futures"
-            ),
+            | (Err(AccessCheckError::Denied(_)), Ok(_)) => {
+                panic!("Contradictory information between two futures")
+            }
             (Ok(None), Ok(None)) => Ok(None),
             (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
             (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => Ok(Some((a1 | b1, a2 | b2))),
+        }
+    }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        let first = self.first.check_swapchain_image_acquired(image, false);
+        let second = self.second.check_swapchain_image_acquired(image, false);
+
+        match (first, second) {
+            (v, Err(AccessCheckError::Unknown)) => v,
+            (Err(AccessCheckError::Unknown), v) => v,
+            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(_))) => {
+                Err(AccessCheckError::Denied(e1))
+            } // TODO: which one?
+            (Ok(_), Err(AccessCheckError::Denied(_)))
+            | (Err(AccessCheckError::Denied(_)), Ok(_)) => Ok(()),
+            (Ok(_), Ok(_)) => Ok(()), // TODO: Double Acquired?
         }
     }
 }

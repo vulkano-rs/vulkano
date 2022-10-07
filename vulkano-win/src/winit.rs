@@ -36,7 +36,6 @@ pub fn required_extensions(library: &VulkanLibrary) -> InstanceExtensions {
 
 /// Create a surface from a Winit window or a reference to it. The surface takes `W` to prevent it
 /// from being dropped before the surface.
-#[inline]
 pub fn create_surface_from_winit<W>(
     window: W,
     instance: Arc<Instance>,
@@ -56,13 +55,13 @@ pub trait VkSurfaceBuild<E> {
 }
 
 impl<E> VkSurfaceBuild<E> for WindowBuilder {
-    #[inline]
     fn build_vk_surface(
         self,
         event_loop: &EventLoopWindowTarget<E>,
         instance: Arc<Instance>,
     ) -> Result<Arc<Surface<Window>>, CreationError> {
         let window = self.build(event_loop)?;
+
         Ok(create_surface_from_winit(window, instance)?)
     }
 }
@@ -77,22 +76,20 @@ pub enum CreationError {
 }
 
 impl Error for CreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            CreationError::SurfaceCreationError(ref err) => Some(err),
-            CreationError::WindowCreationError(ref err) => Some(err),
+        match self {
+            CreationError::SurfaceCreationError(err) => Some(err),
+            CreationError::WindowCreationError(err) => Some(err),
         }
     }
 }
 
 impl Display for CreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 CreationError::SurfaceCreationError(_) => "error while creating the surface",
                 CreationError::WindowCreationError(_) => "error while creating the window",
             }
@@ -101,21 +98,18 @@ impl Display for CreationError {
 }
 
 impl From<SurfaceCreationError> for CreationError {
-    #[inline]
     fn from(err: SurfaceCreationError) -> CreationError {
         CreationError::SurfaceCreationError(err)
     }
 }
 
 impl From<WindowCreationError> for CreationError {
-    #[inline]
     fn from(err: WindowCreationError) -> CreationError {
         CreationError::WindowCreationError(err)
     }
 }
 
 #[cfg(target_os = "android")]
-#[inline]
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>,
     win: W,
@@ -243,7 +237,6 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
 }
 
 #[cfg(target_os = "windows")]
-#[inline]
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>,
     win: W,

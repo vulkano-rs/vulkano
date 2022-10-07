@@ -52,7 +52,6 @@ where
 
 impl StorageImage {
     /// Creates a new image with the given dimensions and format.
-    #[inline]
     pub fn new(
         device: Arc<Device>,
         dimensions: ImageDimensions,
@@ -206,6 +205,7 @@ impl StorageImage {
     }
 
     /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.
+    #[inline]
     pub fn general_purpose_image_view(
         queue: Arc<Queue>,
         size: [u32; 2],
@@ -226,6 +226,7 @@ impl StorageImage {
             flags,
             Some(queue.queue_family_index()),
         );
+
         match image_result {
             Ok(image) => {
                 let image_view = ImageView::new_default(image);
@@ -238,15 +239,17 @@ impl StorageImage {
         }
     }
 
-    /// Exports posix file descriptor for the allocated memory
-    /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
+    /// Exports posix file descriptor for the allocated memory.
+    /// Requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
+    #[inline]
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
     }
 
-    /// Return the size of the allocated memory (used for e.g. with cuda)
+    /// Return the size of the allocated memory (used e.g. with cuda).
+    #[inline]
     pub fn mem_size(&self) -> DeviceSize {
         self.memory.memory().allocation_size()
     }
@@ -265,8 +268,7 @@ unsafe impl<A> ImageAccess for StorageImage<A>
 where
     A: MemoryPool,
 {
-    #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         ImageInner {
             image: &self.image,
             first_layer: 0,
@@ -276,17 +278,14 @@ where
         }
     }
 
-    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         ImageLayout::General
     }
 
-    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         ImageLayout::General
     }
 
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
             storage_image: ImageLayout::General,
@@ -301,7 +300,6 @@ unsafe impl<P, A> ImageContent<P> for StorageImage<A>
 where
     A: MemoryPool,
 {
-    #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
     }
@@ -311,7 +309,6 @@ impl<A> PartialEq for StorageImage<A>
 where
     A: MemoryPool,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
@@ -323,7 +320,6 @@ impl<A> Hash for StorageImage<A>
 where
     A: MemoryPool,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }

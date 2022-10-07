@@ -802,6 +802,7 @@ impl UnsafeImage {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: UnsafeImageCreateInfo,
@@ -932,6 +933,7 @@ impl UnsafeImage {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Image,
@@ -1079,6 +1081,7 @@ impl UnsafeImage {
     }
 
     /// Returns the memory requirements for this image.
+    #[inline]
     pub fn memory_requirements(&self) -> MemoryRequirements {
         let image_memory_requirements_info2 = ash::vk::ImageMemoryRequirementsInfo2 {
             image: self.handle,
@@ -1139,6 +1142,7 @@ impl UnsafeImage {
     }
 
     /// Returns the sparse memory requirements for this image.
+    #[inline]
     pub fn sparse_memory_requirements(&self) -> Vec<SparseImageMemoryRequirements> {
         let device = &self.device;
 
@@ -1317,6 +1321,7 @@ impl UnsafeImage {
         }
     }
 
+    #[inline]
     pub unsafe fn bind_memory(
         &self,
         memory: &DeviceMemory,
@@ -1347,10 +1352,10 @@ impl UnsafeImage {
         )
         .result()
         .map_err(VulkanError::from)?;
+
         Ok(())
     }
 
-    #[inline]
     pub(crate) fn range_size(&self) -> DeviceSize {
         self.range_size
     }
@@ -1360,7 +1365,6 @@ impl UnsafeImage {
     /// In ranges, the subresources are "flattened" to `DeviceSize`, where each index in the range
     /// is a single array layer. The layers are arranged hierarchically: aspects at the top level,
     /// with the mip levels in that aspect, and the array layers in that mip level.
-    #[inline]
     pub(crate) fn iter_ranges(
         &self,
         subresource_range: ImageSubresourceRange,
@@ -1383,7 +1387,6 @@ impl UnsafeImage {
         )
     }
 
-    #[inline]
     pub(crate) fn range_to_subresources(
         &self,
         mut range: Range<DeviceSize>,
@@ -1450,8 +1453,7 @@ impl UnsafeImage {
         }
     }
 
-    #[inline]
-    pub(crate) fn state(&self) -> MutexGuard<ImageState> {
+    pub(crate) fn state(&self) -> MutexGuard<'_, ImageState> {
         self.state.lock()
     }
 
@@ -1596,7 +1598,7 @@ impl UnsafeImage {
     /// Note that while Vulkan allows querying the array layers other than 0, it is redundant as
     /// you can easily calculate the position of any layer.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the mipmap level is out of range.
     ///
@@ -1612,7 +1614,7 @@ impl UnsafeImage {
 
     /// Same as `color_linear_layout`, except that it retrieves the depth component of the image.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the mipmap level is out of range.
     ///
@@ -1628,7 +1630,7 @@ impl UnsafeImage {
 
     /// Same as `color_linear_layout`, except that it retrieves the stencil component of the image.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the mipmap level is out of range.
     ///
@@ -1645,7 +1647,7 @@ impl UnsafeImage {
     /// Same as `color_linear_layout`, except that it retrieves layout for the requested YCbCr
     /// component too if the format is a YCbCr format.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if plane aspect is out of range.
     /// - Panics if the aspect is not a color or planar aspect.
@@ -1724,6 +1726,7 @@ unsafe impl VulkanObject for UnsafeImage {
 }
 
 unsafe impl DeviceOwned for UnsafeImage {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
@@ -1739,7 +1742,6 @@ impl PartialEq for UnsafeImage {
 impl Eq for UnsafeImage {}
 
 impl Hash for UnsafeImage {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -1851,6 +1853,7 @@ pub struct UnsafeImageCreateInfo {
 }
 
 impl Default for UnsafeImageCreateInfo {
+    #[inline]
     fn default() -> Self {
         Self {
             dimensions: ImageDimensions::Dim2d {
@@ -1997,21 +2000,18 @@ pub enum ImageCreationError {
 }
 
 impl Error for ImageCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            ImageCreationError::AllocError(ref err) => Some(err),
+        match self {
+            ImageCreationError::AllocError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for ImageCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::AllocError(_) => write!(f, "allocating memory failed"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -2020,139 +2020,133 @@ impl Display for ImageCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::Array2dCompatibleNot3d => {
-                write!(
-                    f,
-                    "the array_2d_compatible flag was enabled, but the image type was not 3D"
-                )
-            }
-            Self::BlockTexelViewCompatibleNotCompressed => {
-                write!(f, "the block_texel_view_compatible flag was enabled, but the given format was not compressed")
-            }
-            Self::CubeCompatibleNot2d => {
-                write!(
-                    f,
-                    "the cube_compatible flag was enabled, but the image type was not 2D"
-                )
-            }
-            Self::CubeCompatibleNotEnoughArrayLayers => {
-                write!(f, "the cube_compatible flag was enabled, but the number of array layers was less than 6")
-            }
-            Self::CubeCompatibleNotSquare => {
-                write!(f, "the cube_compatible flag was enabled, but the image dimensions were not square")
-            }
-            Self::CubeCompatibleMultisampling => {
-                write!(
-                    f,
-                    "the cube_compatible flag was enabled together with multisampling"
-                )
-            }
-            Self::ExternalMemoryInvalidInitialLayout => {
-                write!(f, "one or more external memory handle types were provided, but the initial layout was not `Undefined`")
-            }
+            Self::Array2dCompatibleNot3d => write!(
+                f,
+                "the array_2d_compatible flag was enabled, but the image type was not 3D",
+            ),
+            Self::BlockTexelViewCompatibleNotCompressed => write!(
+                f,
+                "the block_texel_view_compatible flag was enabled, but the given format was not \
+                compressed",
+            ),
+            Self::CubeCompatibleNot2d => write!(
+                f,
+                "the cube_compatible flag was enabled, but the image type was not 2D",
+            ),
+            Self::CubeCompatibleNotEnoughArrayLayers => write!(
+                f,
+                "the cube_compatible flag was enabled, but the number of array layers was less \
+                than 6",
+            ),
+            Self::CubeCompatibleNotSquare => write!(
+                f,
+                "the cube_compatible flag was enabled, but the image dimensions were not square",
+            ),
+            Self::CubeCompatibleMultisampling => write!(
+                f,
+                "the cube_compatible flag was enabled together with multisampling",
+            ),
+            Self::ExternalMemoryInvalidInitialLayout => write!(
+                f,
+                "one or more external memory handle types were provided, but the initial layout \
+                was not `Undefined`",
+            ),
             Self::FormatNotSupported => {
                 write!(f, "the given format was not supported by the device")
             }
-            Self::FormatUsageNotSupported { .. } => {
-                write!(
-                    f,
-                    "a requested usage flag was not supported by the given format"
-                )
-            }
-            Self::ImageFormatPropertiesNotSupported => {
-                write!(f, "the image configuration as queried through the `image_format_properties` function was not supported by the device")
-            }
-            Self::MaxArrayLayersExceeded { .. } => {
-                write!(f, "the number of array layers exceeds the maximum supported by the device for this image configuration")
-            }
-            Self::MaxDimensionsExceeded { .. } => {
-                write!(f, "the specified dimensions exceed the maximum supported by the device for this image configuration")
-            }
-            Self::MaxFramebufferDimensionsExceeded { .. } => {
-                write!(f, "the usage included one of the attachment types, and the specified width and height exceeded the `max_framebuffer_width` or `max_framebuffer_height` limits")
-            }
-            Self::MaxMipLevelsExceeded { .. } => {
-                write!(
-                    f,
-                    "the maximum number of mip levels for the given dimensions has been exceeded"
-                )
-            }
-            Self::MultisampleCubeCompatible => {
-                write!(
-                    f,
-                    "multisampling was enabled, and the `cube_compatible` flag was set"
-                )
-            }
+            Self::FormatUsageNotSupported { .. } => write!(
+                f,
+                "a requested usage flag was not supported by the given format",
+            ),
+            Self::ImageFormatPropertiesNotSupported => write!(
+                f,
+                "the image configuration as queried through the `image_format_properties` function \
+                was not supported by the device",
+            ),
+            Self::MaxArrayLayersExceeded { .. } => write!(
+                f,
+                "the number of array layers exceeds the maximum supported by the device for this \
+                image configuration",
+            ),
+            Self::MaxDimensionsExceeded { .. } => write!(
+                f,
+                "the specified dimensions exceed the maximum supported by the device for this \
+                image configuration",
+            ),
+            Self::MaxFramebufferDimensionsExceeded { .. } => write!(
+                f,
+                "the usage included one of the attachment types, and the specified width and \
+                height exceeded the `max_framebuffer_width` or `max_framebuffer_height` limits",
+            ),
+            Self::MaxMipLevelsExceeded { .. } => write!(
+                f,
+                "the maximum number of mip levels for the given dimensions has been exceeded",
+            ),
+            Self::MultisampleCubeCompatible => write!(
+                f,
+                "multisampling was enabled, and the `cube_compatible` flag was set",
+            ),
             Self::MultisampleLinearTiling => {
                 write!(f, "multisampling was enabled, and tiling was `Linear`")
             }
-            Self::MultisampleMultipleMipLevels => {
-                write!(
-                    f,
-                    "multisampling was enabled, and multiple mip levels were specified"
-                )
-            }
-            Self::MultisampleNot2d => {
-                write!(
-                    f,
-                    "multisampling was enabled, but the image type was not 2D"
-                )
-            }
-            Self::SampleCountNotSupported { .. } => {
-                write!(
-                    f,
-                    "the sample count is not supported by the device for this image configuration"
-                )
-            }
-            Self::SharingQueueFamilyIndexOutOfRange { .. } => {
-                write!(f, "the sharing mode was set to `Concurrent`, but one of the specified queue family indices was out of range")
-            }
+            Self::MultisampleMultipleMipLevels => write!(
+                f,
+                "multisampling was enabled, and multiple mip levels were specified",
+            ),
+            Self::MultisampleNot2d => write!(
+                f,
+                "multisampling was enabled, but the image type was not 2D",
+            ),
+            Self::SampleCountNotSupported { .. } => write!(
+                f,
+                "the sample count is not supported by the device for this image configuration",
+            ),
+            Self::SharingQueueFamilyIndexOutOfRange { .. } => write!(
+                f,
+                "the sharing mode was set to `Concurrent`, but one of the specified queue family \
+                indices was out of range",
+            ),
             Self::StencilUsageMismatch {
                 usage: _,
                 stencil_usage: _,
             } => write!(
                 f,
-                "the provided `usage` and `stencil_usage` have different values for `depth_stencil_attachment` or `transient_attachment`",
+                "the provided `usage` and `stencil_usage` have different values for \
+                `depth_stencil_attachment` or `transient_attachment`",
             ),
-            Self::YcbcrFormatInvalidDimensions => {
-                write!(f, "a YCbCr format was given, but the specified width and/or height was not a multiple of 2 as required by the format's chroma subsampling")
-            }
-            Self::YcbcrFormatMultipleMipLevels => {
-                write!(
-                    f,
-                    "a YCbCr format was given, and multiple mip levels were specified"
-                )
-            }
+            Self::YcbcrFormatInvalidDimensions => write!(
+                f,
+                "a YCbCr format was given, but the specified width and/or height was not a \
+                multiple of 2 as required by the format's chroma subsampling",
+            ),
+            Self::YcbcrFormatMultipleMipLevels => write!(
+                f,
+                "a YCbCr format was given, and multiple mip levels were specified",
+            ),
             Self::YcbcrFormatMultisampling => {
                 write!(f, "a YCbCr format was given, and multisampling was enabled")
             }
             Self::YcbcrFormatNot2d => {
                 write!(f, "a YCbCr format was given, but the image type was not 2D")
             }
-            Self::DirectImageViewCreationFailed(e) => {
-                write!(f, "Image view creation failed {}", e)
-            }
+            Self::DirectImageViewCreationFailed(e) => write!(f, "Image view creation failed {}", e),
         }
     }
 }
 
 impl From<OomError> for ImageCreationError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::AllocError(DeviceMemoryError::OomError(err))
     }
 }
 
 impl From<DeviceMemoryError> for ImageCreationError {
-    #[inline]
     fn from(err: DeviceMemoryError) -> Self {
         Self::AllocError(err)
     }
 }
 
 impl From<VulkanError> for ImageCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             err @ VulkanError::OutOfHostMemory => Self::AllocError(err.into()),
@@ -2163,7 +2157,6 @@ impl From<VulkanError> for ImageCreationError {
 }
 
 impl From<RequirementNotMet> for ImageCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

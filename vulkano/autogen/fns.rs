@@ -7,9 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, VkRegistryData};
+use super::{write_file, IndexMap, VkRegistryData};
 use heck::{ToSnakeCase, ToUpperCamelCase};
-use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use vk_parse::{Extension, ExtensionChild, InterfaceItem};
@@ -90,7 +89,7 @@ fn fns_output(extension_members: &[FnsMember], fns_level: &str, doc: &str) -> To
 
         impl std::fmt::Debug for #struct_name {
             #[inline]
-            fn fmt(&self, _f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+            fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
                 Ok(())
             }
         }
