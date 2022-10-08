@@ -100,13 +100,15 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
                 ..Default::default()
             };
             let fns = device.fns();
-            let ptr = (fns.ext_buffer_device_address.get_buffer_device_address_ext)(
-                device.internal_object(),
-                &info,
-            );
+            let f = if device.enabled_extensions().ext_buffer_device_address {
+                fns.ext_buffer_device_address.get_buffer_device_address_ext
+            } else {
+                fns.khr_buffer_device_address.get_buffer_device_address_khr
+            };
+            let ptr = f(device.internal_object(), &info);
 
             if ptr == 0 {
-                panic!("got null ptr from a valid GetBufferDeviceAddressEXT call");
+                panic!("got null ptr from a valid GetBufferDeviceAddress call");
             }
 
             Ok(NonZeroU64::new_unchecked(ptr + inner.offset))
