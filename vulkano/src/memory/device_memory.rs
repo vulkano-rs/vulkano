@@ -55,6 +55,7 @@ pub struct DeviceMemory {
     allocation_size: DeviceSize,
     memory_type_index: u32,
     export_handle_types: ExternalMemoryHandleTypes,
+    flags: MemoryAllocateFlags,
 }
 
 impl DeviceMemory {
@@ -80,16 +81,17 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation: _,
             export_handle_types,
+            flags,
             _ne: _,
         } = allocate_info;
 
         Ok(DeviceMemory {
             handle,
             device,
-
             allocation_size,
             memory_type_index,
             export_handle_types,
+            flags,
         })
     }
 
@@ -99,6 +101,7 @@ impl DeviceMemory {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `allocate_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::DeviceMemory,
@@ -109,16 +112,17 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation: _,
             export_handle_types,
+            flags,
             _ne: _,
         } = allocate_info;
 
         DeviceMemory {
             handle,
             device,
-
             allocation_size,
             memory_type_index,
             export_handle_types,
+            flags,
         }
     }
 
@@ -146,16 +150,17 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation: _,
             export_handle_types,
+            flags,
             _ne: _,
         } = allocate_info;
 
         Ok(DeviceMemory {
             handle,
             device,
-
             allocation_size,
             memory_type_index,
             export_handle_types,
+            flags,
         })
     }
 
@@ -169,6 +174,7 @@ impl DeviceMemory {
             memory_type_index,
             ref mut dedicated_allocation,
             export_handle_types,
+            flags,
             _ne: _,
         } = allocate_info;
 
@@ -379,6 +385,17 @@ impl DeviceMemory {
             }
         }
 
+        // VUID-VkMemoryAllocateInfo-flags-03331
+        if flags.device_address && !device.enabled_features().buffer_device_address {
+            return Err(DeviceMemoryError::RequirementNotMet {
+                required_for: "`allocate_info.flags.device_address` is `true`",
+                requires_one_of: RequiresOneOf {
+                    features: &["buffer_device_address"],
+                    ..Default::default()
+                },
+            });
+        }
+
         Ok(())
     }
 
@@ -392,6 +409,7 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation,
             export_handle_types,
+            flags,
             _ne: _,
         } = allocate_info;
 
@@ -466,6 +484,15 @@ impl DeviceMemory {
             allocate_info = allocate_info.push_next(info);
         }
 
+        let mut flags_info = ash::vk::MemoryAllocateFlagsInfo {
+            flags: flags.into(),
+            ..Default::default()
+        };
+
+        if !flags.is_empty() && !device.enabled_extensions().ext_buffer_device_address {
+            allocate_info = allocate_info.push_next(&mut flags_info);
+        }
+
         let mut allocation_count = device.allocation_count().lock();
 
         // VUID-vkAllocateMemory-maxMemoryAllocationCount-04101
@@ -514,6 +541,12 @@ impl DeviceMemory {
     #[inline]
     pub fn export_handle_types(&self) -> ExternalMemoryHandleTypes {
         self.export_handle_types
+    }
+
+    /// Returns the flags the memory was allocated with.
+    #[inline]
+    pub fn flags(&self) -> MemoryAllocateFlags {
+        self.flags
     }
 
     /// Retrieves the amount of lazily-allocated memory that is currently commited to this
@@ -692,6 +725,11 @@ pub struct MemoryAllocateInfo<'d> {
     /// The handle types that can be exported from the allocated memory.
     pub export_handle_types: ExternalMemoryHandleTypes,
 
+    /// Additional flags for the memory allocation.
+    ///
+    /// The default value is [`MemoryAllocateFlags::empty()`].
+    pub flags: MemoryAllocateFlags,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -703,6 +741,7 @@ impl Default for MemoryAllocateInfo<'static> {
             memory_type_index: u32::MAX,
             dedicated_allocation: None,
             export_handle_types: ExternalMemoryHandleTypes::empty(),
+            flags: MemoryAllocateFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -717,6 +756,7 @@ impl<'d> MemoryAllocateInfo<'d> {
             memory_type_index: u32::MAX,
             dedicated_allocation: Some(dedicated_allocation),
             export_handle_types: ExternalMemoryHandleTypes::empty(),
+            flags: MemoryAllocateFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -934,6 +974,26 @@ impl ExternalMemoryHandleTypes {
         .into_iter()
         .flatten()
     }
+}
+
+vulkan_bitflags! {
+    /// A mask specifying flags for device memory allocation.
+    #[non_exhaustive]
+    MemoryAllocateFlags = MemoryAllocateFlags(u32);
+
+    // TODO: implement
+    // device_mask = DEVICE_MASK,
+
+    /// Specifies that the allocated device memory can be bound to a buffer created with the
+    /// [`shader_device_address`] usage. This requires that the [`buffer_device_address`] features
+    /// is enabled on the device.
+    ///
+    /// [`shader_device_address`]: crate::buffer::BufferUsage::shader_device_address
+    /// [`buffer_device_address`]: crate::device::Features::buffer_device_address
+    device_address = DEVICE_ADDRESS,
+
+    // TODO: implement
+    // device_address_capture_replay = DEVICE_ADDRESS_CAPTURE_REPLAY,
 }
 
 /// Error type returned by functions related to `DeviceMemory`.
