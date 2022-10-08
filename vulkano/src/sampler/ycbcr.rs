@@ -26,8 +26,8 @@
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let image_data: Vec<u8> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
-//! # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 //! # let descriptor_set_allocator: vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator = return;
+//! # let mut command_buffer_builder: vulkano::command_buffer::AutoCommandBufferBuilder<vulkano::command_buffer::PrimaryAutoCommandBuffer> = return;
 //! use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 //! use vulkano::descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType};
 //! use vulkano::format::Format;
@@ -66,13 +66,12 @@
 //!     },
 //! ).unwrap();
 //!
-//! let (image, future) = ImmutableImage::from_iter(
+//! let image = ImmutableImage::from_iter(
 //!     image_data,
 //!     ImageDimensions::Dim2d { width: 1920, height: 1080, array_layers: 1 },
 //!     MipmapsCount::One,
 //!     Format::G8_B8_R8_3PLANE_420_UNORM,
-//!     &command_buffer_allocator,
-//!     queue.clone(),
+//!     &mut command_buffer_builder,
 //! ).unwrap();
 //!
 //! let create_info = ImageViewCreateInfo {

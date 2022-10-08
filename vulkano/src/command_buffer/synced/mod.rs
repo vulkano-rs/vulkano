@@ -537,6 +537,7 @@ mod tests {
             },
             sys::CommandBufferBeginInfo,
             AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage, FillBufferInfo,
+            PrimaryCommandBuffer,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator,
@@ -580,20 +581,30 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let allocator = StandardCommandBufferAllocator::new(device);
+            let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
+            let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+                &command_buffer_allocator,
+                queue.queue_family_index(),
+                CommandBufferUsage::OneTimeSubmit,
+            )
+            .unwrap();
 
             // Create a tiny test buffer
-            let (buf, future) = DeviceLocalBuffer::from_data(
+            let buffer = DeviceLocalBuffer::from_data(
                 0u32,
                 BufferUsage {
                     transfer_dst: true,
                     ..BufferUsage::empty()
                 },
-                &allocator,
-                queue.clone(),
+                &mut command_buffer_builder,
             )
             .unwrap();
-            future
+
+            command_buffer_builder
+                .build()
+                .unwrap()
+                .execute(queue.clone())
+                .unwrap()
                 .then_signal_fence_and_flush()
                 .unwrap()
                 .wait(None)
@@ -603,7 +614,7 @@ mod tests {
             let secondary = (0..2)
                 .map(|_| {
                     let mut builder = AutoCommandBufferBuilder::secondary(
-                        &allocator,
+                        &command_buffer_allocator,
                         queue.queue_family_index(),
                         CommandBufferUsage::SimultaneousUse,
                         Default::default(),
@@ -612,14 +623,14 @@ mod tests {
                     builder
                         .fill_buffer(FillBufferInfo {
                             data: 42u32,
-                            ..FillBufferInfo::dst_buffer(buf.clone())
+                            ..FillBufferInfo::dst_buffer(buffer.clone())
                         })
                         .unwrap();
                     Arc::new(builder.build().unwrap())
                 })
                 .collect::<Vec<_>>();
 
-            let allocs = allocator
+            let allocs = command_buffer_allocator
                 .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 2)
                 .unwrap()
                 .collect::<Vec<_>>();

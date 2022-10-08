@@ -16,10 +16,9 @@ use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
         allocator::CommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
-        BufferImageCopy, CommandBufferBeginError, CommandBufferExecFuture, CommandBufferUsage,
-        CopyBufferToImageInfo, ImageBlit, PrimaryCommandBuffer,
+        BufferImageCopy, CommandBufferBeginError, CopyBufferToImageInfo, ImageBlit,
     },
-    device::{Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned},
     format::Format,
     image::sys::UnsafeImageCreateInfo,
     memory::{
@@ -30,7 +29,7 @@ use crate::{
         DedicatedAllocation, DeviceMemoryError, MemoryPool,
     },
     sampler::Filter,
-    sync::{NowFuture, Sharing},
+    sync::Sharing,
     DeviceSize, OomError,
 };
 use smallvec::{smallvec, SmallVec};
@@ -177,21 +176,21 @@ impl ImmutableImage {
     }
 
     /// Construct an ImmutableImage from the contents of `iter`.
-    pub fn from_iter<Px, I>(
+    pub fn from_iter<Px, I, L, A>(
         iter: I,
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
-        command_buffer_allocator: &impl CommandBufferAllocator,
-        queue: Arc<Queue>,
-    ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError>
+        command_buffer_builder: &mut AutoCommandBufferBuilder<L, A>,
+    ) -> Result<Arc<Self>, ImmutableImageCreationError>
     where
         [Px]: BufferContents,
         I: IntoIterator<Item = Px>,
         I::IntoIter: ExactSizeIterator,
+        A: CommandBufferAllocator,
     {
         let source = CpuAccessibleBuffer::from_iter(
-            queue.device().clone(),
+            command_buffer_builder.device().clone(),
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
@@ -204,20 +203,21 @@ impl ImmutableImage {
             dimensions,
             mip_levels,
             format,
-            command_buffer_allocator,
-            queue,
+            command_buffer_builder,
         )
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
-    pub fn from_buffer(
+    pub fn from_buffer<L, A>(
         source: Arc<dyn BufferAccess>,
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
-        command_buffer_allocator: &impl CommandBufferAllocator,
-        queue: Arc<Queue>,
-    ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError> {
+        command_buffer_builder: &mut AutoCommandBufferBuilder<L, A>,
+    ) -> Result<Arc<Self>, ImmutableImageCreationError>
+    where
+        A: CommandBufferAllocator,
+    {
         let region = BufferImageCopy {
             image_subresource: ImageSubresourceLayers::from_parameters(
                 format,
@@ -260,34 +260,23 @@ impl ImmutableImage {
                 .copied(),
         )?;
 
-        let mut cbb = AutoCommandBufferBuilder::primary(
-            command_buffer_allocator,
-            queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-        )?;
-        cbb.copy_buffer_to_image(CopyBufferToImageInfo {
-            regions: smallvec![region],
-            ..CopyBufferToImageInfo::buffer_image(source, initializer)
-        })
-        .unwrap();
+        command_buffer_builder
+            .copy_buffer_to_image(CopyBufferToImageInfo {
+                regions: smallvec![region],
+                ..CopyBufferToImageInfo::buffer_image(source, initializer)
+            })
+            .unwrap();
 
         if need_to_generate_mipmaps {
             generate_mipmaps(
-                &mut cbb,
+                command_buffer_builder,
                 image.clone(),
                 image.dimensions,
                 ImageLayout::ShaderReadOnlyOptimal,
             );
         }
 
-        let cb = cbb.build().unwrap();
-
-        let future = match cb.execute(queue) {
-            Ok(f) => f,
-            Err(e) => unreachable!("{:?}", e),
-        };
-
-        Ok((image, future))
+        Ok(image)
     }
 }
 

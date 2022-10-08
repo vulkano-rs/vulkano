@@ -13,7 +13,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
+        PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -212,8 +212,14 @@ fn main() {
 
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let mut uploads = AutoCommandBufferBuilder::primary(
+        &command_buffer_allocator,
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
 
-    let (texture, tex_future) = {
+    let texture = {
         let image_array_data: Vec<_> = vec![
             include_bytes!("square.png").to_vec(),
             include_bytes!("star.png").to_vec(),
@@ -236,16 +242,15 @@ fn main() {
             height: 128,
             array_layers: 3,
         }; // Replace with your actual image array dimensions
-        let (image, future) = ImmutableImage::from_iter(
+        let image = ImmutableImage::from_iter(
             image_array_data,
             dimensions,
             MipmapsCount::Log2,
             Format::R8G8B8A8_SRGB,
-            &command_buffer_allocator,
-            queue.clone(),
+            &mut uploads,
         )
         .unwrap();
-        (ImageView::new_default(image).unwrap(), future)
+        ImageView::new_default(image).unwrap()
     };
 
     let sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear()).unwrap();
@@ -278,7 +283,14 @@ fn main() {
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(tex_future.boxed());
+    let mut previous_frame_end = Some(
+        uploads
+            .build()
+            .unwrap()
+            .execute(queue.clone())
+            .unwrap()
+            .boxed(),
+    );
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
