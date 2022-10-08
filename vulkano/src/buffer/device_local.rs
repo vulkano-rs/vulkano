@@ -181,6 +181,11 @@ where
     /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you
     /// must either submit your operation after this future, or execute this future and wait for it
     /// to be finished before submitting your own operation.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub fn from_buffer<B>(
         source: Arc<B>,
         usage: BufferUsage,
@@ -251,6 +256,8 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub fn from_data(
         data: T,
         usage: BufferUsage,
@@ -284,6 +291,8 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `data` is empty.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub fn from_iter<D>(
         data: D,
         usage: BufferUsage,
@@ -323,6 +332,8 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `len` is zero.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub fn array(
         device: Arc<Device>,
         len: DeviceSize,
@@ -353,6 +364,8 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub unsafe fn raw(
         device: Arc<Device>,
         size: DeviceSize,
@@ -393,6 +406,8 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub unsafe fn raw_with_exportable_fd(
         device: Arc<Device>,
         size: DeviceSize,

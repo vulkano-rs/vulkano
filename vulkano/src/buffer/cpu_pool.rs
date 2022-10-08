@@ -197,9 +197,12 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     #[inline]
     pub fn new(device: Arc<Device>, usage: BufferUsage) -> CpuBufferPool<T> {
         assert!(size_of::<T>() > 0);
+        assert!(!usage.shader_device_address);
         let pool = device.standard_memory_pool();
 
         CpuBufferPool {
