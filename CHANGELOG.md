@@ -42,6 +42,9 @@ Changes to descriptor sets and descriptor pools:
 Changes to buffer and image uploads:
 - `DeviceLocalBuffer::{from_buffer, from_data, from_iter}` and `ImmutableImage::{from_iter, from_buffer}` now take a mutable reference to an `AutoCommandBufferBuilder` instead of a queue, and no longer return a future. The upload command will be recorded into the provided command buffer, which should be executed later.
 
+Changes to buffers:
+- When binding memory to a buffer with the `shader_device_address` usage, and the `ext_buffer_device_address` extension isn't enabled, the memory must now have been allocated with the `MemoryAllocateFlags::device_address` flag set.
+
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
 - Added the `device_coherent`, `device_uncached` and `rdma_capable` flags to `MemoryPropertyFlags`, and improved the documentation of all flags with additional usage advice.
@@ -54,10 +57,12 @@ Changes to buffer and image uploads:
 - Added a `supports_protected` member to `SurfaceCapabilities` for the `khr_surface_protected_capabilities` extension.
 - Support for the `ext_validation_features` extension.
 - Support for the `khr_external_fence_fd` and `khr_external_fence_win32` extensions.
+- Added `MemoryAllocateFlags`.
 
 ### Bugs fixed
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
 - [#1871](https://github.com/vulkano-rs/vulkano/issues/1871): Layer extensions are not included when validating extensions to enable on an instance.
+- Fixed missing validation when binding memory to a buffer with the `shader_device_address` usage.
 
 # Version 0.31.1 (2022-10-04)
 
