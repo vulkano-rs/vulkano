@@ -385,15 +385,42 @@ impl DeviceMemory {
             }
         }
 
-        // VUID-VkMemoryAllocateInfo-flags-03331
-        if flags.device_address && !device.enabled_features().buffer_device_address {
+        if !flags.is_empty()
+            && device.physical_device().api_version() < Version::V1_1
+            && !device.enabled_extensions().khr_device_group
+        {
             return Err(DeviceMemoryError::RequirementNotMet {
-                required_for: "`allocate_info.flags.device_address` is `true`",
+                required_for: "`allocate_info.flags` is not empty",
                 requires_one_of: RequiresOneOf {
-                    features: &["buffer_device_address"],
+                    api_version: Some(Version::V1_1),
+                    device_extensions: &["khr_device_group"],
                     ..Default::default()
                 },
             });
+        }
+
+        if flags.device_address {
+            // VUID-VkMemoryAllocateInfo-flags-03331
+            if !device.enabled_features().buffer_device_address {
+                return Err(DeviceMemoryError::RequirementNotMet {
+                    required_for: "`allocate_info.flags.device_address` is `true`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["buffer_device_address"],
+                        ..Default::default()
+                    },
+                });
+            }
+
+            if device.enabled_extensions().ext_buffer_device_address {
+                return Err(DeviceMemoryError::RequirementNotMet {
+                    required_for: "`allocate_info.flags.device_address` is `true`",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_2),
+                        device_extensions: &["khr_buffer_device_address"],
+                        ..Default::default()
+                    },
+                });
+            }
         }
 
         Ok(())
@@ -489,7 +516,7 @@ impl DeviceMemory {
             ..Default::default()
         };
 
-        if !flags.is_empty() && !device.enabled_extensions().ext_buffer_device_address {
+        if !flags.is_empty() {
             allocate_info = allocate_info.push_next(&mut flags_info);
         }
 
@@ -726,6 +753,10 @@ pub struct MemoryAllocateInfo<'d> {
     pub export_handle_types: ExternalMemoryHandleTypes,
 
     /// Additional flags for the memory allocation.
+    ///
+    /// If not empty, the device API version must be at least 1.1, or the
+    /// [`khr_device_group`](crate::device::DeviceExtensions::khr_device_group) extension must be
+    /// enabled on the device.
     ///
     /// The default value is [`MemoryAllocateFlags::empty()`].
     pub flags: MemoryAllocateFlags,
@@ -985,11 +1016,11 @@ vulkan_bitflags! {
     // device_mask = DEVICE_MASK,
 
     /// Specifies that the allocated device memory can be bound to a buffer created with the
-    /// [`shader_device_address`] usage. This requires that the [`buffer_device_address`] features
-    /// is enabled on the device.
+    /// [`shader_device_address`] usage. This requires that the [`buffer_device_address`] feature
+    /// is enabled on the device and the [`ext_buffer_device_address`] extensions is not used.
     ///
     /// [`shader_device_address`]: crate::buffer::BufferUsage::shader_device_address
-    /// [`buffer_device_address`]: crate::device::Features::buffer_device_address
+    /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
     device_address = DEVICE_ADDRESS,
 
     // TODO: implement
