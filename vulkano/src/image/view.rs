@@ -102,6 +102,18 @@ where
         let device = image_inner.device();
         let format = format.unwrap();
 
+        let level_count = subresource_range.mip_levels.end - subresource_range.mip_levels.start;
+        let layer_count = subresource_range.array_layers.end - subresource_range.array_layers.start;
+
+        // VUID-VkImageSubresourceRange-aspectMask-requiredbitmask
+        assert!(!subresource_range.aspects.is_empty());
+
+        // VUID-VkImageSubresourceRange-levelCount-01720
+        assert!(level_count != 0);
+
+        // VUID-VkImageSubresourceRange-layerCount-01721
+        assert!(layer_count != 0);
+
         let default_usage = Self::get_default_usage(subresource_range.aspects, image_inner);
 
         let has_non_default_usage = if usage.is_empty() {
@@ -110,12 +122,6 @@ where
         } else {
             usage == default_usage
         };
-
-        let level_count = subresource_range.mip_levels.end - subresource_range.mip_levels.start;
-        let layer_count = subresource_range.array_layers.end - subresource_range.array_layers.start;
-
-        assert!(level_count != 0);
-        assert!(layer_count != 0);
 
         // VUID-VkImageViewCreateInfo-viewType-parameter
         view_type.validate_device(device)?;

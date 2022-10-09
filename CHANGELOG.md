@@ -29,9 +29,7 @@ Changes to `GpuFuture`:
 Changes to command buffers and command pools:
 - Renamed `CommandPool` to `CommandBufferAllocator`, `StandardCommandPool` to `StandardCommandBufferAllocator`, and `UnsafeCommandPool` to `CommandPool` to better reflect their action.
 - Removed `Device::with_standard_command_pool`.
-- Command buffer allocators must now be managed manually.
-  - `AutoCommandBufferBuilder::{primary, secondary}` now take an implementation of `CommandBufferAllocator` instead of the `Device`.
-  - `DeviceLocalBuffer::{from_buffer, from_data, from_iter}` and `ImmutableImage::{from_iter, from_buffer}` now take an implementation of `CommandBufferAllocator`.
+- `AutoCommandBufferBuilder::{primary, secondary}` now take an implementation of `CommandBufferAllocator` instead of the `Device`.
 
 Changes to descriptor sets and descriptor pools:
 - Renamed `DescriptorPool` to `DescriptorSetAllocator`, `StandardDescriptorPool` to `StandardDescriptorSetAllocator`, and `UnsafeDescriptorPool` to `DescriptorPool` to better reflect their action.
@@ -40,6 +38,12 @@ Changes to descriptor sets and descriptor pools:
 - Removed `Device::with_standard_descriptor_pool`.
 - Descriptor set allocators must now be managed manually.
   - `PersistentDescriptorSet::{new, new_variable}` now take an implementation of `DescriptorSetAllocator`, `PersistentDescriptorSet::new_with_pool` has been removed.
+
+Changes to buffer and image uploads:
+- `DeviceLocalBuffer::{from_buffer, from_data, from_iter}` and `ImmutableImage::{from_iter, from_buffer}` now take a mutable reference to an `AutoCommandBufferBuilder` instead of a queue, and no longer return a future. The upload command will be recorded into the provided command buffer, which should be executed later.
+
+Changes to buffers:
+- When binding memory to a buffer with the `shader_device_address` usage, and the `ext_buffer_device_address` extension isn't enabled, the memory must now have been allocated with the `MemoryAllocateFlags::device_address` flag set.
 
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
@@ -53,10 +57,12 @@ Changes to descriptor sets and descriptor pools:
 - Added a `supports_protected` member to `SurfaceCapabilities` for the `khr_surface_protected_capabilities` extension.
 - Support for the `ext_validation_features` extension.
 - Support for the `khr_external_fence_fd` and `khr_external_fence_win32` extensions.
+- Added `MemoryAllocateFlags`.
 
 ### Bugs fixed
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
 - [#1871](https://github.com/vulkano-rs/vulkano/issues/1871): Layer extensions are not included when validating extensions to enable on an instance.
+- Fixed missing validation when binding memory to a buffer with the `shader_device_address` usage.
 
 # Version 0.31.1 (2022-10-04)
 

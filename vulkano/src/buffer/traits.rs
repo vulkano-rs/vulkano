@@ -8,7 +8,7 @@
 // according to those terms.
 
 use super::{sys::UnsafeBuffer, BufferContents, BufferSlice, BufferUsage};
-use crate::{device::DeviceOwned, DeviceSize, RequiresOneOf, SafeDeref, VulkanObject};
+use crate::{device::DeviceOwned, DeviceSize, RequiresOneOf, SafeDeref, Version, VulkanObject};
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
@@ -100,13 +100,17 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
                 ..Default::default()
             };
             let fns = device.fns();
-            let ptr = (fns.ext_buffer_device_address.get_buffer_device_address_ext)(
-                device.internal_object(),
-                &info,
-            );
+            let f = if device.api_version() >= Version::V1_2 {
+                fns.v1_2.get_buffer_device_address
+            } else if device.enabled_extensions().khr_buffer_device_address {
+                fns.khr_buffer_device_address.get_buffer_device_address_khr
+            } else {
+                fns.ext_buffer_device_address.get_buffer_device_address_ext
+            };
+            let ptr = f(device.internal_object(), &info);
 
             if ptr == 0 {
-                panic!("got null ptr from a valid GetBufferDeviceAddressEXT call");
+                panic!("got null ptr from a valid GetBufferDeviceAddress call");
             }
 
             Ok(NonZeroU64::new_unchecked(ptr + inner.offset))

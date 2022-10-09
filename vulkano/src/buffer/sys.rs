@@ -399,6 +399,15 @@ impl UnsafeBuffer {
     }
 
     /// Binds device memory to this buffer.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `self.usage.shader_device_address` is `true` and the `memory` was not allocated
+    ///   with the [`device_address`] flag set and the [`ext_buffer_device_address`] extension is
+    ///   not enabled on the device.
+    ///
+    /// [`device_address`]: crate::memory::MemoryAllocateFlags::device_address
+    /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
     pub unsafe fn bind_memory(
         &self,
         memory: &DeviceMemory,
@@ -433,6 +442,13 @@ impl UnsafeBuffer {
             if self.usage().uniform_buffer {
                 debug_assert!(offset % properties.min_uniform_buffer_offset_alignment == 0);
             }
+        }
+
+        // VUID-vkBindBufferMemory-bufferDeviceAddress-03339
+        if self.usage.shader_device_address
+            && !self.device.enabled_extensions().ext_buffer_device_address
+        {
+            assert!(memory.flags().device_address);
         }
 
         (fns.v1_0.bind_buffer_memory)(
