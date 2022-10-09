@@ -130,7 +130,10 @@ use std::{
     mem::MaybeUninit,
     ops::Deref,
     ptr,
-    sync::{Arc, Weak},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, Weak,
+    },
 };
 
 pub(crate) mod extensions;
@@ -154,16 +157,14 @@ pub struct Device {
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_family_indices: SmallVec<[u32; 2]>,
-    allocation_count: Mutex<u32>,
+    // This mutex is required for validation in `memory::device_memory`, the atomic is for
+    // wait-free reads. Both of these counts must only be modified in that module.
+    pub(crate) allocation_count_mutex: Mutex<u32>,
+    pub(crate) allocation_count: AtomicU32,
     fence_pool: Mutex<Vec<ash::vk::Fence>>,
     semaphore_pool: Mutex<Vec<ash::vk::Semaphore>>,
     event_pool: Mutex<Vec<ash::vk::Event>>,
 }
-
-// The `StandardCommandPool` type doesn't implement Send/Sync, so we have to manually reimplement
-// them for the device itself.
-unsafe impl Send for Device {}
-unsafe impl Sync for Device {}
 
 impl Device {
     /// Creates a new `Device`.
@@ -414,7 +415,8 @@ impl Device {
             enabled_extensions,
             enabled_features,
             active_queue_family_indices,
-            allocation_count: Mutex::new(0),
+            allocation_count_mutex: Mutex::new(0),
+            allocation_count: AtomicU32::new(0),
             fence_pool: Mutex::new(Vec::new()),
             semaphore_pool: Mutex::new(Vec::new()),
             event_pool: Mutex::new(Vec::new()),
@@ -506,15 +508,12 @@ impl Device {
         new_pool
     }
 
-    /// Used to track the number of allocations on this device.
+    /// Returns the current number of active [`DeviceMemory`] allocations the device has.
     ///
-    /// To ensure valid usage of the Vulkan API, we cannot call `vkAllocateMemory` when
-    /// `maxMemoryAllocationCount` has been exceeded. See the Vulkan specs:
-    /// https://registry.khronos.org/vulkan/specs/1.0/html/vkspec.html#vkAllocateMemory
-    ///
-    /// Warning: You should never modify this value, except in `device_memory` module
-    pub(crate) fn allocation_count(&self) -> &Mutex<u32> {
-        &self.allocation_count
+    /// [`DeviceMemory`]: crate::memory::DeviceMemory
+    #[inline]
+    pub fn allocation_count(&self) -> u32 {
+        self.allocation_count.load(Ordering::Relaxed)
     }
 
     pub(crate) fn fence_pool(&self) -> &Mutex<Vec<ash::vk::Fence>> {
