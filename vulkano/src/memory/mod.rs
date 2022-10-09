@@ -95,7 +95,8 @@
 pub use self::{
     device_memory::{
         DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-        MappedDeviceMemory, MemoryAllocateInfo, MemoryImportInfo, MemoryMapError,
+        MappedDeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryImportInfo,
+        MemoryMapError,
     },
     pool::MemoryPool,
 };

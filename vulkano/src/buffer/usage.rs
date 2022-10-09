@@ -44,6 +44,13 @@ vulkan_bitflags! {
     indirect_buffer = INDIRECT_BUFFER,
 
     /// The buffer's device address can be retrieved.
+    ///
+    /// A buffer created with this usage can only be bound to device memory allocated with the
+    /// [`device_address`] flag set unless the [`ext_buffer_device_address`] extension is enabled
+    /// on the device.
+    ///
+    /// [`device_address`]: crate::memory::MemoryAllocateFlags::device_address
+    /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
     shader_device_address = SHADER_DEVICE_ADDRESS {
         api_version: V1_2,
         device_extensions: [khr_buffer_device_address, ext_buffer_device_address],

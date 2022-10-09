@@ -77,6 +77,8 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub fn from_data(
         device: Arc<Device>,
         usage: BufferUsage,
@@ -130,6 +132,8 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `data` is empty.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub fn from_iter<I>(
         device: Arc<Device>,
         usage: BufferUsage,
@@ -172,6 +176,8 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `len` is zero.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub unsafe fn uninitialized_array(
         device: Arc<Device>,
         len: DeviceSize,
@@ -201,6 +207,8 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
+    /// - Panics if `usage.shader_device_address` is `true`.
+    // TODO: ^
     pub unsafe fn raw(
         device: Arc<Device>,
         size: DeviceSize,

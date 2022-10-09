@@ -13,7 +13,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
+        PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator,
@@ -272,6 +272,12 @@ fn main() {
 
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let mut uploads = AutoCommandBufferBuilder::primary(
+        &command_buffer_allocator,
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
 
     let mascot_texture = {
         let png_bytes = include_bytes!("rust_mascot.png").to_vec();
@@ -293,11 +299,9 @@ fn main() {
             dimensions,
             MipmapsCount::One,
             Format::R8G8B8A8_SRGB,
-            &command_buffer_allocator,
-            queue.clone(),
+            &mut uploads,
         )
-        .unwrap()
-        .0;
+        .unwrap();
 
         ImageView::new_default(image).unwrap()
     };
@@ -322,11 +326,9 @@ fn main() {
             dimensions,
             MipmapsCount::One,
             Format::R8G8B8A8_SRGB,
-            &command_buffer_allocator,
-            queue.clone(),
+            &mut uploads,
         )
-        .unwrap()
-        .0;
+        .unwrap();
 
         ImageView::new_default(image).unwrap()
     };
@@ -410,8 +412,14 @@ fn main() {
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end: Option<Box<dyn GpuFuture>> =
-        Some(Box::new(vulkano::sync::now(device.clone())));
+    let mut previous_frame_end = Some(
+        uploads
+            .build()
+            .unwrap()
+            .execute(queue.clone())
+            .unwrap()
+            .boxed(),
+    );
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {

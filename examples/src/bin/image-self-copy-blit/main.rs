@@ -212,8 +212,14 @@ fn main() {
 
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let mut uploads = AutoCommandBufferBuilder::primary(
+        &command_buffer_allocator,
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
 
-    let (texture, tex_future) = {
+    let texture = {
         let png_bytes = include_bytes!("image_img.png").to_vec();
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
@@ -248,14 +254,8 @@ fn main() {
         )
         .unwrap();
 
-        let mut builder = AutoCommandBufferBuilder::primary(
-            &command_buffer_allocator,
-            queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
         // here, we perform image copying and blitting on the same image
-        builder
+        uploads
             //  clear the image buffer
             .clear_color_image(ClearColorImageInfo::image(image.clone()))
             .unwrap()
@@ -312,12 +312,8 @@ fn main() {
                 ..BlitImageInfo::images(image.clone(), image.clone())
             })
             .unwrap();
-        let command_buffer = builder.build().unwrap();
 
-        (
-            ImageView::new_default(image).unwrap(),
-            command_buffer.execute(queue.clone()).unwrap(),
-        )
+        ImageView::new_default(image).unwrap()
     };
 
     let sampler = Sampler::new(
@@ -359,7 +355,14 @@ fn main() {
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(tex_future.boxed());
+    let mut previous_frame_end = Some(
+        uploads
+            .build()
+            .unwrap()
+            .execute(queue.clone())
+            .unwrap()
+            .boxed(),
+    );
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
