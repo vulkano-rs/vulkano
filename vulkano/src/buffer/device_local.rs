@@ -22,9 +22,9 @@ use super::{
 use crate::{
     command_buffer::{
         allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferBeginError,
-        CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo, PrimaryCommandBuffer,
+        CopyBufferInfo,
     },
-    device::{Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned},
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
@@ -34,7 +34,7 @@ use crate::{
         DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType, MemoryPool,
         MemoryRequirements,
     },
-    sync::{NowFuture, Sharing},
+    sync::Sharing,
     DeviceSize,
 };
 use smallvec::SmallVec;
@@ -186,20 +186,14 @@ where
     ///
     /// - Panics if `usage.shader_device_address` is `true`.
     // TODO: ^
-    pub fn from_buffer<B>(
+    pub fn from_buffer<B, L, A>(
         source: Arc<B>,
         usage: BufferUsage,
-        command_buffer_allocator: &impl CommandBufferAllocator,
-        queue: Arc<Queue>,
-    ) -> Result<
-        (
-            Arc<DeviceLocalBuffer<T>>,
-            CommandBufferExecFuture<NowFuture>,
-        ),
-        DeviceLocalBufferCreationError,
-    >
+        command_buffer_builder: &mut AutoCommandBufferBuilder<L, A>,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceLocalBufferCreationError>
     where
         B: TypedBufferAccess<Content = T> + 'static,
+        A: CommandBufferAllocator,
     {
         unsafe {
             // We automatically set `transfer_dst` to true in order to avoid annoying errors.
@@ -219,21 +213,11 @@ where
                     .copied(),
             )?;
 
-            let mut cbb = AutoCommandBufferBuilder::primary(
-                command_buffer_allocator,
-                queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
-            )?;
-            cbb.copy_buffer(CopyBufferInfo::buffers(source, buffer.clone()))
+            command_buffer_builder
+                .copy_buffer(CopyBufferInfo::buffers(source, buffer.clone()))
                 .unwrap(); // TODO: return error?
-            let cb = cbb.build().unwrap(); // TODO: return OomError
 
-            let future = match cb.execute(queue) {
-                Ok(f) => f,
-                Err(_) => unreachable!(),
-            };
-
-            Ok((buffer, future))
+            Ok(buffer)
         }
     }
 }
@@ -258,20 +242,16 @@ where
     /// - Panics if `T` has zero size.
     /// - Panics if `usage.shader_device_address` is `true`.
     // TODO: ^
-    pub fn from_data(
+    pub fn from_data<L, A>(
         data: T,
         usage: BufferUsage,
-        command_buffer_allocator: &impl CommandBufferAllocator,
-        queue: Arc<Queue>,
-    ) -> Result<
-        (
-            Arc<DeviceLocalBuffer<T>>,
-            CommandBufferExecFuture<NowFuture>,
-        ),
-        DeviceLocalBufferCreationError,
-    > {
+        command_buffer_builder: &mut AutoCommandBufferBuilder<L, A>,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceLocalBufferCreationError>
+    where
+        A: CommandBufferAllocator,
+    {
         let source = CpuAccessibleBuffer::from_data(
-            queue.device().clone(),
+            command_buffer_builder.device().clone(),
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
@@ -279,7 +259,7 @@ where
             false,
             data,
         )?;
-        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_allocator, queue)
+        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_builder)
     }
 }
 
@@ -293,24 +273,18 @@ where
     /// - Panics if `data` is empty.
     /// - Panics if `usage.shader_device_address` is `true`.
     // TODO: ^
-    pub fn from_iter<D>(
+    pub fn from_iter<D, L, A>(
         data: D,
         usage: BufferUsage,
-        command_buffer_allocator: &impl CommandBufferAllocator,
-        queue: Arc<Queue>,
-    ) -> Result<
-        (
-            Arc<DeviceLocalBuffer<[T]>>,
-            CommandBufferExecFuture<NowFuture>,
-        ),
-        DeviceLocalBufferCreationError,
-    >
+        command_buffer_builder: &mut AutoCommandBufferBuilder<L, A>,
+    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceLocalBufferCreationError>
     where
         D: IntoIterator<Item = T>,
         D::IntoIter: ExactSizeIterator,
+        A: CommandBufferAllocator,
     {
         let source = CpuAccessibleBuffer::from_iter(
-            queue.device().clone(),
+            command_buffer_builder.device().clone(),
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
@@ -318,7 +292,7 @@ where
             false,
             data,
         )?;
-        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_allocator, queue)
+        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_builder)
     }
 }
 
@@ -609,22 +583,32 @@ impl From<CommandBufferBeginError> for DeviceLocalBufferCreationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{command_buffer::allocator::StandardCommandBufferAllocator, sync::GpuFuture};
+    use crate::{
+        command_buffer::{
+            allocator::StandardCommandBufferAllocator, CommandBufferUsage, PrimaryCommandBuffer,
+        },
+        sync::GpuFuture,
+    };
 
     #[test]
     fn from_data_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+            &command_buffer_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
 
-        let (buffer, _) = DeviceLocalBuffer::from_data(
+        let buffer = DeviceLocalBuffer::from_data(
             12u32,
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
             },
-            &cb_allocator,
-            queue.clone(),
+            &mut command_buffer_builder,
         )
         .unwrap();
 
@@ -639,15 +623,10 @@ mod tests {
         )
         .unwrap();
 
-        let mut cbb = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
-            queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-        )
-        .unwrap();
-        cbb.copy_buffer(CopyBufferInfo::buffers(buffer, destination.clone()))
+        command_buffer_builder
+            .copy_buffer(CopyBufferInfo::buffers(buffer, destination.clone()))
             .unwrap();
-        let _ = cbb
+        let _ = command_buffer_builder
             .build()
             .unwrap()
             .execute(queue)
@@ -663,16 +642,21 @@ mod tests {
     fn from_iter_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+            &command_buffer_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
 
-        let (buffer, _) = DeviceLocalBuffer::from_iter(
+        let buffer = DeviceLocalBuffer::from_iter(
             (0..512u32).map(|n| n * 2),
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
             },
-            &cb_allocator,
-            queue.clone(),
+            &mut command_buffer_builder,
         )
         .unwrap();
 
@@ -687,15 +671,10 @@ mod tests {
         )
         .unwrap();
 
-        let mut cbb = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
-            queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-        )
-        .unwrap();
-        cbb.copy_buffer(CopyBufferInfo::buffers(buffer, destination.clone()))
+        command_buffer_builder
+            .copy_buffer(CopyBufferInfo::buffers(buffer, destination.clone()))
             .unwrap();
-        let _ = cbb
+        let _ = command_buffer_builder
             .build()
             .unwrap()
             .execute(queue)
@@ -714,7 +693,13 @@ mod tests {
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device);
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
+        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+            &command_buffer_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
 
         assert_should_panic!({
             DeviceLocalBuffer::from_data(
@@ -723,8 +708,7 @@ mod tests {
                     transfer_dst: true,
                     ..BufferUsage::empty()
                 },
-                &cb_allocator,
-                queue.clone(),
+                &mut command_buffer_builder,
             )
             .unwrap();
         });

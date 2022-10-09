@@ -9,7 +9,9 @@
 
 use std::sync::Arc;
 use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
@@ -174,6 +176,12 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
+    let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+        &command_buffer_allocator,
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8_UINT;
@@ -188,8 +196,7 @@ fn main() {
         dimensions,
         MipmapsCount::One,
         pixel_format,
-        &command_buffer_allocator,
-        queue,
+        &mut command_buffer_builder,
     )
     .unwrap();
 

@@ -910,7 +910,9 @@ pub struct SparseImageMemoryRequirements {
 #[cfg(test)]
 mod tests {
     use crate::{
-        command_buffer::allocator::StandardCommandBufferAllocator,
+        command_buffer::{
+            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        },
         format::Format,
         image::{ImageAccess, ImageDimensions, ImmutableImage, MipmapsCount},
     };
@@ -1019,7 +1021,13 @@ mod tests {
     fn mipmap_working_immutable_image() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device);
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
+        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+            &command_buffer_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
 
         let dimensions = ImageDimensions::Dim2d {
             width: 512,
@@ -1031,13 +1039,12 @@ mod tests {
 
             vec.resize(512 * 512, 0u8);
 
-            let (image, _) = ImmutableImage::from_iter(
+            let image = ImmutableImage::from_iter(
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::One,
                 Format::R8_UNORM,
-                &cb_allocator,
-                queue.clone(),
+                &mut command_buffer_builder,
             )
             .unwrap();
             assert_eq!(image.mip_levels(), 1);
@@ -1047,13 +1054,12 @@ mod tests {
 
             vec.resize(512 * 512, 0u8);
 
-            let (image, _) = ImmutableImage::from_iter(
+            let image = ImmutableImage::from_iter(
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::Log2,
                 Format::R8_UNORM,
-                &cb_allocator,
-                queue,
+                &mut command_buffer_builder,
             )
             .unwrap();
             assert_eq!(image.mip_levels(), 10);
