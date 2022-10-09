@@ -1017,7 +1017,8 @@ vulkan_bitflags! {
 
     /// Specifies that the allocated device memory can be bound to a buffer created with the
     /// [`shader_device_address`] usage. This requires that the [`buffer_device_address`] feature
-    /// is enabled on the device and the [`ext_buffer_device_address`] extensions is not used.
+    /// is enabled on the device and the [`ext_buffer_device_address`] extension is not enabled on
+    /// the device.
     ///
     /// [`shader_device_address`]: crate::buffer::BufferUsage::shader_device_address
     /// [`buffer_device_address`]: crate::device::Features::buffer_device_address

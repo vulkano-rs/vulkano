@@ -403,8 +403,8 @@ impl UnsafeBuffer {
     /// # Panics
     ///
     /// - Panics if `self.usage.shader_device_address` is `true` and the `memory` was not allocated
-    ///   with the [`device_address`] flag set and the [`ext_buffer_device_address`] device
-    ///   extension is not used.
+    ///   with the [`device_address`] flag set and the [`ext_buffer_device_address`] extension is
+    ///   not enabled on the device.
     ///
     /// [`device_address`]: crate::memory::MemoryAllocateFlags::device_address
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address

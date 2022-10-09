@@ -46,7 +46,8 @@ vulkan_bitflags! {
     /// The buffer's device address can be retrieved.
     ///
     /// A buffer created with this usage can only be bound to device memory allocated with the
-    /// [`device_address`] flag set unless the [`ext_buffer_device_address`] extension is used.
+    /// [`device_address`] flag set unless the [`ext_buffer_device_address`] extension is enabled
+    /// on the device.
     ///
     /// [`device_address`]: crate::memory::MemoryAllocateFlags::device_address
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
