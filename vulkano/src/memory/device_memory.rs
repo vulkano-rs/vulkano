@@ -1020,6 +1020,7 @@ vulkan_bitflags! {
     /// is enabled on the device and the [`ext_buffer_device_address`] extensions is not used.
     ///
     /// [`shader_device_address`]: crate::buffer::BufferUsage::shader_device_address
+    /// [`buffer_device_address`]: crate::device::Features::buffer_device_address
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
     device_address = DEVICE_ADDRESS,
 
