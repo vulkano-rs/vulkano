@@ -247,16 +247,16 @@ use std::{
 pub struct MemoryAlloc {
     offset: DeviceSize,
     size: DeviceSize,
-    /// Needed when binding resources to the allocation in order to avoid aliasing memory.
+    // Needed when binding resources to the allocation in order to avoid aliasing memory.
     allocation_type: AllocationType,
-    /// Used in the `Drop` impl to free the allocation if required.
+    // Used in the `Drop` impl to free the allocation if required.
     parent: AllocParent,
-    /// Underlying block of memory. This field is duplicated here to avoid walking up the hierarchy
-    /// when binding.
+    // Underlying block of memory. This field is duplicated here to avoid walking up the hierarchy
+    // when binding.
     memory: ash::vk::DeviceMemory,
     memory_type_index: u32,
-    /// Used by the suballocators to resolve buffer-image granularity conflicts. This field is
-    /// duplicated here to avoid walking up the hierarchy when creating a suballocator.
+    // Used by the suballocators to resolve buffer-image granularity conflicts. This field is
+    // duplicated here to avoid walking up the hierarchy when creating a suballocator.
     buffer_image_granularity: DeviceSize,
 }
 
@@ -708,7 +708,6 @@ pub enum SuballocationError {
 }
 
 impl Display for SuballocationError {
-    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -960,10 +959,10 @@ impl Suballocator for Arc<FreeListAllocator> {
 #[derive(Debug)]
 struct FreeListAllocatorInner {
     nodes: host::PoolAllocator<SuballocationListNode>,
-    /// Free suballocations sorted by size in ascending order. This means we can always find a
-    /// best-fit in *O*(log(*n*)) time in the worst case, and iterating in order is very efficient.
+    // Free suballocations sorted by size in ascending order. This means we can always find a
+    // best-fit in *O*(log(*n*)) time in the worst case, and iterating in order is very efficient.
     free_list: Vec<SlotId>,
-    /// Total memory remaining in the region.
+    // Total memory remaining in the region.
     free_size: DeviceSize,
 }
 
@@ -1384,7 +1383,7 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
 struct PoolAllocatorInner {
     region: MemoryAlloc,
     block_size: DeviceSize,
-    /// Unsorted list of free block indices.
+    // Unsorted list of free block indices.
     free_list: ArrayQueue<DeviceSize>,
 }
 
@@ -1720,11 +1719,11 @@ impl Suballocator for Arc<BuddyAllocator> {
 
 #[derive(Debug)]
 struct BuddyAllocatorInner {
-    /// Every order has its own free-list for convenience, so that we don't have to traverse a tree.
-    /// Each free-list is sorted by offset because we want to find the first-fit as this strategy
-    /// minimizes external fragmentation.
+    // Every order has its own free-list for convenience, so that we don't have to traverse a tree.
+    // Each free-list is sorted by offset because we want to find the first-fit as this strategy
+    // minimizes external fragmentation.
     free_list: [Vec<DeviceSize>; BuddyAllocator::MAX_ORDERS],
-    /// Total free space remaining in the region.
+    // Total free space remaining in the region.
     free_size: DeviceSize,
 }
 
@@ -1773,9 +1772,9 @@ struct BuddyAllocatorInner {
 #[derive(Debug)]
 pub struct BumpAllocator {
     region: MemoryAlloc,
-    /// Offset pointing to the start of free memory within the region.
+    // Offset pointing to the start of free memory within the region.
     free_start: Cell<DeviceSize>,
-    /// Used to check for buffer-image granularity conflicts.
+    // Used to check for buffer-image granularity conflicts.
     prev_alloc_type: Cell<AllocationType>,
 }
 
@@ -1800,10 +1799,8 @@ impl BumpAllocator {
     pub fn try_reset(self: &mut Arc<Self>) -> Result<(), BumpAllocatorResetError> {
         Arc::get_mut(self)
             .map(|allocator| {
-                allocator.free_start.set(0);
-                allocator
-                    .prev_alloc_type
-                    .set(allocator.region.allocation_type);
+                *allocator.free_start.get_mut() = 0;
+                *allocator.prev_alloc_type.get_mut() = allocator.region.allocation_type;
             })
             .ok_or(BumpAllocatorResetError)
     }
@@ -1912,7 +1909,6 @@ impl Suballocator for Arc<BumpAllocator> {
         Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
 
-    /// Returns the amount of free space left in the region.
     #[inline]
     fn free_size(&self) -> DeviceSize {
         self.region.size - self.free_start.get()
@@ -1937,8 +1933,9 @@ impl Suballocator for Arc<BumpAllocator> {
 /// # Efficiency
 ///
 /// As the algorithm is the same between the two bump allocators, the only difference in terms of
-/// efficiency is that `SyncBumpAllocator` adds the overhead of 2 atomic operations when
-/// allocating, one of which requires the [`SeqCst`] ordering, which makes it slightly less
+/// efficiency is that `SyncBumpAllocator` adds the overhead of a
+/// [`AtomicU64::compare_exchange_weak`] loop. This can lead to CPU-level contention depending on
+/// how many threads try to allocate at once, making it slightly less
 /// efficient than the `BumpAllocator`.
 ///
 /// [region]: Suballocator#regions
@@ -1949,8 +1946,8 @@ impl Suballocator for Arc<BumpAllocator> {
 #[derive(Debug)]
 pub struct SyncBumpAllocator {
     region: MemoryAlloc,
-    /// Encodes the previous allocation type in the 2 least signifficant bits and the free start in
-    /// the rest.
+    // Encodes the previous allocation type in the 2 least signifficant bits and the free start in
+    // the rest.
     state: AtomicU64,
 }
 
@@ -1974,9 +1971,7 @@ impl SyncBumpAllocator {
     pub fn try_reset(self: &mut Arc<Self>) -> Result<(), BumpAllocatorResetError> {
         Arc::get_mut(self)
             .map(|allocator| {
-                allocator
-                    .state
-                    .store(allocator.region.allocation_type as u64, Ordering::Relaxed);
+                *allocator.state.get_mut() = allocator.region.allocation_type as u64;
             })
             .ok_or(BumpAllocatorResetError)
     }
@@ -2000,7 +1995,7 @@ impl SyncBumpAllocator {
     #[inline]
     pub unsafe fn reset_unchecked(&self) {
         self.state
-            .store(self.region.allocation_type as u64, Ordering::SeqCst);
+            .store(self.region.allocation_type as u64, Ordering::Relaxed);
     }
 }
 
@@ -2108,7 +2103,7 @@ impl Suballocator for Arc<SyncBumpAllocator> {
             match self.state.compare_exchange_weak(
                 state,
                 new_state,
-                Ordering::SeqCst,
+                Ordering::Relaxed,
                 Ordering::Relaxed,
             ) {
                 Ok(_) => {
@@ -2150,8 +2145,7 @@ impl Suballocator for Arc<SyncBumpAllocator> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BumpAllocatorResetError;
 
-impl fmt::Display for BumpAllocatorResetError {
-    #[inline]
+impl Display for BumpAllocatorResetError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("the allocator is still in use")
     }
@@ -2208,8 +2202,8 @@ mod host {
     #[derive(Debug)]
     pub(super) struct PoolAllocator<T> {
         pool: Vec<T>,
-        /// LIFO list of free allocations, which means that newly freed allocations are always
-        /// reused first before bumping the free start.
+        // LIFO list of free allocations, which means that newly freed allocations are always
+        // reused first before bumping the free start.
         free_list: Vec<SlotId>,
     }
 
@@ -2704,7 +2698,7 @@ mod tests {
     #[test]
     fn sync_bump_allocator_syncness() {
         const THREADS: DeviceSize = 12;
-        const ALLOCATIONS_PER_THREAD: DeviceSize = 10000;
+        const ALLOCATIONS_PER_THREAD: DeviceSize = 100_000;
         const ALLOCATION_STEP: DeviceSize = 117;
         const REGION_SIZE: DeviceSize =
             (ALLOCATION_STEP * (THREADS + 1) * THREADS / 2) * ALLOCATIONS_PER_THREAD;
