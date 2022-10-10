@@ -216,7 +216,8 @@
 //! [region]: Suballocator#regions
 
 use self::host::SlotId;
-use crate::{device::DeviceOwned, memory::DeviceMemory, DeviceSize, VulkanObject};
+use super::{DeviceMemory, MemoryAllocateInfo};
+use crate::{device::DeviceOwned, DeviceSize, VulkanObject};
 use crossbeam_queue::ArrayQueue;
 use parking_lot::Mutex;
 use std::{
@@ -224,7 +225,6 @@ use std::{
     error::Error,
     fmt::{self, Display},
     mem::{self, ManuallyDrop},
-    ops::Deref,
     ptr,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -277,6 +277,7 @@ enum AllocParent {
     },
     Bump(Arc<BumpAllocator>),
     Root(Arc<DeviceMemory>),
+    Dedicated(DeviceMemory),
     #[cfg(test)]
     None,
 }
@@ -312,16 +313,13 @@ impl MemoryAlloc {
     /// [suballocation]: Suballocator
     #[inline]
     pub fn parent_allocation(&self) -> Result<&Self, &DeviceMemory> {
-        self.raw_parent_allocation().map_err(Deref::deref)
-    }
-
-    fn raw_parent_allocation(&self) -> Result<&Self, &Arc<DeviceMemory>> {
         match &self.parent {
             AllocParent::FreeList { allocator, .. } => Ok(&allocator.region),
             AllocParent::Pool { allocator, .. } => Ok(&allocator.region),
             AllocParent::Buddy { allocator, .. } => Ok(&allocator.region),
             AllocParent::Bump(allocator) => Ok(&allocator.region),
             AllocParent::Root(device_memory) => Err(device_memory),
+            AllocParent::Dedicated(device_memory) => Err(device_memory),
             #[cfg(test)]
             AllocParent::None => unreachable!(),
         }
@@ -335,10 +333,19 @@ impl MemoryAlloc {
         matches!(&self.parent, AllocParent::Root(_))
     }
 
-    /// Returns the underlying block of [`DeviceMemory`] if this allocation is [the root
-    /// allocation], otherwise returns the allocation back wrapped in [`Err`].
+    /// Returns `true` if this allocation is a [dedicated allocation].
     ///
-    /// [the root allocation]: Self::is_root
+    /// [dedicated allocation]: MemoryAllocateInfo#structfield.dedicated_allocation
+    #[inline]
+    pub fn is_dedicated(&self) -> bool {
+        matches!(&self.parent, AllocParent::Dedicated(_))
+    }
+
+    /// Returns the underlying block of [`DeviceMemory`] if this allocation [is the root
+    /// allocation] and is not [aliased], otherwise returns the allocation back wrapped in [`Err`].
+    ///
+    /// [is the root allocation]: Self::is_root
+    /// [aliased]: Self::alias
     #[inline]
     pub fn try_unwrap(self) -> Result<DeviceMemory, Self> {
         let this = ManuallyDrop::new(self);
@@ -361,7 +368,8 @@ impl MemoryAlloc {
         }
     }
 
-    /// Duplicates the allocation, creating aliased memory.
+    /// Duplicates the allocation, creating aliased memory. Returns [`None`] if the allocation [is
+    /// a dedicated allocation].
     ///
     /// This has the performance of traversing a linked list, *O*(*n*), where *n* is the height of
     /// the [memory hierarchy].
@@ -376,18 +384,25 @@ impl MemoryAlloc {
     /// - You must ensure memory accesses are synchronized yourself.
     ///
     /// [memory hierarchy]: Suballocator#memory-hierarchies
+    /// [is a dedicated allocation]: Self::is_dedicated
     #[inline]
-    pub unsafe fn alias(&self) -> Self {
-        MemoryAlloc {
-            parent: AllocParent::Root(self.raw_device_memory().clone()),
+    pub unsafe fn alias(&self) -> Option<Self> {
+        self.root().map(|device_memory| MemoryAlloc {
+            parent: AllocParent::Root(device_memory.clone()),
             ..*self
-        }
+        })
     }
 
-    fn raw_device_memory(&self) -> &Arc<DeviceMemory> {
-        match self.raw_parent_allocation() {
-            Ok(allocation) => allocation.raw_device_memory(),
-            Err(device_memory) => device_memory,
+    fn root(&self) -> Option<&Arc<DeviceMemory>> {
+        match &self.parent {
+            AllocParent::FreeList { allocator, .. } => allocator.region.root(),
+            AllocParent::Pool { allocator, .. } => allocator.region.root(),
+            AllocParent::Buddy { allocator, .. } => allocator.region.root(),
+            AllocParent::Bump(allocator) => allocator.region.root(),
+            AllocParent::Root(device_memory) => Some(device_memory),
+            AllocParent::Dedicated(_) => None,
+            #[cfg(test)]
+            AllocParent::None => unreachable!(),
         }
     }
 
@@ -507,8 +522,10 @@ impl Drop for MemoryAlloc {
             // The bump allocator can't free individually, but we need to keep a reference to it so
             // it don't get reset or dropped while in use.
             AllocParent::Bump(_) => {}
-            // Dedicated allocations free themselves when the `DeviceMemory` is dropped.
+            // A root allocation frees itself once all references to the `DeviceMemory` are dropped.
             AllocParent::Root(_) => {}
+            // Dedicated allocations free themselves when the `DeviceMemory` is dropped.
+            AllocParent::Dedicated(_) => {}
             #[cfg(test)]
             AllocParent::None => {}
         }
