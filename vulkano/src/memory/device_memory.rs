@@ -520,18 +520,17 @@ impl DeviceMemory {
             allocate_info = allocate_info.push_next(&mut flags_info);
         }
 
-        let mut allocation_count = device.allocation_count_mutex.lock();
-
         // VUID-vkAllocateMemory-maxMemoryAllocationCount-04101
-        // This is technically validation, but it must be atomic with the `allocate_memory` call.
-        if *allocation_count
-            >= device
-                .physical_device()
-                .properties()
-                .max_memory_allocation_count
-        {
-            return Err(DeviceMemoryError::TooManyObjects);
-        }
+        let max_allocations = device
+            .physical_device()
+            .properties()
+            .max_memory_allocation_count;
+        device
+            .allocation_count
+            .fetch_update(Ordering::Acquire, Ordering::Relaxed, move |count| {
+                (count < max_allocations).then_some(count + 1)
+            })
+            .map_err(|_| DeviceMemoryError::TooManyObjects)?;
 
         let handle = {
             let fns = device.fns();
@@ -543,12 +542,13 @@ impl DeviceMemory {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(|e| {
+                device.allocation_count.fetch_sub(1, Ordering::Release);
+                VulkanError::from(e)
+            })?;
+
             output.assume_init()
         };
-
-        *allocation_count += 1;
-        device.allocation_count.fetch_add(1, Ordering::Relaxed);
 
         Ok(handle)
     }
@@ -691,9 +691,7 @@ impl Drop for DeviceMemory {
         unsafe {
             let fns = self.device.fns();
             (fns.v1_0.free_memory)(self.device.internal_object(), self.handle, ptr::null());
-            let mut allocation_count = self.device.allocation_count_mutex.lock();
-            *allocation_count -= 1;
-            self.device.allocation_count.fetch_sub(1, Ordering::Relaxed);
+            self.device.allocation_count.fetch_sub(1, Ordering::Release);
         }
     }
 }

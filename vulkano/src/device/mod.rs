@@ -157,9 +157,8 @@ pub struct Device {
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_family_indices: SmallVec<[u32; 2]>,
-    // This mutex is required for validation in `memory::device_memory`, the atomic is for
-    // wait-free reads. Both of these counts must only be modified in that module.
-    pub(crate) allocation_count_mutex: Mutex<u32>,
+    // This is required for validation in `memory::device_memory`, the count must only be modified
+    // in that module.
     pub(crate) allocation_count: AtomicU32,
     fence_pool: Mutex<Vec<ash::vk::Fence>>,
     semaphore_pool: Mutex<Vec<ash::vk::Semaphore>>,
@@ -415,7 +414,6 @@ impl Device {
             enabled_extensions,
             enabled_features,
             active_queue_family_indices,
-            allocation_count_mutex: Mutex::new(0),
             allocation_count: AtomicU32::new(0),
             fence_pool: Mutex::new(Vec::new()),
             semaphore_pool: Mutex::new(Vec::new()),
@@ -513,7 +511,7 @@ impl Device {
     /// [`DeviceMemory`]: crate::memory::DeviceMemory
     #[inline]
     pub fn allocation_count(&self) -> u32 {
-        self.allocation_count.load(Ordering::Relaxed)
+        self.allocation_count.load(Ordering::Acquire)
     }
 
     pub(crate) fn fence_pool(&self) -> &Mutex<Vec<ash::vk::Fence>> {
