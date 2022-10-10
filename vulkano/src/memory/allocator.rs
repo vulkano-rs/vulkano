@@ -236,10 +236,10 @@ use std::{
 /// purpose.
 ///
 /// There's a few ways you can obtain a `MemoryAlloc` in Vulkano. Most commonly you will probably
-/// want to use one of the [generic memory allocators]. If you want a dedicated allocation, and
-/// already have a [`DeviceMemory`] block on hand, you can turn it into a `MemoryAlloc` by using
-/// the [`From`] implementation. Lastly, you can use a [suballocator] if you want to create
-/// multiple smaller allocations out of a bigger one.
+/// want to use one of the [generic memory allocators]. If you want a root allocation, and already
+/// have a [`DeviceMemory`] block on hand, you can turn it into a `MemoryAlloc` by using the
+/// [`From`] implementation. Lastly, you can use a [suballocator] if you want to create multiple
+/// smaller allocations out of a bigger one.
 ///
 /// [generic memory allocators]: MemoryAllocator
 /// [`From`]: Self#impl-From<DeviceMemory>-for-MemoryAlloc
@@ -327,26 +327,18 @@ impl MemoryAlloc {
         }
     }
 
-    /// Returns `true` if this allocation is dedicated, meaning it doesn't share the
-    /// [`DeviceMemory`] with any other allocations, including [aliased] ones.
+    /// Returns `true` if this allocation is the root of the [memory hierarchy].
     ///
-    /// Note that the allocation can have suballocations of its own, in other words this checks if
-    /// this allocation is the root of the [memory hierarchy].
-    ///
-    /// [aliased]: Self::alias
     /// [memory hierarchy]: Suballocator#memory-hierarchies
     #[inline]
-    pub fn is_dedicated(&self) -> bool {
-        match &self.parent {
-            AllocParent::Root(device_memory) => Arc::strong_count(device_memory) == 1,
-            _ => false,
-        }
+    pub fn is_root(&self) -> bool {
+        matches!(&self.parent, AllocParent::Root(_))
     }
 
-    /// Returns the underlying block of [`DeviceMemory`] if this allocation is [dedicated],
-    /// otherwise returns the allocation back wrapped in [`Err`].
+    /// Returns the underlying block of [`DeviceMemory`] if this allocation is [the root
+    /// allocation], otherwise returns the allocation back wrapped in [`Err`].
     ///
-    /// [dedicated]: Self::is_dedicated
+    /// [the root allocation]: Self::is_root
     #[inline]
     pub fn try_unwrap(self) -> Result<DeviceMemory, Self> {
         let this = ManuallyDrop::new(self);
@@ -480,7 +472,7 @@ impl MemoryAlloc {
 }
 
 impl From<DeviceMemory> for MemoryAlloc {
-    /// Converts the `DeviceMemory` into a dedicated allocation.
+    /// Converts the `DeviceMemory` into a root allocation.
     #[inline]
     fn from(device_memory: DeviceMemory) -> Self {
         MemoryAlloc {
