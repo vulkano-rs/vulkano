@@ -275,14 +275,9 @@ enum AllocParent {
         order: usize,
     },
     Bump(Arc<BumpAllocator>),
-    SyncBump(Arc<SyncBumpAllocator>),
     Root(Arc<DeviceMemory>),
     None,
 }
-
-// `BumpAllocator` is `!Sync` but we never access it, only drop the `Arc` containing it.
-unsafe impl Send for MemoryAlloc {}
-unsafe impl Sync for MemoryAlloc {}
 
 impl MemoryAlloc {
     /// Returns the offset of the allocation within the [`DeviceMemory`] block.
@@ -324,7 +319,6 @@ impl MemoryAlloc {
             AllocParent::Pool { allocator, .. } => Ok(&allocator.region),
             AllocParent::Buddy { allocator, .. } => Ok(&allocator.region),
             AllocParent::Bump(allocator) => Ok(&allocator.region),
-            AllocParent::SyncBump(allocator) => Ok(&allocator.region),
             AllocParent::Root(device_memory) => Err(device_memory),
             AllocParent::None => unreachable!(),
         }
@@ -511,9 +505,9 @@ impl Drop for MemoryAlloc {
             AllocParent::Buddy { allocator, order } => {
                 allocator.free(*order, self.offset);
             }
-            // Bump allocators can't free individually, but we need to keep a reference to them so
-            // they don't get reset or dropped while in use.
-            AllocParent::Bump(_) | AllocParent::SyncBump(_) => {}
+            // The bump allocator can't free individually, but we need to keep a reference to it so
+            // it don't get reset or dropped while in use.
+            AllocParent::Bump(_) => {}
             // Dedicated allocations free themselves when the `DeviceMemory` is dropped.
             AllocParent::Root(_) => {}
             // Dummy used as a replacement when taking ownership of the `DeviceMemory`.
@@ -1751,31 +1745,41 @@ struct BuddyAllocatorInner {
 /// comparisons. But beware, **fast is about all this is**. It is horribly memory inefficient when
 /// used wrong, and is very susceptible to [memory leaks].
 ///
+/// Once you know that you are done with the allocations, meaning you know they have all been
+/// dropped, you can safely reset the allocator using the [`try_reset`] method as long as the
+/// allocator is not shared between threads. It is hard to safely reset a bump allocator that is
+/// used concurrently. In such a scenario it's best not to reset it at all and instead drop it once
+/// it reaches the end of the [region], freeing the region to a higher level in the [hierarchy]
+/// once all threads have dropped their reference to the allocator. This is one of the reasons you
+/// are generally advised to use one `BumpAllocator` per thread if you can.
+///
 /// # Efficiency
 ///
-/// Allocation is *O*(1), and so is resetting the allocator (freeing all allocations).
+/// Allocation is *O*(1), and so is resetting the allocator (freeing all allocations). Allocation
+/// is always lock-free, and most of the time even wait-free. The only case in which it is not
+/// wait-free is if a lot of allocations are made concurrently, which results in CPU-level
+/// contention. Therefore, if you for example need to allocate a lot of buffers each frame from
+/// multiple threads, you might get better performance by using one `BumpAllocator` per thread.
 ///
-/// This allocator is also the only one that doesn't need synchronization, which is why it is
-/// marked `!Sync`, to take advantage of this and maximize performance. If for some weird reason
-/// you want to pass on that, you can use the [`SyncBumpAllocator`]. The reason synchronization can
-/// be avoided is that the created allocations can be dropped without needing to talk back to the
-/// allocator to free anything. The other allocation algorithms all have a free-list which needs to
-/// be modified once an allocation is dropped. Since Vulkano's buffers and images are `Sync`, that
-/// means that even if the allocator only allocates from one thread, it can still be used to free
-/// from multiple threads.
+/// The reason synchronization can be avoided entirely is that the created allocations can be
+/// dropped without needing to talk back to the allocator to free anything. The other allocation
+/// algorithms all have a free-list which needs to be modified once an allocation is dropped. Since
+/// Vulkano's buffers and images are `Sync`, that means that even if the allocator only allocates
+/// from one thread, it can still be used to free from multiple threads.
 ///
 /// [suballocator]: Suballocator
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BumpAllocator>
 /// [region]: Suballocator#regions
 /// [free-list]: Suballocator#free-lists
 /// [memory leaks]: self#leakage
+/// [`try_reset`]: Self::try_reset
+/// [hierarchy]: Suballocator#memory-hierarchies
 #[derive(Debug)]
 pub struct BumpAllocator {
     region: MemoryAlloc,
-    // Offset pointing to the start of free memory within the region.
-    free_start: Cell<DeviceSize>,
-    // Used to check for buffer-image granularity conflicts.
-    prev_alloc_type: Cell<AllocationType>,
+    // Encodes the previous allocation type in the 2 least signifficant bits and the free start in
+    // the rest.
+    state: AtomicU64,
 }
 
 impl BumpAllocator {
@@ -1785,179 +1789,6 @@ impl BumpAllocator {
     #[inline]
     pub fn new(region: MemoryAlloc) -> Arc<Self> {
         Arc::new(BumpAllocator {
-            free_start: Cell::new(0),
-            prev_alloc_type: Cell::new(region.allocation_type),
-            region,
-        })
-    }
-
-    /// Resets the free-start back to the beginning of the [region] if there are no other strong
-    /// references to the allocator.
-    ///
-    /// [region]: Suballocator#regions
-    #[inline]
-    pub fn try_reset(self: &mut Arc<Self>) -> Result<(), BumpAllocatorResetError> {
-        Arc::get_mut(self)
-            .map(|allocator| {
-                *allocator.free_start.get_mut() = 0;
-                *allocator.prev_alloc_type.get_mut() = allocator.region.allocation_type;
-            })
-            .ok_or(BumpAllocatorResetError)
-    }
-
-    /// Resets the free-start to the beginning of the [region] without checking if there are other
-    /// strong references to the allocator.
-    ///
-    /// This could be useful if you cloned the [`Arc`] yourself, and can guarantee that no
-    /// allocations currently hold a reference to it.
-    ///
-    /// For a safe alternative, you can use `Rc<RefCell<Arc<BumpAllocator>>>` together with
-    /// [`try_reset`].
-    ///
-    /// # Safety
-    ///
-    /// All allocations made with the allocator must have been dropped.
-    ///
-    /// [region]: Suballocator#regions
-    /// [`try_reset`]: Self::try_reset
-    #[inline]
-    pub unsafe fn reset_unchecked(&self) {
-        self.free_start.set(0);
-        self.prev_alloc_type.set(self.region.allocation_type);
-    }
-}
-
-impl Suballocator for Arc<BumpAllocator> {
-    #[inline]
-    fn new(region: MemoryAlloc) -> Self {
-        BumpAllocator::new(region)
-    }
-
-    /// Creates a new suballocation within the [region] withut checking the parameters.
-    ///
-    /// See [`allocate`] for the safe version.
-    ///
-    /// # Errors
-    ///
-    /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
-    ///   remaining in the region.
-    ///
-    /// # Safety
-    ///
-    /// - `create_info.size` must not be zero.
-    /// - `create_info.alignment` must not be zero.
-    /// - `create_info.alignment` must be a power of two.
-    ///
-    /// [region]: Suballocator#regions
-    /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
-    #[inline]
-    unsafe fn allocate_unchecked(
-        &self,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
-        fn has_granularity_conflict(prev_ty: AllocationType, ty: AllocationType) -> bool {
-            prev_ty == AllocationType::Unknown || prev_ty != ty
-        }
-
-        let SuballocationCreateInfo {
-            size,
-            alignment,
-            allocation_type,
-            _ne: _,
-        } = create_info;
-
-        let free_start = self.free_start.get();
-        let prev_alloc_type = self.prev_alloc_type.get();
-        let prev_end = self.region.offset + free_start;
-        let mut offset = align_up(prev_end, alignment);
-
-        if prev_end > 0
-            && are_blocks_on_same_page(prev_end, 0, offset, self.region.buffer_image_granularity)
-            && has_granularity_conflict(prev_alloc_type, allocation_type)
-        {
-            offset = align_up(offset, self.region.buffer_image_granularity);
-        }
-
-        let free_start = offset - self.region.offset + size;
-
-        if free_start > self.region.size {
-            return Err(SuballocationError::OutOfRegionMemory);
-        }
-
-        self.free_start.set(free_start);
-        self.prev_alloc_type.set(allocation_type);
-
-        Ok(MemoryAlloc {
-            offset,
-            size,
-            allocation_type,
-            parent: AllocParent::Bump(self.clone()),
-            memory: self.region.memory,
-            memory_type_index: self.region.memory_type_index,
-            buffer_image_granularity: self.region.buffer_image_granularity,
-        })
-    }
-
-    #[inline]
-    fn region(&self) -> &MemoryAlloc {
-        &self.region
-    }
-
-    #[inline]
-    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
-        Arc::try_unwrap(self).map(|allocator| allocator.region)
-    }
-
-    #[inline]
-    fn free_size(&self) -> DeviceSize {
-        self.region.size - self.free_start.get()
-    }
-}
-
-/// A thread-safe version of the [`BumpAllocator`].
-///
-/// This allocator exists mostly for completeness, for the unlikely case that you will need it,
-/// since you are generally advised to use one or more `BumpAllocator`s per thread as that is going
-/// to be more performant. Not only that, it is also hard to safely reset a bump allocator that is
-/// used concurrently. In such a scenario it's best not to reset it at all and instead drop it once
-/// it reaches the end of the [region], freeing the region to a higher level in the [hierarchy]
-/// once all threads have dropped their reference to the allocator.
-///
-/// See also [the `Suballocator` implementation].
-///
-/// # Algorithm
-///
-/// See the [single-threaded version].
-///
-/// # Efficiency
-///
-/// As the algorithm is the same between the two bump allocators, the only difference in terms of
-/// efficiency is that `SyncBumpAllocator` adds the overhead of a
-/// [`AtomicU64::compare_exchange_weak`] loop. This can lead to CPU-level contention depending on
-/// how many threads try to allocate at once, making it slightly less
-/// efficient than the `BumpAllocator`.
-///
-/// [region]: Suballocator#regions
-/// [hierarchy]: Suballocator#memory-hierarchies
-/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<SyncBumpAllocator>
-/// [single-threaded version]: BumpAllocator#algorithm
-/// [`SeqCst`]: Ordering::SeqCst
-#[derive(Debug)]
-pub struct SyncBumpAllocator {
-    region: MemoryAlloc,
-    // Encodes the previous allocation type in the 2 least signifficant bits and the free start in
-    // the rest.
-    state: AtomicU64,
-}
-
-impl SyncBumpAllocator {
-    /// Creates a new `SyncBumpAllocator` for the given [region].
-    ///
-    /// [region]: Suballocator#regions
-    #[inline]
-    fn new(region: MemoryAlloc) -> Arc<Self> {
-        Arc::new(SyncBumpAllocator {
             state: AtomicU64::new(region.allocation_type as u64),
             region,
         })
@@ -1984,14 +1815,17 @@ impl SyncBumpAllocator {
     ///
     /// As a safe alternative, you can let the `Arc` do all the work. Simply drop it once it
     /// reaches the end of the region. After all threads do that, the region will be freed to the
-    /// next level up the [hierarchy].
+    /// next level up the [hierarchy]. If you only use the allocator on one thread and need shared
+    /// ownership, you can use `Rc<RefCell<Arc<BumpAllocator>>>` together with [`try_reset`] for a
+    /// safe alternative as well.
     ///
     /// # Safety
     ///
-    /// All allocations made with the allocator must have been dropped.
+    /// - All allocations made with the allocator must have been dropped.
     ///
     /// [region]: Suballocator#regions
     /// [hierarchy]: Suballocator#memory-hierarchies
+    /// [`try_reset`]: Self::try_reset
     #[inline]
     pub unsafe fn reset_unchecked(&self) {
         self.state
@@ -1999,10 +1833,10 @@ impl SyncBumpAllocator {
     }
 }
 
-impl Suballocator for Arc<SyncBumpAllocator> {
+impl Suballocator for Arc<BumpAllocator> {
     #[inline]
     fn new(region: MemoryAlloc) -> Self {
-        SyncBumpAllocator::new(region)
+        BumpAllocator::new(region)
     }
 
     /// Creates a new suballocation within the [region] without checking the parameters.
@@ -2111,7 +1945,7 @@ impl Suballocator for Arc<SyncBumpAllocator> {
                         offset,
                         size,
                         allocation_type,
-                        parent: AllocParent::SyncBump(self.clone()),
+                        parent: AllocParent::Bump(self.clone()),
                         memory: self.region.memory,
                         memory_type_index: self.region.memory_type_index,
                         buffer_image_granularity: self.region.buffer_image_granularity,
@@ -2696,14 +2530,14 @@ mod tests {
     }
 
     #[test]
-    fn sync_bump_allocator_syncness() {
+    fn bump_allocator_syncness() {
         const THREADS: DeviceSize = 12;
         const ALLOCATIONS_PER_THREAD: DeviceSize = 100_000;
         const ALLOCATION_STEP: DeviceSize = 117;
         const REGION_SIZE: DeviceSize =
             (ALLOCATION_STEP * (THREADS + 1) * THREADS / 2) * ALLOCATIONS_PER_THREAD;
 
-        let mut allocator = SyncBumpAllocator::new(dummy_alloc!(REGION_SIZE));
+        let mut allocator = BumpAllocator::new(dummy_alloc!(REGION_SIZE));
 
         thread::scope(|scope| {
             for i in 1..=THREADS {
