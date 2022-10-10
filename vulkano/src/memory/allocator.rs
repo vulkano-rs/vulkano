@@ -223,8 +223,9 @@ use std::{
     cell::Cell,
     error::Error,
     fmt::{self, Display},
-    mem,
+    mem::{self, ManuallyDrop},
     ops::Deref,
+    ptr,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -276,6 +277,7 @@ enum AllocParent {
     },
     Bump(Arc<BumpAllocator>),
     Root(Arc<DeviceMemory>),
+    #[cfg(test)]
     None,
 }
 
@@ -320,6 +322,7 @@ impl MemoryAlloc {
             AllocParent::Buddy { allocator, .. } => Ok(&allocator.region),
             AllocParent::Bump(allocator) => Ok(&allocator.region),
             AllocParent::Root(device_memory) => Err(device_memory),
+            #[cfg(test)]
             AllocParent::None => unreachable!(),
         }
     }
@@ -345,19 +348,23 @@ impl MemoryAlloc {
     ///
     /// [dedicated]: Self::is_dedicated
     #[inline]
-    pub fn try_unwrap(mut self) -> Result<DeviceMemory, Self> {
-        match mem::replace(&mut self.parent, AllocParent::None) {
+    pub fn try_unwrap(self) -> Result<DeviceMemory, Self> {
+        let this = ManuallyDrop::new(self);
+
+        // SAFETY: This is safe because even if a panic happens, `self.parent` can not be
+        // double-freed since `self` was wrapped in `ManuallyDrop`. If we fail to unwrap the
+        // `DeviceMemory`, the copy of `self.parent` is forgotten and only then is the
+        // `ManuallyDrop` wrapper removed from `self`.
+        match unsafe { ptr::read(&this.parent) } {
             AllocParent::Root(device_memory) => {
                 Arc::try_unwrap(device_memory).map_err(|device_memory| {
-                    self.parent = AllocParent::Root(device_memory);
-
-                    self
+                    mem::forget(device_memory);
+                    ManuallyDrop::into_inner(this)
                 })
             }
             parent => {
-                self.parent = parent;
-
-                Err(self)
+                mem::forget(parent);
+                Err(ManuallyDrop::into_inner(this))
             }
         }
     }
@@ -510,7 +517,7 @@ impl Drop for MemoryAlloc {
             AllocParent::Bump(_) => {}
             // Dedicated allocations free themselves when the `DeviceMemory` is dropped.
             AllocParent::Root(_) => {}
-            // Dummy used as a replacement when taking ownership of the `DeviceMemory`.
+            #[cfg(test)]
             AllocParent::None => {}
         }
     }
