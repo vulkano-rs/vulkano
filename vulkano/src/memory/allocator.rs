@@ -644,6 +644,9 @@ pub trait Suballocator {
     ///
     /// [region]: Self#regions
     fn free_size(&self) -> DeviceSize;
+
+    /// Tries to free some space, if applicable.
+    fn cleanup(&mut self);
 }
 
 /// Parameters to create a new [allocation] using a [suballocator].
@@ -964,6 +967,9 @@ impl Suballocator for Arc<FreeListAllocator> {
     fn free_size(&self) -> DeviceSize {
         self.inner.lock().free_size
     }
+
+    #[inline]
+    fn cleanup(&mut self) {}
 }
 
 #[derive(Debug)]
@@ -1387,6 +1393,9 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     fn free_size(&self) -> DeviceSize {
         self.free_count() as DeviceSize * self.block_size()
     }
+
+    #[inline]
+    fn cleanup(&mut self) {}
 }
 
 #[derive(Debug)]
@@ -1725,6 +1734,9 @@ impl Suballocator for Arc<BuddyAllocator> {
     fn free_size(&self) -> DeviceSize {
         self.inner.lock().free_size
     }
+
+    #[inline]
+    fn cleanup(&mut self) {}
 }
 
 #[derive(Debug)]
@@ -1988,6 +2000,11 @@ impl Suballocator for Arc<BumpAllocator> {
     #[inline]
     fn free_size(&self) -> DeviceSize {
         self.region.size - (self.state.load(Ordering::Relaxed) >> 2)
+    }
+
+    #[inline]
+    fn cleanup(&mut self) {
+        let _ = self.try_reset();
     }
 }
 
