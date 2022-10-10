@@ -58,6 +58,7 @@ Changes to buffers:
 - Support for the `ext_validation_features` extension.
 - Support for the `khr_external_fence_fd` and `khr_external_fence_win32` extensions.
 - Added `MemoryAllocateFlags`.
+- Added `Device::allocation_count`.
 
 ### Bugs fixed
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.

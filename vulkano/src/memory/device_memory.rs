@@ -22,7 +22,7 @@ use std::{
     mem::MaybeUninit,
     ops::Range,
     ptr, slice,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
 };
 
 /// Represents memory that has been allocated from the device.
@@ -520,18 +520,17 @@ impl DeviceMemory {
             allocate_info = allocate_info.push_next(&mut flags_info);
         }
 
-        let mut allocation_count = device.allocation_count().lock();
-
         // VUID-vkAllocateMemory-maxMemoryAllocationCount-04101
-        // This is technically validation, but it must be atomic with the `allocate_memory` call.
-        if *allocation_count
-            >= device
-                .physical_device()
-                .properties()
-                .max_memory_allocation_count
-        {
-            return Err(DeviceMemoryError::TooManyObjects);
-        }
+        let max_allocations = device
+            .physical_device()
+            .properties()
+            .max_memory_allocation_count;
+        device
+            .allocation_count
+            .fetch_update(Ordering::Acquire, Ordering::Relaxed, move |count| {
+                (count < max_allocations).then_some(count + 1)
+            })
+            .map_err(|_| DeviceMemoryError::TooManyObjects)?;
 
         let handle = {
             let fns = device.fns();
@@ -543,11 +542,13 @@ impl DeviceMemory {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(|e| {
+                device.allocation_count.fetch_sub(1, Ordering::Release);
+                VulkanError::from(e)
+            })?;
+
             output.assume_init()
         };
-
-        *allocation_count += 1;
 
         Ok(handle)
     }
@@ -690,8 +691,7 @@ impl Drop for DeviceMemory {
         unsafe {
             let fns = self.device.fns();
             (fns.v1_0.free_memory)(self.device.internal_object(), self.handle, ptr::null());
-            let mut allocation_count = self.device.allocation_count().lock();
-            *allocation_count -= 1;
+            self.device.allocation_count.fetch_sub(1, Ordering::Release);
         }
     }
 }
@@ -1753,7 +1753,7 @@ mod tests {
     #[test]
     fn allocation_count() {
         let (device, _) = gfx_dev_and_queue!();
-        assert_eq!(*device.allocation_count().lock(), 0);
+        assert_eq!(device.allocation_count(), 0);
         let _mem1 = DeviceMemory::allocate(
             device.clone(),
             MemoryAllocateInfo {
@@ -1763,7 +1763,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(*device.allocation_count().lock(), 1);
+        assert_eq!(device.allocation_count(), 1);
         {
             let _mem2 = DeviceMemory::allocate(
                 device.clone(),
@@ -1774,8 +1774,8 @@ mod tests {
                 },
             )
             .unwrap();
-            assert_eq!(*device.allocation_count().lock(), 2);
+            assert_eq!(device.allocation_count(), 2);
         }
-        assert_eq!(*device.allocation_count().lock(), 1);
+        assert_eq!(device.allocation_count(), 1);
     }
 }
