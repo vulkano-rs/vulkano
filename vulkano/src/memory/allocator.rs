@@ -786,6 +786,8 @@ impl Error for SuballocationError {}
 #[derive(Debug)]
 pub struct FreeListAllocator {
     region: MemoryAlloc,
+    // Total memory remaining in the region.
+    free_size: AtomicU64,
     inner: Mutex<FreeListAllocatorInner>,
 }
 
@@ -818,20 +820,20 @@ impl FreeListAllocator {
         });
         free_list.push(root_id);
 
-        let inner = FreeListAllocatorInner {
-            nodes,
-            free_list,
-            free_size: region.size,
-        };
+        let free_size = AtomicU64::new(region.size);
+        let inner = Mutex::new(FreeListAllocatorInner { nodes, free_list });
 
         Arc::new(FreeListAllocator {
             region,
-            inner: Mutex::new(inner),
+            free_size,
+            inner,
         })
     }
 
     fn free(&self, id: SlotId) {
         let mut inner = self.inner.lock();
+        self.free_size
+            .fetch_add(inner.nodes.get(id).size, Ordering::Release);
         inner.nodes.get_mut(id).ty = SuballocationType::Free;
         inner.coalesce(id);
         inner.free(id);
@@ -925,6 +927,7 @@ impl Suballocator for Arc<FreeListAllocator> {
                         inner.allocate(id);
                         inner.split(id, offset, size);
                         inner.nodes.get_mut(id).ty = allocation_type.into();
+                        self.free_size.fetch_sub(size, Ordering::Release);
 
                         return Ok(MemoryAlloc {
                             offset,
@@ -945,7 +948,7 @@ impl Suballocator for Arc<FreeListAllocator> {
                 Err(SuballocationError::OutOfRegionMemory)
             }
             // There would be enough space if the region wasn't so fragmented. :(
-            Some(_) if inner.free_size >= size => Err(SuballocationError::FragmentedRegion),
+            Some(_) if self.free_size() >= size => Err(SuballocationError::FragmentedRegion),
             // There is not enough space.
             Some(_) => Err(SuballocationError::OutOfRegionMemory),
             // There is no space at all.
@@ -965,7 +968,7 @@ impl Suballocator for Arc<FreeListAllocator> {
 
     #[inline]
     fn free_size(&self) -> DeviceSize {
-        self.inner.lock().free_size
+        self.free_size.load(Ordering::Acquire)
     }
 
     #[inline]
@@ -978,8 +981,6 @@ struct FreeListAllocatorInner {
     // Free suballocations sorted by size in ascending order. This means we can always find a
     // best-fit in *O*(log(*n*)) time in the worst case, and iterating in order is very efficient.
     free_list: Vec<SlotId>,
-    // Total memory remaining in the region.
-    free_size: DeviceSize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1017,7 +1018,6 @@ impl FreeListAllocatorInner {
         debug_assert!(self.free_list.contains(&node_id));
 
         let node = self.nodes.get(node_id);
-        self.free_size -= node.size;
 
         match self
             .free_list
@@ -1136,7 +1136,6 @@ impl FreeListAllocatorInner {
         debug_assert!(!self.free_list.contains(&node_id));
 
         let node = self.nodes.get(node_id);
-        self.free_size += node.size;
         let index = match self
             .free_list
             .binary_search_by_key(&node.size, |&x| self.nodes.get(x).size)
@@ -1522,6 +1521,8 @@ impl PoolAllocatorInner {
 pub struct BuddyAllocator {
     region: MemoryAlloc,
     order_count: usize,
+    // Total memory remaining in the region.
+    free_size: AtomicU64,
     inner: Mutex<BuddyAllocatorInner>,
 }
 
@@ -1555,18 +1556,17 @@ impl BuddyAllocator {
             region.size >= BuddyAllocator::MIN_NODE_SIZE && max_order < BuddyAllocator::MAX_ORDERS
         );
 
+        let free_size = AtomicU64::new(region.size);
         let mut free_list = [EMPTY_FREE_LIST; BuddyAllocator::MAX_ORDERS];
         // The root node has the lowest offset and highest order, so it's the whole region.
         free_list[max_order].push(region.offset);
-        let inner = BuddyAllocatorInner {
-            free_list,
-            free_size: region.size,
-        };
+        let inner = Mutex::new(BuddyAllocatorInner { free_list });
 
         Arc::new(BuddyAllocator {
             region,
+            free_size,
             order_count: max_order + 1,
-            inner: Mutex::new(inner),
+            inner,
         })
     }
 
@@ -1598,7 +1598,8 @@ impl BuddyAllocator {
                         Err(index) => index,
                     };
                     inner.free_list[order].insert(index, offset);
-                    inner.free_size += Self::MIN_NODE_SIZE << min_order;
+                    self.free_size
+                        .fetch_add(Self::MIN_NODE_SIZE << min_order, Ordering::Release);
 
                     break;
                 }
@@ -1689,7 +1690,7 @@ impl Suballocator for Arc<BuddyAllocator> {
                         // Repeat splitting for the left child if required in the next loop turn.
                     }
 
-                    inner.free_size -= size;
+                    self.free_size.fetch_sub(size, Ordering::Release);
 
                     return Ok(MemoryAlloc {
                         offset,
@@ -1707,7 +1708,7 @@ impl Suballocator for Arc<BuddyAllocator> {
             }
         }
 
-        if prev_power_of_two(inner.free_size) >= create_info.size {
+        if prev_power_of_two(self.free_size()) >= create_info.size {
             // A node large enough could be formed if the region wasn't so fragmented.
             Err(SuballocationError::FragmentedRegion)
         } else {
@@ -1732,7 +1733,7 @@ impl Suballocator for Arc<BuddyAllocator> {
     /// [internal fragmentation]: self#internal-fragmentation
     #[inline]
     fn free_size(&self) -> DeviceSize {
-        self.inner.lock().free_size
+        self.free_size.load(Ordering::Acquire)
     }
 
     #[inline]
@@ -1745,8 +1746,6 @@ struct BuddyAllocatorInner {
     // Each free-list is sorted by offset because we want to find the first-fit as this strategy
     // minimizes external fragmentation.
     free_list: [Vec<DeviceSize>; BuddyAllocator::MAX_ORDERS],
-    // Total free space remaining in the region.
-    free_size: DeviceSize,
 }
 
 /// A [suballocator] which can allocate dynamically, but can only free all allocations at once.
@@ -1965,7 +1964,7 @@ impl Suballocator for Arc<BumpAllocator> {
             match self.state.compare_exchange_weak(
                 state,
                 new_state,
-                Ordering::Relaxed,
+                Ordering::Release,
                 Ordering::Relaxed,
             ) {
                 Ok(_) => {
@@ -1999,7 +1998,7 @@ impl Suballocator for Arc<BumpAllocator> {
 
     #[inline]
     fn free_size(&self) -> DeviceSize {
-        self.region.size - (self.state.load(Ordering::Relaxed) >> 2)
+        self.region.size - (self.state.load(Ordering::Acquire) >> 2)
     }
 
     #[inline]
