@@ -216,6 +216,17 @@
 //! [region]: Suballocator#regions
 
 use self::{array_vec::ArrayVec, host::SlotId};
+use super::{
+    DedicatedAllocation, MemoryAllocateFlags, MemoryAllocateInfo, MemoryHeap, MemoryRequirements,
+    MemoryType,
+};
+use crate::{
+    buffer::sys::UnsafeBuffer,
+    device::{Device, DeviceOwned},
+    image::sys::UnsafeImage,
+    memory::DeviceMemory,
+    DeviceSize, Version, VulkanError, VulkanObject,
+};
 use crossbeam_queue::ArrayQueue;
 use parking_lot::Mutex;
 use std::{
@@ -229,6 +240,193 @@ use std::{
         Arc,
     },
 };
+
+/// General-purpose memory allocators which allocate from any memory type dynamically as needed.
+pub trait MemoryAllocator: DeviceOwned {
+    /// Allocates memory from a specific memory type.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.size` is zero.
+    /// - Panics if `create_info.alignment` is zero.
+    /// - Panics if `create_info.alignment` is not a power of two.
+    fn allocate_from_type(
+        &self,
+        memory_type_index: u32,
+        create_info: SuballocationCreateInfo,
+    ) -> Result<MemoryAlloc, VulkanError> {
+        create_info.validate();
+
+        unsafe { self.allocate_from_type_unchecked(memory_type_index, create_info) }
+    }
+
+    /// Allocates memory from a specific memory type without checking the parameters.
+    ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    unsafe fn allocate_from_type_unchecked(
+        &self,
+        memory_type_index: u32,
+        create_info: SuballocationCreateInfo,
+    ) -> Result<MemoryAlloc, VulkanError>;
+
+    /// Allocates memory according to requirements.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.requirements.size` is zero.
+    /// - Panics if `create_info.requirements.alignment` is zero.
+    /// - Panics if `create_info.requirements.alignment` is not a power of two.
+    fn allocate(&self, create_info: AllocationCreateInfo<'_>) -> Result<MemoryAlloc, VulkanError> {
+        SuballocationCreateInfo::from(&create_info).validate();
+
+        unsafe { self.allocate_unchecked(create_info) }
+    }
+
+    /// Allocates memory according to requirements without checking the parameters.
+    ///
+    /// # Safety
+    ///
+    /// - `create_info.requirements.size` must not be zero.
+    /// - `create_info.requirements.alignment` must not be zero.
+    /// - `create_info.requirements.alignment` must be a power of two.
+    unsafe fn allocate_unchecked(
+        &self,
+        create_info: AllocationCreateInfo<'_>,
+    ) -> Result<MemoryAlloc, VulkanError>;
+}
+
+/// Parameters to create a new [allocation] using a [generic memory allocator].
+///
+/// [allocation]: MemoryAlloc
+/// [generic memory allocator]: MemoryAllocator
+#[derive(Clone, Debug)]
+pub struct AllocationCreateInfo<'d> {
+    /// Requirements of the resource you want to allocate memory for.
+    ///
+    /// If you plan to bind this memory directly to a resource, then this must correspond to the
+    /// value returned by either [`UnsafeBuffer::memory_requirements`] or
+    /// [`UnsafeImage::memory_requirements`] for the respective buffer or image.
+    ///
+    /// All of the fields must be non-zero, [`alignment`] must be a power of two, and
+    /// [`memory_type_bits`] must be below 2<sup>*n*</sup> where *n* is the number of available
+    /// memory types.
+    ///
+    /// The default is all zeros, which must be overridden.
+    ///
+    /// [`alignment`]: MemoryRequirements::alignment
+    /// [`memory_type_bits`]: MemoryRequirements::memory_type_bits
+    pub requirements: MemoryRequirements,
+
+    /// What type of resource this allocation will be used for.
+    ///
+    /// This should be [`Linear`] for buffers and linear images, and [`NonLinear`] for optimal
+    /// images. You can not bind memory allocated with the [`Linear`] type to optimal images or
+    /// bind memory allocated with the [`NonLinear`] type to buffers and linear images. You should
+    /// never use the [`Unknown`] type unless you have to, as that can be less memory efficient.
+    ///
+    /// The default value is [`AllocationType::Unknown`].
+    ///
+    /// [`Linear`]: AllocationType::Linear
+    /// [`NonLinear`]: AllocationType::NonLinear
+    /// [`Unknown`]: AllocationType::Unknown
+    pub allocation_type: AllocationType,
+
+    /// The intended usage for the allocation.
+    ///
+    /// The default value is [`MemoryUsage::GpuOnly`].
+    pub usage: MemoryUsage,
+
+    /// Allows a dedicated allocation to be created.
+    ///
+    /// You should always fill this field in if you are allocating memory for a resource, otherwise
+    /// the allocator won't be able to create a dedicated allocation if one is recommended. The
+    /// allocator will use [`requirements.prefer_dedicated`] as an indicator to determine if a
+    /// dedicated allocation should be created, but that alone doesn't guarantee it to happen. If
+    /// the indicator is `false` however, then a dedicated allocation will not be created.
+    ///
+    /// This option is silently ignored if the device API version is below 1.1 and the
+    /// [`khr_dedicated_allocation`] extension is not enabled on the device.
+    ///
+    /// The default value is [`None`].
+    ///
+    /// [`requirements.prefer_dedicated`]: MemoryRequirements::prefer_dedicated
+    pub dedicated_allocation: Option<DedicatedAllocation<'d>>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for AllocationCreateInfo<'static> {
+    #[inline]
+    fn default() -> Self {
+        AllocationCreateInfo {
+            requirements: MemoryRequirements {
+                size: 0,
+                alignment: 0,
+                memory_type_bits: 0,
+                prefer_dedicated: false,
+            },
+            allocation_type: AllocationType::Unknown,
+            usage: MemoryUsage::GpuOnly,
+            dedicated_allocation: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Describes how a memory allocation is going to be used.
+///
+/// This is mostly an optimization, except for `MemoryUsage::GpuOnly` which will pick a memory type
+/// that is not CPU-accessible if such a type exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MemoryUsage {
+    /// The memory is intended to only be used by the GPU.
+    ///
+    /// Prefers picking a memory type with the [`device_local`] flag and without the
+    /// [`host_visible`] flag.
+    ///
+    /// This option is what you will always want to use unless the memory needs to be accessed by
+    /// the CPU, because a memory type that can only be accessed by the GPU is going to give the
+    /// best performance. Example use cases would be textures and other maps which are written to
+    /// once and then never again, or resources that are only written and read by the GPU, like
+    /// render targets and intermediary buffers.
+    ///
+    /// [`device_local`]: MemoryPropertyFlags::device_local
+    /// [`host_visible`]: MemoryPropertyFlags::host_visible
+    GpuOnly,
+
+    /// The memory is intended for upload to the GPU.
+    ///
+    /// Guarantees picking a memory type with the [`host_visible`] flag. Prefers picking one
+    /// without the [`host_cached`] flag and with the [`device_local`] flag.
+    ///
+    /// This option is best suited for resources that need to be constantly updated by the CPU,
+    /// like vertex and index buffers for example. It is also neccessary for *staging buffers*,
+    /// whose only purpose in life it is to get data into `device_local` memory or texels into an
+    /// optimal image.
+    ///
+    /// [`host_visible`]: MemoryPropertyFlags::host_visible
+    /// [`host_cached`]: MemoryPropertyFlags::host_cached
+    /// [`device_local`]: MemoryPropertyFlags::device_local
+    Upload,
+
+    /// The memory is intended for download from the GPU.
+    ///
+    /// Guarantees picking a memory type with the [`host_visible`] flag. Prefers picking one with
+    /// the [`host_cached`] flag and without the [`device_local`] flag.
+    ///
+    /// This option is best suited if you're using the GPU for things other than rendering and you
+    /// need to get the results back to the CPU. That might be compute shading, or image or video
+    /// manipulation, or screenshotting for example.
+    ///
+    /// [`host_visible`]: MemoryPropertyFlags::host_visible
+    /// [`host_cached`]: MemoryPropertyFlags::host_cached
+    /// [`device_local`]: MemoryPropertyFlags::device_local
+    Download,
+}
 
 /// Memory allocations are portions of memory that are are reserved for a specific resource or
 /// purpose.
@@ -600,9 +798,7 @@ pub trait Suballocator {
         &self,
         create_info: SuballocationCreateInfo,
     ) -> Result<MemoryAlloc, SuballocationError> {
-        assert!(create_info.size > 0);
-        assert!(create_info.alignment > 0);
-        assert!(create_info.alignment.is_power_of_two());
+        create_info.validate();
 
         unsafe { self.allocate_unchecked(create_info) }
     }
@@ -688,6 +884,26 @@ impl Default for SuballocationCreateInfo {
             allocation_type: AllocationType::Unknown,
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+impl<'d> From<&AllocationCreateInfo<'d>> for SuballocationCreateInfo {
+    #[inline]
+    fn from(create_info: &AllocationCreateInfo<'d>) -> Self {
+        SuballocationCreateInfo {
+            size: create_info.requirements.size,
+            alignment: create_info.requirements.alignment,
+            allocation_type: create_info.allocation_type,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl SuballocationCreateInfo {
+    fn validate(&self) {
+        assert!(self.size > 0);
+        assert!(self.alignment > 0);
+        assert!(self.alignment.is_power_of_two());
     }
 }
 
