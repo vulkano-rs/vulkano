@@ -1696,7 +1696,8 @@ mod tests {
     }
 
     #[test]
-    fn semaphore_export() {
+    #[cfg(unix)]
+    fn semaphore_export_fd() {
         let library = match VulkanLibrary::new() {
             Ok(x) => x,
             Err(_) => return,
