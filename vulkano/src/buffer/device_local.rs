@@ -177,10 +177,12 @@ where
 {
     /// Builds a `DeviceLocalBuffer` that copies its data from another buffer.
     ///
-    /// This function returns two objects: the newly-created buffer, and a future representing
-    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you
-    /// must either submit your operation after this future, or execute this future and wait for it
-    /// to be finished before submitting your own operation.
+    /// This is a convenience function, equivalent to calling [`new`](DeviceLocalBuffer::new) with
+    /// the queue family index of `command_buffer_builder`, then recording a `copy_buffer` command
+    /// to `command_buffer_builder`.
+    ///
+    /// `command_buffer_builder` can then be used to record other commands, built, and executed as
+    /// normal. If it is not executed, the buffer contents will be left undefined.
     ///
     /// # Panics
     ///
@@ -226,16 +228,11 @@ impl<T> DeviceLocalBuffer<T>
 where
     T: BufferContents,
 {
-    /// Builds an `DeviceLocalBuffer` from some data.
+    /// Builds a `DeviceLocalBuffer` from some data.
     ///
-    /// This function builds a memory-mapped intermediate buffer, writes the data to it, builds a
-    /// command buffer that copies from this intermediate buffer to the final buffer, and finally
-    /// submits the command buffer as a future.
-    ///
-    /// This function returns two objects: the newly-created buffer, and a future representing
-    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you
-    /// must either submit your operation after this future, or execute this future and wait for it
-    /// to be finished before submitting your own operation.
+    /// This is a convenience function, equivalent to creating a `CpuAccessibleBuffer`, writing
+    /// `data` to it, then calling [`from_buffer`](DeviceLocalBuffer::from_buffer) to copy the data
+    /// over.
     ///
     /// # Panics
     ///
@@ -267,6 +264,12 @@ impl<T> DeviceLocalBuffer<[T]>
 where
     [T]: BufferContents,
 {
+    /// Builds a `DeviceLocalBuffer` from an iterator of data.
+    ///
+    /// This is a convenience function, equivalent to creating a `CpuAccessibleBuffer`, writing
+    /// `iter` to it, then calling [`from_buffer`](DeviceLocalBuffer::from_buffer) to copy the data
+    /// over.
+    ///
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
