@@ -64,6 +64,7 @@ Changes to buffers:
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
 - [#1871](https://github.com/vulkano-rs/vulkano/issues/1871): Layer extensions are not included when validating extensions to enable on an instance.
 - Fixed missing validation when binding memory to a buffer with the `shader_device_address` usage.
+- Queue family count isn't being set in either `ash::vk::BufferCreateInfo` or `ash::vk::ImageCreateInfo`.
 
 # Version 0.31.1 (2022-10-04)
 
