@@ -1323,13 +1323,9 @@ impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
     /// [region]: Suballocator#regions
     #[inline]
     pub fn new(region: MemoryAlloc) -> Arc<Self> {
-        // SAFETY: `PoolAllocator<BLOCK_SIZE>` and `PoolAllocatorInner` have the same layout.
-        unsafe {
-            Arc::from_raw(
-                Arc::into_raw(PoolAllocatorInner::new(region, BLOCK_SIZE))
-                    .cast::<PoolAllocator<BLOCK_SIZE>>(),
-            )
-        }
+        Arc::new(PoolAllocator {
+            inner: PoolAllocatorInner::new(region, BLOCK_SIZE),
+        })
     }
 
     /// Size of a block. Can be bigger than `BLOCK_SIZE` due to alignment requirements.
@@ -1436,7 +1432,7 @@ struct PoolAllocatorInner {
 }
 
 impl PoolAllocatorInner {
-    fn new(region: MemoryAlloc, mut block_size: DeviceSize) -> Arc<Self> {
+    fn new(region: MemoryAlloc, mut block_size: DeviceSize) -> Self {
         if region.allocation_type == AllocationType::Unknown {
             block_size = align_up(block_size, region.buffer_image_granularity);
         }
@@ -1447,11 +1443,11 @@ impl PoolAllocatorInner {
             free_list.push(i).unwrap();
         }
 
-        Arc::new(PoolAllocatorInner {
+        PoolAllocatorInner {
             region,
             block_size,
             free_list,
-        })
+        }
     }
 
     unsafe fn allocate_unchecked(
