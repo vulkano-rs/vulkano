@@ -153,16 +153,12 @@ mod linux {
             .unwrap(),
         );
 
-        let acquire_fd = unsafe {
-            acquire_sem
-                .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
-                .unwrap()
-        };
-        let release_fd = unsafe {
-            release_sem
-                .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
-                .unwrap()
-        };
+        let acquire_fd = acquire_sem
+            .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
+            .unwrap();
+        let release_fd = release_sem
+            .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
+            .unwrap();
 
         let barrier_clone = barrier.clone();
         let barrier_2_clone = barrier_2.clone();

@@ -317,7 +317,7 @@ where
                         }
 
                         queue
-                            .with(|mut q| q.present_unchecked(present_info))
+                            .with(|mut q| q.present_unchecked(present_info))?
                             .map(|r| r.map(|_| ()))
                             .fold(Ok(()), Result::and)
                     };

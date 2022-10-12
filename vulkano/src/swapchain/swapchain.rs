@@ -2145,7 +2145,7 @@ where
 
                     Ok(self
                         .queue
-                        .with(|mut q| q.present_unchecked(present_info))
+                        .with(|mut q| q.present_unchecked(present_info))?
                         .map(|r| r.map(|_| ()))
                         .fold(Ok(()), Result::and)?)
                 }
@@ -2312,6 +2312,11 @@ pub unsafe fn acquire_next_image_raw<W>(
         ash::vk::Result::TIMEOUT => return Err(AcquireError::Timeout),
         err => return Err(VulkanError::from(err).into()),
     };
+
+    if let Some(semaphore) = semaphore {
+        let mut state = semaphore.state();
+        state.swapchain_acquire();
+    }
 
     if let Some(fence) = fence {
         let mut state = fence.state();

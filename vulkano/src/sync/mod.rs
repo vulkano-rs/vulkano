@@ -103,7 +103,6 @@
 //! TODO: talk about fence + semaphore simultaneously
 //! TODO: talk about using fences to clean up
 
-pub(crate) use self::fence::FenceState;
 #[cfg(unix)]
 pub use self::fence::ImportFenceFdInfo;
 #[cfg(windows)]
@@ -128,6 +127,7 @@ pub use self::{
         SemaphoreImportFlags,
     },
 };
+pub(crate) use self::{fence::FenceState, semaphore::SemaphoreState};
 use crate::device::Queue;
 use std::sync::Arc;
 
