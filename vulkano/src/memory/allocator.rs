@@ -215,9 +215,7 @@
 //! [`Rc`]: std::rc::Rc
 //! [region]: Suballocator#regions
 
-use self::host::SlotId;
-use super::{DeviceMemory, MemoryAllocateInfo};
-use crate::{device::DeviceOwned, DeviceSize, VulkanObject};
+use self::{array_vec::ArrayVec, host::SlotId};
 use crossbeam_queue::ArrayQueue;
 use parking_lot::Mutex;
 use std::{
@@ -1552,7 +1550,6 @@ impl PoolAllocatorInner {
 #[derive(Debug)]
 pub struct BuddyAllocator {
     region: MemoryAlloc,
-    order_count: usize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
     // Largest free suballocation in the region.
@@ -1590,7 +1587,7 @@ impl BuddyAllocator {
 
         let free_size = AtomicU64::new(region.size);
         let largest_free_chunk = AtomicU64::new(region.size);
-        let mut free_list = [EMPTY_FREE_LIST; Self::MAX_ORDERS];
+        let mut free_list = ArrayVec::new(max_order + 1, [EMPTY_FREE_LIST; Self::MAX_ORDERS]);
         // The root node has the lowest offset and highest order, so it's the whole region.
         free_list[max_order].push(region.offset);
         let inner = Mutex::new(BuddyAllocatorInner { free_list });
@@ -1599,52 +1596,35 @@ impl BuddyAllocator {
             region,
             free_size,
             largest_free_chunk,
-            order_count: max_order + 1,
             inner,
         })
-    }
-
-    /// Number of orders in the tree. This is always equal to log(*region&nbsp;size*)&nbsp;-&nbsp;3
-    /// (that is, the highest order plus one).
-    #[inline]
-    pub fn order_count(&self) -> usize {
-        self.order_count
     }
 
     fn free(&self, min_order: usize, mut offset: DeviceSize) {
         let mut inner = self.inner.lock();
 
         // Try to coalesce nodes while incrementing the order.
-        for order in min_order..self.order_count {
+        for (order, free_list) in inner.free_list.iter_mut().enumerate().skip(min_order) {
             let size = Self::MIN_NODE_SIZE << order;
             let buddy_offset = ((offset - self.region.offset) ^ size) + self.region.offset;
 
-            match inner.free_list[order].binary_search(&buddy_offset) {
+            match free_list.binary_search(&buddy_offset) {
                 // If the buddy is in the free-list, we can coalesce.
                 Ok(index) => {
-                    inner.free_list[order].remove(index);
+                    free_list.remove(index);
                     offset = DeviceSize::min(offset, buddy_offset);
                 }
                 // Otherwise free the node.
                 Err(_) => {
-                    let index = match inner.free_list[order].binary_search(&offset) {
+                    let index = match free_list.binary_search(&offset) {
                         Ok(index) => index,
                         Err(index) => index,
                     };
-                    inner.free_list[order].insert(index, offset);
+                    free_list.insert(index, offset);
                     self.free_size
                         .fetch_add(Self::MIN_NODE_SIZE << min_order, Ordering::Release);
-                    self.largest_free_chunk.store(
-                        inner.free_list[0..self.order_count]
-                            .iter()
-                            .enumerate()
-                            .rev()
-                            .find_map(|(order, list)| {
-                                (!list.is_empty()).then_some(Self::MIN_NODE_SIZE << order)
-                            })
-                            .unwrap_or(0),
-                        Ordering::Release,
-                    );
+                    self.largest_free_chunk
+                        .store(inner.largest_free_chunk(), Ordering::Release);
 
                     break;
                 }
@@ -1714,39 +1694,37 @@ impl Suballocator for Arc<BuddyAllocator> {
         let mut inner = self.inner.lock();
 
         // Start searching at the lowest possible order going up.
-        for order in min_order..self.order_count {
-            for (index, offset) in inner.free_list[order].iter().copied().enumerate() {
+        for (order, free_list) in inner.free_list.iter_mut().enumerate().skip(min_order) {
+            for (index, &offset) in free_list.iter().enumerate() {
                 if offset % alignment == 0 {
-                    inner.free_list[order].remove(index);
+                    free_list.remove(index);
 
                     // Go in the opposite direction, splitting nodes from higher orders. The lowest
                     // order doesn't need any splitting.
-                    for order in (min_order..order).rev() {
+                    for (order, free_list) in inner
+                        .free_list
+                        .iter_mut()
+                        .enumerate()
+                        .skip(min_order)
+                        .take(order - min_order)
+                        .rev()
+                    {
                         let size = BuddyAllocator::MIN_NODE_SIZE << order;
                         let right_child = offset + size;
 
                         // Insert the right child in sorted order.
-                        let index = match inner.free_list[order].binary_search(&right_child) {
+                        let index = match free_list.binary_search(&right_child) {
                             Ok(index) => index,
                             Err(index) => index,
                         };
-                        inner.free_list[order].insert(index, right_child);
+                        free_list.insert(index, right_child);
 
                         // Repeat splitting for the left child if required in the next loop turn.
                     }
 
                     self.free_size.fetch_sub(size, Ordering::Release);
-                    self.largest_free_chunk.store(
-                        inner.free_list[0..self.order_count]
-                            .iter()
-                            .enumerate()
-                            .rev()
-                            .find_map(|(order, list)| {
-                                (!list.is_empty()).then_some(BuddyAllocator::MIN_NODE_SIZE << order)
-                            })
-                            .unwrap_or(0),
-                        Ordering::Release,
-                    );
+                    self.largest_free_chunk
+                        .store(inner.largest_free_chunk(), Ordering::Release);
 
                     return Ok(MemoryAlloc {
                         offset,
@@ -1806,7 +1784,20 @@ struct BuddyAllocatorInner {
     // Every order has its own free-list for convenience, so that we don't have to traverse a tree.
     // Each free-list is sorted by offset because we want to find the first-fit as this strategy
     // minimizes external fragmentation.
-    free_list: [Vec<DeviceSize>; BuddyAllocator::MAX_ORDERS],
+    free_list: ArrayVec<Vec<DeviceSize>, { BuddyAllocator::MAX_ORDERS }>,
+}
+
+impl BuddyAllocatorInner {
+    fn largest_free_chunk(&self) -> DeviceSize {
+        self.free_list
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(order, list)| {
+                (!list.is_empty()).then_some(BuddyAllocator::MIN_NODE_SIZE << order)
+            })
+            .unwrap_or(0)
+    }
 }
 
 /// A [suballocator] which can allocate dynamically, but can only free all allocations at once.
@@ -2112,6 +2103,42 @@ fn are_blocks_on_same_page(
     let b_start_page = align_down(b_offset, page_size);
 
     a_end_page == b_start_page
+}
+
+mod array_vec {
+    use std::ops::{Deref, DerefMut};
+
+    /// Minimal implementation of an `ArrayVec`. Useful when a `Vec` is needed but there is a known
+    /// limit on the number of elements, so that it can occupy real estate on the stack.
+    #[derive(Clone, Copy, Debug)]
+    pub(super) struct ArrayVec<T, const N: usize> {
+        len: usize,
+        data: [T; N],
+    }
+
+    impl<T, const N: usize> ArrayVec<T, N> {
+        pub fn new(len: usize, data: [T; N]) -> Self {
+            assert!(len <= N);
+
+            ArrayVec { len, data }
+        }
+    }
+
+    impl<T, const N: usize> Deref for ArrayVec<T, N> {
+        type Target = [T];
+
+        fn deref(&self) -> &Self::Target {
+            // SAFETY: `self.len <= N`.
+            unsafe { self.data.get_unchecked(0..self.len) }
+        }
+    }
+
+    impl<T, const N: usize> DerefMut for ArrayVec<T, N> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            // SAFETY: `self.len <= N`.
+            unsafe { self.data.get_unchecked_mut(0..self.len) }
+        }
+    }
 }
 
 /// Allocators for memory on the host, used to speed up the allocators for the device.
@@ -2445,7 +2472,6 @@ mod tests {
         const REGION_SIZE: DeviceSize = BuddyAllocator::MIN_NODE_SIZE << MAX_ORDER;
 
         let allocator = BuddyAllocator::new(dummy_alloc!(REGION_SIZE));
-        assert!(allocator.order_count() == MAX_ORDER + 1);
         let mut allocs = Vec::with_capacity(1 << MAX_ORDER);
 
         for order in 0..=MAX_ORDER {
