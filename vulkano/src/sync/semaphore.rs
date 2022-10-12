@@ -1103,15 +1103,16 @@ impl SemaphoreState {
     /// Called when a queue is unlocking resources.
     #[inline]
     pub(crate) unsafe fn set_signal_finished(&mut self) {
-        self.is_signaled = true;
         self.pending_signal = None;
+        self.is_signaled = true;
     }
 
     /// Called when a queue is unlocking resources.
     #[inline]
     pub(crate) unsafe fn set_wait_finished(&mut self) {
-        self.is_signaled = false;
         self.pending_wait = None;
+        self.current_import = self.permanent_import.map(Into::into);
+        self.is_signaled = false;
     }
 
     #[allow(dead_code)]
