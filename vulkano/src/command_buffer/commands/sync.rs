@@ -143,7 +143,7 @@ impl UnsafeCommandBufferBuilder {
                             .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
                                 transfer.destination_index
                             }),
-                        buffer: buffer.internal_object(),
+                        buffer: buffer.handle(),
                         offset: range.start,
                         size: range.end - range.start,
                         ..Default::default()
@@ -202,7 +202,7 @@ impl UnsafeCommandBufferBuilder {
                             .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
                                 transfer.destination_index
                             }),
-                        image: image.internal_object(),
+                        image: image.handle(),
                         subresource_range: subresource_range.clone().into(),
                         ..Default::default()
                     }
@@ -293,7 +293,7 @@ impl UnsafeCommandBufferBuilder {
                             .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
                                 transfer.destination_index
                             }),
-                        buffer: buffer.internal_object(),
+                        buffer: buffer.handle(),
                         offset: range.start,
                         size: range.end - range.start,
                         ..Default::default()
@@ -353,7 +353,7 @@ impl UnsafeCommandBufferBuilder {
                             .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
                                 transfer.destination_index
                             }),
-                        image: image.internal_object(),
+                        image: image.handle(),
                         subresource_range: subresource_range.clone().into(),
                         ..Default::default()
                     }
@@ -394,7 +394,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::empty());
         let fns = self.device.fns();
-        (fns.v1_0.cmd_set_event)(self.handle, event.internal_object(), stages.into());
+        (fns.v1_0.cmd_set_event)(self.handle, event.handle(), stages.into());
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
@@ -405,6 +405,6 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::empty());
 
-        (fns.v1_0.cmd_reset_event)(self.handle, event.internal_object(), stages.into());
+        (fns.v1_0.cmd_reset_event)(self.handle, event.handle(), stages.into());
     }
 }

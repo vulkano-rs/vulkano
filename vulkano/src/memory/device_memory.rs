@@ -448,11 +448,11 @@ impl DeviceMemory {
         let mut dedicated_allocate_info =
             dedicated_allocation.map(|dedicated_allocation| match dedicated_allocation {
                 DedicatedAllocation::Buffer(buffer) => ash::vk::MemoryDedicatedAllocateInfo {
-                    buffer: buffer.internal_object(),
+                    buffer: buffer.handle(),
                     ..Default::default()
                 },
                 DedicatedAllocation::Image(image) => ash::vk::MemoryDedicatedAllocateInfo {
-                    image: image.internal_object(),
+                    image: image.handle(),
                     ..Default::default()
                 },
             });
@@ -536,7 +536,7 @@ impl DeviceMemory {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.allocate_memory)(
-                device.internal_object(),
+                device.handle(),
                 &allocate_info.build(),
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -613,11 +613,7 @@ impl DeviceMemory {
         let mut output: DeviceSize = 0;
 
         let fns = self.device.fns();
-        (fns.v1_0.get_device_memory_commitment)(
-            self.device.internal_object(),
-            self.handle,
-            &mut output,
-        );
+        (fns.v1_0.get_device_memory_commitment)(self.device.handle(), self.handle, &mut output);
 
         output
     }
@@ -669,7 +665,7 @@ impl DeviceMemory {
 
                 let mut output = MaybeUninit::uninit();
                 (fns.khr_external_memory_fd.get_memory_fd_khr)(
-                    self.device.internal_object(),
+                    self.device.handle(),
                     &info,
                     output.as_mut_ptr(),
                 )
@@ -690,17 +686,17 @@ impl Drop for DeviceMemory {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.free_memory)(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.free_memory)(self.device.handle(), self.handle, ptr::null());
             self.device.allocation_count.fetch_sub(1, Ordering::Release);
         }
     }
 }
 
 unsafe impl VulkanObject for DeviceMemory {
-    type Object = ash::vk::DeviceMemory;
+    type Handle = ash::vk::DeviceMemory;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::DeviceMemory {
+    fn handle(&self) -> ash::vk::DeviceMemory {
         self.handle
     }
 }
@@ -1326,7 +1322,7 @@ impl MappedDeviceMemory {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.map_memory)(
-                device.internal_object(),
+                device.handle(),
                 memory.handle,
                 range.start,
                 range.end - range.start,
@@ -1354,7 +1350,7 @@ impl MappedDeviceMemory {
         unsafe {
             let device = self.memory.device();
             let fns = device.fns();
-            (fns.v1_0.unmap_memory)(device.internal_object(), self.memory.handle);
+            (fns.v1_0.unmap_memory)(device.handle(), self.memory.handle);
         }
 
         self.memory
@@ -1392,20 +1388,16 @@ impl MappedDeviceMemory {
         // Guaranteed because `self` owns the memory and it's mapped during our lifetime.
 
         let range = ash::vk::MappedMemoryRange {
-            memory: self.memory.internal_object(),
+            memory: self.memory.handle(),
             offset: range.start,
             size: range.end - range.start,
             ..Default::default()
         };
 
         let fns = self.memory.device().fns();
-        (fns.v1_0.invalidate_mapped_memory_ranges)(
-            self.memory.device().internal_object(),
-            1,
-            &range,
-        )
-        .result()
-        .map_err(VulkanError::from)?;
+        (fns.v1_0.invalidate_mapped_memory_ranges)(self.memory.device().handle(), 1, &range)
+            .result()
+            .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -1442,14 +1434,14 @@ impl MappedDeviceMemory {
         // Guaranteed because `self` owns the memory and it's mapped during our lifetime.
 
         let range = ash::vk::MappedMemoryRange {
-            memory: self.memory.internal_object(),
+            memory: self.memory.handle(),
             offset: range.start,
             size: range.end - range.start,
             ..Default::default()
         };
 
         let fns = self.device().fns();
-        (fns.v1_0.flush_mapped_memory_ranges)(self.memory.device().internal_object(), 1, &range)
+        (fns.v1_0.flush_mapped_memory_ranges)(self.memory.device().handle(), 1, &range)
             .result()
             .map_err(VulkanError::from)?;
 

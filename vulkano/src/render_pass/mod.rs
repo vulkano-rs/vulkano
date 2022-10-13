@@ -168,7 +168,7 @@ impl RenderPass {
     unsafe fn get_granularity(device: &Arc<Device>, handle: ash::vk::RenderPass) -> [u32; 2] {
         let fns = device.fns();
         let mut out = MaybeUninit::uninit();
-        (fns.v1_0.get_render_area_granularity)(device.internal_object(), handle, out.as_mut_ptr());
+        (fns.v1_0.get_render_area_granularity)(device.handle(), handle, out.as_mut_ptr());
 
         let out = out.assume_init();
         debug_assert_ne!(out.width, 0);
@@ -516,16 +516,16 @@ impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_render_pass)(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_render_pass)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for RenderPass {
-    type Object = ash::vk::RenderPass;
+    type Handle = ash::vk::RenderPass;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::RenderPass {
+    fn handle(&self) -> ash::vk::RenderPass {
         self.handle
     }
 }

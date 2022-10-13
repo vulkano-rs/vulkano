@@ -44,7 +44,7 @@ impl Event {
             let mut output = MaybeUninit::uninit();
             let fns = device.fns();
             (fns.v1_0.create_event)(
-                device.internal_object(),
+                device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -75,7 +75,7 @@ impl Event {
                 unsafe {
                     // Make sure the event isn't signaled
                     let fns = device.fns();
-                    (fns.v1_0.reset_event)(device.internal_object(), handle)
+                    (fns.v1_0.reset_event)(device.handle(), handle)
                         .result()
                         .map_err(VulkanError::from)?;
                 }
@@ -120,7 +120,7 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let fns = self.device.fns();
-            let result = (fns.v1_0.get_event_status)(self.device.internal_object(), self.handle);
+            let result = (fns.v1_0.get_event_status)(self.device.handle(), self.handle);
             match result {
                 ash::vk::Result::EVENT_SET => Ok(true),
                 ash::vk::Result::EVENT_RESET => Ok(false),
@@ -134,7 +134,7 @@ impl Event {
     pub fn set_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.set_event)(self.device.internal_object(), self.handle)
+            (fns.v1_0.set_event)(self.device.handle(), self.handle)
                 .result()
                 .map_err(VulkanError::from)?;
             Ok(())
@@ -158,7 +158,7 @@ impl Event {
     pub fn reset_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.reset_event)(self.device.internal_object(), self.handle)
+            (fns.v1_0.reset_event)(self.device.handle(), self.handle)
                 .result()
                 .map_err(VulkanError::from)?;
             Ok(())
@@ -185,17 +185,17 @@ impl Drop for Event {
                 self.device.event_pool().lock().push(raw_event);
             } else {
                 let fns = self.device.fns();
-                (fns.v1_0.destroy_event)(self.device.internal_object(), self.handle, ptr::null());
+                (fns.v1_0.destroy_event)(self.device.handle(), self.handle, ptr::null());
             }
         }
     }
 }
 
 unsafe impl VulkanObject for Event {
-    type Object = ash::vk::Event;
+    type Handle = ash::vk::Event;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Event {
+    fn handle(&self) -> ash::vk::Event {
         self.handle
     }
 }
@@ -279,12 +279,12 @@ mod tests {
         let event1_internal_obj = {
             let event = Event::from_pool(device.clone()).unwrap();
             assert_eq!(device.event_pool().lock().len(), 0);
-            event.internal_object()
+            event.handle()
         };
 
         assert_eq!(device.event_pool().lock().len(), 1);
         let event2 = Event::from_pool(device.clone()).unwrap();
         assert_eq!(device.event_pool().lock().len(), 0);
-        assert_eq!(event2.internal_object(), event1_internal_obj);
+        assert_eq!(event2.handle(), event1_internal_obj);
     }
 }

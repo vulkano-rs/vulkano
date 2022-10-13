@@ -96,7 +96,7 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
 
         unsafe {
             let info = ash::vk::BufferDeviceAddressInfo {
-                buffer: inner.buffer.internal_object(),
+                buffer: inner.buffer.handle(),
                 ..Default::default()
             };
             let fns = device.fns();
@@ -107,7 +107,7 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
             } else {
                 fns.ext_buffer_device_address.get_buffer_device_address_ext
             };
-            let ptr = f(device.internal_object(), &info);
+            let ptr = f(device.handle(), &info);
 
             if ptr == 0 {
                 panic!("got null ptr from a valid GetBufferDeviceAddress call");

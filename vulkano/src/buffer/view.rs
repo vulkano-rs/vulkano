@@ -207,7 +207,7 @@ where
 
         let create_info = ash::vk::BufferViewCreateInfo {
             flags: ash::vk::BufferViewCreateFlags::empty(),
-            buffer: inner_buffer.internal_object(),
+            buffer: inner_buffer.handle(),
             format: format.into(),
             offset,
             range: size,
@@ -218,7 +218,7 @@ where
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_buffer_view)(
-                device.internal_object(),
+                device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -252,7 +252,7 @@ where
         unsafe {
             let fns = self.buffer.inner().buffer.device().fns();
             (fns.v1_0.destroy_buffer_view)(
-                self.buffer.inner().buffer.device().internal_object(),
+                self.buffer.inner().buffer.device().handle(),
                 self.handle,
                 ptr::null(),
             );
@@ -264,9 +264,9 @@ unsafe impl<B> VulkanObject for BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    type Object = ash::vk::BufferView;
+    type Handle = ash::vk::BufferView;
 
-    fn internal_object(&self) -> ash::vk::BufferView {
+    fn handle(&self) -> ash::vk::BufferView {
         self.handle
     }
 }
@@ -422,7 +422,7 @@ impl From<RequirementNotMet> for BufferViewCreationError {
 }
 
 pub unsafe trait BufferViewAbstract:
-    VulkanObject<Object = ash::vk::BufferView> + DeviceOwned + Send + Sync
+    VulkanObject<Handle = ash::vk::BufferView> + DeviceOwned + Send + Sync
 {
     /// Returns the wrapped buffer that this buffer view was created from.
     fn buffer(&self) -> Arc<dyn BufferAccess>;
@@ -462,7 +462,7 @@ where
 impl PartialEq for dyn BufferViewAbstract {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.internal_object() == other.internal_object() && self.device() == other.device()
+        self.handle() == other.handle() && self.device() == other.device()
     }
 }
 
@@ -470,7 +470,7 @@ impl Eq for dyn BufferViewAbstract {}
 
 impl Hash for dyn BufferViewAbstract {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.internal_object().hash(state);
+        self.handle().hash(state);
         self.device().hash(state);
     }
 }

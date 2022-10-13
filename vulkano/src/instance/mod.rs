@@ -623,10 +623,10 @@ impl Drop for Instance {
 }
 
 unsafe impl VulkanObject for Instance {
-    type Object = ash::vk::Instance;
+    type Handle = ash::vk::Instance;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Instance {
+    fn handle(&self) -> ash::vk::Instance {
         self.handle
     }
 }

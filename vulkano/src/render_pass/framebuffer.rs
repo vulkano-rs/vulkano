@@ -265,7 +265,7 @@ impl Framebuffer {
                     });
                 }
 
-                Ok(image_view.internal_object())
+                Ok(image_view.handle())
             })
             .collect::<Result<SmallVec<[_; 4]>, _>>()?;
 
@@ -297,7 +297,7 @@ impl Framebuffer {
 
         let create_info = ash::vk::FramebufferCreateInfo {
             flags: ash::vk::FramebufferCreateFlags::empty(),
-            render_pass: render_pass.internal_object(),
+            render_pass: render_pass.handle(),
             attachment_count: attachments_vk.len() as u32,
             p_attachments: attachments_vk.as_ptr(),
             width: extent[0],
@@ -310,7 +310,7 @@ impl Framebuffer {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_framebuffer)(
-                device.internal_object(),
+                device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -397,20 +397,16 @@ impl Drop for Framebuffer {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device().fns();
-            (fns.v1_0.destroy_framebuffer)(
-                self.device().internal_object(),
-                self.handle,
-                ptr::null(),
-            );
+            (fns.v1_0.destroy_framebuffer)(self.device().handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for Framebuffer {
-    type Object = ash::vk::Framebuffer;
+    type Handle = ash::vk::Framebuffer;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Framebuffer {
+    fn handle(&self) -> ash::vk::Framebuffer {
         self.handle
     }
 }

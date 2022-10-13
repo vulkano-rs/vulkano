@@ -335,7 +335,7 @@ impl SamplerYcbcrConversion {
 
             let mut output = MaybeUninit::uninit();
             create_sampler_ycbcr_conversion(
-                device.internal_object(),
+                device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -476,20 +476,16 @@ impl Drop for SamplerYcbcrConversion {
                     .destroy_sampler_ycbcr_conversion_khr
             };
 
-            destroy_sampler_ycbcr_conversion(
-                self.device.internal_object(),
-                self.handle,
-                ptr::null(),
-            );
+            destroy_sampler_ycbcr_conversion(self.device.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for SamplerYcbcrConversion {
-    type Object = ash::vk::SamplerYcbcrConversion;
+    type Handle = ash::vk::SamplerYcbcrConversion;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::SamplerYcbcrConversion {
+    fn handle(&self) -> ash::vk::SamplerYcbcrConversion {
         self.handle
     }
 }

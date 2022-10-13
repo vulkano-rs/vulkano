@@ -511,7 +511,7 @@ where
 
         let mut info_vk = ash::vk::ImageViewCreateInfo {
             flags: ash::vk::ImageViewCreateFlags::empty(),
-            image: image_inner.internal_object(),
+            image: image_inner.handle(),
             view_type: view_type.into(),
             format: format.unwrap().into(),
             components: component_mapping.into(),
@@ -534,7 +534,7 @@ where
         if let Some(conversion) = sampler_ycbcr_conversion {
             let next =
                 sampler_ycbcr_conversion_info_vk.insert(ash::vk::SamplerYcbcrConversionInfo {
-                    conversion: conversion.internal_object(),
+                    conversion: conversion.handle(),
                     ..Default::default()
                 });
 
@@ -546,7 +546,7 @@ where
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_image_view)(
-                device.internal_object(),
+                device.handle(),
                 &info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -725,7 +725,7 @@ where
         unsafe {
             let device = self.device();
             let fns = device.fns();
-            (fns.v1_0.destroy_image_view)(device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_image_view)(device.handle(), self.handle, ptr::null());
         }
     }
 }
@@ -734,9 +734,9 @@ unsafe impl<I> VulkanObject for ImageView<I>
 where
     I: ImageAccess + ?Sized,
 {
-    type Object = ash::vk::ImageView;
+    type Handle = ash::vk::ImageView;
 
-    fn internal_object(&self) -> ash::vk::ImageView {
+    fn handle(&self) -> ash::vk::ImageView {
         self.handle
     }
 }
@@ -1187,7 +1187,7 @@ impl ImageViewType {
 
 /// Trait for types that represent the GPU can access an image view.
 pub unsafe trait ImageViewAbstract:
-    VulkanObject<Object = ash::vk::ImageView> + DeviceOwned + Debug + Send + Sync
+    VulkanObject<Handle = ash::vk::ImageView> + DeviceOwned + Debug + Send + Sync
 {
     /// Returns the wrapped image that this image view was created from.
     fn image(&self) -> Arc<dyn ImageAccess>;
@@ -1353,7 +1353,7 @@ unsafe impl ImageViewAbstract for ImageView<dyn ImageAccess> {
 impl PartialEq for dyn ImageViewAbstract {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.internal_object() == other.internal_object() && self.device() == other.device()
+        self.handle() == other.handle() && self.device() == other.device()
     }
 }
 
@@ -1361,7 +1361,7 @@ impl Eq for dyn ImageViewAbstract {}
 
 impl Hash for dyn ImageViewAbstract {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.internal_object().hash(state);
+        self.handle().hash(state);
         self.device().hash(state);
     }
 }

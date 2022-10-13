@@ -121,12 +121,11 @@ impl UnsafeCommandBufferBuilder {
                                 ref framebuffer,
                             } = render_pass_info;
 
-                            inheritance_info_vk.render_pass =
-                                subpass.render_pass().internal_object();
+                            inheritance_info_vk.render_pass = subpass.render_pass().handle();
                             inheritance_info_vk.subpass = subpass.index();
                             inheritance_info_vk.framebuffer = framebuffer
                                 .as_ref()
-                                .map(|fb| fb.internal_object())
+                                .map(|fb| fb.handle())
                                 .unwrap_or_default();
                         }
                         CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
@@ -177,13 +176,13 @@ impl UnsafeCommandBufferBuilder {
 
             let fns = device.fns();
 
-            (fns.v1_0.begin_command_buffer)(pool_alloc.internal_object(), &begin_info_vk)
+            (fns.v1_0.begin_command_buffer)(pool_alloc.handle(), &begin_info_vk)
                 .result()
                 .map_err(VulkanError::from)?;
         }
 
         Ok(UnsafeCommandBufferBuilder {
-            handle: pool_alloc.internal_object(),
+            handle: pool_alloc.handle(),
             device,
             usage,
         })
@@ -208,10 +207,10 @@ impl UnsafeCommandBufferBuilder {
 }
 
 unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
-    type Object = ash::vk::CommandBuffer;
+    type Handle = ash::vk::CommandBuffer;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::CommandBuffer {
+    fn handle(&self) -> ash::vk::CommandBuffer {
         self.handle
     }
 }
@@ -280,10 +279,10 @@ unsafe impl DeviceOwned for UnsafeCommandBuffer {
 }
 
 unsafe impl VulkanObject for UnsafeCommandBuffer {
-    type Object = ash::vk::CommandBuffer;
+    type Handle = ash::vk::CommandBuffer;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::CommandBuffer {
+    fn handle(&self) -> ash::vk::CommandBuffer {
         self.command_buffer
     }
 }

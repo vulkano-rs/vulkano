@@ -389,7 +389,7 @@ impl Device {
         let handle = unsafe {
             let mut output = MaybeUninit::uninit();
             (fns_i.v1_0.create_device)(
-                physical_device.internal_object(),
+                physical_device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -591,12 +591,12 @@ impl Device {
         object: &T,
         object_name: Option<&str>,
     ) -> Result<(), OomError> {
-        assert!(object.device().internal_object() == self.internal_object());
+        assert!(object.device().handle() == self.handle());
 
         let object_name_vk = object_name.map(|object_name| CString::new(object_name).unwrap());
         let info = ash::vk::DebugUtilsObjectNameInfoEXT {
-            object_type: T::Object::TYPE,
-            object_handle: object.internal_object().as_raw(),
+            object_type: T::Handle::TYPE,
+            object_handle: object.handle().as_raw(),
             p_object_name: object_name_vk.map_or(ptr::null(), |object_name| object_name.as_ptr()),
             ..Default::default()
         };
@@ -653,10 +653,10 @@ impl Drop for Device {
 }
 
 unsafe impl VulkanObject for Device {
-    type Object = ash::vk::Device;
+    type Handle = ash::vk::Device;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Device {
+    fn handle(&self) -> ash::vk::Device {
         self.handle
     }
 }

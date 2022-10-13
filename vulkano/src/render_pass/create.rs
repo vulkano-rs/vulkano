@@ -1133,14 +1133,14 @@ impl RenderPass {
 
             if device.api_version() >= Version::V1_2 {
                 (fns.v1_2.create_render_pass2)(
-                    device.internal_object(),
+                    device.handle(),
                     &create_info,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
             } else {
                 (fns.khr_create_renderpass2.create_render_pass2_khr)(
-                    device.internal_object(),
+                    device.handle(),
                     &create_info,
                     ptr::null(),
                     output.as_mut_ptr(),
@@ -1398,7 +1398,7 @@ impl RenderPass {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_render_pass)(
-                device.internal_object(),
+                device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),

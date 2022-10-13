@@ -153,7 +153,7 @@ impl ShaderModule {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_shader_module)(
-                device.internal_object(),
+                device.handle(),
                 &infos,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -258,10 +258,10 @@ impl ShaderModule {
 }
 
 unsafe impl VulkanObject for ShaderModule {
-    type Object = ash::vk::ShaderModule;
+    type Handle = ash::vk::ShaderModule;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::ShaderModule {
+    fn handle(&self) -> ash::vk::ShaderModule {
         self.handle
     }
 }
@@ -271,11 +271,7 @@ impl Drop for ShaderModule {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_shader_module)(
-                self.device.internal_object(),
-                self.handle,
-                ptr::null(),
-            );
+            (fns.v1_0.destroy_shader_module)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }

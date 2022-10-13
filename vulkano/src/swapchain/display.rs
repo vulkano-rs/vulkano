@@ -66,7 +66,7 @@ impl DisplayPlane {
                 let mut count = 0;
                 (fns.khr_display
                     .get_physical_device_display_plane_properties_khr)(
-                    physical_device.internal_object(),
+                    physical_device.handle(),
                     &mut count,
                     ptr::null_mut(),
                 )
@@ -77,7 +77,7 @@ impl DisplayPlane {
                 let result = (fns
                     .khr_display
                     .get_physical_device_display_plane_properties_khr)(
-                    physical_device.internal_object(),
+                    physical_device.handle(),
                     &mut count,
                     properties.as_mut_ptr(),
                 );
@@ -101,7 +101,7 @@ impl DisplayPlane {
                     loop {
                         let mut count = 0;
                         (fns.khr_display.get_display_plane_supported_displays_khr)(
-                            physical_device.internal_object(),
+                            physical_device.handle(),
                             index as u32,
                             &mut count,
                             ptr::null_mut(),
@@ -112,7 +112,7 @@ impl DisplayPlane {
 
                         let mut displays = Vec::with_capacity(count as usize);
                         let result = (fns.khr_display.get_display_plane_supported_displays_khr)(
-                            physical_device.internal_object(),
+                            physical_device.handle(),
                             index as u32,
                             &mut count,
                             displays.as_mut_ptr(),
@@ -167,13 +167,13 @@ impl DisplayPlane {
     #[inline]
     pub fn supports(&self, display: &Display) -> bool {
         // making sure that the physical device is the same
-        if self.physical_device().internal_object() != display.physical_device().internal_object() {
+        if self.physical_device().handle() != display.physical_device().handle() {
             return false;
         }
 
         self.supported_displays
             .iter()
-            .any(|&d| d == display.internal_object())
+            .any(|&d| d == display.handle())
     }
 }
 
@@ -197,7 +197,7 @@ impl Display {
             loop {
                 let mut count = 0;
                 (fns.khr_display.get_physical_device_display_properties_khr)(
-                    physical_device.internal_object(),
+                    physical_device.handle(),
                     &mut count,
                     ptr::null_mut(),
                 )
@@ -206,7 +206,7 @@ impl Display {
 
                 let mut properties = Vec::with_capacity(count as usize);
                 let result = (fns.khr_display.get_physical_device_display_properties_khr)(
-                    physical_device.internal_object(),
+                    physical_device.handle(),
                     &mut count,
                     properties.as_mut_ptr(),
                 );
@@ -302,7 +302,7 @@ impl Display {
             loop {
                 let mut count = 0;
                 (fns.khr_display.get_display_mode_properties_khr)(
-                    self.physical_device().internal_object(),
+                    self.physical_device().handle(),
                     self.properties.display,
                     &mut count,
                     ptr::null_mut(),
@@ -312,7 +312,7 @@ impl Display {
 
                 let mut properties = Vec::with_capacity(count as usize);
                 let result = (fns.khr_display.get_display_mode_properties_khr)(
-                    self.physical_device().internal_object(),
+                    self.physical_device().handle(),
                     self.properties.display,
                     &mut count,
                     properties.as_mut_ptr(),
@@ -353,10 +353,10 @@ impl Display {
 }
 
 unsafe impl VulkanObject for Display {
-    type Object = ash::vk::DisplayKHR;
+    type Handle = ash::vk::DisplayKHR;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::DisplayKHR {
+    fn handle(&self) -> ash::vk::DisplayKHR {
         self.properties.display
     }
 }
@@ -388,7 +388,7 @@ impl DisplayMode {
             };
 
             let mut output = mem::uninitialized();
-            (fns.v1_0.CreateDisplayModeKHR)(display.device.internal_object(),
+            (fns.v1_0.CreateDisplayModeKHR)(display.device.handle(),
                                                       display.display, &infos, ptr::null(),
                                                       &mut output).result().map_err(VulkanError::from)?;
             output
@@ -441,10 +441,10 @@ impl FmtDisplay for DisplayMode {
 }
 
 unsafe impl VulkanObject for DisplayMode {
-    type Object = ash::vk::DisplayModeKHR;
+    type Handle = ash::vk::DisplayModeKHR;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::DisplayModeKHR {
+    fn handle(&self) -> ash::vk::DisplayModeKHR {
         self.display_mode
     }
 }

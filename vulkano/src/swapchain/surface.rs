@@ -125,7 +125,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_headless_surface.create_headless_surface_ext)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -204,7 +204,7 @@ impl<W> Surface<W> {
 
         let create_info = ash::vk::DisplaySurfaceCreateInfoKHR {
             flags: ash::vk::DisplaySurfaceCreateFlagsKHR::empty(),
-            display_mode: display_mode.internal_object(),
+            display_mode: display_mode.handle(),
             plane_index: plane.index(),
             plane_stack_index: 0, // FIXME: plane.properties.currentStackIndex,
             transform: ash::vk::SurfaceTransformFlagsKHR::IDENTITY, // TODO: let user choose
@@ -222,7 +222,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_display.create_display_plane_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -301,7 +301,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_android_surface.create_android_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -388,7 +388,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_directfb_surface.create_direct_fb_surface_ext)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -472,7 +472,7 @@ impl<W> Surface<W> {
             let mut output = MaybeUninit::uninit();
             (fns.fuchsia_imagepipe_surface
                 .create_image_pipe_surface_fuchsia)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -556,7 +556,7 @@ impl<W> Surface<W> {
             let mut output = MaybeUninit::uninit();
             (fns.ggp_stream_descriptor_surface
                 .create_stream_descriptor_surface_ggp)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -642,7 +642,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.mvk_ios_surface.create_ios_surface_mvk)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -727,7 +727,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.mvk_macos_surface.create_mac_os_surface_mvk)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -803,7 +803,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_metal_surface.create_metal_surface_ext)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -892,7 +892,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.qnx_screen_surface.create_screen_surface_qnx)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -971,7 +971,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.nn_vi_surface.create_vi_surface_nn)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1062,7 +1062,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_wayland_surface.create_wayland_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1151,7 +1151,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_win32_surface.create_win32_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1240,7 +1240,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_xcb_surface.create_xcb_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1329,7 +1329,7 @@ impl<W> Surface<W> {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_xlib_surface.create_xlib_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1392,19 +1392,15 @@ impl<W> Drop for Surface<W> {
     fn drop(&mut self) {
         unsafe {
             let fns = self.instance.fns();
-            (fns.khr_surface.destroy_surface_khr)(
-                self.instance.internal_object(),
-                self.handle,
-                ptr::null(),
-            );
+            (fns.khr_surface.destroy_surface_khr)(self.instance.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl<W> VulkanObject for Surface<W> {
-    type Object = ash::vk::SurfaceKHR;
+    type Handle = ash::vk::SurfaceKHR;
 
-    fn internal_object(&self) -> ash::vk::SurfaceKHR {
+    fn handle(&self) -> ash::vk::SurfaceKHR {
         self.handle
     }
 }

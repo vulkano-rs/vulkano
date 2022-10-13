@@ -587,7 +587,7 @@ where
 
         let mut info_vk = ash::vk::SwapchainCreateInfoKHR {
             flags: ash::vk::SwapchainCreateFlagsKHR::empty(),
-            surface: surface.internal_object(),
+            surface: surface.handle(),
             min_image_count,
             image_format: image_format.unwrap().into(),
             image_color_space: image_color_space.into(),
@@ -639,7 +639,7 @@ where
         let handle = {
             let mut output = MaybeUninit::uninit();
             (fns.khr_swapchain.create_swapchain_khr)(
-                device.internal_object(),
+                device.handle(),
                 &info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -652,7 +652,7 @@ where
         let image_handles = loop {
             let mut count = 0;
             (fns.khr_swapchain.get_swapchain_images_khr)(
-                device.internal_object(),
+                device.handle(),
                 handle,
                 &mut count,
                 ptr::null_mut(),
@@ -662,7 +662,7 @@ where
 
             let mut images = Vec::with_capacity(count as usize);
             let result = (fns.khr_swapchain.get_swapchain_images_khr)(
-                device.internal_object(),
+                device.handle(),
                 handle,
                 &mut count,
                 images.as_mut_ptr(),
@@ -794,8 +794,7 @@ where
             let fns = self.device.fns();
             (fns.ext_full_screen_exclusive
                 .acquire_full_screen_exclusive_mode_ext)(
-                self.device.internal_object(),
-                self.handle,
+                self.device.handle(), self.handle
             )
             .result()
             .map_err(VulkanError::from)?;
@@ -824,8 +823,7 @@ where
             let fns = self.device.fns();
             (fns.ext_full_screen_exclusive
                 .release_full_screen_exclusive_mode_ext)(
-                self.device.internal_object(),
-                self.handle,
+                self.device.handle(), self.handle
             )
             .result()
             .map_err(VulkanError::from)?;
@@ -872,7 +870,7 @@ impl<W> Drop for Swapchain<W> {
         unsafe {
             let fns = self.device.fns();
             (fns.khr_swapchain.destroy_swapchain_khr)(
-                self.device.internal_object(),
+                self.device.handle(),
                 self.handle,
                 ptr::null(),
             );
@@ -882,9 +880,9 @@ impl<W> Drop for Swapchain<W> {
 }
 
 unsafe impl<W> VulkanObject for Swapchain<W> {
-    type Object = ash::vk::SwapchainKHR;
+    type Handle = ash::vk::SwapchainKHR;
 
-    fn internal_object(&self) -> ash::vk::SwapchainKHR {
+    fn handle(&self) -> ash::vk::SwapchainKHR {
         self.handle
     }
 }
@@ -937,8 +935,8 @@ impl<W> Debug for Swapchain<W> {
 
         f.debug_struct("Swapchain")
             .field("handle", &handle)
-            .field("device", &device.internal_object())
-            .field("surface", &surface.internal_object())
+            .field("device", &device.handle())
+            .field("surface", &surface.handle())
             .field("min_image_count", &min_image_count)
             .field("image_format", &image_format)
             .field("image_color_space", &image_color_space)
@@ -962,7 +960,7 @@ impl<W> Debug for Swapchain<W> {
 
 /// Trait for types that represent the GPU can access an image view.
 pub unsafe trait SwapchainAbstract:
-    VulkanObject<Object = ash::vk::SwapchainKHR> + DeviceOwned + Debug + Send + Sync
+    VulkanObject<Handle = ash::vk::SwapchainKHR> + DeviceOwned + Debug + Send + Sync
 {
     /// Returns one of the images that belongs to this swapchain.
     fn raw_image(&self, index: u32) -> Option<ImageInner<'_>>;
@@ -1036,7 +1034,7 @@ where
 impl PartialEq for dyn SwapchainAbstract {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.internal_object() == other.internal_object() && self.device() == other.device()
+        self.handle() == other.handle() && self.device() == other.device()
     }
 }
 
@@ -1044,7 +1042,7 @@ impl Eq for dyn SwapchainAbstract {}
 
 impl Hash for dyn SwapchainAbstract {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.internal_object().hash(state);
+        self.handle().hash(state);
         self.device().hash(state);
     }
 }
@@ -1648,7 +1646,7 @@ pub fn wait_for_present<W>(
 
     let result = unsafe {
         (swapchain.device.fns().khr_present_wait.wait_for_present_khr)(
-            swapchain.device.internal_object(),
+            swapchain.device.handle(),
             swapchain.handle,
             present_id,
             timeout_ns,
@@ -1749,7 +1747,7 @@ where
         _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_index).unwrap();
-        if swapchain_image.image.internal_object() != image.internal_object() {
+        if swapchain_image.image.handle() != image.handle() {
             return Err(AccessCheckError::Unknown);
         }
 
@@ -2198,7 +2196,7 @@ where
             .raw_image(self.swapchain_info.image_index)
             .unwrap();
 
-        if swapchain_image.image.internal_object() == image.internal_object() {
+        if swapchain_image.image.handle() == image.handle() {
             // This future presents the swapchain image, which "unlocks" it. Therefore any attempt
             // to use this swapchain image afterwards shouldn't get granted automatic access.
             // Instead any attempt to access the image afterwards should get an authorization from
@@ -2293,15 +2291,13 @@ pub unsafe fn acquire_next_image_raw<W>(
 
     let mut out = MaybeUninit::uninit();
     let result = (fns.khr_swapchain.acquire_next_image_khr)(
-        swapchain.device.internal_object(),
+        swapchain.device.handle(),
         swapchain.handle,
         timeout_ns,
         semaphore
-            .map(|s| s.internal_object())
+            .map(|s| s.handle())
             .unwrap_or(ash::vk::Semaphore::null()),
-        fence
-            .map(|f| f.internal_object())
-            .unwrap_or(ash::vk::Fence::null()),
+        fence.map(|f| f.handle()).unwrap_or(ash::vk::Fence::null()),
         out.as_mut_ptr(),
     );
 

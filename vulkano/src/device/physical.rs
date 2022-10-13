@@ -872,7 +872,7 @@ impl PhysicalDevice {
                 );
             } else {
                 (fns.v1_0.get_physical_device_format_properties)(
-                    self.internal_object(),
+                    self.handle(),
                     format.into(),
                     &mut format_properties2.format_properties,
                 );
@@ -1557,7 +1557,7 @@ impl PhysicalDevice {
         } = surface_info;
 
         let mut info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-            surface: surface.internal_object(),
+            surface: surface.handle(),
             ..Default::default()
         };
         let mut full_screen_exclusive_info = None;
@@ -1621,7 +1621,7 @@ impl PhysicalDevice {
         {
             (fns.khr_get_surface_capabilities2
                 .get_physical_device_surface_capabilities2_khr)(
-                self.internal_object(),
+                self.handle(),
                 &info2,
                 &mut capabilities2,
             )
@@ -1629,7 +1629,7 @@ impl PhysicalDevice {
             .map_err(VulkanError::from)?;
         } else {
             (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
-                self.internal_object(),
+                self.handle(),
                 info2.surface,
                 &mut capabilities2.surface_capabilities,
             )
@@ -1810,7 +1810,7 @@ impl PhysicalDevice {
                     });
 
                 let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-                    surface: surface.internal_object(),
+                    surface: surface.handle(),
                     ..Default::default()
                 };
 
@@ -1842,7 +1842,7 @@ impl PhysicalDevice {
                         let mut count = 0;
                         (fns.khr_get_surface_capabilities2
                             .get_physical_device_surface_formats2_khr)(
-                            self.internal_object(),
+                            self.handle(),
                             &surface_info2,
                             &mut count,
                             ptr::null_mut(),
@@ -1855,7 +1855,7 @@ impl PhysicalDevice {
                         let result = (fns
                             .khr_get_surface_capabilities2
                             .get_physical_device_surface_formats2_khr)(
-                            self.internal_object(),
+                            self.handle(),
                             &surface_info2,
                             &mut count,
                             surface_format2s.as_mut_ptr(),
@@ -1882,8 +1882,8 @@ impl PhysicalDevice {
                     let surface_formats = loop {
                         let mut count = 0;
                         (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                            self.internal_object(),
-                            surface.internal_object(),
+                            self.handle(),
+                            surface.handle(),
                             &mut count,
                             ptr::null_mut(),
                         )
@@ -1892,8 +1892,8 @@ impl PhysicalDevice {
 
                         let mut surface_formats = Vec::with_capacity(count as usize);
                         let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                            self.internal_object(),
-                            surface.internal_object(),
+                            self.handle(),
+                            surface.handle(),
                             &mut count,
                             surface_formats.as_mut_ptr(),
                         );
@@ -1979,8 +1979,8 @@ impl PhysicalDevice {
                     let mut count = 0;
                     (fns.khr_surface
                         .get_physical_device_surface_present_modes_khr)(
-                        self.internal_object(),
-                        surface.internal_object(),
+                        self.handle(),
+                        surface.handle(),
                         &mut count,
                         ptr::null_mut(),
                     )
@@ -1991,8 +1991,8 @@ impl PhysicalDevice {
                     let result = (fns
                         .khr_surface
                         .get_physical_device_surface_present_modes_khr)(
-                        self.internal_object(),
-                        surface.internal_object(),
+                        self.handle(),
+                        surface.handle(),
                         &mut count,
                         modes.as_mut_ptr(),
                     );
@@ -2071,7 +2071,7 @@ impl PhysicalDevice {
                 (fns.khr_surface.get_physical_device_surface_support_khr)(
                     self.handle,
                     queue_family_index,
-                    surface.internal_object(),
+                    surface.handle(),
                     output.as_mut_ptr(),
                 )
                 .result()
@@ -2121,13 +2121,13 @@ impl PhysicalDevice {
 
             if self.api_version() >= Version::V1_3 {
                 (fns.v1_3.get_physical_device_tool_properties)(
-                    self.internal_object(),
+                    self.handle(),
                     &mut count,
                     ptr::null_mut(),
                 )
             } else {
                 (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
-                    self.internal_object(),
+                    self.handle(),
                     &mut count,
                     ptr::null_mut(),
                 )
@@ -2138,13 +2138,13 @@ impl PhysicalDevice {
             let mut tool_properties = Vec::with_capacity(count as usize);
             let result = if self.api_version() >= Version::V1_3 {
                 (fns.v1_3.get_physical_device_tool_properties)(
-                    self.internal_object(),
+                    self.handle(),
                     &mut count,
                     tool_properties.as_mut_ptr(),
                 )
             } else {
                 (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
-                    self.internal_object(),
+                    self.handle(),
                     &mut count,
                     tool_properties.as_mut_ptr(),
                 )
@@ -2424,10 +2424,10 @@ impl PhysicalDevice {
 }
 
 unsafe impl VulkanObject for PhysicalDevice {
-    type Object = ash::vk::PhysicalDevice;
+    type Handle = ash::vk::PhysicalDevice;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::PhysicalDevice {
+    fn handle(&self) -> ash::vk::PhysicalDevice {
         self.handle
     }
 }

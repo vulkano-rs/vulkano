@@ -114,10 +114,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
         Self: Sized + 'static,
         F: GpuFuture,
     {
-        assert_eq!(
-            self.device().internal_object(),
-            future.device().internal_object()
-        );
+        assert_eq!(self.device().handle(), future.device().handle());
 
         if !future.queue_change_allowed() {
             assert!(future.queue().unwrap() == queue);

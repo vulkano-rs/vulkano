@@ -934,7 +934,7 @@ where
         };
 
         // VUID-vkCmdDispatch-maintenance4-06425
-        if pipeline_layout.internal_object() != constants_pipeline_layout.internal_object()
+        if pipeline_layout.handle() != constants_pipeline_layout.handle()
             && pipeline_layout.push_constant_ranges()
                 != constants_pipeline_layout.push_constant_ranges()
         {
@@ -2177,7 +2177,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(inner.buffer.usage().indirect_buffer);
         debug_assert_eq!(inner.offset % 4, 0);
 
-        (fns.v1_0.cmd_dispatch_indirect)(self.handle, inner.buffer.internal_object(), inner.offset);
+        (fns.v1_0.cmd_dispatch_indirect)(self.handle, inner.buffer.handle(), inner.offset);
     }
 
     /// Calls `vkCmdDraw` on the builder.
@@ -2242,7 +2242,7 @@ impl UnsafeCommandBufferBuilder {
 
         (fns.v1_0.cmd_draw_indirect)(
             self.handle,
-            inner.buffer.internal_object(),
+            inner.buffer.handle(),
             inner.offset,
             draw_count,
             stride,
@@ -2265,7 +2265,7 @@ impl UnsafeCommandBufferBuilder {
 
         (fns.v1_0.cmd_draw_indexed_indirect)(
             self.handle,
-            inner.buffer.internal_object(),
+            inner.buffer.handle(),
             inner.offset,
             draw_count,
             stride,

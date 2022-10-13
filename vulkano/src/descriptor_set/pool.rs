@@ -101,7 +101,7 @@ impl DescriptorPool {
                 let fns = device.fns();
                 let mut output = MaybeUninit::uninit();
                 (fns.v1_0.create_descriptor_pool)(
-                    device.internal_object(),
+                    device.handle(),
                     &create_info,
                     ptr::null(),
                     output.as_mut_ptr(),
@@ -195,19 +195,13 @@ impl DescriptorPool {
             allocate_info
                 .into_iter()
                 .map(|info| {
-                    assert_eq!(
-                        self.device.internal_object(),
-                        info.layout.device().internal_object(),
-                    );
+                    assert_eq!(self.device.handle(), info.layout.device().handle(),);
                     debug_assert!(!info.layout.push_descriptor());
                     debug_assert!(
                         info.variable_descriptor_count <= info.layout.variable_descriptor_count()
                     );
 
-                    (
-                        info.layout.internal_object(),
-                        info.variable_descriptor_count,
-                    )
+                    (info.layout.handle(), info.variable_descriptor_count)
                 })
                 .unzip();
 
@@ -243,7 +237,7 @@ impl DescriptorPool {
 
             let fns = self.device.fns();
             let ret = (fns.v1_0.allocate_descriptor_sets)(
-                self.device.internal_object(),
+                self.device.handle(),
                 &infos,
                 output.as_mut_ptr(),
             );
@@ -289,14 +283,11 @@ impl DescriptorPool {
         &self,
         descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
     ) -> Result<(), OomError> {
-        let sets: SmallVec<[_; 8]> = descriptor_sets
-            .into_iter()
-            .map(|s| s.internal_object())
-            .collect();
+        let sets: SmallVec<[_; 8]> = descriptor_sets.into_iter().map(|s| s.handle()).collect();
         if !sets.is_empty() {
             let fns = self.device.fns();
             (fns.v1_0.free_descriptor_sets)(
-                self.device.internal_object(),
+                self.device.handle(),
                 self.handle,
                 sets.len() as u32,
                 sets.as_ptr(),
@@ -315,7 +306,7 @@ impl DescriptorPool {
     pub unsafe fn reset(&self) -> Result<(), OomError> {
         let fns = self.device.fns();
         (fns.v1_0.reset_descriptor_pool)(
-            self.device.internal_object(),
+            self.device.handle(),
             self.handle,
             ash::vk::DescriptorPoolResetFlags::empty(),
         )
@@ -331,20 +322,16 @@ impl Drop for DescriptorPool {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_descriptor_pool)(
-                self.device.internal_object(),
-                self.handle,
-                ptr::null(),
-            );
+            (fns.v1_0.destroy_descriptor_pool)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for DescriptorPool {
-    type Object = ash::vk::DescriptorPool;
+    type Handle = ash::vk::DescriptorPool;
 
     #[inline]
-    fn internal_object(&self) -> Self::Object {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

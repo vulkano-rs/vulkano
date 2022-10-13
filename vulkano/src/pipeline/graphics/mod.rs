@@ -275,10 +275,10 @@ impl Debug for GraphicsPipeline {
 }
 
 unsafe impl VulkanObject for GraphicsPipeline {
-    type Object = ash::vk::Pipeline;
+    type Handle = ash::vk::Pipeline;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Pipeline {
+    fn handle(&self) -> ash::vk::Pipeline {
         self.handle
     }
 }
@@ -288,7 +288,7 @@ impl Drop for GraphicsPipeline {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline)(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_pipeline)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }
