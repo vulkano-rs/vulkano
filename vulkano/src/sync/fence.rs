@@ -52,9 +52,6 @@ use std::{
 pub struct Fence {
     handle: ash::vk::Fence,
     device: Arc<Device>,
-
-    // Indicates whether this fence was taken from the fence pool.
-    // If true, will be put back into fence pool on drop.
     must_put_in_pool: bool,
 
     export_handle_types: ExternalFenceHandleTypes,
@@ -732,7 +729,7 @@ impl Fence {
 
         // VUID-VkFenceGetWin32HandleInfoKHR-handleType-01449
         if matches!(handle_type, ExternalFenceHandleType::OpaqueWin32)
-            && state.opaque_win32_exported()
+            && state.is_exported(handle_type)
         {
             return Err(FenceError::AlreadyExported);
         }
@@ -828,7 +825,7 @@ impl Fence {
     /// # Safety
     ///
     /// - If in `import_fence_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`,
-    ///   then `file` must have been exported from Vulkan or a compatible API,
+    ///   then `file` must represent a fence that was exported from Vulkan or a compatible API,
     ///   with a driver and device UUID equal to those of the device that owns `self`.
     #[cfg(unix)]
     #[inline]
@@ -907,7 +904,6 @@ impl Fence {
     }
 
     #[cfg(unix)]
-    #[cfg(unix)]
     unsafe fn import_fd_unchecked_locked(
         &self,
         import_fence_fd_info: ImportFenceFdInfo,
@@ -947,10 +943,9 @@ impl Fence {
     ///
     /// # Safety
     ///
-    /// - If in `import_fence_win32_handle_info`, `handle_type` is
-    ///   `ExternalHandleType::OpaqueWin32` or `ExternalHandleType::OpaqueWin32Kmt`,
-    ///   then `handle` must have been exported from Vulkan or a compatible API,
-    ///   with a driver and device UUID equal to those of the device that owns `self`.
+    /// - In `import_fence_win32_handle_info`, `handle` must represent a fence that was exported
+    ///   from Vulkan or a compatible API, with a driver and device UUID equal to those of the
+    ///   device that owns `self`.
     #[cfg(windows)]
     #[inline]
     pub unsafe fn import_win32_handle(
@@ -1117,10 +1112,10 @@ impl Hash for Fence {
 #[derive(Debug, Default)]
 pub(crate) struct FenceState {
     is_signaled: bool,
-    in_queue: Option<Weak<Queue>>,
+    pending_signal: Option<Weak<Queue>>,
 
     reference_exported: bool,
-    opaque_win32_exported: bool,
+    exported_handle_types: ExternalFenceHandleTypes,
     current_import: Option<ImportType>,
     permanent_import: Option<ExternalFenceHandleType>,
 }
@@ -1139,7 +1134,7 @@ impl FenceState {
 
     #[inline]
     fn is_in_queue(&self) -> bool {
-        self.in_queue.is_some()
+        self.pending_signal.is_some()
     }
 
     /// Returns whether there are any potential external references to the fence payload.
@@ -1151,13 +1146,13 @@ impl FenceState {
 
     #[allow(dead_code)]
     #[inline]
-    fn opaque_win32_exported(&self) -> bool {
-        self.opaque_win32_exported
+    fn is_exported(&self, handle_type: ExternalFenceHandleType) -> bool {
+        self.exported_handle_types.intersects(&handle_type.into())
     }
 
     #[inline]
-    pub(crate) unsafe fn add_to_queue(&mut self, queue: &Arc<Queue>) {
-        self.in_queue = Some(Arc::downgrade(queue));
+    pub(crate) unsafe fn add_queue_signal(&mut self, queue: &Arc<Queue>) {
+        self.pending_signal = Some(Arc::downgrade(queue));
     }
 
     /// Called when a fence first discovers that it is signaled.
@@ -1168,18 +1163,18 @@ impl FenceState {
 
         // Fences with external references can't be used to determine queue completion.
         if self.has_external_reference() {
-            self.in_queue = None;
+            self.pending_signal = None;
             None
         } else {
-            self.in_queue.take().and_then(|queue| queue.upgrade())
+            self.pending_signal.take().and_then(|queue| queue.upgrade())
         }
     }
 
     /// Called when a queue is unlocking resources.
     #[inline]
-    pub(crate) unsafe fn set_finished(&mut self) {
+    pub(crate) unsafe fn set_signal_finished(&mut self) {
         self.is_signaled = true;
-        self.in_queue = None;
+        self.pending_signal = None;
     }
 
     #[inline]
@@ -1189,11 +1184,10 @@ impl FenceState {
         self.is_signaled = false;
     }
 
+    #[allow(dead_code)]
     #[inline]
     unsafe fn export(&mut self, handle_type: ExternalFenceHandleType) {
-        if matches!(handle_type, ExternalFenceHandleType::OpaqueWin32) {
-            self.opaque_win32_exported = true;
-        }
+        self.exported_handle_types |= handle_type.into();
 
         if handle_type.has_copy_transference() {
             self.reset();
@@ -1202,6 +1196,7 @@ impl FenceState {
         }
     }
 
+    #[allow(dead_code)]
     #[inline]
     unsafe fn import(&mut self, handle_type: ExternalFenceHandleType, temporary: bool) {
         debug_assert!(!self.is_in_queue());

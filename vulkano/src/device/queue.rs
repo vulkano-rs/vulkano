@@ -18,7 +18,7 @@ use crate::{
         BindSparseInfo, SparseBufferMemoryBind, SparseImageMemoryBind, SparseImageOpaqueMemoryBind,
     },
     swapchain::{PresentInfo, SwapchainPresentInfo},
-    sync::{Fence, FenceState, PipelineStage},
+    sync::{Fence, FenceState, PipelineStage, SemaphoreState},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -165,19 +165,45 @@ impl<'a> QueueGuard<'a> {
         bind_infos: impl IntoIterator<Item = BindSparseInfo>,
         fence: Option<Arc<Fence>>,
     ) -> Result<(), VulkanError> {
+        let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
+        let mut bind_infos_state = bind_infos
+            .iter()
+            .map(|bind_info| {
+                (
+                    bind_info
+                        .wait_semaphores
+                        .iter()
+                        .map(|semaphore| semaphore.state())
+                        .collect(),
+                    bind_info
+                        .signal_semaphores
+                        .iter()
+                        .map(|semaphore| semaphore.state())
+                        .collect(),
+                )
+            })
+            .collect();
+
         self.bind_sparse_unchecked_locked(
-            bind_infos.into_iter().collect(),
+            &bind_infos,
             fence.as_ref().map(|fence| {
                 let state = fence.state();
                 (fence, state)
             }),
+            &mut bind_infos_state,
         )
     }
 
     unsafe fn bind_sparse_unchecked_locked(
         &mut self,
-        bind_infos: SmallVec<[BindSparseInfo; 4]>,
+        bind_infos: &SmallVec<[BindSparseInfo; 4]>,
         fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
+        bind_infos_state: &mut SmallVec<
+            [(
+                SmallVec<[MutexGuard<'_, SemaphoreState>; 4]>,
+                SmallVec<[MutexGuard<'_, SemaphoreState>; 4]>,
+            ); 4],
+        >,
     ) -> Result<(), VulkanError> {
         struct PerBindSparseInfo {
             wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
@@ -439,12 +465,24 @@ impl<'a> QueueGuard<'a> {
         .result()
         .map_err(VulkanError::from)?;
 
+        for (wait_semaphores_state, signal_semaphores_state) in bind_infos_state {
+            for semaphore in wait_semaphores_state {
+                semaphore.add_queue_wait(self.queue);
+            }
+
+            for semaphore in signal_semaphores_state {
+                semaphore.add_queue_signal(self.queue);
+            }
+        }
+
         let fence = fence.map(|(fence, mut state)| {
-            state.add_to_queue(self.queue);
+            state.add_queue_signal(self.queue);
             fence.clone()
         });
 
-        self.state.operations.push_back((bind_infos.into(), fence));
+        self.state
+            .operations
+            .push_back((bind_infos.clone().into(), fence));
 
         Ok(())
     }
@@ -454,7 +492,20 @@ impl<'a> QueueGuard<'a> {
     pub unsafe fn present_unchecked(
         &mut self,
         present_info: PresentInfo,
-    ) -> impl ExactSizeIterator<Item = Result<bool, VulkanError>> {
+    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
+        let mut wait_semaphores_state = present_info
+            .wait_semaphores
+            .iter()
+            .map(|semaphore| semaphore.state())
+            .collect();
+        self.present_unchecked_locked(&present_info, &mut wait_semaphores_state)
+    }
+
+    unsafe fn present_unchecked_locked(
+        &mut self,
+        present_info: &PresentInfo,
+        wait_semaphores_state: &mut SmallVec<[MutexGuard<'_, SemaphoreState>; 4]>,
+    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
         let PresentInfo {
             ref wait_semaphores,
             ref swapchain_infos,
@@ -550,7 +601,22 @@ impl<'a> QueueGuard<'a> {
         }
 
         let fns = self.queue.device().fns();
-        let _ = (fns.khr_swapchain.queue_present_khr)(self.queue.handle, &info_vk);
+        let result = (fns.khr_swapchain.queue_present_khr)(self.queue.handle, &info_vk);
+
+        // Per the documentation of `vkQueuePresentKHR`, certain results indicate that the whole
+        // operation has failed, while others only indicate failure of a particular present.
+        // If we got a result that is not one of these per-present ones, we return it directly.
+        // Otherwise, we consider the present to be enqueued.
+        if !matches!(
+            result,
+            ash::vk::Result::SUCCESS
+                | ash::vk::Result::SUBOPTIMAL_KHR
+                | ash::vk::Result::ERROR_OUT_OF_DATE_KHR
+                | ash::vk::Result::ERROR_SURFACE_LOST_KHR
+                | ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
+        ) {
+            return Err(VulkanError::from(result));
+        }
 
         // If a presentation results in a loss of full-screen exclusive mode,
         // signal that to the relevant swapchain.
@@ -563,15 +629,19 @@ impl<'a> QueueGuard<'a> {
             }
         }
 
-        // Some presents may succeed and some may fail. Since we don't know what the implementation
-        // is going to do, we act as if they all succeeded.
-        self.state.operations.push_back((present_info.into(), None));
+        for semaphore in wait_semaphores_state {
+            semaphore.add_queue_wait(self.queue);
+        }
 
-        results.into_iter().map(|result| match result {
+        self.state
+            .operations
+            .push_back((present_info.clone().into(), None));
+
+        Ok(results.into_iter().map(|result| match result {
             ash::vk::Result::SUCCESS => Ok(false),
             ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
             err => Err(VulkanError::from(err)),
-        })
+        }))
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -580,19 +650,45 @@ impl<'a> QueueGuard<'a> {
         submit_infos: impl IntoIterator<Item = SubmitInfo>,
         fence: Option<Arc<Fence>>,
     ) -> Result<(), VulkanError> {
+        let submit_infos: SmallVec<[_; 4]> = submit_infos.into_iter().collect();
+        let mut submit_infos_state = submit_infos
+            .iter()
+            .map(|submit_info| {
+                (
+                    submit_info
+                        .wait_semaphores
+                        .iter()
+                        .map(|semaphore_submit_info| semaphore_submit_info.semaphore.state())
+                        .collect(),
+                    submit_info
+                        .signal_semaphores
+                        .iter()
+                        .map(|semaphore_submit_info| semaphore_submit_info.semaphore.state())
+                        .collect(),
+                )
+            })
+            .collect();
+
         self.submit_unchecked_locked(
-            submit_infos.into_iter().collect(),
+            &submit_infos,
             fence.as_ref().map(|fence| {
                 let state = fence.state();
                 (fence, state)
             }),
+            &mut submit_infos_state,
         )
     }
 
     unsafe fn submit_unchecked_locked(
         &mut self,
-        submit_infos: SmallVec<[SubmitInfo; 4]>,
+        submit_infos: &SmallVec<[SubmitInfo; 4]>,
         fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
+        submit_infos_state: &mut SmallVec<
+            [(
+                SmallVec<[MutexGuard<'_, SemaphoreState>; 4]>,
+                SmallVec<[MutexGuard<'_, SemaphoreState>; 4]>,
+            ); 4],
+        >,
     ) -> Result<(), VulkanError> {
         if self.queue.device.enabled_features().synchronization2 {
             struct PerSubmitInfo {
@@ -829,14 +925,24 @@ impl<'a> QueueGuard<'a> {
             .map_err(VulkanError::from)?;
         }
 
+        for (wait_semaphores_state, signal_semaphores_state) in submit_infos_state {
+            for semaphore in wait_semaphores_state {
+                semaphore.add_queue_wait(self.queue);
+            }
+
+            for semaphore in signal_semaphores_state {
+                semaphore.add_queue_signal(self.queue);
+            }
+        }
+
         let fence = fence.map(|(fence, mut state)| {
-            state.add_to_queue(self.queue);
+            state.add_queue_signal(self.queue);
             fence.clone()
         });
 
         self.state
             .operations
-            .push_back((submit_infos.into(), fence));
+            .push_back((submit_infos.clone().into(), fence));
 
         Ok(())
     }
@@ -1010,6 +1116,127 @@ impl<'a> QueueGuard<'a> {
     }
 }
 
+#[derive(Debug, Default)]
+struct QueueState {
+    operations: VecDeque<(QueueOperation, Option<Arc<Fence>>)>,
+}
+
+impl QueueState {
+    fn wait_idle(&mut self, device: &Device, handle: ash::vk::Queue) -> Result<(), OomError> {
+        unsafe {
+            let fns = device.fns();
+            (fns.v1_0.queue_wait_idle)(handle)
+                .result()
+                .map_err(VulkanError::from)?;
+
+            // Since we now know that the queue is finished with all work,
+            // we can safely release all resources.
+            for (operation, _) in take(&mut self.operations) {
+                operation.unlock();
+            }
+
+            Ok(())
+        }
+    }
+
+    /// Called by `fence` when it finds that it is signaled.
+    fn fence_signaled(&mut self, fence: &Fence) {
+        // Find the most recent operation that uses `fence`.
+        let fence_index = self
+            .operations
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, (_, f))| {
+                f.as_ref().map_or(false, |f| **f == *fence).then_some(index)
+            });
+
+        if let Some(index) = fence_index {
+            // Remove all operations up to this index, and perform cleanup if needed.
+            for (operation, fence) in self.operations.drain(..index + 1) {
+                unsafe {
+                    operation.unlock();
+
+                    if let Some(fence) = fence {
+                        fence.state().set_signal_finished();
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum QueueOperation {
+    BindSparse(SmallVec<[BindSparseInfo; 4]>),
+    Present(PresentInfo),
+    Submit(SmallVec<[SubmitInfo; 4]>),
+}
+
+impl QueueOperation {
+    unsafe fn unlock(self) {
+        match self {
+            QueueOperation::BindSparse(bind_infos) => {
+                for bind_info in bind_infos {
+                    for semaphore in bind_info.wait_semaphores {
+                        semaphore.state().set_wait_finished();
+                    }
+
+                    for semaphore in bind_info.signal_semaphores {
+                        semaphore.state().set_signal_finished();
+                    }
+                }
+
+                // TODO: Do we need to unlock buffers and images here?
+            }
+            QueueOperation::Present(present_info) => {
+                for semaphore in present_info.wait_semaphores {
+                    semaphore.state().set_wait_finished();
+                }
+            }
+            QueueOperation::Submit(submit_infos) => {
+                for submit_info in submit_infos {
+                    for semaphore_submit_info in submit_info.wait_semaphores {
+                        semaphore_submit_info.semaphore.state().set_wait_finished();
+                    }
+
+                    for semaphore_submit_info in submit_info.signal_semaphores {
+                        semaphore_submit_info
+                            .semaphore
+                            .state()
+                            .set_signal_finished();
+                    }
+
+                    for command_buffer in submit_info.command_buffers {
+                        command_buffer.unlock();
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl From<SmallVec<[BindSparseInfo; 4]>> for QueueOperation {
+    #[inline]
+    fn from(val: SmallVec<[BindSparseInfo; 4]>) -> Self {
+        Self::BindSparse(val)
+    }
+}
+
+impl From<PresentInfo> for QueueOperation {
+    #[inline]
+    fn from(val: PresentInfo) -> Self {
+        Self::Present(val)
+    }
+}
+
+impl From<SmallVec<[SubmitInfo; 4]>> for QueueOperation {
+    #[inline]
+    fn from(val: SmallVec<[SubmitInfo; 4]>) -> Self {
+        Self::Submit(val)
+    }
+}
+
 /// Properties of a queue family in a physical device.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -1138,102 +1365,6 @@ impl From<RequirementNotMet> for QueueError {
             required_for: err.required_for,
             requires_one_of: err.requires_one_of,
         }
-    }
-}
-
-#[derive(Debug, Default)]
-struct QueueState {
-    operations: VecDeque<(QueueOperation, Option<Arc<Fence>>)>,
-}
-
-impl QueueState {
-    fn wait_idle(&mut self, device: &Device, handle: ash::vk::Queue) -> Result<(), OomError> {
-        unsafe {
-            let fns = device.fns();
-            (fns.v1_0.queue_wait_idle)(handle)
-                .result()
-                .map_err(VulkanError::from)?;
-
-            // Since we now know that the queue is finished with all work,
-            // we can safely release all resources.
-            for (operation, _) in take(&mut self.operations) {
-                operation.unlock();
-            }
-
-            Ok(())
-        }
-    }
-
-    /// Called by `fence` when it finds that it is signaled.
-    fn fence_signaled(&mut self, fence: &Fence) {
-        // Find the most recent operation that uses `fence`.
-        let fence_index = self
-            .operations
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(index, (_, f))| {
-                f.as_ref().map_or(false, |f| **f == *fence).then_some(index)
-            });
-
-        if let Some(index) = fence_index {
-            // Remove all operations up to this index, and perform cleanup if needed.
-            for (operation, fence) in self.operations.drain(..index + 1) {
-                unsafe {
-                    operation.unlock();
-
-                    if let Some(fence) = fence {
-                        fence.state().set_finished();
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-enum QueueOperation {
-    BindSparse(SmallVec<[BindSparseInfo; 4]>),
-    Present(PresentInfo),
-    Submit(SmallVec<[SubmitInfo; 4]>),
-}
-
-impl QueueOperation {
-    unsafe fn unlock(self) {
-        match self {
-            QueueOperation::BindSparse(_bind_infos) => {
-                // TODO: Do we need to unlock buffers and images here?
-            }
-            QueueOperation::Present(_) => (),
-            QueueOperation::Submit(submit_infos) => {
-                for submit_info in submit_infos {
-                    for command_buffer in submit_info.command_buffers {
-                        command_buffer.unlock();
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl From<SmallVec<[BindSparseInfo; 4]>> for QueueOperation {
-    #[inline]
-    fn from(val: SmallVec<[BindSparseInfo; 4]>) -> Self {
-        Self::BindSparse(val)
-    }
-}
-
-impl From<PresentInfo> for QueueOperation {
-    #[inline]
-    fn from(val: PresentInfo) -> Self {
-        Self::Present(val)
-    }
-}
-
-impl From<SmallVec<[SubmitInfo; 4]>> for QueueOperation {
-    #[inline]
-    fn from(val: SmallVec<[SubmitInfo; 4]>) -> Self {
-        Self::Submit(val)
     }
 }
 
