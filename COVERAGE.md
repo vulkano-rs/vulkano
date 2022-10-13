@@ -128,7 +128,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `vkCmdSetEvent2KHR`
 	- `vkCmdWaitEvents2KHR`
 	- `vkCmdWriteTimestamp2KHR`
-	- `vkQueueSubmit2KHR` / `VkSemaphoreSubmitInfoKHR`
+	- `vkQueueSubmit2KHR` / `VkSemaphoreSubmitInfoKHR` (missing parameters related to device groups)
 	- `VkMemoryBarrier2KHR` extending `VkSubpassDependency`
 	- `VkAccessFlagBits2KHR` / `VkPipelineStageFlagBits2KHR` (only the base Vulkan 1.0 bits are defined)
 
