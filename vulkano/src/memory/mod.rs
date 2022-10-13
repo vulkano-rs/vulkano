@@ -146,7 +146,7 @@ impl From<ash::vk::PhysicalDeviceMemoryProperties> for MemoryProperties {
 }
 
 /// A memory type in a physical device.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub struct MemoryType {
     /// The properties of this memory type.
@@ -255,7 +255,7 @@ vulkan_bitflags! {
 }
 
 /// A memory heap in a physical device.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub struct MemoryHeap {
     /// The size of the heap in bytes.
@@ -283,7 +283,7 @@ vulkan_bitflags! {
 
 /// Represents requirements expressed by the Vulkan implementation when it comes to binding memory
 /// to a resource.
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Copy, Debug)]
 pub struct MemoryRequirements {
     /// Number of bytes of memory required.
     pub size: DeviceSize,
@@ -326,7 +326,7 @@ impl From<ash::vk::MemoryRequirements> for MemoryRequirements {
 ///
 /// If a dedicated allocation is performed, it must not be bound to any resource other than the
 /// one that was passed with the enumeration.
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Copy, Debug)]
 pub enum DedicatedAllocation<'a> {
     /// Allocation dedicated to a buffer.
     Buffer(&'a UnsafeBuffer),
@@ -336,7 +336,7 @@ pub enum DedicatedAllocation<'a> {
 
 /// The properties for exporting or importing external memory, when a buffer or image is created
 /// with a specific configuration.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 #[non_exhaustive]
 pub struct ExternalMemoryProperties {
     /// Whether a dedicated memory allocation is required for the queried external handle type.

@@ -45,7 +45,8 @@ use std::{
 ///         memory_type_index,
 ///         ..Default::default()
 ///     },
-/// ).unwrap();
+/// )
+/// .unwrap();
 /// ```
 #[derive(Debug)]
 pub struct DeviceMemory {
@@ -74,25 +75,8 @@ impl DeviceMemory {
         mut allocate_info: MemoryAllocateInfo<'_>,
     ) -> Result<Self, DeviceMemoryError> {
         Self::validate(&device, &mut allocate_info, None)?;
-        let handle = unsafe { Self::create(&device, &allocate_info, None)? };
 
-        let MemoryAllocateInfo {
-            allocation_size,
-            memory_type_index,
-            dedicated_allocation: _,
-            export_handle_types,
-            flags,
-            _ne: _,
-        } = allocate_info;
-
-        Ok(DeviceMemory {
-            handle,
-            device,
-            allocation_size,
-            memory_type_index,
-            export_handle_types,
-            flags,
-        })
+        unsafe { Self::allocate_unchecked(device, allocate_info, None) }.map_err(Into::into)
     }
 
     /// Creates a new `DeviceMemory` from a raw object handle.
@@ -106,7 +90,7 @@ impl DeviceMemory {
         device: Arc<Device>,
         handle: ash::vk::DeviceMemory,
         allocate_info: MemoryAllocateInfo<'_>,
-    ) -> DeviceMemory {
+    ) -> Self {
         let MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
@@ -140,34 +124,18 @@ impl DeviceMemory {
     pub unsafe fn import(
         device: Arc<Device>,
         mut allocate_info: MemoryAllocateInfo<'_>,
-        mut import_info: MemoryImportInfo,
+        import_info: MemoryImportInfo,
     ) -> Result<Self, DeviceMemoryError> {
-        Self::validate(&device, &mut allocate_info, Some(&mut import_info))?;
-        let handle = Self::create(&device, &allocate_info, Some(import_info))?;
+        Self::validate(&device, &mut allocate_info, Some(&import_info))?;
 
-        let MemoryAllocateInfo {
-            allocation_size,
-            memory_type_index,
-            dedicated_allocation: _,
-            export_handle_types,
-            flags,
-            _ne: _,
-        } = allocate_info;
-
-        Ok(DeviceMemory {
-            handle,
-            device,
-            allocation_size,
-            memory_type_index,
-            export_handle_types,
-            flags,
-        })
+        Self::allocate_unchecked(device, allocate_info, Some(import_info)).map_err(Into::into)
     }
 
+    #[cold]
     fn validate(
         device: &Device,
         allocate_info: &mut MemoryAllocateInfo<'_>,
-        import_info: Option<&mut MemoryImportInfo>,
+        import_info: Option<&MemoryImportInfo>,
     ) -> Result<(), DeviceMemoryError> {
         let &mut MemoryAllocateInfo {
             allocation_size,
@@ -272,8 +240,8 @@ impl DeviceMemory {
             // VUID-VkMemoryAllocateInfo-pNext-00639
             // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
             // TODO: how do you fullfill this when you don't know the image or buffer parameters?
-            // Does exporting memory require specifying these parameters up front, and does it tie the
-            // allocation to only images or buffers of that type?
+            // Does exporting memory require specifying these parameters up front, and does it tie
+            // the allocation to only images or buffers of that type?
         }
 
         if let Some(import_info) = import_info {
@@ -426,12 +394,14 @@ impl DeviceMemory {
         Ok(())
     }
 
-    unsafe fn create(
-        device: &Device,
-        allocate_info: &MemoryAllocateInfo<'_>,
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[cold]
+    pub unsafe fn allocate_unchecked(
+        device: Arc<Device>,
+        allocate_info: MemoryAllocateInfo<'_>,
         import_info: Option<MemoryImportInfo>,
-    ) -> Result<ash::vk::DeviceMemory, DeviceMemoryError> {
-        let &MemoryAllocateInfo {
+    ) -> Result<Self, VulkanError> {
+        let MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
             dedicated_allocation,
@@ -530,7 +500,7 @@ impl DeviceMemory {
             .fetch_update(Ordering::Acquire, Ordering::Relaxed, move |count| {
                 (count < max_allocations).then_some(count + 1)
             })
-            .map_err(|_| DeviceMemoryError::TooManyObjects)?;
+            .map_err(|_| VulkanError::TooManyObjects)?;
 
         let handle = {
             let fns = device.fns();
@@ -550,7 +520,14 @@ impl DeviceMemory {
             output.assume_init()
         };
 
-        Ok(handle)
+        Ok(DeviceMemory {
+            handle,
+            device,
+            allocation_size,
+            memory_type_index,
+            export_handle_types,
+            flags,
+        })
     }
 
     /// Returns the index of the memory type that this memory was allocated from.
