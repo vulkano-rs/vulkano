@@ -39,8 +39,8 @@ use vulkano::{
     image::{view::ImageView, ImageUsage},
     instance::{Instance, InstanceCreateInfo},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
-        SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -49,7 +49,7 @@ use vulkano_win::VkSurfaceBuild;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    window::{Window, WindowBuilder},
 };
 
 mod frame;
@@ -135,6 +135,7 @@ fn main() {
                 .unwrap()[0]
                 .0,
         );
+        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
         let (swapchain, images) = Swapchain::new(
             device.clone(),
@@ -142,7 +143,7 @@ fn main() {
             SwapchainCreateInfo {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
-                image_extent: surface.window().inner_size().into(),
+                image_extent: window.inner_size().into(),
                 image_usage: ImageUsage {
                     color_attachment: true,
                     ..ImageUsage::empty()
@@ -194,7 +195,8 @@ fn main() {
             recreate_swapchain = true;
         }
         Event::RedrawEventsCleared => {
-            let dimensions = surface.window().inner_size();
+            let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+            let dimensions = window.inner_size();
             if dimensions.width == 0 || dimensions.height == 0 {
                 return;
             }

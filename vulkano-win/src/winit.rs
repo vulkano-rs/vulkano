@@ -1,8 +1,6 @@
 use std::{
-    borrow::Borrow,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    rc::Rc,
     sync::Arc,
 };
 use vulkano::{
@@ -36,13 +34,10 @@ pub fn required_extensions(library: &VulkanLibrary) -> InstanceExtensions {
 
 /// Create a surface from a Winit window or a reference to it. The surface takes `W` to prevent it
 /// from being dropped before the surface.
-pub fn create_surface_from_winit<W>(
-    window: W,
+pub fn create_surface_from_winit(
+    window: Arc<Window>,
     instance: Arc<Instance>,
-) -> Result<Arc<Surface<W>>, SurfaceCreationError>
-where
-    W: SafeBorrow<Window>,
-{
+) -> Result<Arc<Surface>, SurfaceCreationError> {
     unsafe { winit_to_surface(instance, window) }
 }
 
@@ -51,7 +46,7 @@ pub trait VkSurfaceBuild<E> {
         self,
         event_loop: &EventLoopWindowTarget<E>,
         instance: Arc<Instance>,
-    ) -> Result<Arc<Surface<Window>>, CreationError>;
+    ) -> Result<Arc<Surface>, CreationError>;
 }
 
 impl<E> VkSurfaceBuild<E> for WindowBuilder {
@@ -59,8 +54,8 @@ impl<E> VkSurfaceBuild<E> for WindowBuilder {
         self,
         event_loop: &EventLoopWindowTarget<E>,
         instance: Arc<Instance>,
-    ) -> Result<Arc<Surface<Window>>, CreationError> {
-        let window = self.build(event_loop)?;
+    ) -> Result<Arc<Surface>, CreationError> {
+        let window = Arc::new(self.build(event_loop)?);
 
         Ok(create_surface_from_winit(window, instance)?)
     }
@@ -110,14 +105,14 @@ impl From<WindowCreationError> for CreationError {
 }
 
 #[cfg(target_os = "android")]
-unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
+unsafe fn winit_to_surface(
     instance: Arc<Instance>,
-    win: W,
-) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    window: Arc<Window>,
+) -> Result<Arc<Surface>, SurfaceCreationError> {
     use raw_window_handle::HasRawWindowHandle;
     use raw_window_handle::RawWindowHandle::AndroidNdk;
-    if let AndroidNdk(handle) = win.borrow().raw_window_handle() {
-        Surface::from_android(instance, handle.a_native_window, win)
+    if let AndroidNdk(handle) = window.raw_window_handle() {
+        Surface::from_android(instance, handle.a_native_window, Some(window))
     } else {
         unreachable!("This should be unreachable if the target is android");
     }
@@ -129,33 +124,32 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     not(target_os = "macos"),
     not(target_os = "ios")
 ))]
-unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
+unsafe fn winit_to_surface(
     instance: Arc<Instance>,
-    win: W,
-) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    window: Arc<Window>,
+) -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::platform::unix::WindowExtUnix;
 
-    match (
-        win.borrow().wayland_display(),
-        win.borrow().wayland_surface(),
-    ) {
-        (Some(display), Some(surface)) => Surface::from_wayland(instance, display, surface, win),
+    match (window.wayland_display(), window.wayland_surface()) {
+        (Some(display), Some(surface)) => {
+            Surface::from_wayland(instance, display, surface, Some(window))
+        }
         _ => {
             // No wayland display found, check if we can use xlib.
             // If not, we use xcb.
             if instance.enabled_extensions().khr_xlib_surface {
                 Surface::from_xlib(
                     instance,
-                    win.borrow().xlib_display().unwrap(),
-                    win.borrow().xlib_window().unwrap() as _,
-                    win,
+                    window.xlib_display().unwrap(),
+                    window.xlib_window().unwrap() as _,
+                    Some(window),
                 )
             } else {
                 Surface::from_xcb(
                     instance,
-                    win.borrow().xcb_connection().unwrap(),
-                    win.borrow().xlib_window().unwrap() as _,
-                    win,
+                    window.xcb_connection().unwrap(),
+                    window.xlib_window().unwrap() as _,
+                    Some(window),
                 )
             }
         }
@@ -196,13 +190,13 @@ pub(crate) unsafe fn get_metal_layer_macos(view: *mut std::ffi::c_void) -> *mut 
 }
 
 #[cfg(target_os = "macos")]
-unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
+unsafe fn winit_to_surface(
     instance: Arc<Instance>,
-    win: W,
-) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    window: Arc<Window>,
+) -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::platform::macos::WindowExtMacOS;
-    let layer = get_metal_layer_macos(win.borrow().ns_view());
-    Surface::from_mac_os(instance, layer as *const (), win)
+    let layer = get_metal_layer_macos(window.ns_view());
+    Surface::from_mac_os(instance, layer as *const (), Some(window))
 }
 
 #[cfg(target_os = "ios")]
@@ -227,27 +221,27 @@ pub(crate) unsafe fn get_metal_layer_ios(view: *mut std::ffi::c_void) -> IOSMeta
 }
 
 #[cfg(target_os = "ios")]
-unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
+unsafe fn winit_to_surface(
     instance: Arc<Instance>,
-    win: W,
-) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    window: Arc<Window>,
+) -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::platform::ios::WindowExtIOS;
-    let layer = get_metal_layer_ios(win.borrow().ui_view());
-    Surface::from_ios(instance, layer, win)
+    let layer = get_metal_layer_ios(window.ui_view());
+    Surface::from_ios(instance, layer, Some(window))
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
+unsafe fn winit_to_surface(
     instance: Arc<Instance>,
-    win: W,
-) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    window: Arc<Window>,
+) -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::platform::windows::WindowExtWindows;
 
     Surface::from_win32(
         instance,
-        win.borrow().hinstance() as *const (),
-        win.borrow().hwnd() as *const (),
-        win,
+        window.hinstance() as *const (),
+        window.hwnd() as *const (),
+        Some(window),
     )
 }
 
@@ -262,14 +256,3 @@ use winit::{monitor::MonitorHandle, platform::windows::MonitorHandleExtWindows};
 pub fn create_win32_monitor_from_winit(monitor_handle: &MonitorHandle) -> Win32Monitor {
     unsafe { Win32Monitor::new(monitor_handle.hmonitor() as *const ()) }
 }
-
-/// An alternative to `Borrow<T>` with the requirement that all calls to
-/// `borrow` return the same object.
-pub unsafe trait SafeBorrow<T>: Borrow<T> {}
-
-unsafe impl<T> SafeBorrow<T> for T {}
-unsafe impl<'a, T> SafeBorrow<T> for &'a T {}
-unsafe impl<'a, T> SafeBorrow<T> for &'a mut T {}
-unsafe impl<T> SafeBorrow<T> for Rc<T> {}
-unsafe impl<T> SafeBorrow<T> for Arc<T> {}
-unsafe impl<T> SafeBorrow<T> for Box<T> {}

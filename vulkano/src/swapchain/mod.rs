@@ -83,15 +83,18 @@
 //!
 //! # use std::sync::Arc;
 //! # struct Window(*const u32);
-//! # impl Window {
-//! # fn hwnd(&self) -> *const u32 { self.0 }
-//! # }
-//! #
+//! # impl Window { fn hwnd(&self) -> *const u32 { self.0 } }
+//! # unsafe impl Send for Window {}
+//! # unsafe impl Sync for Window {}
 //! # fn build_window() -> Arc<Window> { Arc::new(Window(ptr::null())) }
 //! let window = build_window(); // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
 //!     let hinstance: *const () = ptr::null(); // Windows-specific object
-//!     Surface::from_win32(instance.clone(), hinstance, window.hwnd(), Arc::clone(&window)).unwrap()
+//!     Surface::from_win32(
+//!         instance.clone(),
+//!         hinstance, window.hwnd(),
+//!         Some(window),
+//!     ).unwrap()
 //! };
 //! ```
 //!
@@ -146,7 +149,7 @@
 //! # use vulkano::device::Device;
 //! # use vulkano::swapchain::Surface;
 //! # use std::cmp::{max, min};
-//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface<()>>) -> Result<(), Box<dyn Error>> {
+//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface>) -> Result<(), Box<dyn Error>> {
 //! let surface_capabilities = device
 //!     .physical_device()
 //!     .surface_capabilities(&surface, Default::default())?;
@@ -181,7 +184,7 @@
 //! # use vulkano::format::Format;
 //! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace, FullScreenExclusive, SwapchainCreateInfo};
 //! # fn create_swapchain(
-//! #     device: Arc<Device>, surface: Arc<Surface<()>>,
+//! #     device: Arc<Device>, surface: Arc<Surface>,
 //! #     min_image_count: u32, image_format: Format, image_extent: [u32; 2],
 //! #     pre_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
 //! #     present_mode: PresentMode, full_screen_exclusive: FullScreenExclusive
@@ -246,7 +249,7 @@
 //! use vulkano::swapchain::{self, SwapchainPresentInfo};
 //! use vulkano::sync::GpuFuture;
 //! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
-//! # let mut swapchain: ::std::sync::Arc<swapchain::Swapchain<()>> = return;
+//! # let mut swapchain: ::std::sync::Arc<swapchain::Swapchain> = return;
 //! // let mut (swapchain, images) = Swapchain::new(...);
 //! loop {
 //!     # let mut command_buffer: ::vulkano::command_buffer::PrimaryAutoCommandBuffer = return;
@@ -284,8 +287,8 @@
 //! use vulkano::sync::GpuFuture;
 //!
 //! // let (swapchain, images) = Swapchain::new(...);
-//! # let mut swapchain: ::std::sync::Arc<::vulkano::swapchain::Swapchain<()>> = return;
-//! # let mut images: Vec<::std::sync::Arc<::vulkano::image::SwapchainImage<()>>> = return;
+//! # let mut swapchain: ::std::sync::Arc<::vulkano::swapchain::Swapchain> = return;
+//! # let mut images: Vec<::std::sync::Arc<::vulkano::image::SwapchainImage>> = return;
 //! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
 //! let mut recreate_swapchain = false;
 //!
@@ -333,8 +336,8 @@ pub use self::{
     swapchain::{
         acquire_next_image, acquire_next_image_raw, present, wait_for_present, AcquireError,
         AcquiredImage, FullScreenExclusive, FullScreenExclusiveError, PresentFuture,
-        PresentWaitError, Swapchain, SwapchainAbstract, SwapchainAcquireFuture,
-        SwapchainCreateInfo, SwapchainCreationError, Win32Monitor,
+        PresentWaitError, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo,
+        SwapchainCreationError, Win32Monitor,
     },
 };
 #[cfg(target_os = "ios")]
@@ -383,7 +386,7 @@ pub struct SwapchainPresentInfo {
     /// The swapchain to present to.
     ///
     /// There is no default value.
-    pub swapchain: Arc<dyn SwapchainAbstract>,
+    pub swapchain: Arc<Swapchain>,
 
     /// The index of the swapchain image to present to.
     ///
@@ -423,7 +426,7 @@ pub struct SwapchainPresentInfo {
 impl SwapchainPresentInfo {
     /// Returns a `SwapchainPresentInfo` with the specified `swapchain` and `image_index`.
     #[inline]
-    pub fn swapchain_image_index(swapchain: Arc<dyn SwapchainAbstract>, image_index: u32) -> Self {
+    pub fn swapchain_image_index(swapchain: Arc<Swapchain>, image_index: u32) -> Self {
         Self {
             swapchain,
             image_index,
@@ -438,7 +441,7 @@ impl SwapchainPresentInfo {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct RectangleLayer {
     /// Coordinates in pixels of the top-left hand corner of the rectangle.
-    pub offset: [i32; 2],
+    pub offset: [u32; 2],
 
     /// Dimensions in pixels of the rectangle.
     pub extent: [u32; 2],
@@ -450,13 +453,9 @@ pub struct RectangleLayer {
 impl RectangleLayer {
     /// Returns true if this rectangle layer is compatible with swapchain.
     #[inline]
-    pub fn is_compatible_with(&self, swapchain: &dyn SwapchainAbstract) -> bool {
-        // FIXME negative offset is not disallowed by spec, but semantically should not be possible
-        debug_assert!(self.offset[0] >= 0);
-        debug_assert!(self.offset[1] >= 0);
-
-        self.offset[0] as u32 + self.extent[0] <= swapchain.image_extent()[0]
-            && self.offset[1] as u32 + self.extent[1] <= swapchain.image_extent()[1]
+    pub fn is_compatible_with(&self, swapchain: &Swapchain) -> bool {
+        self.offset[0] + self.extent[0] <= swapchain.image_extent()[0]
+            && self.offset[1] + self.extent[1] <= swapchain.image_extent()[1]
             && self.layer < swapchain.image_array_layers()
     }
 }
@@ -466,8 +465,8 @@ impl From<&RectangleLayer> for ash::vk::RectLayerKHR {
     fn from(val: &RectangleLayer) -> Self {
         ash::vk::RectLayerKHR {
             offset: ash::vk::Offset2D {
-                x: val.offset[0],
-                y: val.offset[1],
+                x: val.offset[0] as i32,
+                y: val.offset[1] as i32,
             },
             extent: ash::vk::Extent2D {
                 width: val.extent[0],

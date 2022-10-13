@@ -37,8 +37,8 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::ShaderModule,
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
-        SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -132,6 +132,7 @@ fn main() {
                 .unwrap()[0]
                 .0,
         );
+        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
         Swapchain::new(
             device.clone(),
@@ -139,7 +140,7 @@ fn main() {
             SwapchainCreateInfo {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
-                image_extent: surface.window().inner_size().into(),
+                image_extent: window.inner_size().into(),
                 image_usage: ImageUsage {
                     color_attachment: true,
                     ..ImageUsage::empty()
@@ -244,7 +245,8 @@ fn main() {
                 recreate_swapchain = true;
             }
             Event::RedrawEventsCleared => {
-                let dimensions = surface.window().inner_size();
+                let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                let dimensions = window.inner_size();
                 if dimensions.width == 0 || dimensions.height == 0 {
                     return;
                 }
@@ -400,7 +402,7 @@ fn window_size_dependent_setup(
     device: Arc<Device>,
     vs: &ShaderModule,
     fs: &ShaderModule,
-    images: &[Arc<SwapchainImage<Window>>],
+    images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
     let dimensions = images[0].dimensions().width_height();
