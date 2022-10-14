@@ -176,6 +176,10 @@ impl ImmutableImage {
     }
 
     /// Construct an ImmutableImage from the contents of `iter`.
+    ///
+    /// This is a convenience function, equivalent to creating a `CpuAccessibleBuffer`, writing
+    /// `iter` to it, then calling [`from_buffer`](ImmutableImage::from_buffer) to copy the data
+    /// over.
     pub fn from_iter<Px, I, L, A>(
         iter: I,
         dimensions: ImageDimensions,
@@ -208,6 +212,14 @@ impl ImmutableImage {
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
+    ///
+    /// This is a convenience function, equivalent to calling
+    /// [`uninitialized`](ImmutableImage::uninitialized) with the queue family index of
+    /// `command_buffer_builder`, then recording a `copy_buffer_to_image` command to
+    /// `command_buffer_builder`.
+    ///
+    /// `command_buffer_builder` can then be used to record other commands, built, and executed as
+    /// normal. If it is not executed, the image contents will be left undefined.
     pub fn from_buffer<L, A>(
         source: Arc<dyn BufferAccess>,
         dimensions: ImageDimensions,

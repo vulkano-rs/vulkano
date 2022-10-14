@@ -128,7 +128,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `vkCmdSetEvent2KHR`
 	- `vkCmdWaitEvents2KHR`
 	- `vkCmdWriteTimestamp2KHR`
-	- `vkQueueSubmit2KHR` / `VkSemaphoreSubmitInfoKHR`
+	- `vkQueueSubmit2KHR` / `VkSemaphoreSubmitInfoKHR` (missing parameters related to device groups)
 	- `VkMemoryBarrier2KHR` extending `VkSubpassDependency`
 	- `VkAccessFlagBits2KHR` / `VkPipelineStageFlagBits2KHR` (only the base Vulkan 1.0 bits are defined)
 
@@ -150,6 +150,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_external_fence_fd`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence_fd.html)
 - [`VK_KHR_external_fence_win32`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence_win32.html)
 - [`VK_KHR_external_memory_fd`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory_fd.html)
+- [`VK_KHR_external_semaphore_fd`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_fd.html)
 - [`VK_KHR_get_surface_capabilities2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_surface_capabilities2.html)
 - [`VK_KHR_incremental_present`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_incremental_present.html)
 - [`VK_KHR_portability_enumeration`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_portability_enumeration.html)
@@ -179,6 +180,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_validation_features`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_validation_features.html)
 - [`VK_EXT_vertex_attribute_divisor`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_vertex_attribute_divisor.html)
 - [`VK_EXT_ycbcr_image_arrays`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_ycbcr_image_arrays.html)
+- [`VK_FUCHSIA_external_semaphore`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_external_semaphore.html)
 - [`VK_FUCHSIA_imagepipe_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_imagepipe_surface.html)
 - [`VK_GGP_stream_descriptor_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GGP_stream_descriptor_surface.html)
 - [`VK_MVK_ios_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_imagepipe_surface.html) (deprecated)
@@ -194,8 +196,8 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `vkGetMemoryWin32HandleKHR`
 	- `vkGetMemoryWin32HandlePropertiesKHR`
 	- `VkExportMemoryWin32HandleInfoKHR`
-- [`VK_KHR_external_semaphore_fd`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_fd.html)
-	- `vkImportSemaphoreFdKHR` / `VkImportSemaphoreFdInfoKHR`
+- [`VK_KHR_external_semaphore_win32`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_win32.html)
+	- `VkD3D12FenceSubmitInfoKHR`
 - [`VK_KHR_portability_subset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_portability_subset.html) (provisional)
 	- Still missing almost all validation checks
 - [`VK_EXT_buffer_device_address`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_buffer_device_address.html) (deprecated)
@@ -213,7 +215,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_acceleration_structure`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_acceleration_structure.html)
 - [`VK_KHR_deferred_host_operations`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_deferred_host_operations.html)
 - [`VK_KHR_display_swapchain`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_display_swapchain.html)
-- [`VK_KHR_external_semaphore_win32`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_win32.html)
 - [`VK_KHR_fragment_shader_barycentric`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shader_barycentric.html)
 - [`VK_KHR_fragment_shading_rate`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shading_rate.html)
 - [`VK_KHR_get_display_properties2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_display_properties2.html)
@@ -329,7 +330,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_ARM_rasterization_order_attachment_access`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_ARM_rasterization_order_attachment_access.html) (promoted)
 - [`VK_FUCHSIA_buffer_collection`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_buffer_collection.html)
 - [`VK_FUCHSIA_external_memory`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_external_memory.html)
-- [`VK_FUCHSIA_external_semaphore`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_external_semaphore.html)
 - [`VK_GGP_frame_token`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GGP_frame_token.html)
 - [`VK_GOOGLE_decorate_string`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GOOGLE_decorate_string.html)
 - [`VK_GOOGLE_display_timing`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GOOGLE_display_timing.html)

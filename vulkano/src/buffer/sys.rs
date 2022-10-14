@@ -226,10 +226,11 @@ impl UnsafeBuffer {
             flags |= sparse_level.into();
         }
 
-        let (sharing_mode, p_queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, &[] as _),
+        let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, &[] as _),
             Sharing::Concurrent(queue_family_indices) => (
                 ash::vk::SharingMode::CONCURRENT,
+                queue_family_indices.len() as u32,
                 queue_family_indices.as_ptr(),
             ),
         };
@@ -239,6 +240,7 @@ impl UnsafeBuffer {
             size,
             usage: usage.into(),
             sharing_mode,
+            queue_family_index_count,
             p_queue_family_indices,
             ..Default::default()
         };
