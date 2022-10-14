@@ -70,6 +70,7 @@ impl DeviceMemory {
     /// - Panics if `allocate_info.allocation_size` is 0.
     /// - Panics if `allocate_info.dedicated_allocation` is `Some` and the contained buffer or
     ///   image does not belong to `device`.
+    #[inline]
     pub fn allocate(
         device: Arc<Device>,
         mut allocate_info: MemoryAllocateInfo<'_>,
@@ -121,6 +122,7 @@ impl DeviceMemory {
     /// - Panics if `allocate_info.allocation_size` is 0.
     /// - Panics if `allocate_info.dedicated_allocation` is `Some` and the contained buffer or
     ///   image does not belong to `device`.
+    #[inline]
     pub unsafe fn import(
         device: Arc<Device>,
         mut allocate_info: MemoryAllocateInfo<'_>,
