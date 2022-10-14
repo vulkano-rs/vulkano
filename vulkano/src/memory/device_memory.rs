@@ -131,7 +131,7 @@ impl DeviceMemory {
         Self::allocate_unchecked(device, allocate_info, Some(import_info)).map_err(Into::into)
     }
 
-    #[cold]
+    #[inline(never)]
     fn validate(
         device: &Device,
         allocate_info: &mut MemoryAllocateInfo<'_>,
@@ -395,7 +395,7 @@ impl DeviceMemory {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[cold]
+    #[inline(never)]
     pub unsafe fn allocate_unchecked(
         device: Arc<Device>,
         allocate_info: MemoryAllocateInfo<'_>,
