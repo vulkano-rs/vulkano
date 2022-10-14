@@ -146,7 +146,7 @@ impl From<ash::vk::PhysicalDeviceMemoryProperties> for MemoryProperties {
 }
 
 /// A memory type in a physical device.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct MemoryType {
     /// The properties of this memory type.
@@ -255,7 +255,7 @@ vulkan_bitflags! {
 }
 
 /// A memory heap in a physical device.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct MemoryHeap {
     /// The size of the heap in bytes.
@@ -336,7 +336,7 @@ pub enum DedicatedAllocation<'a> {
 
 /// The properties for exporting or importing external memory, when a buffer or image is created
 /// with a specific configuration.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct ExternalMemoryProperties {
     /// Whether a dedicated memory allocation is required for the queried external handle type.
