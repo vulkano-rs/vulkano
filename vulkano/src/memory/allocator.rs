@@ -217,18 +217,19 @@
 
 use self::{array_vec::ArrayVec, host::SlotId};
 use super::{
-    DedicatedAllocation, MemoryAllocateFlags, MemoryAllocateInfo, MemoryHeap, MemoryRequirements,
-    MemoryType,
+    DedicatedAllocation, MemoryAllocateFlags, MemoryAllocateInfo, MemoryPropertyFlags,
+    MemoryRequirements, MemoryType,
 };
 use crate::{
     buffer::sys::UnsafeBuffer,
     device::{Device, DeviceOwned},
     image::sys::UnsafeImage,
-    memory::DeviceMemory,
+    memory::{DeviceMemory, MemoryProperties},
     DeviceSize, Version, VulkanError, VulkanObject,
 };
+use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use crossbeam_queue::ArrayQueue;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use std::{
     cell::Cell,
     error::Error,
@@ -241,62 +242,25 @@ use std::{
     },
 };
 
+const B: DeviceSize = 1;
+const K: DeviceSize = 1024 * B;
+const M: DeviceSize = 1024 * K;
+const G: DeviceSize = 1024 * M;
+
 /// General-purpose memory allocators which allocate from any memory type dynamically as needed.
 pub trait MemoryAllocator: DeviceOwned {
     /// Allocates memory from a specific memory type.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `create_info.size` is zero.
-    /// - Panics if `create_info.alignment` is zero.
-    /// - Panics if `create_info.alignment` is not a power of two.
     fn allocate_from_type(
         &self,
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, VulkanError> {
-        create_info.validate();
-
-        unsafe { self.allocate_from_type_unchecked(memory_type_index, create_info) }
-    }
-
-    /// Allocates memory from a specific memory type without checking the parameters.
-    ///
-    /// # Safety
-    ///
-    /// - `create_info.size` must not be zero.
-    /// - `create_info.alignment` must not be zero.
-    /// - `create_info.alignment` must be a power of two.
-    unsafe fn allocate_from_type_unchecked(
-        &self,
-        memory_type_index: u32,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, VulkanError>;
+    ) -> Result<MemoryAlloc, AllocationCreationError>;
 
     /// Allocates memory according to requirements.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `create_info.requirements.size` is zero.
-    /// - Panics if `create_info.requirements.alignment` is zero.
-    /// - Panics if `create_info.requirements.alignment` is not a power of two.
-    fn allocate(&self, create_info: AllocationCreateInfo<'_>) -> Result<MemoryAlloc, VulkanError> {
-        SuballocationCreateInfo::from(&create_info).validate();
-
-        unsafe { self.allocate_unchecked(create_info) }
-    }
-
-    /// Allocates memory according to requirements without checking the parameters.
-    ///
-    /// # Safety
-    ///
-    /// - `create_info.requirements.size` must not be zero.
-    /// - `create_info.requirements.alignment` must not be zero.
-    /// - `create_info.requirements.alignment` must be a power of two.
-    unsafe fn allocate_unchecked(
+    fn allocate(
         &self,
         create_info: AllocationCreateInfo<'_>,
-    ) -> Result<MemoryAlloc, VulkanError>;
+    ) -> Result<MemoryAlloc, AllocationCreationError>;
 }
 
 /// Parameters to create a new [allocation] using a [generic memory allocator].
@@ -307,8 +271,8 @@ pub trait MemoryAllocator: DeviceOwned {
 pub struct AllocationCreateInfo<'d> {
     /// Requirements of the resource you want to allocate memory for.
     ///
-    /// If you plan to bind this memory directly to a resource, then this must correspond to the
-    /// value returned by either [`UnsafeBuffer::memory_requirements`] or
+    /// If you plan to bind this memory directly to a non-sparse resource, then this must
+    /// correspond to the value returned by either [`UnsafeBuffer::memory_requirements`] or
     /// [`UnsafeImage::memory_requirements`] for the respective buffer or image.
     ///
     /// All of the fields must be non-zero, [`alignment`] must be a power of two, and
@@ -340,26 +304,30 @@ pub struct AllocationCreateInfo<'d> {
     /// The default value is [`MemoryUsage::GpuOnly`].
     pub usage: MemoryUsage,
 
+    /// How eager the allocator should be to allocate [`DeviceMemory`].
+    ///
+    /// The default value is [`MemoryAllocatePreference::Unknown`].
+    pub allocate_preference: MemoryAllocatePreference,
+
     /// Allows a dedicated allocation to be created.
     ///
-    /// You should always fill this field in if you are allocating memory for a resource, otherwise
-    /// the allocator won't be able to create a dedicated allocation if one is recommended. The
-    /// allocator will use [`requirements.prefer_dedicated`] as an indicator to determine if a
-    /// dedicated allocation should be created, but that alone doesn't guarantee it to happen. If
-    /// the indicator is `false` however, then a dedicated allocation will not be created.
+    /// You should always fill this field in if you are allocating memory for a non-sparse
+    /// resource, otherwise the allocator won't be able to create a dedicated allocation if one is
+    /// recommended.
     ///
-    /// This option is silently ignored if the device API version is below 1.1 and the
-    /// [`khr_dedicated_allocation`] extension is not enabled on the device.
+    /// This option is silently ignored (treated as `None`) if the device API version is below 1.1
+    /// and the [`khr_dedicated_allocation`] extension is not enabled on the device.
     ///
     /// The default value is [`None`].
     ///
     /// [`requirements.prefer_dedicated`]: MemoryRequirements::prefer_dedicated
+    /// [`khr_dedicated_allocation`]: crate::device::DeviceExtensions::khr_dedicated_allocation
     pub dedicated_allocation: Option<DedicatedAllocation<'d>>,
 
     pub _ne: crate::NonExhaustive,
 }
 
-impl Default for AllocationCreateInfo<'static> {
+impl Default for AllocationCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         AllocationCreateInfo {
@@ -371,6 +339,7 @@ impl Default for AllocationCreateInfo<'static> {
             },
             allocation_type: AllocationType::Unknown,
             usage: MemoryUsage::GpuOnly,
+            allocate_preference: MemoryAllocatePreference::Unknown,
             dedicated_allocation: None,
             _ne: crate::NonExhaustive(()),
         }
@@ -428,6 +397,915 @@ pub enum MemoryUsage {
     Download,
 }
 
+/// Describes whether allocating [`DeviceMemory`] is desired.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MemoryAllocatePreference {
+    /// There is no known preference, let the allocator decide.
+    Unknown,
+
+    /// The allocator should never allocate `DeviceMemory` unless it is unavoidable (because a new
+    /// block is needed) and should instead suballocate from existing blocks.
+    ///
+    /// This option is best suited if you need to allocate each frame for example, since allocating
+    /// `DeviceMemory` is very expensive. In such a scenario you want to avoid these allocations
+    /// as much as possible.
+    NeverAllocate,
+
+    /// The allocator should always allocate `DeviceMemory`.
+    ///
+    /// This option is best suited if you are allocating a long-lived resource that you know could
+    /// benefit from having a dedicated allocation.
+    AlwaysAllocate,
+}
+
+/// Error that can be returned when creating an [allocation] using a [memory allocator].
+///
+/// [allocation]: MemoryAlloc
+/// [memory allocator]: MemoryAllocator
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AllocationCreationError {
+    /// There is not enough memory on the host.
+    OutOfHostMemory,
+
+    /// There is not enough memory on the device.
+    OutOfDeviceMemory,
+
+    /// Too many [`DeviceMemory`] allocations exist already.
+    TooManyObjects,
+
+    /// There is not enough memory in the pool.
+    ///
+    /// This is returned when using [`MemoryAllocatePreference::NeverAllocate`] and there is not
+    /// enough memory in the pool.
+    OutOfPoolMemory,
+
+    /// The block size for the suballocator was exceeded.
+    ///
+    /// This is returned when using [`GenericMemoryAllocator<Arc<PoolAllocator<BLOCK_SIZE>>>`] if
+    /// the allocation size exceeded `BLOCK_SIZE`.
+    BlockSizeExceeded,
+
+    /// No suitable memory types could be found.
+    ///
+    /// This is returned when trying to allocate CPU-visible memory for an optimal image for
+    /// example.
+    NoSuitableMemoryTypes,
+}
+
+impl Display for AllocationCreationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::OutOfHostMemory => "out of host memory",
+                Self::OutOfDeviceMemory => "out of device memomory",
+                Self::TooManyObjects => "too many `DeviceMemory` allocations exist already",
+                Self::NoSuitableMemoryTypes => "couldn't find a suitable memory type",
+                Self::BlockSizeExceeded =>
+                    "the allocation size was greater than the suballocator's block size",
+                Self::OutOfPoolMemory => "the pool doesn't have enough free space",
+            }
+        )
+    }
+}
+
+impl Error for AllocationCreationError {}
+
+/// Standard memory allocator intended as a global and general-purpose allocator.
+///
+/// This type of allocator should work well in most cases, it is however **not** to be used when
+/// allocations need to be made very frequently. For that purpose, use [`FastMemoryAllocator`].
+///
+/// See [`FreeListAllocator`] for details about the allocation algorithm.
+pub type StandardMemoryAllocator = GenericMemoryAllocator<Arc<FreeListAllocator>>;
+
+impl StandardMemoryAllocator {
+    /// Creates a new `StandardMemoryAllocator` with default configuration.
+    pub fn new_default(device: Arc<Device>) -> Self {
+        #[allow(clippy::erasing_op, clippy::identity_op)]
+        let create_info = GenericMemoryAllocatorCreateInfo {
+            #[rustfmt::skip]
+            block_sizes: &[
+                (0 * B,  64 * M),
+                (1 * G, 256 * M),
+            ],
+            ..Default::default()
+        };
+
+        unsafe { Self::new_unchecked(device, create_info) }
+    }
+}
+
+/// Fast memory allocator intended as a local and special-purpose allocator.
+///
+/// This type of allocator is only useful when you need to allocate a lot, for example once or more
+/// per frame. It is **not** to be used when allocations are long-lived. For that purpose use
+/// [`StandardMemoryAllocator`].
+///
+/// See [`BumpAllocator`] for details about the allocation algorithm.
+pub type FastMemoryAllocator = GenericMemoryAllocator<Arc<BumpAllocator>>;
+
+impl FastMemoryAllocator {
+    /// Creates a new `FastMemoryAllocator` with default configuration.
+    pub fn new_default(device: Arc<Device>) -> Self {
+        #[allow(clippy::erasing_op, clippy::identity_op)]
+        let create_info = GenericMemoryAllocatorCreateInfo {
+            #[rustfmt::skip]
+            block_sizes: &[
+                (  0 * B, 16 * M),
+                (512 * M, 32 * M),
+                (  1 * G, 64 * M),
+            ],
+            ..Default::default()
+        };
+
+        unsafe { Self::new_unchecked(device, create_info) }
+    }
+}
+
+/// A generic implementation of a [memory allocator].
+///
+/// The allocator keeps a pool of [`DeviceMemory`] blocks for each memory type and uses the type
+/// parameter `S` to [suballocate] these blocks. You can also configure the sizes of these blocks.
+/// This means that you can have as many `GenericMemoryAllocator`s as you you want for different
+/// needs, or for performance reasons, as long as the block sizes are configured properly so that
+/// too much memory isn't wasted.
+///
+/// See also [the `MemoryAllocator` implementation].
+///
+/// # `DeviceMemory` allocation
+///
+/// If an allocation is created with the [`MemoryAllocatePreference::Unknown`] option, and the
+/// allocator deems the allocation too big for suballocation (larger than half the block size), or
+/// the implementation prefers a dedicated allocation, then that allocation is made a dedicated
+/// allocation. Using [`MemoryAllocatePreference::NeverAllocate`], a dedicated allocation is never
+/// created, even if the allocation is larger than the block size. In such a case an error is
+/// returned instead. Using [`MemoryAllocatePreference::AlwaysAllocate`], a dedicated allocation is
+/// always created.
+///
+/// In all other cases, `DeviceMemory` is only allocated if a pool runs out of memory and needs
+/// another block. No `DeviceMemory` is allocated when the allocator is created, the blocks are
+/// only allocated once they are needed.
+///
+/// # Locking behavior
+///
+/// The allocator never needs to lock while suballocating unless `S` needs to lock. The only time
+/// when a pool must be locked is when a new `DeviceMemory` block is allocated for the pool. This
+/// means that the allocator is suited to both locking and lock-free (sub)allocation algorithms.
+///
+/// [memory allocator]: MemoryAllocator
+/// [suballocate]: Suballocator
+/// [the `MemoryAllocator` implementation]: Self#impl-MemoryAllocator-for-GenericMemoryAllocator<S>
+#[derive(Debug)]
+pub struct GenericMemoryAllocator<S: Suballocator> {
+    device: Arc<Device>,
+    // Each memory type has a pool of `DeviceMemory` blocks.
+    pools: ArrayVec<Pool<S>, MAX_MEMORY_TYPES>,
+    // Each memory heap has its own block size.
+    block_sizes: ArrayVec<DeviceSize, MAX_MEMORY_HEAPS>,
+    dedicated_allocation: bool,
+    flags: MemoryAllocateFlags,
+    // Global mask of memory types.
+    memory_type_bits: u32,
+    // How many `DeviceMemory` allocations should be allowed before restricting them.
+    max_memory_allocation_count: u32,
+}
+
+#[derive(Debug)]
+struct Pool<S> {
+    blocks: RwLock<Vec<S>>,
+    // This is cached here for faster access, so we don't need to hop through 3 pointers.
+    memory_type: ash::vk::MemoryType,
+}
+
+impl<S: Suballocator> GenericMemoryAllocator<S> {
+    // This is a false-positive, we only use this const for static initialization.
+    #[allow(clippy::declare_interior_mutable_const)]
+    const EMPTY_POOL: Pool<S> = Pool {
+        blocks: RwLock::new(Vec::new()),
+        memory_type: ash::vk::MemoryType {
+            property_flags: ash::vk::MemoryPropertyFlags::empty(),
+            heap_index: 0,
+        },
+    };
+
+    /// Creates a new `GenericMemoryAllocator<S>` using the provided suballocator `S` for
+    /// suballocation of [`DeviceMemory`] blocks.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.block_sizes` is not sorted by threshold.
+    /// - Panics if `create_info.block_sizes` contains duplicate thresholds.
+    /// - Panics if `create_info.block_sizes` does not contain a baseline threshold of `0`.
+    /// - Panics if the block size for a heap exceeds the size of the heap.
+    pub fn new(device: Arc<Device>, create_info: GenericMemoryAllocatorCreateInfo<'_>) -> Self {
+        Self::validate_new(&create_info);
+
+        unsafe { Self::new_unchecked(device, create_info) }
+    }
+
+    fn validate_new(create_info: &GenericMemoryAllocatorCreateInfo<'_>) {
+        let GenericMemoryAllocatorCreateInfo {
+            block_sizes,
+            dedicated_allocation: _,
+            device_address: _,
+            _ne: _,
+        } = create_info;
+
+        assert!(
+            block_sizes.windows(2).all(|win| win[0].0 < win[1].0),
+            "`create_info.block_sizes` must be sorted by threshold without duplicates",
+        );
+        assert!(
+            matches!(block_sizes.first(), Some((0, _))),
+            "`create_info.block_sizes` must contain a baseline threshold `0`",
+        );
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: GenericMemoryAllocatorCreateInfo<'_>,
+    ) -> Self {
+        let GenericMemoryAllocatorCreateInfo {
+            block_sizes,
+            mut dedicated_allocation,
+            mut device_address,
+            _ne: _,
+        } = create_info;
+
+        let MemoryProperties {
+            memory_types,
+            memory_heaps,
+        } = device.physical_device().memory_properties();
+
+        let mut pools = ArrayVec::new(memory_types.len(), [Self::EMPTY_POOL; MAX_MEMORY_TYPES]);
+        for (i, memory_type) in memory_types.iter().enumerate() {
+            pools[i].memory_type = ash::vk::MemoryType {
+                property_flags: memory_type.property_flags.into(),
+                heap_index: memory_type.heap_index,
+            };
+        }
+
+        let block_sizes = {
+            let mut sizes = ArrayVec::new(memory_heaps.len(), [0; MAX_MEMORY_HEAPS]);
+            for (i, memory_heap) in memory_heaps.iter().enumerate() {
+                let idx = match block_sizes.binary_search_by_key(&memory_heap.size, |&(t, _)| t) {
+                    Ok(idx) => idx,
+                    Err(idx) => idx.saturating_sub(1),
+                };
+                sizes[i] = block_sizes[idx].1;
+
+                // VUID-vkAllocateMemory-pAllocateInfo-01713
+                assert!(sizes[i] <= memory_heap.size);
+            }
+
+            sizes
+        };
+
+        // Providers of `VkMemoryDedicatedAllocateInfo`
+        dedicated_allocation &= device.api_version() >= Version::V1_1
+            || device.enabled_extensions().khr_dedicated_allocation;
+
+        // VUID-VkMemoryAllocateInfo-flags-03331
+        device_address &= device.enabled_features().buffer_device_address
+            && !device.enabled_extensions().ext_buffer_device_address;
+        // Providers of `VkMemoryAllocateFlags`
+        device_address &=
+            device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_device_group;
+
+        let mut memory_type_bits = u32::MAX;
+        for (index, MemoryType { property_flags, .. }) in memory_types.iter().enumerate() {
+            if property_flags.lazily_allocated
+                || property_flags.protected
+                || property_flags.device_coherent
+                || property_flags.device_uncached
+                || property_flags.rdma_capable
+            {
+                memory_type_bits ^= 1 << index;
+            }
+        }
+
+        let max_memory_allocation_count = device
+            .physical_device()
+            .properties()
+            .max_memory_allocation_count;
+        let max_memory_allocation_count = max_memory_allocation_count * 3 / 4;
+
+        GenericMemoryAllocator {
+            device,
+            pools,
+            block_sizes,
+            dedicated_allocation,
+            flags: MemoryAllocateFlags {
+                device_address,
+                ..Default::default()
+            },
+            memory_type_bits,
+            max_memory_allocation_count,
+        }
+    }
+
+    fn validate_allocate_from_type(
+        &self,
+        memory_type_index: u32,
+        create_info: &SuballocationCreateInfo,
+    ) {
+        let memory_type = &self.pools[memory_type_index as usize].memory_type;
+        // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
+        assert!(
+            !memory_type
+                .property_flags
+                .contains(ash::vk::MemoryPropertyFlags::PROTECTED)
+                || self.device.enabled_features().protected_memory,
+            "attempted to allocate from a protected memory type without the `protected_memory` \
+            feature being enabled on the device",
+        );
+
+        let block_size = self.block_sizes[memory_type.heap_index as usize];
+        // VUID-vkAllocateMemory-pAllocateInfo-01713
+        assert!(
+            create_info.size <= block_size,
+            "attempted to create an allocation larger than the block size for the memory heap",
+        );
+
+        create_info.validate();
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn allocate_from_type_unchecked(
+        &self,
+        memory_type_index: u32,
+        create_info: SuballocationCreateInfo,
+        never_allocate: bool,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        let SuballocationCreateInfo {
+            size,
+            alignment: _,
+            allocation_type: _,
+            _ne: _,
+        } = create_info;
+
+        let pool = &self.pools[memory_type_index as usize];
+
+        let mut blocks = if S::IS_BLOCKING {
+            // If the allocation algorithm needs to block, then there's no point in trying to avoid
+            // locks here either. In that case the best strategy is to take full advantage of it by
+            // always taking an exclusive lock, which lets us sort the blocks by free size. If you
+            // as a user want to avoid locks, simply don't share the allocator between threads. You
+            // can create as many allocators as you wish, but keep in mind that that will waste a
+            // huge amount of memory unless you configure your block sizes properly!
+
+            let mut blocks = pool.blocks.write();
+            blocks.sort_by_key(Suballocator::free_size);
+            let (Ok(idx) | Err(idx)) = blocks.binary_search_by_key(&size, Suballocator::free_size);
+            for block in &blocks[idx..] {
+                match block.allocate_unchecked(create_info.clone()) {
+                    Ok(alloc) => return Ok(alloc),
+                    Err(SuballocationCreationError::BlockSizeExceeded) => {
+                        return Err(AllocationCreationError::BlockSizeExceeded);
+                    }
+                    Err(_) => {}
+                }
+            }
+
+            blocks
+        } else {
+            // If the allocation algorithm is lock-free, then we should avoid taking an exclusive
+            // lock unless it is absolutely neccessary (meaning, only when allocating a new
+            // `DeviceMemory` block and inserting it into a pool). This has the disadvantage that
+            // traversing the pool is O(n), which is not a problem since the number of blocks is
+            // expected to be small. If there are more than 10 blocks in a pool then that's a
+            // configuration error. Also, sorting the blocks before each allocation would be less
+            // efficient because to get the free size of the `PoolAllocator` and `BumpAllocator`
+            // has the same performance as trying to allocate.
+
+            let blocks = pool.blocks.read();
+            // Search in reverse order because we always append new blocks at the end.
+            for block in blocks.iter().rev() {
+                match block.allocate_unchecked(create_info.clone()) {
+                    Ok(alloc) => return Ok(alloc),
+                    // This can happen when using the `PoolAllocator<BLOCK_SIZE>` if the allocation
+                    // size is greater than `BLOCK_SIZE`.
+                    Err(SuballocationCreationError::BlockSizeExceeded) => {
+                        return Err(AllocationCreationError::BlockSizeExceeded);
+                    }
+                    Err(_) => {}
+                }
+            }
+
+            let len = blocks.len();
+            drop(blocks);
+            let blocks = pool.blocks.write();
+            if blocks.len() > len {
+                // Another thread beat us to it and inserted a fresh block, try to allocate from it.
+                match blocks[len].allocate_unchecked(create_info.clone()) {
+                    Ok(alloc) => return Ok(alloc),
+                    // This can happen if this is the first block that was inserted and when using
+                    // the `PoolAllocator<BLOCK_SIZE>` if the allocation size is greater than
+                    // `BLOCK_SIZE`.
+                    Err(SuballocationCreationError::BlockSizeExceeded) => {
+                        return Err(AllocationCreationError::BlockSizeExceeded);
+                    }
+                    Err(_) => {}
+                }
+            }
+
+            blocks
+        };
+
+        // For bump allocators, first do a garbage sweep and try to allocate again.
+        if S::NEEDS_CLEANUP {
+            blocks.iter_mut().for_each(Suballocator::cleanup);
+            blocks.sort_unstable_by_key(Suballocator::free_size);
+
+            if let Some(block) = blocks.last() {
+                if let Ok(alloc) = block.allocate_unchecked(create_info.clone()) {
+                    return Ok(alloc);
+                }
+            }
+        }
+
+        if never_allocate {
+            return Err(AllocationCreationError::OutOfPoolMemory);
+        }
+
+        // The pool doesn't have enough real estate, so we need a new block.
+        let block = {
+            let block_size = self.block_sizes[pool.memory_type.heap_index as usize];
+            let mut i = 0;
+
+            loop {
+                let allocate_info = MemoryAllocateInfo {
+                    allocation_size: block_size >> i,
+                    memory_type_index,
+                    dedicated_allocation: None,
+                    flags: self.flags,
+                    ..Default::default()
+                };
+                match DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None) {
+                    Ok(device_memory) => break S::new(device_memory.into()),
+                    // Retry up to 3 times, halving the allocation size each time.
+                    Err(VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory) if i < 3 => {
+                        i += 1;
+                    }
+                    Err(VulkanError::OutOfHostMemory) => {
+                        return Err(AllocationCreationError::OutOfHostMemory);
+                    }
+                    Err(VulkanError::OutOfDeviceMemory) => {
+                        return Err(AllocationCreationError::OutOfDeviceMemory);
+                    }
+                    Err(VulkanError::TooManyObjects) => {
+                        return Err(AllocationCreationError::TooManyObjects);
+                    }
+                    Err(_) => unreachable!(),
+                }
+            }
+        };
+
+        blocks.push(block);
+        let block = blocks.last().unwrap();
+
+        match block.allocate_unchecked(create_info) {
+            Ok(alloc) => Ok(alloc),
+            // This can happen if the block ended up smaller than advertised because there wasn't
+            // enough memory.
+            Err(SuballocationCreationError::OutOfRegionMemory) => {
+                Err(AllocationCreationError::OutOfDeviceMemory)
+            }
+            // This can not happen as the block is fresher than Febreze and we're still holding an
+            // exclusive lock.
+            Err(SuballocationCreationError::FragmentedRegion) => unreachable!(),
+            // This can happen if this is the first block that was inserted and when using the
+            // `PoolAllocator<BLOCK_SIZE>` if the allocation size is greater than `BLOCK_SIZE`.
+            Err(SuballocationCreationError::BlockSizeExceeded) => {
+                Err(AllocationCreationError::BlockSizeExceeded)
+            }
+        }
+    }
+
+    fn validate_allocate(&self, create_info: &AllocationCreateInfo<'_>) {
+        let &AllocationCreateInfo {
+            requirements,
+            allocation_type: _,
+            usage: _,
+            allocate_preference: _,
+            dedicated_allocation,
+            _ne: _,
+        } = create_info;
+
+        SuballocationCreateInfo::from(create_info.clone()).validate();
+
+        assert!(requirements.memory_type_bits != 0);
+        assert!(requirements.memory_type_bits < 1 << self.pools.len());
+
+        if let Some(dedicated_allocation) = dedicated_allocation {
+            match dedicated_allocation {
+                DedicatedAllocation::Buffer(buffer) => {
+                    // VUID-VkMemoryDedicatedAllocateInfo-commonparent
+                    assert_eq!(&self.device, buffer.device());
+
+                    let required_size = buffer.memory_requirements().size;
+
+                    // VUID-VkMemoryDedicatedAllocateInfo-buffer-02965
+                    assert!(requirements.size != required_size);
+                }
+                DedicatedAllocation::Image(image) => {
+                    // VUID-VkMemoryDedicatedAllocateInfo-commonparent
+                    assert_eq!(&self.device, image.device());
+
+                    let required_size = image.memory_requirements().size;
+
+                    // VUID-VkMemoryDedicatedAllocateInfo-image-02964
+                    assert!(requirements.size != required_size);
+                }
+            }
+        }
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn allocate_unchecked(
+        &self,
+        create_info: AllocationCreateInfo<'_>,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        let AllocationCreateInfo {
+            requirements:
+                MemoryRequirements {
+                    size,
+                    alignment: _,
+                    mut memory_type_bits,
+                    mut prefer_dedicated,
+                },
+            allocation_type: _,
+            usage,
+            allocate_preference,
+            dedicated_allocation,
+            _ne: _,
+        } = create_info;
+
+        let create_info = SuballocationCreateInfo::from(create_info);
+
+        memory_type_bits &= self.memory_type_bits;
+
+        let mut required_flags = ash::vk::MemoryPropertyFlags::empty();
+        let mut preferred_flags = ash::vk::MemoryPropertyFlags::empty();
+        let mut not_preferred_flags = ash::vk::MemoryPropertyFlags::empty();
+
+        match usage {
+            MemoryUsage::GpuOnly => {
+                preferred_flags |= ash::vk::MemoryPropertyFlags::DEVICE_LOCAL;
+                not_preferred_flags |= ash::vk::MemoryPropertyFlags::HOST_VISIBLE;
+            }
+            MemoryUsage::Upload => {
+                required_flags |= ash::vk::MemoryPropertyFlags::HOST_VISIBLE;
+                preferred_flags |= ash::vk::MemoryPropertyFlags::DEVICE_LOCAL;
+                not_preferred_flags |= ash::vk::MemoryPropertyFlags::HOST_CACHED;
+            }
+            MemoryUsage::Download => {
+                required_flags |= ash::vk::MemoryPropertyFlags::HOST_VISIBLE;
+                preferred_flags |= ash::vk::MemoryPropertyFlags::HOST_CACHED;
+            }
+        }
+
+        let mut memory_type_index = self
+            .find_memory_type_index(
+                memory_type_bits,
+                required_flags,
+                preferred_flags,
+                not_preferred_flags,
+            )
+            .ok_or(AllocationCreationError::NoSuitableMemoryTypes)?;
+
+        loop {
+            let memory_type = self.pools[memory_type_index as usize].memory_type;
+            let block_size = self.block_sizes[memory_type.heap_index as usize];
+
+            let res = match allocate_preference {
+                MemoryAllocatePreference::Unknown => {
+                    if size > block_size / 2 {
+                        prefer_dedicated = true;
+                    }
+                    if self.device.allocation_count() > self.max_memory_allocation_count
+                        && size < block_size
+                    {
+                        prefer_dedicated = false;
+                    }
+
+                    if prefer_dedicated {
+                        self.allocate_dedicated(memory_type_index, size, dedicated_allocation)
+                            // Fall back to suballocation.
+                            .or_else(|e| {
+                                if size < block_size {
+                                    self.allocate_from_type_unchecked(
+                                        memory_type_index,
+                                        create_info.clone(),
+                                        true, // A dedicated allocation already failed.
+                                    )
+                                    .map_err(|_| e)
+                                } else {
+                                    Err(e)
+                                }
+                            })
+                    } else {
+                        self.allocate_from_type_unchecked(
+                            memory_type_index,
+                            create_info.clone(),
+                            false,
+                        )
+                        // Fall back to dedicated allocation. It is possible that the 1/8 block size
+                        // that was tried was greater than the allocation size, so there's hope.
+                        .or_else(|_| {
+                            self.allocate_dedicated(memory_type_index, size, dedicated_allocation)
+                        })
+                    }
+                }
+                MemoryAllocatePreference::AlwaysAllocate => {
+                    self.allocate_dedicated(memory_type_index, size, dedicated_allocation)
+                }
+                MemoryAllocatePreference::NeverAllocate => {
+                    if size <= block_size {
+                        self.allocate_from_type_unchecked(
+                            memory_type_index,
+                            create_info.clone(),
+                            true,
+                        )
+                    } else {
+                        Err(AllocationCreationError::OutOfPoolMemory)
+                    }
+                }
+            };
+
+            match res {
+                Ok(alloc) => return Ok(alloc),
+                // This is not recoverable.
+                Err(AllocationCreationError::BlockSizeExceeded) => {
+                    return Err(AllocationCreationError::BlockSizeExceeded)
+                }
+                // Try a different memory type.
+                Err(e) => {
+                    memory_type_bits ^= 1 << memory_type_index;
+                    memory_type_index = self
+                        .find_memory_type_index(
+                            memory_type_bits,
+                            required_flags,
+                            preferred_flags,
+                            not_preferred_flags,
+                        )
+                        .ok_or(e)?;
+                }
+            }
+        }
+    }
+
+    fn find_memory_type_index(
+        &self,
+        memory_type_bits: u32,
+        required_flags: ash::vk::MemoryPropertyFlags,
+        preferred_flags: ash::vk::MemoryPropertyFlags,
+        not_preferred_flags: ash::vk::MemoryPropertyFlags,
+    ) -> Option<u32> {
+        self.pools
+            .iter()
+            .map(|pool| pool.memory_type.property_flags)
+            .enumerate()
+            // Filter out memory types which are supported by the memory type bits and have the
+            // required flags set.
+            .filter(|&(index, flags)| {
+                memory_type_bits & (1 << index) != 0 && required_flags & flags == required_flags
+            })
+            // Rank memory types with more of the preferred flags higher, and ones with more of the
+            // not preferred flags lower.
+            .min_by_key(|&(_, flags)| {
+                (preferred_flags & !flags).as_raw().count_ones()
+                    + (not_preferred_flags & flags).as_raw().count_ones()
+            })
+            .map(|(index, _)| index as u32)
+    }
+
+    unsafe fn allocate_dedicated(
+        &self,
+        memory_type_index: u32,
+        allocation_size: DeviceSize,
+        mut dedicated_allocation: Option<DedicatedAllocation<'_>>,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        if !self.dedicated_allocation {
+            dedicated_allocation = None;
+        }
+
+        let is_dedicated = dedicated_allocation.is_some();
+        let allocate_info = MemoryAllocateInfo {
+            allocation_size,
+            memory_type_index,
+            dedicated_allocation,
+            flags: self.flags,
+            ..Default::default()
+        };
+
+        DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None)
+            .map(|device_memory| MemoryAlloc {
+                offset: 0,
+                size: allocation_size,
+                allocation_type: AllocationType::Unknown,
+                memory: device_memory.internal_object(),
+                memory_type_index,
+                buffer_image_granularity: self
+                    .device
+                    .physical_device()
+                    .properties()
+                    .buffer_image_granularity,
+                parent: if is_dedicated {
+                    AllocParent::Dedicated(device_memory)
+                } else {
+                    AllocParent::Root(Arc::new(device_memory))
+                },
+            })
+            .map_err(|e| match e {
+                VulkanError::OutOfHostMemory => AllocationCreationError::OutOfHostMemory,
+                VulkanError::OutOfDeviceMemory => AllocationCreationError::OutOfDeviceMemory,
+                VulkanError::TooManyObjects => AllocationCreationError::TooManyObjects,
+                _ => unreachable!(),
+            })
+    }
+}
+
+impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
+    /// Allocates memory from a specific memory type.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `memory_type_index` is not less than the number of available memory types.
+    /// - Panics if `memory_type_index` refers to a memory type which has the [`protected`] flag set
+    ///   and the [`protected_memory`] feature is not enabled on the device.
+    /// - Panics if `create_info.size` is larger than the block size corresponding to the heap that
+    ///   the memory type corresponding to `memory_type_index` resides in.
+    /// - Panics if `create_info.size` is zero.
+    /// - Panics if `create_info.alignment` is zero.
+    /// - Panics if `create_info.alignment` is not a power of two.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if allocating a new block is required and failed. This can be one of the
+    ///   OOM errors or `TooManyObjects`.
+    /// - Returns `BlockSizeExceeded` if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
+    ///   is larger than `BLOCK_SIZE`.
+    ///
+    /// [`protected`]: MemoryPropertyFlags::protected
+    /// [`protected_memory`]: crate::device::Features::protected_memory
+    fn allocate_from_type(
+        &self,
+        memory_type_index: u32,
+        create_info: SuballocationCreateInfo,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        self.validate_allocate_from_type(memory_type_index, &create_info);
+
+        if self.pools[memory_type_index as usize]
+            .memory_type
+            .property_flags
+            .contains(ash::vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
+        {
+            return unsafe { self.allocate_dedicated(memory_type_index, create_info.size, None) };
+        }
+
+        unsafe { self.allocate_from_type_unchecked(memory_type_index, create_info, false) }
+    }
+
+    /// Allocates memory according to requirements.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.requirements.size` is zero.
+    /// - Panics if `create_info.requirements.alignment` is zero.
+    /// - Panics if `create_info.requirements.alignment` is not a power of two.
+    /// - Panics if `create_info.requirements.memory_type_bits` is zero.
+    /// - Panics if `create_info.requirements.memory_type_bits` is not less than 2<sup>*n*</sup>
+    ///   where *n* is the number of available memory types.
+    /// - Panics if `create_info.dedicated_allocation` is `Some` and
+    ///   `create_info.requirements.size` doesn't match the memory requirements of the resource.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `NoSuitableMemoryTypes` if finding a suitable memory type failed. This happens
+    ///   if the `create_info.requirements` correspond to those of an optimal image but
+    ///   `create_info.usage` is not [`MemoryUsage::GpuOnly`] for example.
+    /// - Returns an error if allocating a new block is required and failed. This can be one of the
+    ///   OOM errors or `TooManyObjects`.
+    /// - Returns `BlockSizeExceeded` if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
+    ///   is greater than `BLOCK_SIZE` and a dedicated allocation was not created.
+    /// - Returns `OutOfPoolMemory` if `create_info.allocate_preference` is
+    ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is greater
+    ///   than the block size for all heaps of suitable memory types.
+    /// - Returns `OutOfPoolMemory` if `create_info.allocate_preference` is
+    ///   [`MemoryAllocatePreference::NeverAllocate`] and none of the pools of suitable memory
+    ///   types have enough free space.
+    ///
+    /// [`device_local`]: MemoryPropertyFlags::device_local
+    /// [`host_visible`]: MemoryPropertyFlags::host_visible
+    fn allocate(
+        &self,
+        create_info: AllocationCreateInfo<'_>,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        self.validate_allocate(&create_info);
+
+        unsafe { self.allocate_unchecked(create_info) }
+    }
+}
+
+unsafe impl<S: Suballocator> DeviceOwned for GenericMemoryAllocator<S> {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+/// Parameters to create a new [`GenericMemoryAllocator`].
+#[derive(Clone, Debug)]
+pub struct GenericMemoryAllocatorCreateInfo<'b> {
+    /// Lets you configure the block sizes for various heap size classes.
+    ///
+    /// Each entry is a pair of the threshold for the heap size and the block size that should be
+    /// used for that heap. Must be sorted by threshold and all thresholds must be unique. Must
+    /// contain a baseline threshold of 0.
+    ///
+    /// The allocator keeps a pool of [`DeviceMemory`] blocks for each memory type, so each memory
+    /// type that resides in a heap whose size crosses one of the thresholds will use the
+    /// corresponding block size. If multiple thresholds apply to a given heap, the block size
+    /// corresponding to the largest threshold is chosen.
+    ///
+    /// The block size is going to be the maximum size of a `DeviceMemory` block that is tried. If
+    /// allocating a block with the size fails, the allocator tries 1/2, 1/4 and 1/8 of the block
+    /// size in that order until one succeeds, else a dedicated allocation is attempted for the
+    /// allocation. If an allocation is created with a size greater than half the block size it is
+    /// always made a dedicated allocation. All of this doesn't apply when using
+    /// [`MemoryAllocatePreference::NeverAllocate`] however.
+    ///
+    /// The default value is `&[]`, which must be overridden.
+    pub block_sizes: &'b [(Threshold, BlockSize)],
+
+    /// Whether the allocator should use the dedicated allocation APIs.
+    ///
+    /// This means that when the allocator dedices that an allocation should not be suballocated,
+    /// but rather have its own block of [`DeviceMemory`], that that allocation will be made a
+    /// dedicated allocation. Otherwise they are still made free-standing ([root]) allocations,
+    /// just not [dedicated] ones.
+    ///
+    /// Dedicated allocations are an optimization which may result in better performance, so there
+    /// really is no reason to disable this option, unless the restrictions that they bring with
+    /// them are a problem. Namely, a dedicated allocation must only be used for the resource it
+    /// was created for. Meaning that [reusing the memory] for something else is not possible,
+    /// [suballocating it] is not possible, and [aliasing it] is also not possible.
+    ///
+    /// This option is silently ignored (treated as `false`) if the device API version is below 1.1
+    /// and the [`khr_dedicated_allocation`] extension is not enabled on the device.
+    ///
+    /// The default value is `true`.
+    ///
+    /// [root]: MemoryAlloc::is_root
+    /// [dedicated]: MemoryAlloc::is_dedicated
+    /// [reusing the memory]: MemoryAlloc::try_unwrap
+    /// [suballocating it]: Suballocator
+    /// [aliasing it]: MemoryAlloc::alias
+    /// [`khr_dedicated_allocation`]: crate::device::DeviceExtensions::khr_dedicated_allocation
+    pub dedicated_allocation: bool,
+
+    /// Whether the allocator should allocate the [`DeviceMemory`] blocks with the
+    /// [`device_address`] flag set.
+    ///
+    /// This is required if you want to allocate memory for buffers that have the
+    /// [`shader_device_address`] usage set. For this option too, there is no reason to disable it.
+    ///
+    /// This option is silently ignored (treated as `false`) if the [`buffer_device_address`]
+    /// feature is not enabled on the device or if the [`ext_buffer_device_address`] extension is
+    /// enabled on the device. It is also ignored if the device API version is below 1.1 and the
+    /// [`khr_device_group`] extension is not enabled on the device.
+    ///
+    /// The default value is `true`.
+    ///
+    /// [`device_address`]: MemoryAllocateFlags::device_address
+    /// [`shader_device_address`]: crate::buffer::BufferUsage::shader_device_address
+    /// [`buffer_device_address`]: crate::device::Features::buffer_device_address
+    /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
+    /// [`khr_device_group`]: crate::device::DeviceExtensions::khr_device_group
+    pub device_address: bool,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+pub type Threshold = DeviceSize;
+
+pub type BlockSize = DeviceSize;
+
+impl Default for GenericMemoryAllocatorCreateInfo<'_> {
+    #[inline]
+    fn default() -> Self {
+        GenericMemoryAllocatorCreateInfo {
+            block_sizes: &[],
+            dedicated_allocation: true,
+            device_address: true,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
 /// Memory allocations are portions of memory that are are reserved for a specific resource or
 /// purpose.
 ///
@@ -446,15 +1324,15 @@ pub struct MemoryAlloc {
     size: DeviceSize,
     // Needed when binding resources to the allocation in order to avoid aliasing memory.
     allocation_type: AllocationType,
-    // Used in the `Drop` impl to free the allocation if required.
-    parent: AllocParent,
-    // Underlying block of memory. This field is duplicated here to avoid walking up the hierarchy
-    // when binding.
+    // Underlying block of memory. These fields are duplicated here to avoid walking up the
+    // hierarchy when binding.
     memory: ash::vk::DeviceMemory,
     memory_type_index: u32,
     // Used by the suballocators to resolve buffer-image granularity conflicts. This field is
     // duplicated here to avoid walking up the hierarchy when creating a suballocator.
     buffer_image_granularity: DeviceSize,
+    // Used in the `Drop` impl to free the allocation if required.
+    parent: AllocParent,
 }
 
 #[derive(Debug)]
@@ -777,6 +1655,20 @@ unsafe impl VulkanObject for MemoryAlloc {
 /// [allocations]: MemoryAlloc
 /// [pages]: self#pages
 pub trait Suballocator {
+    /// Whether this allocator needs to block or not.
+    ///
+    /// This is used by the [`GenericMemoryAllocator`] to tailor the allocation strategy to the
+    /// suballocator at compile time.
+    const IS_BLOCKING: bool;
+
+    /// Whether the allocator needs [`cleanup`] to be called before memory is realeased.
+    ///
+    /// This is used by the [`GenericMemoryAllocator`] to tailor the allocation strategy to the
+    /// suballocator at compile time.
+    ///
+    /// [`cleanup`]: Self::cleanup
+    const NEEDS_CLEANUP: bool;
+
     /// Creates a new suballocator for the given [region].
     ///
     /// [region]: Self#regions
@@ -797,7 +1689,7 @@ pub trait Suballocator {
     fn allocate(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
+    ) -> Result<MemoryAlloc, SuballocationCreationError> {
         create_info.validate();
 
         unsafe { self.allocate_unchecked(create_info) }
@@ -818,7 +1710,7 @@ pub trait Suballocator {
     unsafe fn allocate_unchecked(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError>;
+    ) -> Result<MemoryAlloc, SuballocationCreationError>;
 
     /// Returns a reference to the underlying [region].
     ///
@@ -887,9 +1779,9 @@ impl Default for SuballocationCreateInfo {
     }
 }
 
-impl<'d> From<&AllocationCreateInfo<'d>> for SuballocationCreateInfo {
+impl From<AllocationCreateInfo<'_>> for SuballocationCreateInfo {
     #[inline]
-    fn from(create_info: &AllocationCreateInfo<'d>) -> Self {
+    fn from(create_info: AllocationCreateInfo<'_>) -> Self {
         SuballocationCreateInfo {
             size: create_info.requirements.size,
             alignment: create_info.requirements.alignment,
@@ -932,28 +1824,38 @@ pub enum AllocationType {
 ///
 /// [suballocator]: Suballocator
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SuballocationError {
+pub enum SuballocationCreationError {
     /// There is no more space available in the region.
     OutOfRegionMemory,
 
     /// The region has enough free space to satisfy the request but is too fragmented.
     FragmentedRegion,
+
+    /// The allocation was larger than the allocator's block size, meaning that this error would
+    /// arise with the parameters no matter the state the allocator was in.
+    ///
+    /// This can be used to let the [`GenericMemoryAllocator`] know that allocating a new block of
+    /// [`DeviceMemory`] and trying to suballocate it with the same parameters would not solve the
+    /// issue.
+    BlockSizeExceeded,
 }
 
-impl Display for SuballocationError {
+impl Display for SuballocationCreationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
             match self {
-                SuballocationError::OutOfRegionMemory => "out of region memory",
-                SuballocationError::FragmentedRegion => "the region is too fragmented",
+                Self::OutOfRegionMemory => "out of region memory",
+                Self::FragmentedRegion => "the region is too fragmented",
+                Self::BlockSizeExceeded =>
+                    "the allocation size was larger than the suballocator's block size",
             }
         )
     }
 }
 
-impl Error for SuballocationError {}
+impl Error for SuballocationCreationError {}
 
 /// A [suballocator] that uses the most generic [free-list].
 ///
@@ -1067,6 +1969,10 @@ impl FreeListAllocator {
 }
 
 impl Suballocator for Arc<FreeListAllocator> {
+    const IS_BLOCKING: bool = true;
+
+    const NEEDS_CLEANUP: bool = false;
+
     #[inline]
     fn new(region: MemoryAlloc) -> Self {
         FreeListAllocator::new(region)
@@ -1091,14 +1997,14 @@ impl Suballocator for Arc<FreeListAllocator> {
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
-    /// [`FragmentedRegion`]: SuballocationError::FragmentedRegion
+    /// [`OutOfRegionMemory`]: SuballocationCreationError::OutOfRegionMemory
+    /// [`FragmentedRegion`]: SuballocationCreationError::FragmentedRegion
     /// [external fragmentation]: self#external-fragmentation
     #[inline]
     unsafe fn allocate_unchecked(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
+    ) -> Result<MemoryAlloc, SuballocationCreationError> {
         fn has_granularity_conflict(prev_ty: SuballocationType, ty: AllocationType) -> bool {
             if prev_ty == SuballocationType::Free {
                 false
@@ -1165,26 +2071,28 @@ impl Suballocator for Arc<FreeListAllocator> {
                             offset,
                             size,
                             allocation_type,
+                            memory: self.region.memory,
+                            memory_type_index: self.region.memory_type_index,
+                            buffer_image_granularity: self.region.buffer_image_granularity,
                             parent: AllocParent::FreeList {
                                 allocator: self.clone(),
                                 id,
                             },
-                            memory: self.region.memory,
-                            memory_type_index: self.region.memory_type_index,
-                            buffer_image_granularity: self.region.buffer_image_granularity,
                         });
                     }
                 }
 
                 // There is not enough space due to alignment requirements.
-                Err(SuballocationError::OutOfRegionMemory)
+                Err(SuballocationCreationError::OutOfRegionMemory)
             }
             // There would be enough space if the region wasn't so fragmented. :(
-            Some(_) if self.free_size() >= size => Err(SuballocationError::FragmentedRegion),
+            Some(_) if self.free_size() >= size => {
+                Err(SuballocationCreationError::FragmentedRegion)
+            }
             // There is not enough space.
-            Some(_) => Err(SuballocationError::OutOfRegionMemory),
+            Some(_) => Err(SuballocationCreationError::OutOfRegionMemory),
             // There is no space at all.
-            None => Err(SuballocationError::OutOfRegionMemory),
+            None => Err(SuballocationCreationError::OutOfRegionMemory),
         }
     }
 
@@ -1565,6 +2473,10 @@ impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
 }
 
 impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE>> {
+    const IS_BLOCKING: bool = false;
+
+    const NEEDS_CLEANUP: bool = false;
+
     #[inline]
     fn new(region: MemoryAlloc) -> Self {
         PoolAllocator::new(region)
@@ -1593,7 +2505,7 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
+    /// [`OutOfRegionMemory`]: SuballocationCreationError::OutOfRegionMemory
     /// [free-list]: Suballocator#free-lists
     /// [internal fragmentation]: self#internal-fragmentation
     /// [type-level documentation]: PoolAllocator
@@ -1601,7 +2513,7 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     unsafe fn allocate_unchecked(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
+    ) -> Result<MemoryAlloc, SuballocationCreationError> {
         // SAFETY: `PoolAllocator<BLOCK_SIZE>` and `PoolAllocatorInner` have the same layout.
         //
         // This is not quite optimal, because we are always cloning the `Arc` even if allocation
@@ -1669,7 +2581,7 @@ impl PoolAllocatorInner {
     unsafe fn allocate_unchecked(
         self: Arc<Self>,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
+    ) -> Result<MemoryAlloc, SuballocationCreationError> {
         let SuballocationCreateInfo {
             size,
             alignment,
@@ -1680,14 +2592,14 @@ impl PoolAllocatorInner {
         let index = self
             .free_list
             .pop()
-            .ok_or(SuballocationError::OutOfRegionMemory)?;
+            .ok_or(SuballocationCreationError::OutOfRegionMemory)?;
         let unaligned_offset = index * self.block_size;
         let offset = align_up(unaligned_offset, alignment);
 
         if offset + size > unaligned_offset + self.block_size {
             self.free_list.push(index).unwrap();
 
-            return Err(SuballocationError::OutOfRegionMemory);
+            return Err(SuballocationCreationError::BlockSizeExceeded);
         }
 
         Ok(MemoryAlloc {
@@ -1846,6 +2758,10 @@ impl BuddyAllocator {
 }
 
 impl Suballocator for Arc<BuddyAllocator> {
+    const IS_BLOCKING: bool = true;
+
+    const NEEDS_CLEANUP: bool = false;
+
     #[inline]
     fn new(region: MemoryAlloc) -> Self {
         BuddyAllocator::new(region)
@@ -1870,14 +2786,14 @@ impl Suballocator for Arc<BuddyAllocator> {
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
-    /// [`FragmentedRegion`]: SuballocationError::FragmentedRegion
+    /// [`OutOfRegionMemory`]: SuballocationCreationError::OutOfRegionMemory
+    /// [`FragmentedRegion`]: SuballocationCreationError::FragmentedRegion
     /// [external fragmentation]: self#external-fragmentation
     #[inline]
     unsafe fn allocate_unchecked(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
+    ) -> Result<MemoryAlloc, SuballocationCreationError> {
         /// Returns the largest power of two smaller or equal to the input.
         fn prev_power_of_two(val: DeviceSize) -> DeviceSize {
             const MAX_POWER_OF_TWO: DeviceSize = 1 << (DeviceSize::BITS - 1);
@@ -1942,13 +2858,13 @@ impl Suballocator for Arc<BuddyAllocator> {
                         offset,
                         size: create_info.size,
                         allocation_type,
+                        memory: self.region.memory,
+                        memory_type_index: self.region.memory_type_index,
+                        buffer_image_granularity: self.region.buffer_image_granularity,
                         parent: AllocParent::Buddy {
                             allocator: self.clone(),
                             order: min_order,
                         },
-                        memory: self.region.memory,
-                        memory_type_index: self.region.memory_type_index,
-                        buffer_image_granularity: self.region.buffer_image_granularity,
                     });
                 }
             }
@@ -1956,9 +2872,9 @@ impl Suballocator for Arc<BuddyAllocator> {
 
         if prev_power_of_two(self.free_size()) >= create_info.size {
             // A node large enough could be formed if the region wasn't so fragmented.
-            Err(SuballocationError::FragmentedRegion)
+            Err(SuballocationCreationError::FragmentedRegion)
         } else {
-            Err(SuballocationError::OutOfRegionMemory)
+            Err(SuballocationCreationError::OutOfRegionMemory)
         }
     }
 
@@ -2125,6 +3041,10 @@ impl BumpAllocator {
 }
 
 impl Suballocator for Arc<BumpAllocator> {
+    const IS_BLOCKING: bool = false;
+
+    const NEEDS_CLEANUP: bool = true;
+
     #[inline]
     fn new(region: MemoryAlloc) -> Self {
         BumpAllocator::new(region)
@@ -2147,12 +3067,12 @@ impl Suballocator for Arc<BumpAllocator> {
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
+    /// [`OutOfRegionMemory`]: SuballocationCreationError::OutOfRegionMemory
     #[inline]
     unsafe fn allocate_unchecked(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
+    ) -> Result<MemoryAlloc, SuballocationCreationError> {
         const SPIN_LIMIT: u32 = 6;
 
         // NOTE(Marc): The following code is a minimal version `Backoff` taken from
@@ -2220,7 +3140,7 @@ impl Suballocator for Arc<BumpAllocator> {
             let free_start = offset - self.region.offset + size;
 
             if free_start > self.region.size {
-                return Err(SuballocationError::OutOfRegionMemory);
+                return Err(SuballocationCreationError::OutOfRegionMemory);
             }
 
             let new_state = free_start << 2 | allocation_type as u64;
@@ -2236,10 +3156,10 @@ impl Suballocator for Arc<BumpAllocator> {
                         offset,
                         size,
                         allocation_type,
-                        parent: AllocParent::Bump(self.clone()),
                         memory: self.region.memory,
                         memory_type_index: self.region.memory_type_index,
                         buffer_image_granularity: self.region.buffer_image_granularity,
+                        parent: AllocParent::Bump(self.clone()),
                     });
                 }
                 Err(new_state) => {
