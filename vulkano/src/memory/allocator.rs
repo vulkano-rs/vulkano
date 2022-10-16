@@ -1737,12 +1737,6 @@ pub trait Suballocator {
     /// [region]: Self#regions
     fn free_size(&self) -> DeviceSize;
 
-    /// Returns the size of the largest free chunk in the [region] that can be made into a
-    /// contiguous suballocation.
-    ///
-    /// [region]: Self#regions
-    fn largest_free_chunk(&self) -> DeviceSize;
-
     /// Tries to free some space, if applicable.
     fn cleanup(&mut self);
 }
@@ -1916,8 +1910,6 @@ pub struct FreeListAllocator {
     region: MemoryAlloc,
     // Total memory remaining in the region.
     free_size: AtomicU64,
-    // Largest free suballocation in the region.
-    largest_free_chunk: AtomicU64,
     inner: Mutex<FreeListAllocatorInner>,
 }
 
@@ -1951,13 +1943,11 @@ impl FreeListAllocator {
         free_list.push(root_id);
 
         let free_size = AtomicU64::new(region.size);
-        let largest_free_chunk = AtomicU64::new(region.size);
         let inner = Mutex::new(FreeListAllocatorInner { nodes, free_list });
 
         Arc::new(FreeListAllocator {
             region,
             free_size,
-            largest_free_chunk,
             inner,
         })
     }
@@ -1969,8 +1959,6 @@ impl FreeListAllocator {
         inner.nodes.get_mut(id).ty = SuballocationType::Free;
         inner.coalesce(id);
         inner.free(id);
-        let largest = inner.nodes.get(*inner.free_list.last().unwrap()).size;
-        self.largest_free_chunk.store(largest, Ordering::Release);
     }
 }
 
@@ -2066,12 +2054,6 @@ impl Suballocator for Arc<FreeListAllocator> {
                         inner.split(id, offset, size);
                         inner.nodes.get_mut(id).ty = allocation_type.into();
                         self.free_size.fetch_sub(size, Ordering::Release);
-                        let largest = inner
-                            .free_list
-                            .last()
-                            .map(|&id| inner.nodes.get(id).size)
-                            .unwrap_or(0);
-                        self.largest_free_chunk.store(largest, Ordering::Release);
 
                         return Ok(MemoryAlloc {
                             offset,
@@ -2115,11 +2097,6 @@ impl Suballocator for Arc<FreeListAllocator> {
     #[inline]
     fn free_size(&self) -> DeviceSize {
         self.free_size.load(Ordering::Acquire)
-    }
-
-    #[inline]
-    fn largest_free_chunk(&self) -> DeviceSize {
-        self.largest_free_chunk.load(Ordering::Acquire)
     }
 
     #[inline]
@@ -2545,15 +2522,6 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     }
 
     #[inline]
-    fn largest_free_chunk(&self) -> DeviceSize {
-        if self.free_count() == 0 {
-            0
-        } else {
-            self.block_size()
-        }
-    }
-
-    #[inline]
     fn cleanup(&mut self) {}
 }
 
@@ -2682,8 +2650,6 @@ pub struct BuddyAllocator {
     region: MemoryAlloc,
     // Total memory remaining in the region.
     free_size: AtomicU64,
-    // Largest free suballocation in the region.
-    largest_free_chunk: AtomicU64,
     inner: Mutex<BuddyAllocatorInner>,
 }
 
@@ -2716,7 +2682,6 @@ impl BuddyAllocator {
         assert!(region.size >= Self::MIN_NODE_SIZE && max_order < Self::MAX_ORDERS);
 
         let free_size = AtomicU64::new(region.size);
-        let largest_free_chunk = AtomicU64::new(region.size);
         let mut free_list = ArrayVec::new(max_order + 1, [EMPTY_FREE_LIST; Self::MAX_ORDERS]);
         // The root node has the lowest offset and highest order, so it's the whole region.
         free_list[max_order].push(region.offset);
@@ -2725,7 +2690,6 @@ impl BuddyAllocator {
         Arc::new(BuddyAllocator {
             region,
             free_size,
-            largest_free_chunk,
             inner,
         })
     }
@@ -2753,8 +2717,6 @@ impl BuddyAllocator {
                     free_list.insert(index, offset);
                     self.free_size
                         .fetch_add(Self::MIN_NODE_SIZE << min_order, Ordering::Release);
-                    self.largest_free_chunk
-                        .store(inner.largest_free_chunk(), Ordering::Release);
 
                     break;
                 }
@@ -2857,8 +2819,6 @@ impl Suballocator for Arc<BuddyAllocator> {
                     }
 
                     self.free_size.fetch_sub(size, Ordering::Release);
-                    self.largest_free_chunk
-                        .store(inner.largest_free_chunk(), Ordering::Release);
 
                     return Ok(MemoryAlloc {
                         offset,
@@ -2905,11 +2865,6 @@ impl Suballocator for Arc<BuddyAllocator> {
     }
 
     #[inline]
-    fn largest_free_chunk(&self) -> DeviceSize {
-        self.largest_free_chunk.load(Ordering::Acquire)
-    }
-
-    #[inline]
     fn cleanup(&mut self) {}
 }
 
@@ -2919,19 +2874,6 @@ struct BuddyAllocatorInner {
     // Each free-list is sorted by offset because we want to find the first-fit as this strategy
     // minimizes external fragmentation.
     free_list: ArrayVec<Vec<DeviceSize>, { BuddyAllocator::MAX_ORDERS }>,
-}
-
-impl BuddyAllocatorInner {
-    fn largest_free_chunk(&self) -> DeviceSize {
-        self.free_list
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(order, list)| {
-                (!list.is_empty()).then_some(BuddyAllocator::MIN_NODE_SIZE << order)
-            })
-            .unwrap_or(0)
-    }
 }
 
 /// A [suballocator] which can allocate dynamically, but can only free all allocations at once.
@@ -3192,11 +3134,6 @@ impl Suballocator for Arc<BumpAllocator> {
     }
 
     #[inline]
-    fn largest_free_chunk(&self) -> DeviceSize {
-        self.free_size() // Fragmentation? What's that?
-    }
-
-    #[inline]
     fn cleanup(&mut self) {
         let _ = self.try_reset();
     }
@@ -3447,11 +3384,9 @@ mod tests {
 
         assert!(allocator.allocate(DUMMY_INFO).is_err());
         assert!(allocator.free_size() == 0);
-        assert!(allocator.largest_free_chunk() == 0);
 
         drop(allocs);
         assert!(allocator.free_size() == REGION_SIZE);
-        assert!(allocator.largest_free_chunk() == REGION_SIZE);
         assert!(allocator
             .allocate(SuballocationCreateInfo {
                 size: REGION_SIZE,
@@ -3477,7 +3412,6 @@ mod tests {
 
         assert!(allocator.allocate(INFO).is_err());
         assert!(allocator.free_size() == REGION_SIZE - 10);
-        assert!(allocator.largest_free_chunk() == INFO.alignment - INFO.size);
     }
 
     #[test]
@@ -3513,7 +3447,6 @@ mod tests {
 
         assert!(allocator.allocate(DUMMY_INFO_LINEAR).is_err());
         assert!(allocator.free_size() == 0);
-        assert!(allocator.largest_free_chunk() == 0);
 
         drop(linear_allocs);
         assert!(allocator
@@ -3625,7 +3558,6 @@ mod tests {
 
             assert!(allocator.allocate(DUMMY_INFO).is_err());
             assert!(allocator.free_size() == 0);
-            assert!(allocator.largest_free_chunk() == 0);
             allocs.clear();
         }
 
@@ -3646,7 +3578,6 @@ mod tests {
             let _alloc = allocator.allocate(DUMMY_INFO).unwrap();
             assert!(allocator.allocate(DUMMY_INFO).is_err());
             assert!(allocator.free_size() == 0);
-            assert!(allocator.largest_free_chunk() == 0);
             allocs.clear();
         }
     }
@@ -3666,7 +3597,6 @@ mod tests {
             let _alloc = allocator.allocate(INFO).unwrap();
             assert!(allocator.allocate(INFO).is_err());
             assert!(allocator.free_size() == REGION_SIZE - BuddyAllocator::MIN_NODE_SIZE);
-            assert!(allocator.largest_free_chunk() == INFO.alignment / 2);
         }
 
         {
@@ -3693,7 +3623,6 @@ mod tests {
                 allocator.free_size()
                     == REGION_SIZE - ALLOCATIONS_A * BuddyAllocator::MIN_NODE_SIZE
             );
-            assert!(allocator.largest_free_chunk() == INFO_A.alignment / 2);
 
             for _ in 0..ALLOCATIONS_B {
                 allocs.push(allocator.allocate(INFO_B).unwrap());
@@ -3701,7 +3630,6 @@ mod tests {
 
             assert!(allocator.allocate(DUMMY_INFO).is_err());
             assert!(allocator.free_size() == 0);
-            assert!(allocator.largest_free_chunk() == 0);
         }
     }
 
@@ -3722,7 +3650,6 @@ mod tests {
 
             assert!(allocator.allocate(DUMMY_INFO_LINEAR).is_err());
             assert!(allocator.free_size() == 0);
-            assert!(allocator.largest_free_chunk() == 0);
         }
 
         {
@@ -3730,7 +3657,6 @@ mod tests {
             let _alloc2 = allocator.allocate(DUMMY_INFO).unwrap();
             assert!(allocator.allocate(DUMMY_INFO).is_err());
             assert!(allocator.free_size() == 0);
-            assert!(allocator.largest_free_chunk() == 0);
         }
     }
 
@@ -3755,7 +3681,6 @@ mod tests {
 
         assert!(allocator.allocate(INFO).is_err());
         assert!(allocator.free_size() == 0);
-        assert!(allocator.largest_free_chunk() == 0);
     }
 
     #[test]
@@ -3783,7 +3708,6 @@ mod tests {
 
         assert!(allocator.allocate(DUMMY_INFO_LINEAR).is_err());
         assert!(allocator.free_size() == 0);
-        assert!(allocator.largest_free_chunk() == 0);
 
         allocator.try_reset().unwrap();
 
@@ -3802,7 +3726,6 @@ mod tests {
 
         assert!(allocator.allocate(DUMMY_INFO_LINEAR).is_err());
         assert!(allocator.free_size() == GRANULARITY - 1);
-        assert!(allocator.largest_free_chunk() == GRANULARITY - 1);
     }
 
     #[test]
@@ -3833,11 +3756,9 @@ mod tests {
 
         assert!(allocator.allocate(DUMMY_INFO).is_err());
         assert!(allocator.free_size() == 0);
-        assert!(allocator.largest_free_chunk() == 0);
 
         allocator.try_reset().unwrap();
         assert!(allocator.free_size() == REGION_SIZE);
-        assert!(allocator.largest_free_chunk() == REGION_SIZE);
     }
 
     macro_rules! dummy_alloc {
