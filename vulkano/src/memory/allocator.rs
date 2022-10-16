@@ -217,8 +217,7 @@
 
 use self::{array_vec::ArrayVec, host::SlotId};
 use super::{
-    DedicatedAllocation, MemoryAllocateFlags, MemoryAllocateInfo, MemoryPropertyFlags,
-    MemoryRequirements, MemoryType,
+    DedicatedAllocation, MemoryAllocateFlags, MemoryAllocateInfo, MemoryRequirements, MemoryType,
 };
 use crate::{
     buffer::sys::UnsafeBuffer,
@@ -263,10 +262,10 @@ pub trait MemoryAllocator: DeviceOwned {
     ) -> Result<MemoryAlloc, AllocationCreationError>;
 }
 
-/// Parameters to create a new [allocation] using a [generic memory allocator].
+/// Parameters to create a new [allocation] using a [memory allocator].
 ///
 /// [allocation]: MemoryAlloc
-/// [generic memory allocator]: MemoryAllocator
+/// [memory allocator]: MemoryAllocator
 #[derive(Clone, Debug)]
 pub struct AllocationCreateInfo<'d> {
     /// Requirements of the resource you want to allocate memory for.
@@ -363,8 +362,8 @@ pub enum MemoryUsage {
     /// once and then never again, or resources that are only written and read by the GPU, like
     /// render targets and intermediary buffers.
     ///
-    /// [`device_local`]: MemoryPropertyFlags::device_local
-    /// [`host_visible`]: MemoryPropertyFlags::host_visible
+    /// [`device_local`]: super::MemoryPropertyFlags::device_local
+    /// [`host_visible`]: super::MemoryPropertyFlags::host_visible
     GpuOnly,
 
     /// The memory is intended for upload to the GPU.
@@ -377,9 +376,9 @@ pub enum MemoryUsage {
     /// whose only purpose in life it is to get data into `device_local` memory or texels into an
     /// optimal image.
     ///
-    /// [`host_visible`]: MemoryPropertyFlags::host_visible
-    /// [`host_cached`]: MemoryPropertyFlags::host_cached
-    /// [`device_local`]: MemoryPropertyFlags::device_local
+    /// [`host_visible`]: super::MemoryPropertyFlags::host_visible
+    /// [`host_cached`]: super::MemoryPropertyFlags::host_cached
+    /// [`device_local`]: super::MemoryPropertyFlags::device_local
     Upload,
 
     /// The memory is intended for download from the GPU.
@@ -391,9 +390,9 @@ pub enum MemoryUsage {
     /// need to get the results back to the CPU. That might be compute shading, or image or video
     /// manipulation, or screenshotting for example.
     ///
-    /// [`host_visible`]: MemoryPropertyFlags::host_visible
-    /// [`host_cached`]: MemoryPropertyFlags::host_cached
-    /// [`device_local`]: MemoryPropertyFlags::device_local
+    /// [`host_visible`]: super::MemoryPropertyFlags::host_visible
+    /// [`host_cached`]: super::MemoryPropertyFlags::host_cached
+    /// [`device_local`]: super::MemoryPropertyFlags::device_local
     Download,
 }
 
