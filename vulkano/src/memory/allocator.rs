@@ -461,10 +461,10 @@ impl Display for AllocationCreationError {
                 Self::OutOfHostMemory => "out of host memory",
                 Self::OutOfDeviceMemory => "out of device memomory",
                 Self::TooManyObjects => "too many `DeviceMemory` allocations exist already",
-                Self::NoSuitableMemoryTypes => "couldn't find a suitable memory type",
+                Self::OutOfPoolMemory => "the pool doesn't have enough free space",
                 Self::BlockSizeExceeded =>
                     "the allocation size was greater than the suballocator's block size",
-                Self::OutOfPoolMemory => "the pool doesn't have enough free space",
+                Self::NoSuitableMemoryTypes => "couldn't find a suitable memory type",
             }
         )
     }
@@ -1040,7 +1040,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 Ok(alloc) => return Ok(alloc),
                 // This is not recoverable.
                 Err(AllocationCreationError::BlockSizeExceeded) => {
-                    return Err(AllocationCreationError::BlockSizeExceeded)
+                    return Err(AllocationCreationError::BlockSizeExceeded);
                 }
                 // Try a different memory type.
                 Err(e) => {
@@ -1146,12 +1146,14 @@ impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// # Errors
     ///
     /// - Returns an error if allocating a new block is required and failed. This can be one of the
-    ///   OOM errors or `TooManyObjects`.
-    /// - Returns `BlockSizeExceeded` if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
+    ///   OOM errors or [`TooManyObjects`].
+    /// - Returns [`BlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
     ///   is larger than `BLOCK_SIZE`.
     ///
     /// [`protected`]: MemoryPropertyFlags::protected
     /// [`protected_memory`]: crate::device::Features::protected_memory
+    /// [`TooManyObjects`]: AllocationCreationError::TooManyObjects
+    /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
     fn allocate_from_type(
         &self,
         memory_type_index: u32,
@@ -1185,14 +1187,14 @@ impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///
     /// # Errors
     ///
-    /// - Returns `NoSuitableMemoryTypes` if finding a suitable memory type failed. This happens
+    /// - Returns [`NoSuitableMemoryTypes`] if finding a suitable memory type failed. This happens
     ///   if the `create_info.requirements` correspond to those of an optimal image but
     ///   `create_info.usage` is not [`MemoryUsage::GpuOnly`] for example.
     /// - Returns an error if allocating a new block is required and failed. This can be one of the
-    ///   OOM errors or `TooManyObjects`.
-    /// - Returns `BlockSizeExceeded` if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
+    ///   OOM errors or [`TooManyObjects`].
+    /// - Returns [`BlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
     ///   is greater than `BLOCK_SIZE` and a dedicated allocation was not created.
-    /// - Returns `OutOfPoolMemory` if `create_info.allocate_preference` is
+    /// - Returns [`OutOfPoolMemory`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is greater
     ///   than the block size for all heaps of suitable memory types.
     /// - Returns `OutOfPoolMemory` if `create_info.allocate_preference` is
@@ -1201,6 +1203,10 @@ impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///
     /// [`device_local`]: MemoryPropertyFlags::device_local
     /// [`host_visible`]: MemoryPropertyFlags::host_visible
+    /// [`NoSuitableMemoryTypes`]: AllocationCreationError::NoSuitableMemoryTypes
+    /// [`TooManyObjects`]: AllocationCreationError::TooManyObjects
+    /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
+    /// [`OutOfPoolMemory`]: AllocationCreationError::OutOfPoolMemory
     fn allocate(
         &self,
         create_info: AllocationCreateInfo<'_>,
@@ -1657,13 +1663,13 @@ unsafe impl VulkanObject for MemoryAlloc {
 pub trait Suballocator {
     /// Whether this allocator needs to block or not.
     ///
-    /// This is used by the [`GenericMemoryAllocator`] to tailor the allocation strategy to the
+    /// This is used by the [`GenericMemoryAllocator`] to specialize the allocation strategy to the
     /// suballocator at compile time.
     const IS_BLOCKING: bool;
 
-    /// Whether the allocator needs [`cleanup`] to be called before memory is realeased.
+    /// Whether the allocator needs [`cleanup`] to be called before memory can be released.
     ///
-    /// This is used by the [`GenericMemoryAllocator`] to tailor the allocation strategy to the
+    /// This is used by the [`GenericMemoryAllocator`] to specialize the allocation strategy to the
     /// suballocator at compile time.
     ///
     /// [`cleanup`]: Self::cleanup
@@ -1982,18 +1988,18 @@ impl Suballocator for Arc<FreeListAllocator> {
     ///
     /// See [`allocate`] for the safe version.
     ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    ///
     /// # Errors
     ///
     /// - Returns [`OutOfRegionMemory`] if there are no free suballocations large enough so satisfy
     ///   the request.
     /// - Returns [`FragmentedRegion`] if a suballocation large enough to satisfy the request could
     ///   have been formed, but wasn't because of [external fragmentation].
-    ///
-    /// # Safety
-    ///
-    /// - `create_info.size` must not be zero.
-    /// - `create_info.alignment` must not be zero.
-    /// - `create_info.alignment` must be a power of two.
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
@@ -2489,6 +2495,12 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     /// > **Note**: `create_info.allocation_type` is silently ignored because all suballocations
     /// > inherit the same allocation type from the allocator.
     ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    ///
     /// # Errors
     ///
     /// - Returns [`OutOfRegionMemory`] if the [free-list] is empty.
@@ -2496,12 +2508,6 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     ///   block in the free-list is tried, which means that if one block isn't usable due to
     ///   [internal fragmentation] but a different one would be, you still get this error. See the
     ///   [type-level documentation] for details on how to properly configure your allocator.
-    ///
-    /// # Safety
-    ///
-    /// - `create_info.size` must not be zero.
-    /// - `create_info.alignment` must not be zero.
-    /// - `create_info.alignment` must be a power of two.
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
@@ -2771,18 +2777,18 @@ impl Suballocator for Arc<BuddyAllocator> {
     ///
     /// See [`allocate`] for the safe version.
     ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    ///
     /// # Errors
     ///
     /// - Returns [`OutOfRegionMemory`] if there are no free nodes large enough so satisfy the
     ///   request.
     /// - Returns [`FragmentedRegion`] if a node large enough to satisfy the request could have
     ///   been formed, but wasn't because of [external fragmentation].
-    ///
-    /// # Safety
-    ///
-    /// - `create_info.size` must not be zero.
-    /// - `create_info.alignment` must not be zero.
-    /// - `create_info.alignment` must be a power of two.
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
@@ -3054,16 +3060,16 @@ impl Suballocator for Arc<BumpAllocator> {
     ///
     /// See [`allocate`] for the safe version.
     ///
-    /// # Errors
-    ///
-    /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
-    ///   remaining in the region.
-    ///
     /// # Safety
     ///
     /// - `create_info.size` must not be zero.
     /// - `create_info.alignment` must not be zero.
     /// - `create_info.alignment` must be a power of two.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
+    ///   remaining in the region.
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
