@@ -1038,7 +1038,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 || property_flags.device_uncached
                 || property_flags.rdma_capable
             {
-                memory_type_bits ^= 1 << index;
+                memory_type_bits &= !(1 << index);
             }
         }
 
@@ -1414,7 +1414,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 }
                 // Try a different memory type.
                 Err(e) => {
-                    memory_type_bits ^= 1 << memory_type_index;
+                    memory_type_bits &= !(1 << memory_type_index);
                     memory_type_index = self
                         .find_memory_type_index(
                             memory_type_bits,
