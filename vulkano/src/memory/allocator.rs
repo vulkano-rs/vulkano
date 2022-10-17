@@ -404,12 +404,10 @@ pub enum MemoryAllocatePreference {
     /// There is no known preference, let the allocator decide.
     Unknown,
 
-    /// The allocator should never allocate `DeviceMemory` unless it is unavoidable (because a new
-    /// block is needed) and should instead suballocate from existing blocks.
+    /// The allocator should never allocate `DeviceMemory` and should instead only suballocate from
+    /// existing blocks.
     ///
-    /// This option is best suited if you need to allocate each frame for example, since allocating
-    /// `DeviceMemory` is very expensive. In such a scenario you want to avoid these allocations
-    /// as much as possible.
+    /// This option is best suited if you can not afford the overhead of allocating `DeviceMemory`.
     NeverAllocate,
 
     /// The allocator should always allocate `DeviceMemory`.
@@ -446,6 +444,9 @@ pub struct MemoryAlloc {
     // Used by the suballocators to resolve buffer-image granularity conflicts. This field is
     // duplicated here to avoid walking up the hierarchy when creating a suballocator.
     buffer_image_granularity: DeviceSize,
+    // Used by the suballocators to align allocations to the non-coherent atom size when the memory
+    // type is `host_visible` but not `host_coherent`. This will be 0 for any other memory type.
+    non_coherent_atom_size: DeviceSize,
     // Used in the `Drop` impl to free the allocation if required.
     parent: AllocParent,
 }
@@ -717,6 +718,23 @@ impl From<DeviceMemory> for MemoryAlloc {
     /// Converts the `DeviceMemory` into a root allocation.
     #[inline]
     fn from(device_memory: DeviceMemory) -> Self {
+        let property_flags = device_memory
+            .device()
+            .physical_device()
+            .memory_properties()
+            .memory_types[device_memory.memory_type_index() as usize]
+            .property_flags;
+        let non_coherent_atom_size = if property_flags.host_visible && !property_flags.host_coherent
+        {
+            device_memory
+                .device()
+                .physical_device()
+                .properties()
+                .non_coherent_atom_size
+        } else {
+            0
+        };
+
         MemoryAlloc {
             offset: 0,
             size: device_memory.allocation_size(),
@@ -729,6 +747,7 @@ impl From<DeviceMemory> for MemoryAlloc {
                 .physical_device()
                 .properties()
                 .buffer_image_granularity,
+            non_coherent_atom_size,
             parent: AllocParent::Root(Arc::new(device_memory)),
         }
     }
@@ -1213,6 +1232,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                                 .physical_device()
                                 .properties()
                                 .buffer_image_granularity,
+                            non_coherent_atom_size: self.non_coherent_atom_size(memory_type_index),
                             parent: AllocParent::Root(Arc::new(device_memory)),
                         });
                     }
@@ -1493,6 +1513,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 .physical_device()
                 .properties()
                 .buffer_image_granularity,
+            non_coherent_atom_size: self.non_coherent_atom_size(memory_type_index),
             parent: if is_dedicated {
                 AllocParent::Dedicated(device_memory)
             } else {
@@ -1510,8 +1531,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         if self.pools[memory_type_index as usize]
             .memory_type
             .property_flags
-            // TODO: Support all `HOST_VISIBLE` memory.
-            .contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
+            .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
         {
             let fns = self.device.fns();
             let mut output = MaybeUninit::uninit();
@@ -1535,6 +1555,23 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             Ok(NonNull::new(output.assume_init()))
         } else {
             Ok(None)
+        }
+    }
+
+    fn non_coherent_atom_size(&self, memory_type_index: u32) -> DeviceSize {
+        let property_flags = self.pools[memory_type_index as usize]
+            .memory_type
+            .property_flags;
+
+        if property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+            && !property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
+        {
+            self.device
+                .physical_device()
+                .properties()
+                .non_coherent_atom_size
+        } else {
+            0
         }
     }
 }
@@ -2117,6 +2154,7 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
             _ne: _,
         } = create_info;
 
+        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
         let mut inner = self.inner.lock();
 
         match inner.free_list.last() {
@@ -2168,6 +2206,7 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                                 )
                             }),
                             buffer_image_granularity: self.region.buffer_image_granularity,
+                            non_coherent_atom_size: self.region.non_coherent_atom_size,
                             parent: AllocParent::FreeList {
                                 allocator: self.clone(),
                                 id,
@@ -2614,6 +2653,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
         }
 
         let size = DeviceSize::max(size, BuddyAllocator::MIN_NODE_SIZE).next_power_of_two();
+        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
         let min_order = (size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
         let mut inner = self.inner.lock();
 
@@ -2658,6 +2698,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
                             NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
                         }),
                         buffer_image_granularity: self.region.buffer_image_granularity,
+                        non_coherent_atom_size: self.region.non_coherent_atom_size,
                         parent: AllocParent::Buddy {
                             allocator: self.clone(),
                             order: min_order,
@@ -2953,6 +2994,7 @@ impl PoolAllocatorInner {
             _ne: _,
         } = create_info;
 
+        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
         let index = self
             .free_list
             .pop()
@@ -2976,6 +3018,7 @@ impl PoolAllocatorInner {
                 NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
             }),
             buffer_image_granularity: self.region.buffer_image_granularity,
+            non_coherent_atom_size: self.region.non_coherent_atom_size,
             parent: AllocParent::Pool {
                 allocator: self,
                 index,
@@ -3171,6 +3214,7 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
             _ne: _,
         } = create_info;
 
+        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
         let backoff = Backoff::new();
         let mut state = self.state.load(Ordering::Relaxed);
 
@@ -3222,6 +3266,7 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
                             NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
                         }),
                         buffer_image_granularity: self.region.buffer_image_granularity,
+                        non_coherent_atom_size: self.region.non_coherent_atom_size,
                         parent: AllocParent::Bump(self.clone()),
                     });
                 }
@@ -3888,11 +3933,12 @@ mod tests {
                 offset: 0,
                 size: $size,
                 allocation_type: $type,
-                parent: AllocParent::None,
                 memory: ash::vk::DeviceMemory::null(),
                 memory_type_index: 0,
                 mapped_ptr: None,
                 buffer_image_granularity: $granularity,
+                non_coherent_atom_size: 0,
+                parent: AllocParent::None,
             }
         };
     }
