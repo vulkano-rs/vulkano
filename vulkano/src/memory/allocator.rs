@@ -232,9 +232,11 @@ use parking_lot::{Mutex, RwLock};
 use std::{
     cell::Cell,
     error::Error,
+    ffi::c_void,
     fmt::{self, Display},
-    mem::{self, ManuallyDrop},
-    ptr,
+    mem::{self, ManuallyDrop, MaybeUninit},
+    ptr::{self, NonNull},
+    slice,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -247,7 +249,7 @@ const M: DeviceSize = 1024 * K;
 const G: DeviceSize = 1024 * M;
 
 /// General-purpose memory allocators which allocate from any memory type dynamically as needed.
-pub trait MemoryAllocator: DeviceOwned {
+pub unsafe trait MemoryAllocator: DeviceOwned {
     /// Allocates memory from a specific memory type.
     fn allocate_from_type(
         &self,
@@ -439,6 +441,8 @@ pub struct MemoryAlloc {
     // hierarchy when binding.
     memory: ash::vk::DeviceMemory,
     memory_type_index: u32,
+    // Mapped pointer to the start of the allocation or `None` is the memory is not host-visible.
+    mapped_ptr: Option<NonNull<c_void>>,
     // Used by the suballocators to resolve buffer-image granularity conflicts. This field is
     // duplicated here to avoid walking up the hierarchy when creating a suballocator.
     buffer_image_granularity: DeviceSize,
@@ -467,6 +471,11 @@ enum AllocParent {
     None,
 }
 
+// It is safe to share `mapped_ptr` between threads because the user would have to use unsafe code
+// themself to get UB in the first place.
+unsafe impl Send for MemoryAlloc {}
+unsafe impl Sync for MemoryAlloc {}
+
 impl MemoryAlloc {
     /// Returns the offset of the allocation within the [`DeviceMemory`] block.
     #[inline]
@@ -490,6 +499,39 @@ impl MemoryAlloc {
     #[inline]
     pub fn memory_type_index(&self) -> u32 {
         self.memory_type_index
+    }
+
+    /// Returns the mapped pointer to the start of the allocation if the memory is host-visible,
+    /// otherwise returns [`None`].
+    #[inline]
+    pub fn mapped_ptr(&self) -> Option<NonNull<c_void>> {
+        self.mapped_ptr
+    }
+
+    /// Returns a mapped slice to the data within the allocation if the memory is host-visible,
+    /// otherwise returns [`None`].
+    ///
+    /// # Safety
+    ///
+    /// - While the returned slice exists, there must be no operations pending or executing in a
+    ///   GPU queue that write to the same memory.
+    #[inline]
+    pub unsafe fn mapped_slice(&self) -> Option<&[u8]> {
+        self.mapped_ptr
+            .map(|ptr| slice::from_raw_parts(ptr.as_ptr().cast(), self.size as usize))
+    }
+
+    /// Returns a mapped mutable slice to the data within the allocation if the memory is
+    /// host-visible, otherwise returns [`None`].
+    ///
+    /// # Safety
+    ///
+    /// - While the returned slice exists, there must be no operations pending or executing in a
+    ///   GPU queue that access the same memory.
+    #[inline]
+    pub unsafe fn mapped_slice_mut(&mut self) -> Option<&mut [u8]> {
+        self.mapped_ptr
+            .map(|ptr| slice::from_raw_parts_mut(ptr.as_ptr().cast(), self.size as usize))
     }
 
     /// Returns the parent allocation if this allocation is a [suballocation], otherwise returns the
@@ -681,6 +723,7 @@ impl From<DeviceMemory> for MemoryAlloc {
             allocation_type: AllocationType::Unknown,
             memory: device_memory.internal_object(),
             memory_type_index: device_memory.memory_type_index(),
+            mapped_ptr: None,
             buffer_image_granularity: device_memory
                 .device()
                 .physical_device()
@@ -747,6 +790,9 @@ pub enum AllocationCreationError {
     /// enough memory in the pool.
     OutOfPoolMemory,
 
+    /// Failed to map memory.
+    MemoryMapFailed,
+
     /// The block size for the suballocator was exceeded.
     ///
     /// This is returned when using [`GenericMemoryAllocator<Arc<PoolAllocator<BLOCK_SIZE>>>`] if
@@ -755,7 +801,7 @@ pub enum AllocationCreationError {
 
     /// No suitable memory types could be found.
     ///
-    /// This is returned when trying to allocate CPU-visible memory for an optimal image for
+    /// This is returned when trying to allocate host-visible memory for an optimal image for
     /// example.
     NoSuitableMemoryTypes,
 }
@@ -770,6 +816,7 @@ impl Display for AllocationCreationError {
                 Self::OutOfDeviceMemory => "out of device memomory",
                 Self::TooManyObjects => "too many `DeviceMemory` allocations exist already",
                 Self::OutOfPoolMemory => "the pool doesn't have enough free space",
+                Self::MemoryMapFailed => "failed to map memory",
                 Self::BlockSizeExceeded =>
                     "the allocation size was greater than the suballocator's block size",
                 Self::NoSuitableMemoryTypes => "couldn't find a suitable memory type",
@@ -1153,7 +1200,22 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                     ..Default::default()
                 };
                 match DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None) {
-                    Ok(device_memory) => break S::new(device_memory.into()),
+                    Ok(device_memory) => {
+                        break S::new(MemoryAlloc {
+                            offset: 0,
+                            size: device_memory.allocation_size(),
+                            allocation_type: AllocationType::Unknown,
+                            memory: device_memory.internal_object(),
+                            memory_type_index,
+                            mapped_ptr: self.mapped_ptr(&device_memory)?,
+                            buffer_image_granularity: self
+                                .device
+                                .physical_device()
+                                .properties()
+                                .buffer_image_granularity,
+                            parent: AllocParent::Root(Arc::new(device_memory)),
+                        });
+                    }
                     // Retry up to 3 times, halving the allocation size each time.
                     Err(VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory) if i < 3 => {
                         i += 1;
@@ -1409,35 +1471,75 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             flags: self.flags,
             ..Default::default()
         };
-
-        DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None)
-            .map(|device_memory| MemoryAlloc {
-                offset: 0,
-                size: allocation_size,
-                allocation_type: AllocationType::Unknown,
-                memory: device_memory.internal_object(),
-                memory_type_index,
-                buffer_image_granularity: self
-                    .device
-                    .physical_device()
-                    .properties()
-                    .buffer_image_granularity,
-                parent: if is_dedicated {
-                    AllocParent::Dedicated(device_memory)
-                } else {
-                    AllocParent::Root(Arc::new(device_memory))
+        let device_memory =
+            DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None).map_err(
+                |e| match e {
+                    VulkanError::OutOfHostMemory => AllocationCreationError::OutOfHostMemory,
+                    VulkanError::OutOfDeviceMemory => AllocationCreationError::OutOfDeviceMemory,
+                    VulkanError::TooManyObjects => AllocationCreationError::TooManyObjects,
+                    _ => unreachable!(),
                 },
-            })
-            .map_err(|e| match e {
+            )?;
+
+        Ok(MemoryAlloc {
+            offset: 0,
+            size: allocation_size,
+            allocation_type: AllocationType::Unknown,
+            memory: device_memory.internal_object(),
+            memory_type_index,
+            mapped_ptr: self.mapped_ptr(&device_memory)?,
+            buffer_image_granularity: self
+                .device
+                .physical_device()
+                .properties()
+                .buffer_image_granularity,
+            parent: if is_dedicated {
+                AllocParent::Dedicated(device_memory)
+            } else {
+                AllocParent::Root(Arc::new(device_memory))
+            },
+        })
+    }
+
+    unsafe fn mapped_ptr(
+        &self,
+        device_memory: &DeviceMemory,
+    ) -> Result<Option<NonNull<c_void>>, AllocationCreationError> {
+        let memory_type_index = device_memory.memory_type_index();
+
+        if self.pools[memory_type_index as usize]
+            .memory_type
+            .property_flags
+            // TODO: Support all `HOST_VISIBLE` memory.
+            .contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
+        {
+            let fns = self.device.fns();
+            let mut output = MaybeUninit::uninit();
+            // This is always valid because we are mapping the whole range.
+            (fns.v1_0.map_memory)(
+                self.device.internal_object(),
+                device_memory.internal_object(),
+                0,
+                ash::vk::WHOLE_SIZE,
+                ash::vk::MemoryMapFlags::empty(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(|e| match e.into() {
                 VulkanError::OutOfHostMemory => AllocationCreationError::OutOfHostMemory,
                 VulkanError::OutOfDeviceMemory => AllocationCreationError::OutOfDeviceMemory,
-                VulkanError::TooManyObjects => AllocationCreationError::TooManyObjects,
+                VulkanError::MemoryMapFailed => AllocationCreationError::MemoryMapFailed,
                 _ => unreachable!(),
-            })
+            })?;
+
+            Ok(NonNull::new(output.assume_init()))
+        } else {
+            Ok(None)
+        }
     }
 }
 
-impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
+unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// Allocates memory from a specific memory type.
     ///
     /// # Panics
@@ -1659,7 +1761,7 @@ impl Default for GenericMemoryAllocatorCreateInfo<'_> {
 ///
 /// [allocations]: MemoryAlloc
 /// [pages]: self#pages
-pub trait Suballocator {
+pub unsafe trait Suballocator {
     /// Whether this allocator needs to block or not.
     ///
     /// This is used by the [`GenericMemoryAllocator`] to specialize the allocation strategy to the
@@ -1961,7 +2063,7 @@ impl FreeListAllocator {
     }
 }
 
-impl Suballocator for Arc<FreeListAllocator> {
+unsafe impl Suballocator for Arc<FreeListAllocator> {
     const IS_BLOCKING: bool = true;
 
     const NEEDS_CLEANUP: bool = false;
@@ -2060,6 +2162,11 @@ impl Suballocator for Arc<FreeListAllocator> {
                             allocation_type,
                             memory: self.region.memory,
                             memory_type_index: self.region.memory_type_index,
+                            mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
+                                NonNull::new(
+                                    ptr.as_ptr().add((offset - self.region.offset) as usize),
+                                )
+                            }),
                             buffer_image_granularity: self.region.buffer_image_granularity,
                             parent: AllocParent::FreeList {
                                 allocator: self.clone(),
@@ -2446,7 +2553,7 @@ impl BuddyAllocator {
     }
 }
 
-impl Suballocator for Arc<BuddyAllocator> {
+unsafe impl Suballocator for Arc<BuddyAllocator> {
     const IS_BLOCKING: bool = true;
 
     const NEEDS_CLEANUP: bool = false;
@@ -2547,6 +2654,9 @@ impl Suballocator for Arc<BuddyAllocator> {
                         allocation_type,
                         memory: self.region.memory,
                         memory_type_index: self.region.memory_type_index,
+                        mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
+                            NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
+                        }),
                         buffer_image_granularity: self.region.buffer_image_granularity,
                         parent: AllocParent::Buddy {
                             allocator: self.clone(),
@@ -2735,7 +2845,7 @@ impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
     }
 }
 
-impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE>> {
+unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE>> {
     const IS_BLOCKING: bool = false;
 
     const NEEDS_CLEANUP: bool = false;
@@ -2862,6 +2972,9 @@ impl PoolAllocatorInner {
             allocation_type: self.region.allocation_type,
             memory: self.region.memory,
             memory_type_index: self.region.memory_type_index,
+            mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
+                NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
+            }),
             buffer_image_granularity: self.region.buffer_image_granularity,
             parent: AllocParent::Pool {
                 allocator: self,
@@ -2987,7 +3100,7 @@ impl BumpAllocator {
     }
 }
 
-impl Suballocator for Arc<BumpAllocator> {
+unsafe impl Suballocator for Arc<BumpAllocator> {
     const IS_BLOCKING: bool = false;
 
     const NEEDS_CLEANUP: bool = true;
@@ -3105,6 +3218,9 @@ impl Suballocator for Arc<BumpAllocator> {
                         allocation_type,
                         memory: self.region.memory,
                         memory_type_index: self.region.memory_type_index,
+                        mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
+                            NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
+                        }),
                         buffer_image_granularity: self.region.buffer_image_granularity,
                         parent: AllocParent::Bump(self.clone()),
                     });
@@ -3775,6 +3891,7 @@ mod tests {
                 parent: AllocParent::None,
                 memory: ash::vk::DeviceMemory::null(),
                 memory_type_index: 0,
+                mapped_ptr: None,
                 buffer_image_granularity: $granularity,
             }
         };
