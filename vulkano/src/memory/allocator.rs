@@ -779,6 +779,22 @@ impl Drop for MemoryAlloc {
     }
 }
 
+unsafe impl DeviceOwned for MemoryAlloc {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        match &self.parent {
+            AllocParent::FreeList { allocator, .. } => &allocator.device,
+            AllocParent::Buddy { allocator, .. } => &allocator.device,
+            AllocParent::Pool { allocator, .. } => &allocator.device,
+            AllocParent::Bump(allocator) => &allocator.device,
+            AllocParent::Root(device_memory) => device_memory.device(),
+            AllocParent::Dedicated(device_memory) => device_memory.device(),
+            #[cfg(test)]
+            AllocParent::None => unreachable!(),
+        }
+    }
+}
+
 unsafe impl VulkanObject for MemoryAlloc {
     type Object = ash::vk::DeviceMemory;
 
@@ -1796,9 +1812,13 @@ impl Default for GenericMemoryAllocatorCreateInfo<'_> {
 /// method for this purpose. This means that you can replace one suballocator with another without
 /// consulting any of the higher levels in the hierarchy.
 ///
+/// # Implementing the trait
+///
+/// Please don't.
+///
 /// [allocations]: MemoryAlloc
 /// [pages]: self#pages
-pub unsafe trait Suballocator {
+pub unsafe trait Suballocator: DeviceOwned {
     /// Whether this allocator needs to block or not.
     ///
     /// This is used by the [`GenericMemoryAllocator`] to specialize the allocation strategy to the
@@ -2045,6 +2065,7 @@ impl Error for SuballocationCreationError {}
 /// [alignment requirements]: self#alignment
 #[derive(Debug)]
 pub struct FreeListAllocator {
+    device: Arc<Device>,
     region: MemoryAlloc,
     // Total memory remaining in the region.
     free_size: AtomicU64,
@@ -2084,6 +2105,7 @@ impl FreeListAllocator {
         let inner = Mutex::new(FreeListAllocatorInner { nodes, free_list });
 
         Arc::new(FreeListAllocator {
+            device: region.device().clone(),
             region,
             free_size,
             inner,
@@ -2246,6 +2268,13 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
 
     #[inline]
     fn cleanup(&mut self) {}
+}
+
+unsafe impl DeviceOwned for FreeListAllocator {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 #[derive(Debug)]
@@ -2514,6 +2543,7 @@ impl FreeListAllocatorInner {
 /// [buffer-image granularity]: self#buffer-image-granularity
 #[derive(Debug)]
 pub struct BuddyAllocator {
+    device: Arc<Device>,
     region: MemoryAlloc,
     // Total memory remaining in the region.
     free_size: AtomicU64,
@@ -2555,6 +2585,7 @@ impl BuddyAllocator {
         let inner = Mutex::new(BuddyAllocatorInner { free_list });
 
         Arc::new(BuddyAllocator {
+            device: region.device().clone(),
             region,
             free_size,
             inner,
@@ -2738,6 +2769,13 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
 
     #[inline]
     fn cleanup(&mut self) {}
+}
+
+unsafe impl DeviceOwned for BuddyAllocator {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 #[derive(Debug)]
@@ -2956,8 +2994,16 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLO
     fn cleanup(&mut self) {}
 }
 
+unsafe impl<const BLOCK_SIZE: DeviceSize> DeviceOwned for PoolAllocator<BLOCK_SIZE> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.inner.device
+    }
+}
+
 #[derive(Debug)]
 struct PoolAllocatorInner {
+    device: Arc<Device>,
     region: MemoryAlloc,
     block_size: DeviceSize,
     // Unsorted list of free block indices.
@@ -2977,6 +3023,7 @@ impl PoolAllocatorInner {
         }
 
         PoolAllocatorInner {
+            device: region.device().clone(),
             region,
             block_size,
             free_list,
@@ -3086,6 +3133,7 @@ impl PoolAllocatorInner {
 /// [hierarchy]: Suballocator#memory-hierarchies
 #[derive(Debug)]
 pub struct BumpAllocator {
+    device: Arc<Device>,
     region: MemoryAlloc,
     // Encodes the previous allocation type in the 2 least signifficant bits and the free start in
     // the rest.
@@ -3099,6 +3147,7 @@ impl BumpAllocator {
     #[inline]
     pub fn new(region: MemoryAlloc) -> Arc<Self> {
         Arc::new(BumpAllocator {
+            device: region.device().clone(),
             state: AtomicU64::new(region.allocation_type as u64),
             region,
         })
@@ -3296,6 +3345,13 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
     #[inline]
     fn cleanup(&mut self) {
         let _ = self.try_reset();
+    }
+}
+
+unsafe impl DeviceOwned for BumpAllocator {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
