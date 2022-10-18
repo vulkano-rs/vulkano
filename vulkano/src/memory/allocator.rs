@@ -235,6 +235,7 @@ use std::{
     ffi::c_void,
     fmt::{self, Display},
     mem::{self, ManuallyDrop, MaybeUninit},
+    num::NonZeroU64,
     ops::Range,
     ptr::{self, NonNull},
     slice,
@@ -441,8 +442,8 @@ pub struct MemoryAlloc {
     memory: ash::vk::DeviceMemory,
     memory_type_index: u32,
     // Used by the suballocators to align allocations to the non-coherent atom size when the memory
-    // type is `host_visible` but not `host_coherent`. This will be 0 for any other memory type.
-    non_coherent_atom_size: DeviceSize,
+    // type is host-visible but not host-coherent. This will be `None` for any other memory type.
+    non_coherent_atom_size: Option<NonZeroU64>,
     // Mapped pointer to the start of the allocation or `None` is the memory is not host-visible.
     mapped_ptr: Option<NonNull<c_void>>,
     // Used in the `Drop` impl to free the allocation if required.
@@ -557,17 +558,16 @@ impl MemoryAlloc {
     #[inline]
     pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
         // VUID-VkMappedMemoryRange-memory-00684
-        if self.non_coherent_atom_size == 0 {
+        if let Some(atom_size) = self.non_coherent_atom_size {
+            let range = self.create_memory_range(range, atom_size.get());
+            let device = self.device();
+            let fns = device.fns();
+            (fns.v1_0.invalidate_mapped_memory_ranges)(device.internal_object(), 1, &range)
+                .result()
+                .map_err(VulkanError::from)?;
+        } else {
             self.debug_validate_memory_range(&range);
-            return Ok(());
         }
-
-        let range = self.create_memory_range(range);
-        let device = self.device();
-        let fns = device.fns();
-        (fns.v1_0.invalidate_mapped_memory_ranges)(device.internal_object(), 1, &range)
-            .result()
-            .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -598,17 +598,16 @@ impl MemoryAlloc {
     #[inline]
     pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
         // VUID-VkMappedMemoryRange-memory-00684
-        if self.non_coherent_atom_size == 0 {
+        if let Some(atom_size) = self.non_coherent_atom_size {
+            let range = self.create_memory_range(range, atom_size.get());
+            let device = self.device();
+            let fns = device.fns();
+            (fns.v1_0.flush_mapped_memory_ranges)(device.internal_object(), 1, &range)
+                .result()
+                .map_err(VulkanError::from)?;
+        } else {
             self.debug_validate_memory_range(&range);
-            return Ok(());
         }
-
-        let range = self.create_memory_range(range);
-        let device = self.device();
-        let fns = device.fns();
-        (fns.v1_0.flush_mapped_memory_ranges)(device.internal_object(), 1, &range)
-            .result()
-            .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -618,13 +617,22 @@ impl MemoryAlloc {
     /// to be host-coherent.
     fn debug_validate_memory_range(&self, range: &Range<DeviceSize>) {
         debug_assert!(!range.is_empty() && range.end <= self.size);
-        debug_assert!(
-            range.start % self.non_coherent_atom_size == 0
-                && (range.end % self.non_coherent_atom_size == 0 || range.end == self.size)
-        );
+        debug_assert!({
+            let atom_size = self
+                .device()
+                .physical_device()
+                .properties()
+                .non_coherent_atom_size;
+
+            range.start % atom_size == 0 && (range.end % atom_size == 0 || range.end == self.size)
+        });
     }
 
-    fn create_memory_range(&self, range: Range<DeviceSize>) -> ash::vk::MappedMemoryRange {
+    fn create_memory_range(
+        &self,
+        range: Range<DeviceSize>,
+        atom_size: DeviceSize,
+    ) -> ash::vk::MappedMemoryRange {
         assert!(!range.is_empty() && range.end <= self.size);
 
         // VUID-VkMappedMemoryRange-size-00685
@@ -633,8 +641,7 @@ impl MemoryAlloc {
         // VUID-VkMappedMemoryRange-offset-00687
         // VUID-VkMappedMemoryRange-size-01390
         assert!(
-            range.start % self.non_coherent_atom_size == 0
-                && (range.end % self.non_coherent_atom_size == 0 || range.end == self.size)
+            range.start % atom_size == 0 && (range.end % atom_size == 0 || range.end == self.size)
         );
 
         // VUID-VkMappedMemoryRange-offset-00687
@@ -649,7 +656,7 @@ impl MemoryAlloc {
             // We align the size in case `range.end == self.size`. We can do this without aliasing
             // other allocations because the suballocators ensure that all allocations are aligned
             // to the atom size for non-coherent host-visible memory.
-            size = align_up(size, self.non_coherent_atom_size);
+            size = align_up(size, atom_size);
         }
 
         ash::vk::MappedMemoryRange {
@@ -856,7 +863,7 @@ impl From<DeviceMemory> for MemoryAlloc {
             memory: device_memory.internal_object(),
             memory_type_index: device_memory.memory_type_index(),
             mapped_ptr: None,
-            non_coherent_atom_size: 0,
+            non_coherent_atom_size: None,
             parent: AllocParent::Root(Arc::new(device_memory)),
         }
     }
@@ -1342,17 +1349,17 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 match DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None) {
                     Ok(device_memory) => {
                         let property_flags = pool.memory_type.property_flags;
-                        let non_coherent_atom_size = if property_flags
+                        let non_coherent_atom_size = (property_flags
                             .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
-                            && !property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
-                        {
+                            && !property_flags
+                                .contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT))
+                        .then_some(
                             self.device
                                 .physical_device()
                                 .properties()
-                                .non_coherent_atom_size
-                        } else {
-                            0
-                        };
+                                .non_coherent_atom_size,
+                        )
+                        .and_then(NonZeroU64::new);
 
                         break S::new(MemoryAlloc {
                             offset: 0,
@@ -1632,17 +1639,16 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         let property_flags = self.pools[memory_type_index as usize]
             .memory_type
             .property_flags;
-        let non_coherent_atom_size = if property_flags
+        let non_coherent_atom_size = (property_flags
             .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
-            && !property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
-        {
+            && !property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT))
+        .then_some(
             self.device
                 .physical_device()
                 .properties()
-                .non_coherent_atom_size
-        } else {
-            0
-        };
+                .non_coherent_atom_size,
+        )
+        .and_then(NonZeroU64::new);
 
         Ok(MemoryAlloc {
             offset: 0,
@@ -2288,7 +2294,13 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
             _ne: _,
         } = create_info;
 
-        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
+        let alignment = DeviceSize::max(
+            alignment,
+            self.region
+                .non_coherent_atom_size
+                .map(NonZeroU64::get)
+                .unwrap_or(1),
+        );
         let mut inner = self.inner.lock();
 
         match inner.free_list.last() {
@@ -2803,7 +2815,13 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
         }
 
         let size = DeviceSize::max(size, BuddyAllocator::MIN_NODE_SIZE).next_power_of_two();
-        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
+        let alignment = DeviceSize::max(
+            alignment,
+            self.region
+                .non_coherent_atom_size
+                .map(NonZeroU64::get)
+                .unwrap_or(1),
+        );
         let min_order = (size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
         let mut inner = self.inner.lock();
 
@@ -3181,7 +3199,13 @@ impl PoolAllocatorInner {
             _ne: _,
         } = create_info;
 
-        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
+        let alignment = DeviceSize::max(
+            alignment,
+            self.region
+                .non_coherent_atom_size
+                .map(NonZeroU64::get)
+                .unwrap_or(1),
+        );
         let index = self
             .free_list
             .pop()
@@ -3411,7 +3435,13 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
             _ne: _,
         } = create_info;
 
-        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
+        let alignment = DeviceSize::max(
+            alignment,
+            self.region
+                .non_coherent_atom_size
+                .map(NonZeroU64::get)
+                .unwrap_or(1),
+        );
         let backoff = Backoff::new();
         let mut state = self.state.load(Ordering::Relaxed);
 
