@@ -235,6 +235,7 @@ use std::{
     ffi::c_void,
     fmt::{self, Display},
     mem::{self, ManuallyDrop, MaybeUninit},
+    ops::Range,
     ptr::{self, NonNull},
     slice,
     sync::{
@@ -439,6 +440,9 @@ pub struct MemoryAlloc {
     // hierarchy when binding.
     memory: ash::vk::DeviceMemory,
     memory_type_index: u32,
+    // Used by the suballocators to align allocations to the non-coherent atom size when the memory
+    // type is `host_visible` but not `host_coherent`. This will be 0 for any other memory type.
+    non_coherent_atom_size: DeviceSize,
     // Mapped pointer to the start of the allocation or `None` is the memory is not host-visible.
     mapped_ptr: Option<NonNull<c_void>>,
     // Used in the `Drop` impl to free the allocation if required.
@@ -525,6 +529,145 @@ impl MemoryAlloc {
     pub unsafe fn mapped_slice_mut(&mut self) -> Option<&mut [u8]> {
         self.mapped_ptr
             .map(|ptr| slice::from_raw_parts_mut(ptr.as_ptr().cast(), self.size as usize))
+    }
+
+    /// Invalidates the host (CPU) cache for a range of the allocation.
+    ///
+    /// You must call this method before the memory is read by the host, if the device previously
+    /// wrote to the memory. It has no effect if the memory is not mapped or if the memory is
+    /// [host-coherent].
+    ///
+    /// `range` is specified in bytes relative to the start of the allocation. The start and end of
+    /// `range` must be a multiple of the [`non_coherent_atom_size`] device property, but
+    /// `range.end` can also equal to `self.size()`.
+    ///
+    /// # Safety
+    ///
+    /// - If there are memory writes by the GPU that have not been propagated into the CPU cache,
+    ///   then there must not be any references in Rust code to the specified `range` of the memory.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `range` is empty.
+    /// - Panics if `range.end` exceeds `self.size`.
+    /// - Panics if `range.start` or `range.end` are not a multiple of the `non_coherent_atom_size`.
+    ///
+    /// [host-coherent]: super::MemoryPropertyFlags::host_coherent
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    #[inline]
+    pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
+        // VUID-VkMappedMemoryRange-memory-00684
+        if self.non_coherent_atom_size == 0 {
+            self.debug_validate_memory_range(&range);
+            return Ok(());
+        }
+
+        let range = self.create_memory_range(range);
+        let device = self.device();
+        let fns = device.fns();
+        (fns.v1_0.invalidate_mapped_memory_ranges)(device.internal_object(), 1, &range)
+            .result()
+            .map_err(VulkanError::from)?;
+
+        Ok(())
+    }
+
+    /// Flushes the host (CPU) cache for a range of the allocation.
+    ///
+    /// You must call this method after writing to the memory from the host, if the device is going
+    /// to read the memory. It has no effect if the memory is not mapped or if the memory is
+    /// [host-coherent].
+    ///
+    /// `range` is specified in bytes relative to the start of the allocation. The start and end of
+    /// `range` must be a multiple of the [`non_coherent_atom_size`] device property, but
+    /// `range.end` can also equal to `self.size()`.
+    ///
+    /// # Safety
+    ///
+    /// - There must be no operations pending or executing in a GPU queue that access the specified
+    ///   `range` of the memory.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `range` is empty.
+    /// - Panics if `range.end` exceeds `self.size`.
+    /// - Panics if `range.start` or `range.end` are not a multiple of the `non_coherent_atom_size`.
+    ///
+    /// [host-coherent]: super::MemoryPropertyFlags::host_coherent
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    #[inline]
+    pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
+        // VUID-VkMappedMemoryRange-memory-00684
+        if self.non_coherent_atom_size == 0 {
+            self.debug_validate_memory_range(&range);
+            return Ok(());
+        }
+
+        let range = self.create_memory_range(range);
+        let device = self.device();
+        let fns = device.fns();
+        (fns.v1_0.flush_mapped_memory_ranges)(device.internal_object(), 1, &range)
+            .result()
+            .map_err(VulkanError::from)?;
+
+        Ok(())
+    }
+
+    /// This exists because even if no cache control is required, the parameters should still be
+    /// valid, otherwise you might have bugs in your code forever just because your memory happens
+    /// to be host-coherent.
+    fn debug_validate_memory_range(&self, range: &Range<DeviceSize>) {
+        debug_assert!(!range.is_empty() && range.end <= self.size);
+        debug_assert!(
+            range.start % self.non_coherent_atom_size == 0
+                && (range.end % self.non_coherent_atom_size == 0 || range.end == self.size)
+        );
+    }
+
+    fn create_memory_range(&self, range: Range<DeviceSize>) -> ash::vk::MappedMemoryRange {
+        assert!(!range.is_empty() && range.end <= self.size);
+
+        // VUID-VkMappedMemoryRange-size-00685
+        // Guaranteed because we always map the entire `DeviceMemory`.
+
+        // VUID-VkMappedMemoryRange-offset-00687
+        // VUID-VkMappedMemoryRange-size-01390
+        assert!(
+            range.start % self.non_coherent_atom_size == 0
+                && (range.end % self.non_coherent_atom_size == 0 || range.end == self.size)
+        );
+
+        // VUID-VkMappedMemoryRange-offset-00687
+        // Guaranteed as long as `range.start` is aligned because the suballocators always align
+        // `self.offset` to the non-coherent atom size for non-coherent host-visible memory.
+        let offset = self.offset + range.start;
+
+        let mut size = range.end - range.start;
+
+        // VUID-VkMappedMemoryRange-size-01390
+        if offset + size < self.device_memory().allocation_size() {
+            // We align the size in case `range.end == self.size`. We can do this without aliasing
+            // other allocations because the suballocators ensure that all allocations are aligned
+            // to the atom size for non-coherent host-visible memory.
+            size = align_up(size, self.non_coherent_atom_size);
+        }
+
+        ash::vk::MappedMemoryRange {
+            memory: self.memory,
+            offset,
+            size,
+            ..Default::default()
+        }
+    }
+
+    /// Returns the underlying block of [`DeviceMemory`].
+    // TODO: inefficient
+    #[inline]
+    pub fn device_memory(&self) -> &DeviceMemory {
+        match self.parent_allocation() {
+            Ok(alloc) => alloc.device_memory(),
+            Err(device_memory) => device_memory,
+        }
     }
 
     /// Returns the parent allocation if this allocation is a [suballocation], otherwise returns the
@@ -713,6 +856,7 @@ impl From<DeviceMemory> for MemoryAlloc {
             memory: device_memory.internal_object(),
             memory_type_index: device_memory.memory_type_index(),
             mapped_ptr: None,
+            non_coherent_atom_size: 0,
             parent: AllocParent::Root(Arc::new(device_memory)),
         }
     }
@@ -809,7 +953,7 @@ impl Display for AllocationCreationError {
             "{}",
             match self {
                 Self::OutOfHostMemory => "out of host memory",
-                Self::OutOfDeviceMemory => "out of device memomory",
+                Self::OutOfDeviceMemory => "out of device memory",
                 Self::TooManyObjects => "too many `DeviceMemory` allocations exist already",
                 Self::OutOfPoolMemory => "the pool doesn't have enough free space",
                 Self::MemoryMapFailed => "failed to map memory",
@@ -1197,6 +1341,19 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 };
                 match DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None) {
                     Ok(device_memory) => {
+                        let property_flags = pool.memory_type.property_flags;
+                        let non_coherent_atom_size = if property_flags
+                            .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+                            && !property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
+                        {
+                            self.device
+                                .physical_device()
+                                .properties()
+                                .non_coherent_atom_size
+                        } else {
+                            0
+                        };
+
                         break S::new(MemoryAlloc {
                             offset: 0,
                             size: device_memory.allocation_size(),
@@ -1204,6 +1361,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                             memory: device_memory.internal_object(),
                             memory_type_index,
                             mapped_ptr: self.mapped_ptr(&device_memory)?,
+                            non_coherent_atom_size,
                             parent: AllocParent::Root(Arc::new(device_memory)),
                         });
                     }
@@ -1471,6 +1629,20 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                     _ => unreachable!(),
                 },
             )?;
+        let property_flags = self.pools[memory_type_index as usize]
+            .memory_type
+            .property_flags;
+        let non_coherent_atom_size = if property_flags
+            .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+            && !property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
+        {
+            self.device
+                .physical_device()
+                .properties()
+                .non_coherent_atom_size
+        } else {
+            0
+        };
 
         Ok(MemoryAlloc {
             offset: 0,
@@ -1479,6 +1651,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             memory: device_memory.internal_object(),
             memory_type_index,
             mapped_ptr: self.mapped_ptr(&device_memory)?,
+            non_coherent_atom_size,
             parent: if is_dedicated {
                 AllocParent::Dedicated(device_memory)
             } else {
@@ -1532,7 +1705,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// - Panics if `memory_type_index` is not less than the number of available memory types.
     /// - Panics if `memory_type_index` refers to a memory type which has the [`protected`] flag set
     ///   and the [`protected_memory`] feature is not enabled on the device.
-    /// - Panics if `create_info.size` is larger than the block size corresponding to the heap that
+    /// - Panics if `create_info.size` is greater than the block size corresponding to the heap that
     ///   the memory type corresponding to `memory_type_index` resides in.
     /// - Panics if `create_info.size` is zero.
     /// - Panics if `create_info.alignment` is zero.
@@ -1543,9 +1716,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// - Returns an error if allocating a new block is required and failed. This can be one of the
     ///   OOM errors or [`TooManyObjects`].
     /// - Returns [`BlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
-    ///   is larger than `BLOCK_SIZE`.
+    ///   is greater than `BLOCK_SIZE`.
     ///
-    /// [`protected`]: MemoryPropertyFlags::protected
+    /// [`protected`]: super::MemoryPropertyFlags::protected
     /// [`protected_memory`]: crate::device::Features::protected_memory
     /// [`TooManyObjects`]: AllocationCreationError::TooManyObjects
     /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
@@ -1939,7 +2112,7 @@ impl Display for SuballocationCreationError {
                 Self::OutOfRegionMemory => "out of region memory",
                 Self::FragmentedRegion => "the region is too fragmented",
                 Self::BlockSizeExceeded =>
-                    "the allocation size was larger than the suballocator's block size",
+                    "the allocation size was greater than the suballocator's block size",
             }
         )
     }
@@ -1999,10 +2172,9 @@ impl Error for SuballocationCreationError {}
 pub struct FreeListAllocator {
     device: Arc<Device>,
     region: MemoryAlloc,
+    buffer_image_granularity: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
-    buffer_image_granularity: DeviceSize,
-    non_coherent_atom_size: DeviceSize,
     inner: Mutex<FreeListAllocatorInner>,
 }
 
@@ -2024,8 +2196,11 @@ impl FreeListAllocator {
         assert!(region.allocation_type == AllocationType::Unknown);
 
         let device = region.device().clone();
+        let buffer_image_granularity = device
+            .physical_device()
+            .properties()
+            .buffer_image_granularity;
         let free_size = AtomicU64::new(region.size);
-        let (buffer_image_granularity, non_coherent_atom_size) = granularity_and_atom_size(&region);
 
         let capacity = (region.size / AVERAGE_ALLOCATION_SIZE) as usize;
         let mut nodes = host::PoolAllocator::new(capacity + 64);
@@ -2043,9 +2218,8 @@ impl FreeListAllocator {
         Arc::new(FreeListAllocator {
             device,
             region,
-            free_size,
             buffer_image_granularity,
-            non_coherent_atom_size,
+            free_size,
             inner,
         })
     }
@@ -2114,7 +2288,7 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
             _ne: _,
         } = create_info;
 
-        let alignment = DeviceSize::max(alignment, self.non_coherent_atom_size);
+        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
         let mut inner = self.inner.lock();
 
         match inner.free_list.last() {
@@ -2165,6 +2339,7 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                                     ptr.as_ptr().add((offset - self.region.offset) as usize),
                                 )
                             }),
+                            non_coherent_atom_size: self.region.non_coherent_atom_size,
                             parent: AllocParent::FreeList {
                                 allocator: self.clone(),
                                 id,
@@ -2481,10 +2656,9 @@ impl FreeListAllocatorInner {
 pub struct BuddyAllocator {
     device: Arc<Device>,
     region: MemoryAlloc,
+    buffer_image_granularity: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
-    buffer_image_granularity: DeviceSize,
-    non_coherent_atom_size: DeviceSize,
     inner: Mutex<BuddyAllocatorInner>,
 }
 
@@ -2517,8 +2691,12 @@ impl BuddyAllocator {
         assert!(region.size >= Self::MIN_NODE_SIZE && max_order < Self::MAX_ORDERS);
 
         let device = region.device().clone();
+        let buffer_image_granularity = device
+            .physical_device()
+            .properties()
+            .buffer_image_granularity;
         let free_size = AtomicU64::new(region.size);
-        let (buffer_image_granularity, non_coherent_atom_size) = granularity_and_atom_size(&region);
+
         let mut free_list = ArrayVec::new(max_order + 1, [EMPTY_FREE_LIST; Self::MAX_ORDERS]);
         // The root node has the lowest offset and highest order, so it's the whole region.
         free_list[max_order].push(region.offset);
@@ -2527,9 +2705,8 @@ impl BuddyAllocator {
         Arc::new(BuddyAllocator {
             device,
             region,
-            free_size,
             buffer_image_granularity,
-            non_coherent_atom_size,
+            free_size,
             inner,
         })
     }
@@ -2626,7 +2803,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
         }
 
         let size = DeviceSize::max(size, BuddyAllocator::MIN_NODE_SIZE).next_power_of_two();
-        let alignment = DeviceSize::max(alignment, self.non_coherent_atom_size);
+        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
         let min_order = (size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
         let mut inner = self.inner.lock();
 
@@ -2670,6 +2847,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
                         mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                             NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
                         }),
+                        non_coherent_atom_size: self.region.non_coherent_atom_size,
                         parent: AllocParent::Buddy {
                             allocator: self.clone(),
                             order: min_order,
@@ -2958,7 +3136,6 @@ struct PoolAllocatorInner {
     device: Arc<Device>,
     region: MemoryAlloc,
     block_size: DeviceSize,
-    non_coherent_atom_size: DeviceSize,
     // Unsorted list of free block indices.
     free_list: ArrayQueue<DeviceSize>,
 }
@@ -2971,12 +3148,14 @@ impl PoolAllocatorInner {
     ) -> Self {
         let device = region.device().clone();
         #[cfg(not(test))]
-        let (buffer_image_granularity, non_coherent_atom_size) = granularity_and_atom_size(&region);
-        #[cfg(test)]
-        let non_coherent_atom_size = 1;
+        let buffer_image_granularity = device
+            .physical_device()
+            .properties()
+            .buffer_image_granularity;
         if region.allocation_type == AllocationType::Unknown {
             block_size = align_up(block_size, buffer_image_granularity);
         }
+
         let block_count = region.size / block_size;
         let free_list = ArrayQueue::new(block_count as usize);
         for i in 0..block_count {
@@ -2986,7 +3165,6 @@ impl PoolAllocatorInner {
         PoolAllocatorInner {
             device,
             region,
-            non_coherent_atom_size,
             block_size,
             free_list,
         }
@@ -3003,7 +3181,7 @@ impl PoolAllocatorInner {
             _ne: _,
         } = create_info;
 
-        let alignment = DeviceSize::max(alignment, self.non_coherent_atom_size);
+        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
         let index = self
             .free_list
             .pop()
@@ -3026,6 +3204,7 @@ impl PoolAllocatorInner {
             mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                 NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
             }),
+            non_coherent_atom_size: self.region.non_coherent_atom_size,
             parent: AllocParent::Pool {
                 allocator: self,
                 index,
@@ -3096,7 +3275,6 @@ pub struct BumpAllocator {
     device: Arc<Device>,
     region: MemoryAlloc,
     buffer_image_granularity: DeviceSize,
-    non_coherent_atom_size: DeviceSize,
     // Encodes the previous allocation type in the 2 least signifficant bits and the free start in
     // the rest.
     state: AtomicU64,
@@ -3109,14 +3287,16 @@ impl BumpAllocator {
     #[inline]
     pub fn new(region: MemoryAlloc) -> Arc<Self> {
         let device = region.device().clone();
-        let (buffer_image_granularity, non_coherent_atom_size) = granularity_and_atom_size(&region);
+        let buffer_image_granularity = device
+            .physical_device()
+            .properties()
+            .buffer_image_granularity;
         let state = AtomicU64::new(region.allocation_type as u64);
 
         Arc::new(BumpAllocator {
             device,
             region,
             buffer_image_granularity,
-            non_coherent_atom_size,
             state,
         })
     }
@@ -3231,7 +3411,7 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
             _ne: _,
         } = create_info;
 
-        let alignment = DeviceSize::max(alignment, self.non_coherent_atom_size);
+        let alignment = DeviceSize::max(alignment, self.region.non_coherent_atom_size);
         let backoff = Backoff::new();
         let mut state = self.state.load(Ordering::Relaxed);
 
@@ -3277,6 +3457,7 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
                         mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                             NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
                         }),
+                        non_coherent_atom_size: self.region.non_coherent_atom_size,
                         parent: AllocParent::Bump(self.clone()),
                     });
                 }
@@ -3327,24 +3508,6 @@ impl Display for BumpAllocatorResetError {
 }
 
 impl Error for BumpAllocatorResetError {}
-
-fn granularity_and_atom_size(region: &MemoryAlloc) -> (DeviceSize, DeviceSize) {
-    let device = region.device();
-    let buffer_image_granularity = device
-        .physical_device()
-        .properties()
-        .buffer_image_granularity;
-    let property_flags = device.physical_device().memory_properties().memory_types
-        [region.memory_type_index as usize]
-        .property_flags;
-    let non_coherent_atom_size = if property_flags.host_visible && !property_flags.host_coherent {
-        device.physical_device().properties().non_coherent_atom_size
-    } else {
-        0
-    };
-
-    (buffer_image_granularity, non_coherent_atom_size)
-}
 
 fn align_up(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
     align_down(val + alignment - 1, alignment)
