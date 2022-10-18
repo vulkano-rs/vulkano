@@ -668,28 +668,31 @@ impl MemoryAlloc {
     }
 
     /// Returns the underlying block of [`DeviceMemory`].
-    // TODO: inefficient
     #[inline]
     pub fn device_memory(&self) -> &DeviceMemory {
-        match self.parent_allocation() {
-            Ok(alloc) => alloc.device_memory(),
-            Err(device_memory) => device_memory,
+        match &self.parent {
+            AllocParent::FreeList { allocator, .. } => &allocator.device_memory,
+            AllocParent::Buddy { allocator, .. } => &allocator.device_memory,
+            AllocParent::Pool { allocator, .. } => &allocator.device_memory,
+            AllocParent::Bump(allocator) => &allocator.device_memory,
+            AllocParent::Root(device_memory) => device_memory,
+            AllocParent::Dedicated(device_memory) => device_memory,
         }
     }
 
-    /// Returns the parent allocation if this allocation is a [suballocation], otherwise returns the
-    /// [`DeviceMemory`] wrapped in [`Err`].
+    /// Returns the parent allocation if this allocation is a [suballocation], otherwise returns
+    /// [`None`].
     ///
     /// [suballocation]: Suballocator
     #[inline]
-    pub fn parent_allocation(&self) -> Result<&Self, &DeviceMemory> {
+    pub fn parent_allocation(&self) -> Option<&Self> {
         match &self.parent {
-            AllocParent::FreeList { allocator, .. } => Ok(&allocator.region),
-            AllocParent::Buddy { allocator, .. } => Ok(&allocator.region),
-            AllocParent::Pool { allocator, .. } => Ok(&allocator.region),
-            AllocParent::Bump(allocator) => Ok(&allocator.region),
-            AllocParent::Root(device_memory) => Err(device_memory),
-            AllocParent::Dedicated(device_memory) => Err(device_memory),
+            AllocParent::FreeList { allocator, .. } => Some(&allocator.region),
+            AllocParent::Buddy { allocator, .. } => Some(&allocator.region),
+            AllocParent::Pool { allocator, .. } => Some(&allocator.region),
+            AllocParent::Bump(allocator) => Some(&allocator.region),
+            AllocParent::Root(_) => None,
+            AllocParent::Dedicated(_) => None,
         }
     }
 
@@ -739,9 +742,6 @@ impl MemoryAlloc {
     /// Duplicates the allocation, creating aliased memory. Returns [`None`] if the allocation [is
     /// a dedicated allocation].
     ///
-    /// This has the performance of traversing a linked list, *O*(*n*), where *n* is the height of
-    /// the [memory hierarchy].
-    ///
     /// You might consider using this method if you want to optimize memory usage by aliasing
     /// render targets for example, in which case you will have to double and triple check that the
     /// memory is not used concurrently unless it only involves reading. You are highly discouraged
@@ -763,10 +763,10 @@ impl MemoryAlloc {
 
     fn root(&self) -> Option<&Arc<DeviceMemory>> {
         match &self.parent {
-            AllocParent::FreeList { allocator, .. } => allocator.region.root(),
-            AllocParent::Buddy { allocator, .. } => allocator.region.root(),
-            AllocParent::Pool { allocator, .. } => allocator.region.root(),
-            AllocParent::Bump(allocator) => allocator.region.root(),
+            AllocParent::FreeList { allocator, .. } => Some(&allocator.device_memory),
+            AllocParent::Buddy { allocator, .. } => Some(&allocator.device_memory),
+            AllocParent::Pool { allocator, .. } => Some(&allocator.device_memory),
+            AllocParent::Bump(allocator) => Some(&allocator.device_memory),
             AllocParent::Root(device_memory) => Some(device_memory),
             AllocParent::Dedicated(_) => None,
         }
@@ -896,14 +896,7 @@ impl Drop for MemoryAlloc {
 unsafe impl DeviceOwned for MemoryAlloc {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        match &self.parent {
-            AllocParent::FreeList { allocator, .. } => &allocator.device,
-            AllocParent::Buddy { allocator, .. } => &allocator.device,
-            AllocParent::Pool { allocator, .. } => &allocator.device,
-            AllocParent::Bump(allocator) => &allocator.device,
-            AllocParent::Root(device_memory) => device_memory.device(),
-            AllocParent::Dedicated(device_memory) => device_memory.device(),
-        }
+        self.device_memory().device()
     }
 }
 
@@ -2176,8 +2169,8 @@ impl Error for SuballocationCreationError {}
 /// [alignment requirements]: self#alignment
 #[derive(Debug)]
 pub struct FreeListAllocator {
-    device: Arc<Device>,
     region: MemoryAlloc,
+    device_memory: Arc<DeviceMemory>,
     buffer_image_granularity: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
@@ -2191,9 +2184,11 @@ impl FreeListAllocator {
     ///
     /// - Panics if `region.allocation_type` is not [`AllocationType::Unknown`]. This is done to
     ///   avoid checking for a special case of [buffer-image granularity] conflict.
+    /// - Panics if `region` is a [dedicated allocation].
     ///
     /// [region]: Suballocator#regions
     /// [buffer-image granularity]: self#buffer-image-granularity
+    /// [dedicated allocation]: MemoryAlloc::is_dedicated
     #[inline]
     pub fn new(region: MemoryAlloc) -> Arc<Self> {
         // NOTE(Marc): This number was pulled straight out of my a-
@@ -2201,8 +2196,12 @@ impl FreeListAllocator {
 
         assert!(region.allocation_type == AllocationType::Unknown);
 
-        let device = region.device().clone();
-        let buffer_image_granularity = device
+        let device_memory = region
+            .root()
+            .expect("dedicated allocations can't be suballocated")
+            .clone();
+        let buffer_image_granularity = device_memory
+            .device()
             .physical_device()
             .properties()
             .buffer_image_granularity;
@@ -2222,8 +2221,8 @@ impl FreeListAllocator {
         let inner = Mutex::new(FreeListAllocatorInner { nodes, free_list });
 
         Arc::new(FreeListAllocator {
-            device,
             region,
+            device_memory,
             buffer_image_granularity,
             free_size,
             inner,
@@ -2396,7 +2395,7 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
 unsafe impl DeviceOwned for FreeListAllocator {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.device
+        self.device_memory.device()
     }
 }
 
@@ -2666,8 +2665,8 @@ impl FreeListAllocatorInner {
 /// [buffer-image granularity]: self#buffer-image-granularity
 #[derive(Debug)]
 pub struct BuddyAllocator {
-    device: Arc<Device>,
     region: MemoryAlloc,
+    device_memory: Arc<DeviceMemory>,
     buffer_image_granularity: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
@@ -2689,9 +2688,11 @@ impl BuddyAllocator {
     ///   avoid checking for a special case of [buffer-image granularity] conflict.
     /// - Panics if `region.size` is not a power of two.
     /// - Panics if `region.size` is not in the range \[16B,&nbsp;64GiB\].
+    /// - Panics if `region` is a [dedicated allocation].
     ///
     /// [region]: Suballocator#regions
     /// [buffer-image granularity]: self#buffer-image-granularity
+    /// [dedicated allocation]: MemoryAlloc::is_dedicated
     #[inline]
     pub fn new(region: MemoryAlloc) -> Arc<Self> {
         const EMPTY_FREE_LIST: Vec<DeviceSize> = Vec::new();
@@ -2702,8 +2703,12 @@ impl BuddyAllocator {
         assert!(region.size.is_power_of_two());
         assert!(region.size >= Self::MIN_NODE_SIZE && max_order < Self::MAX_ORDERS);
 
-        let device = region.device().clone();
-        let buffer_image_granularity = device
+        let device_memory = region
+            .root()
+            .expect("dedicated allocations can't be suballocated")
+            .clone();
+        let buffer_image_granularity = device_memory
+            .device()
             .physical_device()
             .properties()
             .buffer_image_granularity;
@@ -2715,8 +2720,8 @@ impl BuddyAllocator {
         let inner = Mutex::new(BuddyAllocatorInner { free_list });
 
         Arc::new(BuddyAllocator {
-            device,
             region,
+            device_memory,
             buffer_image_granularity,
             free_size,
             inner,
@@ -2910,7 +2915,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
 unsafe impl DeviceOwned for BuddyAllocator {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.device
+        self.device_memory.device()
     }
 }
 
@@ -3031,8 +3036,10 @@ impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
     /// # Panics
     ///
     /// - Panics if `region.size < BLOCK_SIZE`.
+    /// - Panics if `region` is a [dedicated allocation].
     ///
     /// [region]: Suballocator#regions
+    /// [dedicated allocation]: MemoryAlloc::is_dedicated
     #[inline]
     pub fn new(
         region: MemoryAlloc,
@@ -3145,14 +3152,14 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLO
 unsafe impl<const BLOCK_SIZE: DeviceSize> DeviceOwned for PoolAllocator<BLOCK_SIZE> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.inner.device
+        self.inner.device_memory.device()
     }
 }
 
 #[derive(Debug)]
 struct PoolAllocatorInner {
-    device: Arc<Device>,
     region: MemoryAlloc,
+    device_memory: Arc<DeviceMemory>,
     block_size: DeviceSize,
     // Unsorted list of free block indices.
     free_list: ArrayQueue<DeviceSize>,
@@ -3164,9 +3171,13 @@ impl PoolAllocatorInner {
         mut block_size: DeviceSize,
         #[cfg(test)] buffer_image_granularity: DeviceSize,
     ) -> Self {
-        let device = region.device().clone();
+        let device_memory = region
+            .root()
+            .expect("dedicated allocations can't be suballocated")
+            .clone();
         #[cfg(not(test))]
-        let buffer_image_granularity = device
+        let buffer_image_granularity = device_memory
+            .device()
             .physical_device()
             .properties()
             .buffer_image_granularity;
@@ -3181,8 +3192,8 @@ impl PoolAllocatorInner {
         }
 
         PoolAllocatorInner {
-            device,
             region,
+            device_memory,
             block_size,
             free_list,
         }
@@ -3296,8 +3307,8 @@ impl PoolAllocatorInner {
 /// [hierarchy]: Suballocator#memory-hierarchies
 #[derive(Debug)]
 pub struct BumpAllocator {
-    device: Arc<Device>,
     region: MemoryAlloc,
+    device_memory: Arc<DeviceMemory>,
     buffer_image_granularity: DeviceSize,
     // Encodes the previous allocation type in the 2 least signifficant bits and the free start in
     // the rest.
@@ -3307,19 +3318,28 @@ pub struct BumpAllocator {
 impl BumpAllocator {
     /// Creates a new `BumpAllocator` for the given [region].
     ///
+    /// # Panics
+    ///
+    /// - Panics if `region` is a [dedicated allocation].
+    ///
     /// [region]: Suballocator#regions
+    /// [dedicated allocation]: MemoryAlloc::is_dedicated
     #[inline]
     pub fn new(region: MemoryAlloc) -> Arc<Self> {
-        let device = region.device().clone();
-        let buffer_image_granularity = device
+        let device_memory = region
+            .root()
+            .expect("dedicated allocations can't be suballocated")
+            .clone();
+        let buffer_image_granularity = device_memory
+            .device()
             .physical_device()
             .properties()
             .buffer_image_granularity;
         let state = AtomicU64::new(region.allocation_type as u64);
 
         Arc::new(BumpAllocator {
-            device,
             region,
+            device_memory,
             buffer_image_granularity,
             state,
         })
@@ -3523,7 +3543,7 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
 unsafe impl DeviceOwned for BumpAllocator {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.device
+        self.device_memory.device()
     }
 }
 
