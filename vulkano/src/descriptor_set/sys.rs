@@ -111,7 +111,7 @@ unsafe impl VulkanObject for UnsafeDescriptorSet {
     type Handle = ash::vk::DescriptorSet;
 
     #[inline]
-    fn handle(&self) -> ash::vk::DescriptorSet {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

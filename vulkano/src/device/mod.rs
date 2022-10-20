@@ -656,7 +656,7 @@ unsafe impl VulkanObject for Device {
     type Handle = ash::vk::Device;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Device {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

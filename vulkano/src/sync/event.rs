@@ -195,7 +195,7 @@ unsafe impl VulkanObject for Event {
     type Handle = ash::vk::Event;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Event {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

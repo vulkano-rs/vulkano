@@ -17,9 +17,11 @@ Changes to queue operations:
 - If `Queue` is dropped, it will call `wait_idle` to block the current thread until all operations on it have completed.
 - The `command_buffer::submit` module has been removed. The `SubmitAnyBuilder` enum is moved to the `sync` module, and no longer has a lifetime parameter.
 
-Changes to swapchains and operations:
-- The `W` parameter must now implement `Send + Sync`.
-- `PresentInfo` as been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
+Changes to `Surface`, `Swapchain` and swapchain operations:
+- `Surface`, `Swapchain`, `SwapchainImage` and `SwapchainAcquireFuture` and related functions no longer have a `W` type parameter.
+- All constructors of `Surface` now take `Option<Arc<dyn Any + Send + Sync>>` instead of a generic `W`. The `window` function has been renamed to `object` and likewise returns `Option<&Arc<dyn Any + Send + Sync>>`.
+- Vulkano-win: `create_surface_from_handle` takes an `Arc<impl Any + Send + Sync + HasRawWindowHandle + HasRawDisplayHandle>`, `create_surface_from_winit` takes an `Arc<Window>`.
+- `PresentInfo` has been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
 - `acquire_next_image` returns an `u32` index to match Vulkan.
 
 Changes to `GpuFuture`:

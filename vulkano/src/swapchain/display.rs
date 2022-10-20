@@ -356,7 +356,7 @@ unsafe impl VulkanObject for Display {
     type Handle = ash::vk::DisplayKHR;
 
     #[inline]
-    fn handle(&self) -> ash::vk::DisplayKHR {
+    fn handle(&self) -> Self::Handle {
         self.properties.display
     }
 }
@@ -444,7 +444,7 @@ unsafe impl VulkanObject for DisplayMode {
     type Handle = ash::vk::DisplayModeKHR;
 
     #[inline]
-    fn handle(&self) -> ash::vk::DisplayModeKHR {
+    fn handle(&self) -> Self::Handle {
         self.display_mode
     }
 }

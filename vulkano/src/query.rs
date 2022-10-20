@@ -183,7 +183,7 @@ unsafe impl VulkanObject for QueryPool {
     type Handle = ash::vk::QueryPool;
 
     #[inline]
-    fn handle(&self) -> ash::vk::QueryPool {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

@@ -441,7 +441,7 @@ unsafe impl VulkanObject for DescriptorSetLayout {
     type Handle = ash::vk::DescriptorSetLayout;
 
     #[inline]
-    fn handle(&self) -> ash::vk::DescriptorSetLayout {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

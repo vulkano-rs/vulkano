@@ -1712,7 +1712,7 @@ unsafe impl VulkanObject for UnsafeImage {
     type Handle = ash::vk::Image;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Image {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

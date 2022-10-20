@@ -525,7 +525,7 @@ unsafe impl VulkanObject for RenderPass {
     type Handle = ash::vk::RenderPass;
 
     #[inline]
-    fn handle(&self) -> ash::vk::RenderPass {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

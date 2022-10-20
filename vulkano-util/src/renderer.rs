@@ -26,7 +26,7 @@ use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
 /// Swapchain Image View. Your final render target typically.
-pub type SwapchainImageView = Arc<ImageView<SwapchainImage<Window>>>;
+pub type SwapchainImageView = Arc<ImageView<SwapchainImage>>;
 /// Multipurpose image view
 pub type DeviceImageView = Arc<ImageView<StorageImage>>;
 
@@ -41,10 +41,10 @@ pub const DEFAULT_IMAGE_FORMAT: Format = Format::R8G8B8A8_UNORM;
 ///
 /// The intended usage of this struct is through [`crate::window::VulkanoWindows`].
 pub struct VulkanoWindowRenderer {
-    surface: Arc<Surface<Window>>,
+    surface: Arc<Surface>,
     graphics_queue: Arc<Queue>,
     compute_queue: Arc<Queue>,
-    swapchain: Arc<Swapchain<Window>>,
+    swapchain: Arc<Swapchain>,
     final_views: Vec<SwapchainImageView>,
     /// Additional image views that you can add which are resized with the window.
     /// Use associated functions to get access to these.
@@ -67,7 +67,8 @@ impl VulkanoWindowRenderer {
     ) -> VulkanoWindowRenderer {
         // Create rendering surface from window
         let surface =
-            create_surface_from_winit(window, vulkano_context.instance().clone()).unwrap();
+            create_surface_from_winit(Arc::new(window), vulkano_context.instance().clone())
+                .unwrap();
 
         // Create swap chain & frame(s) to which we'll render
         let (swap_chain, final_views) = Self::create_swapchain(
@@ -97,10 +98,10 @@ impl VulkanoWindowRenderer {
     /// can be modified with the `swapchain_create_info_modify` function passed as an input.
     fn create_swapchain(
         device: Arc<Device>,
-        surface: Arc<Surface<Window>>,
+        surface: Arc<Surface>,
         window_descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
-    ) -> (Arc<Swapchain<Window>>, Vec<SwapchainImageView>) {
+    ) -> (Arc<Swapchain>, Vec<SwapchainImageView>) {
         let surface_capabilities = device
             .physical_device()
             .surface_capabilities(&surface, Default::default())
@@ -112,7 +113,8 @@ impl VulkanoWindowRenderer {
                 .unwrap()[0]
                 .0,
         );
-        let image_extent = surface.window().inner_size().into();
+        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+        let image_extent = window.inner_size().into();
         let (swapchain, images) = Swapchain::new(device, surface, {
             let mut create_info = SwapchainCreateInfo {
                 min_image_count: surface_capabilities.min_image_count,
@@ -179,14 +181,14 @@ impl VulkanoWindowRenderer {
 
     /// Render target surface.
     #[inline]
-    pub fn surface(&self) -> Arc<Surface<Window>> {
+    pub fn surface(&self) -> Arc<Surface> {
         self.surface.clone()
     }
 
     /// Winit window (you can manipulate window through this).
     #[inline]
     pub fn window(&self) -> &Window {
-        self.surface.window()
+        self.surface.object().unwrap().downcast_ref().unwrap()
     }
 
     /// Size of the physical window.

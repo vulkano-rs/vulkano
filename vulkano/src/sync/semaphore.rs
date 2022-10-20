@@ -993,7 +993,7 @@ unsafe impl VulkanObject for Semaphore {
     type Handle = ash::vk::Semaphore;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Semaphore {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

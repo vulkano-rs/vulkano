@@ -291,7 +291,7 @@ unsafe impl VulkanObject for ComputePipeline {
     type Handle = ash::vk::Pipeline;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Pipeline {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

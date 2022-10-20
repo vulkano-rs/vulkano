@@ -736,7 +736,7 @@ where
 {
     type Handle = ash::vk::ImageView;
 
-    fn handle(&self) -> ash::vk::ImageView {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

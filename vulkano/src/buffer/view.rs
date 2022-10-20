@@ -266,7 +266,7 @@ where
 {
     type Handle = ash::vk::BufferView;
 
-    fn handle(&self) -> ash::vk::BufferView {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

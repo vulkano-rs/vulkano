@@ -261,7 +261,7 @@ unsafe impl VulkanObject for ShaderModule {
     type Handle = ash::vk::ShaderModule;
 
     #[inline]
-    fn handle(&self) -> ash::vk::ShaderModule {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

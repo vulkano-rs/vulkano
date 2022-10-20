@@ -626,7 +626,7 @@ unsafe impl VulkanObject for Instance {
     type Handle = ash::vk::Instance;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Instance {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

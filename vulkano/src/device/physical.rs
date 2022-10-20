@@ -1478,9 +1478,9 @@ impl PhysicalDevice {
     /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    pub fn surface_capabilities<W>(
+    pub fn surface_capabilities(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: SurfaceInfo,
     ) -> Result<SurfaceCapabilities, PhysicalDeviceError> {
         self.validate_surface_capabilities(surface, &surface_info)?;
@@ -1488,9 +1488,9 @@ impl PhysicalDevice {
         unsafe { Ok(self.surface_capabilities_unchecked(surface, surface_info)?) }
     }
 
-    fn validate_surface_capabilities<W>(
+    fn validate_surface_capabilities(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: &SurfaceInfo,
     ) -> Result<(), PhysicalDeviceError> {
         if !(self
@@ -1543,9 +1543,9 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn surface_capabilities_unchecked<W>(
+    pub unsafe fn surface_capabilities_unchecked(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: SurfaceInfo,
     ) -> Result<SurfaceCapabilities, VulkanError> {
         /* Input */
@@ -1701,9 +1701,9 @@ impl PhysicalDevice {
     /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    pub fn surface_formats<W>(
+    pub fn surface_formats(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: SurfaceInfo,
     ) -> Result<Vec<(Format, ColorSpace)>, PhysicalDeviceError> {
         self.validate_surface_formats(surface, &surface_info)?;
@@ -1711,9 +1711,9 @@ impl PhysicalDevice {
         unsafe { Ok(self.surface_formats_unchecked(surface, surface_info)?) }
     }
 
-    fn validate_surface_formats<W>(
+    fn validate_surface_formats(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: &SurfaceInfo,
     ) -> Result<(), PhysicalDeviceError> {
         if !(self
@@ -1780,9 +1780,9 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn surface_formats_unchecked<W>(
+    pub unsafe fn surface_formats_unchecked(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: SurfaceInfo,
     ) -> Result<Vec<(Format, ColorSpace)>, VulkanError> {
         surface.surface_formats.get_or_try_insert(
@@ -1928,19 +1928,16 @@ impl PhysicalDevice {
     /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    pub fn surface_present_modes<W>(
+    pub fn surface_present_modes(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
     ) -> Result<impl Iterator<Item = PresentMode>, PhysicalDeviceError> {
         self.validate_surface_present_modes(surface)?;
 
         unsafe { Ok(self.surface_present_modes_unchecked(surface)?) }
     }
 
-    fn validate_surface_present_modes<W>(
-        &self,
-        surface: &Surface<W>,
-    ) -> Result<(), PhysicalDeviceError> {
+    fn validate_surface_present_modes(&self, surface: &Surface) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
                 required_for: "`surface_present_modes`",
@@ -1966,9 +1963,9 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn surface_present_modes_unchecked<W>(
+    pub unsafe fn surface_present_modes_unchecked(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
     ) -> Result<impl Iterator<Item = PresentMode>, VulkanError> {
         surface
             .surface_present_modes
@@ -2020,20 +2017,20 @@ impl PhysicalDevice {
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
     #[inline]
-    pub fn surface_support<W>(
+    pub fn surface_support(
         &self,
         queue_family_index: u32,
-        surface: &Surface<W>,
+        surface: &Surface,
     ) -> Result<bool, PhysicalDeviceError> {
         self.validate_surface_support(queue_family_index, surface)?;
 
         unsafe { Ok(self.surface_support_unchecked(queue_family_index, surface)?) }
     }
 
-    fn validate_surface_support<W>(
+    fn validate_surface_support(
         &self,
         queue_family_index: u32,
-        _surface: &Surface<W>,
+        _surface: &Surface,
     ) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
@@ -2057,10 +2054,10 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn surface_support_unchecked<W>(
+    pub unsafe fn surface_support_unchecked(
         &self,
         queue_family_index: u32,
-        surface: &Surface<W>,
+        surface: &Surface,
     ) -> Result<bool, VulkanError> {
         surface
             .surface_support
@@ -2427,7 +2424,7 @@ unsafe impl VulkanObject for PhysicalDevice {
     type Handle = ash::vk::PhysicalDevice;
 
     #[inline]
-    fn handle(&self) -> ash::vk::PhysicalDevice {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

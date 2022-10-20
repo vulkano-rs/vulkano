@@ -283,7 +283,7 @@ vulkan_bitflags! {
 
 /// Represents requirements expressed by the Vulkan implementation when it comes to binding memory
 /// to a resource.
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Copy, Debug)]
 pub struct MemoryRequirements {
     /// Number of bytes of memory required.
     pub size: DeviceSize,
@@ -326,7 +326,7 @@ impl From<ash::vk::MemoryRequirements> for MemoryRequirements {
 ///
 /// If a dedicated allocation is performed, it must not be bound to any resource other than the
 /// one that was passed with the enumeration.
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Copy, Debug)]
 pub enum DedicatedAllocation<'a> {
     /// Allocation dedicated to a buffer.
     Buffer(&'a UnsafeBuffer),

@@ -731,7 +731,7 @@ unsafe impl VulkanObject for Sampler {
     type Handle = ash::vk::Sampler;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Sampler {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

@@ -244,7 +244,7 @@ unsafe impl VulkanObject for PipelineCache {
     type Handle = ash::vk::PipelineCache;
 
     #[inline]
-    fn handle(&self) -> ash::vk::PipelineCache {
+    fn handle(&self) -> Self::Handle {
         self.cache
     }
 }

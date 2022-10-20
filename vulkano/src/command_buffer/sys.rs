@@ -210,7 +210,7 @@ unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
-    fn handle(&self) -> ash::vk::CommandBuffer {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
@@ -282,7 +282,7 @@ unsafe impl VulkanObject for UnsafeCommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
-    fn handle(&self) -> ash::vk::CommandBuffer {
+    fn handle(&self) -> Self::Handle {
         self.command_buffer
     }
 }

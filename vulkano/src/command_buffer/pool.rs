@@ -324,7 +324,7 @@ unsafe impl VulkanObject for CommandPool {
     type Handle = ash::vk::CommandPool;
 
     #[inline]
-    fn handle(&self) -> ash::vk::CommandPool {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
@@ -483,7 +483,7 @@ unsafe impl VulkanObject for CommandPoolAlloc {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
-    fn handle(&self) -> ash::vk::CommandBuffer {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

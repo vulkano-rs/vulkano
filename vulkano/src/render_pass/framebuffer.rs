@@ -406,7 +406,7 @@ unsafe impl VulkanObject for Framebuffer {
     type Handle = ash::vk::Framebuffer;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Framebuffer {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

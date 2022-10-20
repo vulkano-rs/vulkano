@@ -1077,7 +1077,7 @@ unsafe impl VulkanObject for Fence {
     type Handle = ash::vk::Fence;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Fence {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

@@ -485,7 +485,7 @@ unsafe impl VulkanObject for SamplerYcbcrConversion {
     type Handle = ash::vk::SamplerYcbcrConversion;
 
     #[inline]
-    fn handle(&self) -> ash::vk::SamplerYcbcrConversion {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

@@ -503,7 +503,7 @@ unsafe impl VulkanObject for UnsafeBuffer {
     type Handle = ash::vk::Buffer;
 
     #[inline]
-    fn handle(&self) -> ash::vk::Buffer {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
