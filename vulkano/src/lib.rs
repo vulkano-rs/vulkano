@@ -139,6 +139,19 @@ pub unsafe trait VulkanObject {
     fn handle(&self) -> Self::Handle;
 }
 
+unsafe impl<T, U> VulkanObject for T
+where
+    T: SafeDeref<Target = U>,
+    U: VulkanObject + ?Sized,
+{
+    type Handle = U::Handle;
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        (**self).handle()
+    }
+}
+
 /// Error type returned by most Vulkan functions.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum OomError {

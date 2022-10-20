@@ -18,9 +18,11 @@ use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     command_buffer::{
         pool::CommandPoolAlloc,
-        synced::{BufferFinalState, BufferUse, ImageFinalState, ImageUse},
+        synced::{BufferUse, ImageUse},
         sys::{CommandBufferBeginInfo, UnsafeCommandBufferBuilder},
-        CommandBufferExecError, CommandBufferLevel,
+        CommandBufferBufferRangeUsage, CommandBufferBufferUsage, CommandBufferExecError,
+        CommandBufferImageRangeUsage, CommandBufferImageUsage, CommandBufferLevel,
+        CommandBufferResourcesUsage, FirstResourceUse,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned},
@@ -176,8 +178,8 @@ impl SyncCommandBufferBuilder {
 
     /// Returns the binding/setting state.
     #[inline]
-    pub fn state(&self) -> CommandBufferState<'_> {
-        CommandBufferState {
+    pub fn state(&self) -> CommandBufferBuilderState<'_> {
+        CommandBufferBuilderState {
             current_state: &self.current_state,
         }
     }
@@ -789,70 +791,94 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        // Build the final resources states.
-        let buffers2: HashMap<_, _> = self
-            .buffers2
-            .into_iter()
-            .map(|(resource, range_map)| {
-                let range_map = range_map
-                    .into_iter()
-                    .filter(|(_range, state)| !state.resource_uses.is_empty())
-                    .map(|(range, state)| {
-                        let state = BufferFinalState {
-                            resource_uses: state.resource_uses,
-                            final_stages: state.memory.stages,
-                            final_access: state.memory.access,
-                            exclusive: state.exclusive_any,
-                        };
+        let resource_usage = CommandBufferResourcesUsage {
+            buffers: self
+                .buffers2
+                .into_iter()
+                .map(|(buffer, ranges)| CommandBufferBufferUsage {
+                    buffer,
+                    ranges: ranges
+                        .into_iter()
+                        .filter(|(_range, state)| !state.resource_uses.is_empty())
+                        .map(|(range, state)| {
+                            let first_use = state.resource_uses.into_iter().next().unwrap();
+                            (
+                                range,
+                                CommandBufferBufferRangeUsage {
+                                    first_use: FirstResourceUse {
+                                        command_index: first_use.command_index,
+                                        command_name: self.commands[first_use.command_index].name(),
+                                        description: first_use.name,
+                                    },
+                                    mutable: state.exclusive_any,
+                                    final_stages: state.memory.stages,
+                                    final_access: state.memory.access,
+                                },
+                            )
+                        })
+                        .collect(),
+                })
+                .collect(),
+            images: self
+                .images2
+                .into_iter()
+                .map(|(image, ranges)| CommandBufferImageUsage {
+                    image,
+                    ranges: ranges
+                        .into_iter()
+                        .filter(|(_range, state)| {
+                            !state.resource_uses.is_empty()
+                                || (self.level == CommandBufferLevel::Primary
+                                    && state.current_layout != state.final_layout)
+                        })
+                        .map(|(range, mut state)| {
+                            if self.level == CommandBufferLevel::Primary {
+                                state.current_layout = state.final_layout;
+                            }
 
-                        (range, state)
-                    })
-                    .collect();
+                            let first_use = state.resource_uses.into_iter().next().unwrap();
+                            (
+                                range,
+                                CommandBufferImageRangeUsage {
+                                    first_use: FirstResourceUse {
+                                        command_index: first_use.command_index,
+                                        command_name: self.commands[first_use.command_index].name(),
+                                        description: first_use.name,
+                                    },
+                                    mutable: state.exclusive_any,
+                                    final_stages: state.memory.stages,
+                                    final_access: state.memory.access,
+                                    expected_layout: state.initial_layout,
+                                    final_layout: state.current_layout,
+                                },
+                            )
+                        })
+                        .collect(),
+                })
+                .collect(),
+        };
 
-                (resource, range_map)
-            })
+        let buffer_indices: HashMap<_, _> = resource_usage
+            .buffers
+            .iter()
+            .enumerate()
+            .map(|(index, usage)| (usage.buffer.clone(), index))
             .collect();
-
-        let images2: HashMap<_, _> = self
-            .images2
-            .into_iter()
-            .map(|(resource, range_map)| {
-                let range_map = range_map
-                    .into_iter()
-                    .filter(|(_range, state)| {
-                        !state.resource_uses.is_empty()
-                            || (self.level == CommandBufferLevel::Primary
-                                && state.current_layout != state.final_layout)
-                    })
-                    .map(|(range, mut state)| {
-                        if self.level == CommandBufferLevel::Primary {
-                            state.current_layout = state.final_layout;
-                        }
-
-                        let state = ImageFinalState {
-                            resource_uses: state.resource_uses,
-                            final_stages: state.memory.stages,
-                            final_access: state.memory.access,
-                            exclusive: state.exclusive_any,
-                            initial_layout: state.initial_layout,
-                            final_layout: state.current_layout,
-                        };
-
-                        (range, state)
-                    })
-                    .collect();
-
-                (resource, range_map)
-            })
+        let image_indices: HashMap<_, _> = resource_usage
+            .images
+            .iter()
+            .enumerate()
+            .map(|(index, usage)| (usage.image.clone(), index))
             .collect();
 
         Ok(SyncCommandBuffer {
             inner: self.inner.build()?,
             buffers: self.buffers,
             images: self.images,
-            buffers2,
-            images2,
-            commands: self.commands,
+            resources_usage: resource_usage,
+            buffer_indices,
+            image_indices,
+            _commands: self.commands,
             _barriers: self.barriers,
         })
     }
@@ -1112,11 +1138,11 @@ impl SetOrPush {
 
 /// Allows you to retrieve the current state of a command buffer builder.
 #[derive(Clone, Copy)]
-pub struct CommandBufferState<'a> {
+pub struct CommandBufferBuilderState<'a> {
     current_state: &'a CurrentState,
 }
 
-impl<'a> CommandBufferState<'a> {
+impl<'a> CommandBufferBuilderState<'a> {
     /// Returns the descriptor set currently bound to a given set number, or `None` if nothing has
     /// been bound yet.
     #[inline]

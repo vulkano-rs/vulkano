@@ -48,7 +48,7 @@
 //! ```
 //! use vulkano::command_buffer::AutoCommandBufferBuilder;
 //! use vulkano::command_buffer::CommandBufferUsage;
-//! use vulkano::command_buffer::PrimaryCommandBuffer;
+//! use vulkano::command_buffer::PrimaryCommandBufferAbstract;
 //! use vulkano::command_buffer::SubpassContents;
 //!
 //! # #[repr(C)]
@@ -115,20 +115,23 @@ pub use self::{
         CopyError, CopyErrorResource,
     },
     traits::{
-        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,
-        SecondaryCommandBuffer,
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
+        SecondaryCommandBufferAbstract,
     },
 };
 use crate::{
+    buffer::sys::UnsafeBuffer,
     format::Format,
-    image::SampleCount,
+    image::{sys::UnsafeImage, ImageLayout, SampleCount},
     macros::vulkan_enum,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
+    range_map::RangeMap,
     render_pass::{Framebuffer, Subpass},
-    sync::{PipelineStages, Semaphore},
+    sync::{AccessFlags, PipelineStages, Semaphore},
+    DeviceSize,
 };
 use bytemuck::{Pod, Zeroable};
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 pub mod allocator;
 mod auto;
@@ -410,7 +413,7 @@ pub struct SubmitInfo {
     /// The command buffers to execute.
     ///
     /// The default value is empty.
-    pub command_buffers: Vec<Arc<dyn PrimaryCommandBuffer>>,
+    pub command_buffers: Vec<Arc<dyn PrimaryCommandBufferAbstract>>,
 
     /// The semaphores to signal after the execution of this batch of command buffer operations
     /// has completed.
@@ -469,4 +472,72 @@ impl SemaphoreSubmitInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+#[derive(Debug, Default)]
+pub struct CommandBufferState {
+    has_been_submitted: bool,
+    pending_submits: u32,
+}
+
+impl CommandBufferState {
+    pub(crate) fn has_been_submitted(&self) -> bool {
+        self.has_been_submitted
+    }
+
+    pub(crate) fn is_submit_pending(&self) -> bool {
+        self.pending_submits != 0
+    }
+
+    pub(crate) unsafe fn add_queue_submit(&mut self) {
+        self.has_been_submitted = true;
+        self.pending_submits += 1;
+    }
+
+    pub(crate) unsafe fn set_submit_finished(&mut self) {
+        self.pending_submits -= 1;
+    }
+}
+
+#[derive(Debug)]
+pub struct CommandBufferResourcesUsage {
+    pub(crate) buffers: Vec<CommandBufferBufferUsage>,
+    pub(crate) images: Vec<CommandBufferImageUsage>,
+}
+
+#[derive(Debug)]
+pub(crate) struct CommandBufferBufferUsage {
+    pub(crate) buffer: Arc<UnsafeBuffer>,
+    pub(crate) ranges: RangeMap<DeviceSize, CommandBufferBufferRangeUsage>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CommandBufferBufferRangeUsage {
+    pub(crate) first_use: FirstResourceUse,
+    pub(crate) mutable: bool,
+    pub(crate) final_stages: PipelineStages,
+    pub(crate) final_access: AccessFlags,
+}
+
+#[derive(Debug)]
+pub(crate) struct CommandBufferImageUsage {
+    pub(crate) image: Arc<UnsafeImage>,
+    pub(crate) ranges: RangeMap<DeviceSize, CommandBufferImageRangeUsage>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CommandBufferImageRangeUsage {
+    pub(crate) first_use: FirstResourceUse,
+    pub(crate) mutable: bool,
+    pub(crate) final_stages: PipelineStages,
+    pub(crate) final_access: AccessFlags,
+    pub(crate) expected_layout: ImageLayout,
+    pub(crate) final_layout: ImageLayout,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FirstResourceUse {
+    pub(crate) command_index: usize,
+    pub(crate) command_name: &'static str,
+    pub(crate) description: Cow<'static, str>,
 }

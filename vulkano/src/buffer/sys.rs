@@ -738,10 +738,7 @@ impl BufferState {
         }
     }
 
-    pub(crate) fn check_cpu_write(
-        &mut self,
-        range: Range<DeviceSize>,
-    ) -> Result<(), WriteLockError> {
+    pub(crate) fn check_cpu_write(&self, range: Range<DeviceSize>) -> Result<(), WriteLockError> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
                 CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
@@ -786,7 +783,7 @@ impl BufferState {
         }
     }
 
-    pub(crate) fn check_gpu_read(&mut self, range: Range<DeviceSize>) -> Result<(), AccessError> {
+    pub(crate) fn check_gpu_read(&self, range: Range<DeviceSize>) -> Result<(), AccessError> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
                 CurrentAccess::Shared { .. } => (),
@@ -823,7 +820,7 @@ impl BufferState {
         }
     }
 
-    pub(crate) fn check_gpu_write(&mut self, range: Range<DeviceSize>) -> Result<(), AccessError> {
+    pub(crate) fn check_gpu_write(&self, range: Range<DeviceSize>) -> Result<(), AccessError> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
                 CurrentAccess::Shared {
