@@ -20,13 +20,13 @@ use vulkano::{
         RenderPassBeginInfo, SubpassContents,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned,
-        QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             depth_stencil::DepthStencilState,
@@ -154,6 +154,8 @@ fn main() {
         .unwrap()
     };
 
+    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+
     #[repr(C)]
     #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
     struct Vertex {
@@ -209,7 +211,7 @@ fn main() {
         },
     ];
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -325,7 +327,12 @@ fn main() {
 
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
+    let mut framebuffers = window_size_dependent_setup(
+        &images,
+        render_pass.clone(),
+        &mut viewport,
+        &memory_allocator,
+    );
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -363,8 +370,12 @@ fn main() {
                 };
 
                 swapchain = new_swapchain;
-                framebuffers =
-                    window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
+                framebuffers = window_size_dependent_setup(
+                    &new_images,
+                    render_pass.clone(),
+                    &mut viewport,
+                    &memory_allocator,
+                );
                 recreate_swapchain = false;
             }
 
@@ -542,13 +553,14 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
+    memory_allocator: &StandardMemoryAllocator,
 ) -> Vec<Arc<Framebuffer>> {
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     let depth_attachment = ImageView::new_default(
         AttachmentImage::with_usage(
-            render_pass.device().clone(),
+            memory_allocator,
             dimensions,
             Format::D16_UNORM,
             ImageUsage {

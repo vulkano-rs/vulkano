@@ -21,6 +21,7 @@ use vulkano::{
     device::Queue,
     image::ImageViewAbstract,
     impl_vertex,
+    memory::allocator::MemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -81,12 +82,13 @@ impl PixelsDrawPipeline {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
+        memory_allocator: &impl MemoryAllocator,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     ) -> PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let vertex_buffer = CpuAccessibleBuffer::<[TexturedVertex]>::from_iter(
-            gfx_queue.device().clone(),
+            memory_allocator,
             BufferUsage {
                 vertex_buffer: true,
                 ..BufferUsage::empty()
@@ -96,7 +98,7 @@ impl PixelsDrawPipeline {
         )
         .unwrap();
         let index_buffer = CpuAccessibleBuffer::<[u32]>::from_iter(
-            gfx_queue.device().clone(),
+            memory_allocator,
             BufferUsage {
                 index_buffer: true,
                 ..BufferUsage::empty()

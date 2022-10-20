@@ -21,6 +21,7 @@ use vulkano::{
     },
     device::Queue,
     image::ImageAccess,
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::GpuFuture,
 };
@@ -29,6 +30,7 @@ use vulkano_util::renderer::DeviceImageView;
 pub struct FractalComputePipeline {
     queue: Arc<Queue>,
     pipeline: Arc<ComputePipeline>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     palette: Arc<CpuAccessibleBuffer<[[f32; 4]]>>,
@@ -39,6 +41,7 @@ pub struct FractalComputePipeline {
 impl FractalComputePipeline {
     pub fn new(
         queue: Arc<Queue>,
+        memory_allocator: Arc<StandardMemoryAllocator>,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     ) -> FractalComputePipeline {
@@ -53,7 +56,7 @@ impl FractalComputePipeline {
         ];
         let palette_size = colors.len() as i32;
         let palette = CpuAccessibleBuffer::from_iter(
-            queue.device().clone(),
+            &*memory_allocator,
             BufferUsage {
                 storage_buffer: true,
                 ..BufferUsage::empty()
@@ -79,6 +82,7 @@ impl FractalComputePipeline {
         FractalComputePipeline {
             queue,
             pipeline,
+            memory_allocator,
             command_buffer_allocator,
             descriptor_set_allocator,
             palette,
@@ -98,7 +102,7 @@ impl FractalComputePipeline {
             colors.push([r, g, b, a]);
         }
         self.palette = CpuAccessibleBuffer::from_iter(
-            self.queue.device().clone(),
+            &*self.memory_allocator,
             BufferUsage {
                 storage_buffer: true,
                 ..BufferUsage::empty()

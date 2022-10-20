@@ -30,6 +30,7 @@ use vulkano::{
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -180,6 +181,8 @@ fn main() {
         .unwrap()
     };
 
+    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+
     #[repr(C)]
     #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
     struct Vertex {
@@ -199,7 +202,7 @@ fn main() {
         },
     ];
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()

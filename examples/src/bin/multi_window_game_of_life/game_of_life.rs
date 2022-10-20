@@ -13,6 +13,7 @@ use std::{rc::Rc, sync::Arc};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::image::{ImageUsage, StorageImage};
+use vulkano::memory::allocator::MemoryAllocator;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer},
@@ -40,9 +41,12 @@ pub struct GameOfLifeComputePipeline {
     image: DeviceImageView,
 }
 
-fn rand_grid(compute_queue: &Arc<Queue>, size: [u32; 2]) -> Arc<CpuAccessibleBuffer<[u32]>> {
+fn rand_grid(
+    memory_allocator: &impl MemoryAllocator,
+    size: [u32; 2],
+) -> Arc<CpuAccessibleBuffer<[u32]>> {
     CpuAccessibleBuffer::from_iter(
-        compute_queue.device().clone(),
+        memory_allocator,
         BufferUsage {
             storage_buffer: true,
             ..BufferUsage::empty()
@@ -58,12 +62,13 @@ fn rand_grid(compute_queue: &Arc<Queue>, size: [u32; 2]) -> Arc<CpuAccessibleBuf
 impl GameOfLifeComputePipeline {
     pub fn new(
         compute_queue: Arc<Queue>,
+        memory_allocator: &impl MemoryAllocator,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
         size: [u32; 2],
     ) -> GameOfLifeComputePipeline {
-        let life_in = rand_grid(&compute_queue, size);
-        let life_out = rand_grid(&compute_queue, size);
+        let life_in = rand_grid(memory_allocator, size);
+        let life_out = rand_grid(memory_allocator, size);
 
         let compute_life_pipeline = {
             let shader = compute_life_cs::load(compute_queue.device().clone()).unwrap();
@@ -78,6 +83,7 @@ impl GameOfLifeComputePipeline {
         };
 
         let image = StorageImage::general_purpose_image_view(
+            memory_allocator,
             compute_queue.clone(),
             size,
             Format::R8G8B8A8_UNORM,

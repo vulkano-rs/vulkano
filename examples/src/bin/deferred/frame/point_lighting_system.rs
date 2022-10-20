@@ -22,6 +22,7 @@ use vulkano::{
     device::Queue,
     image::ImageViewAbstract,
     impl_vertex,
+    memory::allocator::MemoryAllocator,
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
@@ -48,6 +49,7 @@ impl PointLightingSystem {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
+        memory_allocator: &impl MemoryAllocator,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
     ) -> PointLightingSystem {
@@ -66,7 +68,7 @@ impl PointLightingSystem {
         ];
         let vertex_buffer = {
             CpuAccessibleBuffer::from_iter(
-                gfx_queue.device().clone(),
+                memory_allocator,
                 BufferUsage {
                     vertex_buffer: true,
                     ..BufferUsage::empty()

@@ -17,6 +17,7 @@ use vulkano::{
     },
     device::Queue,
     impl_vertex,
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             depth_stencil::DepthStencilState,
@@ -42,6 +43,7 @@ impl TriangleDrawSystem {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
+        memory_allocator: &StandardMemoryAllocator,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     ) -> TriangleDrawSystem {
         let vertices = [
@@ -57,7 +59,7 @@ impl TriangleDrawSystem {
         ];
         let vertex_buffer = {
             CpuAccessibleBuffer::from_iter(
-                gfx_queue.device().clone(),
+                memory_allocator,
                 BufferUsage {
                     vertex_buffer: true,
                     ..BufferUsage::empty()

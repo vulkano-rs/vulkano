@@ -15,6 +15,7 @@ use std::{rc::Rc, sync::Arc};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::device::Queue;
+use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::sync::GpuFuture;
 use vulkano_util::renderer::{DeviceImageView, VulkanoWindowRenderer};
 use vulkano_util::window::WindowDescriptor;
@@ -60,6 +61,9 @@ pub struct FractalApp {
 
 impl FractalApp {
     pub fn new(gfx_queue: Arc<Queue>, image_format: vulkano::format::Format) -> FractalApp {
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(
+            gfx_queue.device().clone(),
+        ));
         let command_buffer_allocator = Rc::new(StandardCommandBufferAllocator::new(
             gfx_queue.device().clone(),
         ));
@@ -70,11 +74,13 @@ impl FractalApp {
         FractalApp {
             fractal_pipeline: FractalComputePipeline::new(
                 gfx_queue.clone(),
+                memory_allocator.clone(),
                 command_buffer_allocator.clone(),
                 descriptor_set_allocator.clone(),
             ),
             place_over_frame: RenderPassPlaceOverFrame::new(
                 gfx_queue,
+                &*memory_allocator,
                 command_buffer_allocator,
                 descriptor_set_allocator,
                 image_format,

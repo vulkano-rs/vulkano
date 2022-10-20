@@ -20,11 +20,13 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned,
+        QueueCreateInfo,
     },
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SwapchainImage},
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::{MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             depth_stencil::DepthStencilState,
@@ -156,8 +158,10 @@ fn main() {
         .unwrap()
     };
 
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &*memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -167,7 +171,7 @@ fn main() {
     )
     .unwrap();
     let normals_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &*memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -177,7 +181,7 @@ fn main() {
     )
     .unwrap();
     let index_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &*memory_allocator,
         BufferUsage {
             index_buffer: true,
             ..BufferUsage::empty()
@@ -188,11 +192,12 @@ fn main() {
     .unwrap();
 
     let uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(
-        device.clone(),
+        memory_allocator.clone(),
         BufferUsage {
             uniform_buffer: true,
             ..BufferUsage::empty()
         },
+        MemoryUsage::Upload,
     );
 
     let vs = vs::load(device.clone()).unwrap();
@@ -221,7 +226,7 @@ fn main() {
     .unwrap();
 
     let (mut pipeline, mut framebuffers) =
-        window_size_dependent_setup(device.clone(), &vs, &fs, &images, render_pass.clone());
+        window_size_dependent_setup(&memory_allocator, &vs, &fs, &images, render_pass.clone());
     let mut recreate_swapchain = false;
 
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -266,7 +271,7 @@ fn main() {
 
                     swapchain = new_swapchain;
                     let (new_pipeline, new_framebuffers) = window_size_dependent_setup(
-                        device.clone(),
+                        &memory_allocator,
                         &vs,
                         &fs,
                         &new_images,
@@ -399,7 +404,7 @@ fn main() {
 
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
-    device: Arc<Device>,
+    memory_allocator: &StandardMemoryAllocator,
     vs: &ShaderModule,
     fs: &ShaderModule,
     images: &[Arc<SwapchainImage>],
@@ -408,7 +413,7 @@ fn window_size_dependent_setup(
     let dimensions = images[0].dimensions().width_height();
 
     let depth_buffer = ImageView::new_default(
-        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
+        AttachmentImage::transient(memory_allocator, dimensions, Format::D16_UNORM).unwrap(),
     )
     .unwrap();
 
@@ -449,7 +454,7 @@ fn window_size_dependent_setup(
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .depth_stencil_state(DepthStencilState::simple_depth_test())
         .render_pass(Subpass::from(render_pass, 0).unwrap())
-        .build(device)
+        .build(memory_allocator.device().clone())
         .unwrap();
 
     (pipeline, framebuffers)

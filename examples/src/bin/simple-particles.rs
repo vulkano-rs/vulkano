@@ -30,6 +30,7 @@ use vulkano::{
     image::{view::ImageView, ImageUsage},
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -317,6 +318,7 @@ fn main() {
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
+    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
@@ -341,7 +343,7 @@ fn main() {
 
         // Create a CPU accessible buffer initialized with the vertex data.
         let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
@@ -353,7 +355,7 @@ fn main() {
 
         // Create a buffer array on the GPU with enough space for `PARTICLE_COUNT` number of `Vertex`.
         let device_local_buffer = DeviceLocalBuffer::<[Vertex]>::array(
-            device.clone(),
+            &memory_allocator,
             PARTICLE_COUNT as vulkano::DeviceSize,
             BufferUsage {
                 storage_buffer: true,
