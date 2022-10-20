@@ -45,10 +45,10 @@ use std::{
 };
 
 /// Contains the swapping system and the images that can be shown on a surface.
-pub struct Swapchain<W> {
+pub struct Swapchain {
     handle: ash::vk::SwapchainKHR,
     device: Arc<Device>,
-    surface: Arc<Surface<W>>,
+    surface: Arc<Surface>,
 
     min_image_count: u32,
     image_format: Format,
@@ -88,10 +88,7 @@ struct ImageEntry {
     undefined_layout: AtomicBool,
 }
 
-impl<W> Swapchain<W>
-where
-    W: Send + Sync,
-{
+impl Swapchain {
     /// Creates a new `Swapchain`.
     ///
     /// This function returns the swapchain plus a list of the images that belong to the
@@ -106,9 +103,9 @@ where
     // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
     pub fn new(
         device: Arc<Device>,
-        surface: Arc<Surface<W>>,
+        surface: Arc<Surface>,
         mut create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError> {
         Self::validate(&device, &surface, &mut create_info)?;
 
         // Checking that the surface doesn't already have a swapchain.
@@ -181,7 +178,7 @@ where
     pub fn recreate(
         self: &Arc<Self>,
         mut create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError> {
         Self::validate(&self.device, &self.surface, &mut create_info)?;
 
         {
@@ -267,7 +264,7 @@ where
 
     fn validate(
         device: &Device,
-        surface: &Surface<W>,
+        surface: &Surface,
         create_info: &mut SwapchainCreateInfo,
     ) -> Result<(), SwapchainCreationError> {
         let &mut SwapchainCreateInfo {
@@ -554,9 +551,9 @@ where
 
     unsafe fn create(
         device: &Device,
-        surface: &Surface<W>,
+        surface: &Surface,
         create_info: &SwapchainCreateInfo,
-        old_swapchain: Option<&Swapchain<W>>,
+        old_swapchain: Option<&Swapchain>,
     ) -> Result<(ash::vk::SwapchainKHR, Vec<ash::vk::Image>), SwapchainCreationError> {
         let &SwapchainCreateInfo {
             min_image_count,
@@ -746,8 +743,61 @@ where
     }
 
     /// Returns the saved Surface, from the Swapchain creation.
-    pub fn surface(&self) -> &Arc<Surface<W>> {
+    pub fn surface(&self) -> &Arc<Surface> {
         &self.surface
+    }
+
+    /// Returns one of the images that belongs to this swapchain.
+    #[inline]
+    pub fn raw_image(&self, image_index: u32) -> Option<ImageInner<'_>> {
+        self.images.get(image_index as usize).map(|i| ImageInner {
+            image: &i.image,
+            first_layer: 0,
+            num_layers: self.image_array_layers,
+            first_mipmap_level: 0,
+            num_mipmap_levels: 1,
+        })
+    }
+
+    /// Returns the number of images of the swapchain.
+    #[inline]
+    pub fn image_count(&self) -> u32 {
+        self.images.len() as u32
+    }
+
+    /// Returns the format of the images of the swapchain.
+    #[inline]
+    pub fn image_format(&self) -> Format {
+        self.image_format
+    }
+
+    /// Returns the color space of the images of the swapchain.
+    #[inline]
+    pub fn image_color_space(&self) -> ColorSpace {
+        self.image_color_space
+    }
+
+    /// Returns the extent of the images of the swapchain.
+    #[inline]
+    pub fn image_extent(&self) -> [u32; 2] {
+        self.image_extent
+    }
+
+    /// Returns the number of array layers of the images of the swapchain.
+    #[inline]
+    pub fn image_array_layers(&self) -> u32 {
+        self.image_array_layers
+    }
+
+    #[inline]
+    pub(crate) unsafe fn full_screen_exclusive_held(&self) -> &AtomicBool {
+        &self.full_screen_exclusive_held
+    }
+
+    #[inline]
+    pub(crate) unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool {
+        let present_id = u64::from(present_id);
+        self.prev_present_id.fetch_max(present_id, Ordering::SeqCst) < present_id
     }
 
     /// Returns the pre-transform that was passed when creating the swapchain.
@@ -867,7 +917,7 @@ where
     }
 }
 
-impl<W> Drop for Swapchain<W> {
+impl Drop for Swapchain {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
@@ -881,7 +931,7 @@ impl<W> Drop for Swapchain<W> {
     }
 }
 
-unsafe impl<W> VulkanObject for Swapchain<W> {
+unsafe impl VulkanObject for Swapchain {
     type Object = ash::vk::SwapchainKHR;
 
     fn internal_object(&self) -> ash::vk::SwapchainKHR {
@@ -889,28 +939,28 @@ unsafe impl<W> VulkanObject for Swapchain<W> {
     }
 }
 
-unsafe impl<W> DeviceOwned for Swapchain<W> {
+unsafe impl DeviceOwned for Swapchain {
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl<W> PartialEq for Swapchain<W> {
+impl PartialEq for Swapchain {
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.device() == other.device()
     }
 }
 
-impl<W> Eq for Swapchain<W> {}
+impl Eq for Swapchain {}
 
-impl<W> Hash for Swapchain<W> {
+impl Hash for Swapchain {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
     }
 }
 
-impl<W> Debug for Swapchain<W> {
+impl Debug for Swapchain {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
@@ -957,95 +1007,6 @@ impl<W> Debug for Swapchain<W> {
             .field("images", &images)
             .field("retired", &retired)
             .finish()
-    }
-}
-
-/// Trait for types that represent the GPU can access an image view.
-pub unsafe trait SwapchainAbstract:
-    VulkanObject<Object = ash::vk::SwapchainKHR> + DeviceOwned + Debug + Send + Sync
-{
-    /// Returns one of the images that belongs to this swapchain.
-    fn raw_image(&self, index: u32) -> Option<ImageInner<'_>>;
-
-    /// Returns the number of images of the swapchain.
-    fn image_count(&self) -> u32;
-
-    /// Returns the format of the images of the swapchain.
-    fn image_format(&self) -> Format;
-
-    /// Returns the color space of the images of the swapchain.
-    fn image_color_space(&self) -> ColorSpace;
-
-    /// Returns the extent of the images of the swapchain.
-    fn image_extent(&self) -> [u32; 2];
-
-    /// Returns the number of array layers of the images of the swapchain.
-    fn image_array_layers(&self) -> u32;
-
-    #[doc(hidden)]
-    unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool;
-
-    #[doc(hidden)]
-    unsafe fn full_screen_exclusive_held(&self) -> &AtomicBool;
-}
-
-unsafe impl<W> SwapchainAbstract for Swapchain<W>
-where
-    W: Send + Sync,
-{
-    fn raw_image(&self, image_index: u32) -> Option<ImageInner<'_>> {
-        self.images.get(image_index as usize).map(|i| ImageInner {
-            image: &i.image,
-            first_layer: 0,
-            num_layers: self.image_array_layers,
-            first_mipmap_level: 0,
-            num_mipmap_levels: 1,
-        })
-    }
-
-    fn image_count(&self) -> u32 {
-        self.images.len() as u32
-    }
-
-    fn image_format(&self) -> Format {
-        self.image_format
-    }
-
-    fn image_color_space(&self) -> ColorSpace {
-        self.image_color_space
-    }
-
-    fn image_extent(&self) -> [u32; 2] {
-        self.image_extent
-    }
-
-    fn image_array_layers(&self) -> u32 {
-        self.image_array_layers
-    }
-
-    unsafe fn full_screen_exclusive_held(&self) -> &AtomicBool {
-        &self.full_screen_exclusive_held
-    }
-
-    unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool {
-        let present_id = u64::from(present_id);
-        self.prev_present_id.fetch_max(present_id, Ordering::SeqCst) < present_id
-    }
-}
-
-impl PartialEq for dyn SwapchainAbstract {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.internal_object() == other.internal_object() && self.device() == other.device()
-    }
-}
-
-impl Eq for dyn SwapchainAbstract {}
-
-impl Hash for dyn SwapchainAbstract {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.internal_object().hash(state);
-        self.device().hash(state);
     }
 }
 
@@ -1538,10 +1499,10 @@ impl From<OomError> for FullScreenExclusiveError {
 /// The second field in the tuple in the Ok result is a bool represent if the acquisition was
 /// suboptimal. In this case the acquired image is still usable, but the swapchain should be
 /// recreated as the Surface's properties no longer match the swapchain.
-pub fn acquire_next_image<W>(
-    swapchain: Arc<Swapchain<W>>,
+pub fn acquire_next_image(
+    swapchain: Arc<Swapchain>,
     timeout: Option<Duration>,
-) -> Result<(u32, bool, SwapchainAcquireFuture<W>), AcquireError> {
+) -> Result<(u32, bool, SwapchainAcquireFuture), AcquireError> {
     let semaphore = Arc::new(Semaphore::from_pool(swapchain.device.clone())?);
     let fence = Fence::from_pool(swapchain.device.clone())?;
 
@@ -1617,8 +1578,8 @@ where
 /// Returns a bool to represent if the presentation was suboptimal. In this case the swapchain is
 /// still usable, but the swapchain should be recreated as the Surface's properties no longer match
 /// the swapchain.
-pub fn wait_for_present<W>(
-    swapchain: Arc<Swapchain<W>>,
+pub fn wait_for_present(
+    swapchain: Arc<Swapchain>,
     present_id: u64,
     timeout: Option<Duration>,
 ) -> Result<bool, PresentWaitError> {
@@ -1675,8 +1636,8 @@ pub fn wait_for_present<W>(
 
 /// Represents the moment when the GPU will have access to a swapchain image.
 #[must_use]
-pub struct SwapchainAcquireFuture<W> {
-    swapchain: Arc<Swapchain<W>>,
+pub struct SwapchainAcquireFuture {
+    swapchain: Arc<Swapchain>,
     image_index: u32,
     // Semaphore that is signalled when the acquire is complete. Empty if the acquire has already
     // happened.
@@ -1687,22 +1648,19 @@ pub struct SwapchainAcquireFuture<W> {
     finished: AtomicBool,
 }
 
-impl<W> SwapchainAcquireFuture<W> {
+impl SwapchainAcquireFuture {
     /// Returns the index of the image in the list of images returned when creating the swapchain.
     pub fn image_index(&self) -> u32 {
         self.image_index
     }
 
     /// Returns the corresponding swapchain.
-    pub fn swapchain(&self) -> &Arc<Swapchain<W>> {
+    pub fn swapchain(&self) -> &Arc<Swapchain> {
         &self.swapchain
     }
 }
 
-unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W>
-where
-    W: Send + Sync,
-{
+unsafe impl GpuFuture for SwapchainAcquireFuture {
     fn cleanup_finished(&mut self) {}
 
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
@@ -1795,7 +1753,7 @@ where
     }
 }
 
-impl<W> Drop for SwapchainAcquireFuture<W> {
+impl Drop for SwapchainAcquireFuture {
     fn drop(&mut self) {
         if let Some(ref fence) = self.fence {
             fence.wait(None).unwrap(); // TODO: handle error?
@@ -1807,7 +1765,7 @@ impl<W> Drop for SwapchainAcquireFuture<W> {
     }
 }
 
-unsafe impl<W> DeviceOwned for SwapchainAcquireFuture<W> {
+unsafe impl DeviceOwned for SwapchainAcquireFuture {
     fn device(&self) -> &Arc<Device> {
         &self.swapchain.device
     }
@@ -2028,7 +1986,7 @@ where
     }
 
     /// Returns the corresponding swapchain.
-    pub fn swapchain(&self) -> &Arc<dyn SwapchainAbstract> {
+    pub fn swapchain(&self) -> &Arc<Swapchain> {
         &self.swapchain_info.swapchain
     }
 }
@@ -2274,8 +2232,8 @@ pub struct AcquiredImage {
 /// - The semaphore and/or the fence must be kept alive until it is signaled.
 /// - The swapchain must not have been replaced by being passed as the old swapchain when creating
 ///   a new one.
-pub unsafe fn acquire_next_image_raw<W>(
-    swapchain: &Swapchain<W>,
+pub unsafe fn acquire_next_image_raw(
+    swapchain: &Swapchain,
     timeout: Option<Duration>,
     semaphore: Option<&Semaphore>,
     fence: Option<&Fence>,

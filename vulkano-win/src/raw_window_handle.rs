@@ -5,7 +5,7 @@ use crate::get_metal_layer_macos;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 use vulkano::{
     instance::Instance,
     swapchain::{Surface, SurfaceCreationError},
@@ -13,24 +13,21 @@ use vulkano::{
 
 /// Creates a vulkan surface from a generic window
 /// which implements HasRawWindowHandle and thus can reveal the os-dependent handle.
-pub fn create_surface_from_handle<W>(
-    window: W,
+pub fn create_surface_from_handle(
+    window: Arc<impl Any + Send + Sync + HasRawWindowHandle + HasRawDisplayHandle>,
     instance: Arc<Instance>,
-) -> Result<Arc<Surface<W>>, SurfaceCreationError>
-where
-    W: HasRawWindowHandle + HasRawDisplayHandle,
-{
+) -> Result<Arc<Surface>, SurfaceCreationError> {
     unsafe {
         match window.raw_window_handle() {
             RawWindowHandle::AndroidNdk(h) => {
-                Surface::from_android(instance, h.a_native_window, window)
+                Surface::from_android(instance, h.a_native_window, Some(window))
             }
             RawWindowHandle::UiKit(_h) => {
                 #[cfg(target_os = "ios")]
                 {
                     // Ensure the layer is CAMetalLayer
                     let layer = get_metal_layer_ios(_h.ui_view);
-                    Surface::from_ios(instance, layer, window)
+                    Surface::from_ios(instance, layer, Some(window))
                 }
                 #[cfg(not(target_os = "ios"))]
                 {
@@ -42,7 +39,7 @@ where
                 {
                     // Ensure the layer is CAMetalLayer
                     let layer = get_metal_layer_macos(_h.ns_view);
-                    Surface::from_mac_os(instance, layer as *const (), window)
+                    Surface::from_mac_os(instance, layer as *const (), Some(window))
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
@@ -54,22 +51,24 @@ where
                     RawDisplayHandle::Wayland(d) => d,
                     _ => panic!("Invalid RawDisplayHandle"),
                 };
-                Surface::from_wayland(instance, d.display, h.surface, window)
+                Surface::from_wayland(instance, d.display, h.surface, Some(window))
             }
-            RawWindowHandle::Win32(h) => Surface::from_win32(instance, h.hinstance, h.hwnd, window),
+            RawWindowHandle::Win32(h) => {
+                Surface::from_win32(instance, h.hinstance, h.hwnd, Some(window))
+            }
             RawWindowHandle::Xcb(h) => {
                 let d = match window.raw_display_handle() {
                     RawDisplayHandle::Xcb(d) => d,
                     _ => panic!("Invalid RawDisplayHandle"),
                 };
-                Surface::from_xcb(instance, d.connection, h.window, window)
+                Surface::from_xcb(instance, d.connection, h.window, Some(window))
             }
             RawWindowHandle::Xlib(h) => {
                 let d = match window.raw_display_handle() {
                     RawDisplayHandle::Xlib(d) => d,
                     _ => panic!("Invalid RawDisplayHandle"),
                 };
-                Surface::from_xlib(instance, d.display, h.window, window)
+                Surface::from_xlib(instance, d.display, h.window, Some(window))
             }
             RawWindowHandle::Web(_) => unimplemented!(),
             _ => unimplemented!(),

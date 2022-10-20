@@ -10,7 +10,7 @@
 use super::{traits::ImageContent, ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout};
 use crate::{
     device::{Device, DeviceOwned},
-    swapchain::{Swapchain, SwapchainAbstract},
+    swapchain::Swapchain,
     OomError,
 };
 use std::{
@@ -32,22 +32,19 @@ use std::{
 /// the screen. Once an image has been presented, it can no longer be used unless it is acquired
 /// again.
 #[derive(Debug)]
-pub struct SwapchainImage<W> {
-    swapchain: Arc<Swapchain<W>>,
+pub struct SwapchainImage {
+    swapchain: Arc<Swapchain>,
     image_index: u32,
 }
 
-impl<W> SwapchainImage<W>
-where
-    W: Send + Sync,
-{
+impl SwapchainImage {
     /// Builds a `SwapchainImage` from raw components.
     ///
     /// This is an internal method that you shouldn't call.
     pub unsafe fn from_raw(
-        swapchain: Arc<Swapchain<W>>,
+        swapchain: Arc<Swapchain>,
         image_index: u32,
-    ) -> Result<Arc<SwapchainImage<W>>, OomError> {
+    ) -> Result<Arc<SwapchainImage>, OomError> {
         Ok(Arc::new(SwapchainImage {
             swapchain,
             image_index,
@@ -55,7 +52,7 @@ where
     }
 
     /// Returns the swapchain this image belongs to.
-    pub fn swapchain(&self) -> &Arc<Swapchain<W>> {
+    pub fn swapchain(&self) -> &Arc<Swapchain> {
         &self.swapchain
     }
 
@@ -72,16 +69,13 @@ where
     }
 }
 
-unsafe impl<W> DeviceOwned for SwapchainImage<W> {
+unsafe impl DeviceOwned for SwapchainImage {
     fn device(&self) -> &Arc<Device> {
         self.swapchain.device()
     }
 }
 
-unsafe impl<W> ImageAccess for SwapchainImage<W>
-where
-    W: Send + Sync,
-{
+unsafe impl ImageAccess for SwapchainImage {
     fn inner(&self) -> ImageInner<'_> {
         self.my_image()
     }
@@ -112,30 +106,21 @@ where
     }
 }
 
-unsafe impl<P, W> ImageContent<P> for SwapchainImage<W>
-where
-    W: Send + Sync,
-{
+unsafe impl<P> ImageContent<P> for SwapchainImage {
     fn matches_format(&self) -> bool {
         true // FIXME:
     }
 }
 
-impl<W> PartialEq for SwapchainImage<W>
-where
-    W: Send + Sync,
-{
+impl PartialEq for SwapchainImage {
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
 }
 
-impl<W> Eq for SwapchainImage<W> where W: Send + Sync {}
+impl Eq for SwapchainImage {}
 
-impl<W> Hash for SwapchainImage<W>
-where
-    W: Send + Sync,
-{
+impl Hash for SwapchainImage {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }

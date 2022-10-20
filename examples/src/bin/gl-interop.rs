@@ -47,8 +47,8 @@ mod linux {
         render_pass::{Framebuffer, RenderPass, Subpass},
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
         swapchain::{
-            AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
-            SwapchainCreationError, SwapchainPresentInfo,
+            AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+            SwapchainPresentInfo,
         },
         sync::{
             now, ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, FlushError, GpuFuture,
@@ -291,9 +291,10 @@ mod linux {
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
 
                     if recreate_swapchain {
+                        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
                         let (new_swapchain, new_images) =
                             match swapchain.recreate(SwapchainCreateInfo {
-                                image_extent: surface.window().inner_size().into(),
+                                image_extent: window.inner_size().into(),
                                 ..swapchain.create_info()
                             }) {
                                 Ok(r) => r,
@@ -407,8 +408,8 @@ mod linux {
     ) -> (
         Arc<vulkano::device::Device>,
         Arc<vulkano::instance::Instance>,
-        Arc<Swapchain<winit::window::Window>>,
-        Arc<vulkano::swapchain::Surface<winit::window::Window>>,
+        Arc<Swapchain>,
+        Arc<vulkano::swapchain::Surface>,
         vulkano::pipeline::graphics::viewport::Viewport,
         Arc<Queue>,
         Arc<RenderPass>,
@@ -536,6 +537,7 @@ mod linux {
                     .unwrap()[0]
                     .0,
             );
+            let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
             Swapchain::new(
                 device.clone(),
@@ -543,7 +545,7 @@ mod linux {
                 SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count,
                     image_format,
-                    image_extent: surface.window().inner_size().into(),
+                    image_extent: window.inner_size().into(),
                     image_usage: ImageUsage {
                         color_attachment: true,
                         ..ImageUsage::empty()
@@ -673,7 +675,7 @@ mod linux {
     }
 
     fn window_size_dependent_setup(
-        images: &[Arc<SwapchainImage<Window>>],
+        images: &[Arc<SwapchainImage>],
         render_pass: Arc<RenderPass>,
         viewport: &mut Viewport,
     ) -> Vec<Arc<Framebuffer>> {
