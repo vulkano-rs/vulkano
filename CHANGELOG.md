@@ -47,6 +47,9 @@ Changes to buffer and image uploads:
 Changes to buffers:
 - When binding memory to a buffer with the `shader_device_address` usage, and the `ext_buffer_device_address` extension isn't enabled, the memory must now have been allocated with the `MemoryAllocateFlags::device_address` flag set.
 
+Changes to the `VulkanObject` trait:
+- The method `internal_object` is renamed to `handle`, and the associated type `Object` is renamed to `Handle`.
+
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
 - Added the `device_coherent`, `device_uncached` and `rdma_capable` flags to `MemoryPropertyFlags`, and improved the documentation of all flags with additional usage advice.
