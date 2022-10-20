@@ -27,8 +27,8 @@ use crate::{
         SparseImageFormatProperties,
     },
     memory::{
-        DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-        MemoryRequirements,
+        allocator::AllocationCreationError, DeviceMemory, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes, MemoryRequirements,
     },
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
@@ -1871,11 +1871,11 @@ impl Default for UnsafeImageCreateInfo {
     }
 }
 
-/// Error that can happen when creating an instance.
+/// Error that can happen when creating an image.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageCreationError {
     /// Allocating memory failed.
-    AllocError(DeviceMemoryError),
+    AllocError(AllocationCreationError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -2128,12 +2128,12 @@ impl Display for ImageCreationError {
 
 impl From<OomError> for ImageCreationError {
     fn from(err: OomError) -> Self {
-        Self::AllocError(DeviceMemoryError::OomError(err))
+        Self::AllocError(err.into())
     }
 }
 
-impl From<DeviceMemoryError> for ImageCreationError {
-    fn from(err: DeviceMemoryError) -> Self {
+impl From<AllocationCreationError> for ImageCreationError {
+    fn from(err: AllocationCreationError) -> Self {
         Self::AllocError(err)
     }
 }
@@ -2141,8 +2141,12 @@ impl From<DeviceMemoryError> for ImageCreationError {
 impl From<VulkanError> for ImageCreationError {
     fn from(err: VulkanError) -> Self {
         match err {
-            err @ VulkanError::OutOfHostMemory => Self::AllocError(err.into()),
-            err @ VulkanError::OutOfDeviceMemory => Self::AllocError(err.into()),
+            VulkanError::OutOfHostMemory => {
+                Self::AllocError(AllocationCreationError::OutOfHostMemory)
+            }
+            VulkanError::OutOfDeviceMemory => {
+                Self::AllocError(AllocationCreationError::OutOfDeviceMemory)
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }

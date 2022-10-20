@@ -17,17 +17,15 @@
 //! or write and write simultaneously will block.
 
 use super::{
-    sys::UnsafeBuffer, BufferAccess, BufferAccessObject, BufferContents, BufferInner, BufferUsage,
+    sys::UnsafeBuffer, BufferAccess, BufferAccessObject, BufferContents, BufferCreationError,
+    BufferInner, BufferUsage,
 };
 use crate::{
-    buffer::{sys::UnsafeBufferCreateInfo, BufferCreationError, TypedBufferAccess},
+    buffer::{sys::UnsafeBufferCreateInfo, TypedBufferAccess},
     device::{Device, DeviceOwned},
-    memory::{
-        pool::{
-            AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
-            PotentialDedicatedAllocation, StandardMemoryPoolAlloc,
-        },
-        DedicatedAllocation, DeviceMemoryError, MemoryPool,
+    memory::allocator::{
+        AllocationCreationError, MemoryAlloc, MemoryAllocatePreference, MemoryAllocator,
+        MemoryUsage,
     },
     sync::Sharing,
     DeviceSize,
@@ -51,7 +49,7 @@ use std::{
 /// memory caches GPU data on the CPU side. This can be more performant in cases where
 /// the cpu needs to read data coming off the GPU.
 #[derive(Debug)]
-pub struct CpuAccessibleBuffer<T, A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>>
+pub struct CpuAccessibleBuffer<T>
 where
     T: BufferContents + ?Sized,
 {
@@ -59,7 +57,7 @@ where
     inner: Arc<UnsafeBuffer>,
 
     // The memory held by the buffer.
-    memory: A,
+    memory: MemoryAlloc,
 
     // Queue families allowed to access this buffer.
     queue_family_indices: SmallVec<[u32; 4]>,
@@ -77,17 +75,15 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub fn from_data(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         usage: BufferUsage,
         host_cached: bool,
         data: T,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, AllocationCreationError> {
         unsafe {
             let uninitialized = CpuAccessibleBuffer::raw(
-                device,
+                allocator,
                 size_of::<T>() as DeviceSize,
                 usage,
                 host_cached,
@@ -113,11 +109,17 @@ where
     ///
     /// - Panics if `T` has zero size.
     pub unsafe fn uninitialized(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         usage: BufferUsage,
         host_cached: bool,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryError> {
-        CpuAccessibleBuffer::raw(device, size_of::<T>() as DeviceSize, usage, host_cached, [])
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, AllocationCreationError> {
+        CpuAccessibleBuffer::raw(
+            allocator,
+            size_of::<T>() as DeviceSize,
+            usage,
+            host_cached,
+            [],
+        )
     }
 }
 
@@ -132,14 +134,12 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `data` is empty.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub fn from_iter<I>(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         usage: BufferUsage,
         host_cached: bool,
         data: I,
-    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryError>
+    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, AllocationCreationError>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
@@ -148,7 +148,7 @@ where
 
         unsafe {
             let uninitialized = CpuAccessibleBuffer::uninitialized_array(
-                device,
+                allocator,
                 data.len() as DeviceSize,
                 usage,
                 host_cached,
@@ -176,16 +176,14 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `len` is zero.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub unsafe fn uninitialized_array(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         len: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
-    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, AllocationCreationError> {
         CpuAccessibleBuffer::raw(
-            device,
+            allocator,
             len * size_of::<T>() as DeviceSize,
             usage,
             host_cached,
@@ -207,20 +205,17 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub unsafe fn raw(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         size: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, AllocationCreationError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        let buffer = {
-            match UnsafeBuffer::new(
-                device.clone(),
+        allocator
+            .create_buffer(
                 UnsafeBufferCreateInfo {
                     sharing: if queue_family_indices.len() >= 2 {
                         Sharing::Concurrent(queue_family_indices.clone())
@@ -231,51 +226,30 @@ where
                     usage,
                     ..Default::default()
                 },
-            ) {
-                Ok(b) => b,
-                Err(BufferCreationError::AllocError(err)) => return Err(err),
-                Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
-                                          // errors can't happen
-            }
-        };
-        let mem_reqs = buffer.memory_requirements();
-
-        let memory = MemoryPool::alloc_from_requirements(
-            &device.standard_memory_pool(),
-            &mem_reqs,
-            AllocLayout::Linear,
-            MappingRequirement::Map,
-            Some(DedicatedAllocation::Buffer(&buffer)),
-            |m| {
-                if m.property_flags.host_cached {
-                    if host_cached {
-                        AllocFromRequirementsFilter::Preferred
-                    } else {
-                        AllocFromRequirementsFilter::Allowed
-                    }
+                if host_cached {
+                    MemoryUsage::Download
                 } else {
-                    if host_cached {
-                        AllocFromRequirementsFilter::Allowed
-                    } else {
-                        AllocFromRequirementsFilter::Preferred
-                    }
-                }
-            },
-        )?;
-        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
-        debug_assert!(memory.mapped_memory().is_some());
-        buffer.bind_memory(memory.memory(), memory.offset())?;
-
-        Ok(Arc::new(CpuAccessibleBuffer {
-            inner: buffer,
-            memory,
-            queue_family_indices,
-            marker: PhantomData,
-        }))
+                    MemoryUsage::Upload
+                },
+                MemoryAllocatePreference::Unknown,
+            )
+            .map_err(|err| match err {
+                BufferCreationError::AllocError(err) => err,
+                // We don't use sparse-binding, therefore the other errors can't happen.
+                _ => unreachable!(),
+            })?
+            .map(|(inner, memory)| {
+                Arc::new(CpuAccessibleBuffer {
+                    inner,
+                    memory,
+                    queue_family_indices,
+                    marker: PhantomData,
+                })
+            })
     }
 }
 
-impl<T, A> CpuAccessibleBuffer<T, A>
+impl<T> CpuAccessibleBuffer<T>
 where
     T: BufferContents + ?Sized,
 {
@@ -285,10 +259,9 @@ where
     }
 }
 
-impl<T, A> CpuAccessibleBuffer<T, A>
+impl<T> CpuAccessibleBuffer<T>
 where
     T: BufferContents + ?Sized,
-    A: MemoryPoolAlloc,
 {
     /// Locks the buffer in order to read its content from the CPU.
     ///
@@ -299,7 +272,7 @@ where
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it in exclusive mode will fail. You can still submit this buffer for non-exclusive
     /// accesses (ie. reads).
-    pub fn read(&self) -> Result<ReadLock<'_, T, A>, ReadLockError> {
+    pub fn read(&self) -> Result<ReadLock<'_, T>, ReadLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
 
@@ -308,20 +281,14 @@ where
             state.cpu_read_lock(buffer_range.clone());
         }
 
-        let mapped_memory = self.memory.mapped_memory().unwrap();
-        let offset = self.memory.offset();
-        let memory_range = offset..offset + self.inner.size();
-
         let bytes = unsafe {
             // If there are other read locks being held at this point, they also called
             // `invalidate_range` when locking. The GPU can't write data while the CPU holds a read
             // lock, so there will no new data and this call will do nothing.
             // TODO: probably still more efficient to call it only if we're the first to acquire a
             // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            mapped_memory
-                .invalidate_range(memory_range.clone())
-                .unwrap();
-            mapped_memory.read(memory_range).unwrap()
+            self.memory.invalidate_range(0..self.size()).unwrap();
+            self.memory.mapped_slice().unwrap()
         };
 
         Ok(ReadLock {
@@ -339,7 +306,7 @@ where
     ///
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it and any attempt to call `read()` will return an error.
-    pub fn write(&self) -> Result<WriteLock<'_, T, A>, WriteLockError> {
+    pub fn write(&self) -> Result<WriteLock<'_, T>, WriteLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
 
@@ -348,30 +315,22 @@ where
             state.cpu_write_lock(buffer_range.clone());
         }
 
-        let mapped_memory = self.memory.mapped_memory().unwrap();
-        let offset = self.memory.offset();
-        let memory_range = offset..offset + self.size();
-
         let bytes = unsafe {
-            mapped_memory
-                .invalidate_range(memory_range.clone())
-                .unwrap();
-            mapped_memory.write(memory_range.clone()).unwrap()
+            self.memory.invalidate_range(0..self.size()).unwrap();
+            self.memory.write(0..self.size()).unwrap()
         };
 
         Ok(WriteLock {
             inner: self,
             buffer_range,
-            memory_range,
             data: T::from_bytes_mut(bytes).unwrap(),
         })
     }
 }
 
-unsafe impl<T, A> BufferAccess for CpuAccessibleBuffer<T, A>
+unsafe impl<T> BufferAccess for CpuAccessibleBuffer<T>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync,
 {
     fn inner(&self) -> BufferInner<'_> {
         BufferInner {
@@ -385,25 +344,23 @@ where
     }
 }
 
-impl<T, A> BufferAccessObject for Arc<CpuAccessibleBuffer<T, A>>
+impl<T> BufferAccessObject for Arc<CpuAccessibleBuffer<T>>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync + 'static,
 {
     fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
         self.clone()
     }
 }
 
-unsafe impl<T, A> TypedBufferAccess for CpuAccessibleBuffer<T, A>
+unsafe impl<T> TypedBufferAccess for CpuAccessibleBuffer<T>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync,
 {
     type Content = T;
 }
 
-unsafe impl<T, A> DeviceOwned for CpuAccessibleBuffer<T, A>
+unsafe impl<T> DeviceOwned for CpuAccessibleBuffer<T>
 where
     T: BufferContents + ?Sized,
 {
@@ -412,27 +369,20 @@ where
     }
 }
 
-impl<T, A> PartialEq for CpuAccessibleBuffer<T, A>
+impl<T> PartialEq for CpuAccessibleBuffer<T>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync,
 {
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
-impl<T, A> Eq for CpuAccessibleBuffer<T, A>
-where
-    T: BufferContents + ?Sized,
-    A: Send + Sync,
-{
-}
+impl<T> Eq for CpuAccessibleBuffer<T> where T: BufferContents + ?Sized {}
 
-impl<T, A> Hash for CpuAccessibleBuffer<T, A>
+impl<T> Hash for CpuAccessibleBuffer<T>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
@@ -445,20 +395,18 @@ where
 /// Note that this object holds a rwlock read guard on the chunk. If another thread tries to access
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
 #[derive(Debug)]
-pub struct ReadLock<'a, T, A>
+pub struct ReadLock<'a, T>
 where
     T: BufferContents + ?Sized,
-    A: MemoryPoolAlloc,
 {
-    inner: &'a CpuAccessibleBuffer<T, A>,
+    inner: &'a CpuAccessibleBuffer<T>,
     buffer_range: Range<DeviceSize>,
     data: &'a T,
 }
 
-impl<'a, T, A> Drop for ReadLock<'a, T, A>
+impl<'a, T> Drop for ReadLock<'a, T>
 where
     T: BufferContents + ?Sized + 'a,
-    A: MemoryPoolAlloc,
 {
     fn drop(&mut self) {
         unsafe {
@@ -468,10 +416,9 @@ where
     }
 }
 
-impl<'a, T, A> Deref for ReadLock<'a, T, A>
+impl<'a, T> Deref for ReadLock<'a, T>
 where
     T: BufferContents + ?Sized + 'a,
-    A: MemoryPoolAlloc,
 {
     type Target = T;
 
@@ -485,30 +432,22 @@ where
 /// Note that this object holds a rwlock write guard on the chunk. If another thread tries to access
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
 #[derive(Debug)]
-pub struct WriteLock<'a, T, A>
+pub struct WriteLock<'a, T>
 where
     T: BufferContents + ?Sized,
-    A: MemoryPoolAlloc,
 {
-    inner: &'a CpuAccessibleBuffer<T, A>,
+    inner: &'a CpuAccessibleBuffer<T>,
     buffer_range: Range<DeviceSize>,
-    memory_range: Range<DeviceSize>,
     data: &'a mut T,
 }
 
-impl<'a, T, A> Drop for WriteLock<'a, T, A>
+impl<'a, T> Drop for WriteLock<'a, T>
 where
     T: BufferContents + ?Sized + 'a,
-    A: MemoryPoolAlloc,
 {
     fn drop(&mut self) {
         unsafe {
-            self.inner
-                .memory
-                .mapped_memory()
-                .unwrap()
-                .flush_range(self.memory_range.clone())
-                .unwrap();
+            self.inner.memory.flush_range(0..self.inner.size()).unwrap();
 
             let mut state = self.inner.inner.state();
             state.cpu_write_unlock(self.buffer_range.clone());
@@ -516,10 +455,9 @@ where
     }
 }
 
-impl<'a, T, A> Deref for WriteLock<'a, T, A>
+impl<'a, T> Deref for WriteLock<'a, T>
 where
     T: BufferContents + ?Sized + 'a,
-    A: MemoryPoolAlloc,
 {
     type Target = T;
 
@@ -528,10 +466,9 @@ where
     }
 }
 
-impl<'a, T, A> DerefMut for WriteLock<'a, T, A>
+impl<'a, T> DerefMut for WriteLock<'a, T>
 where
     T: BufferContents + ?Sized + 'a,
-    A: MemoryPoolAlloc,
 {
     fn deref_mut(&mut self) -> &mut T {
         self.data
@@ -592,17 +529,19 @@ impl Display for WriteLockError {
 
 #[cfg(test)]
 mod tests {
-    use crate::buffer::{BufferUsage, CpuAccessibleBuffer};
+    use super::*;
+    use crate::memory::allocator::StandardMemoryAllocator;
 
     #[test]
     fn create_empty_buffer() {
         let (device, _queue) = gfx_dev_and_queue!();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
 
         const EMPTY: [i32; 0] = [];
 
         assert_should_panic!({
             CpuAccessibleBuffer::from_data(
-                device.clone(),
+                &memory_allocator,
                 BufferUsage {
                     transfer_dst: true,
                     ..BufferUsage::empty()
@@ -612,7 +551,7 @@ mod tests {
             )
             .unwrap();
             CpuAccessibleBuffer::from_iter(
-                device,
+                &memory_allocator,
                 BufferUsage {
                     transfer_dst: true,
                     ..BufferUsage::empty()

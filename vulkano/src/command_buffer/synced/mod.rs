@@ -547,6 +547,7 @@ mod tests {
             },
             PersistentDescriptorSet, WriteDescriptorSet,
         },
+        memory::allocator::StandardMemoryAllocator,
         pipeline::{layout::PipelineLayoutCreateInfo, PipelineBindPoint, PipelineLayout},
         sampler::{Sampler, SamplerCreateInfo},
         shader::ShaderStages,
@@ -581,27 +582,28 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
-            let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-                &command_buffer_allocator,
+            let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+            let mut cbb = AutoCommandBufferBuilder::primary(
+                &cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )
             .unwrap();
 
+            let memory_allocator = StandardMemoryAllocator::new_default(device);
             // Create a tiny test buffer
             let buffer = DeviceLocalBuffer::from_data(
+                &memory_allocator,
                 0u32,
                 BufferUsage {
                     transfer_dst: true,
                     ..BufferUsage::empty()
                 },
-                &mut command_buffer_builder,
+                &mut cbb,
             )
             .unwrap();
 
-            command_buffer_builder
-                .build()
+            cbb.build()
                 .unwrap()
                 .execute(queue.clone())
                 .unwrap()
@@ -614,7 +616,7 @@ mod tests {
             let secondary = (0..2)
                 .map(|_| {
                     let mut builder = AutoCommandBufferBuilder::secondary(
-                        &command_buffer_allocator,
+                        &cb_allocator,
                         queue.queue_family_index(),
                         CommandBufferUsage::SimultaneousUse,
                         Default::default(),
@@ -630,7 +632,7 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            let allocs = command_buffer_allocator
+            let allocs = cb_allocator
                 .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 2)
                 .unwrap()
                 .collect::<Vec<_>>();
@@ -689,9 +691,8 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let allocator = StandardCommandBufferAllocator::new(device.clone());
-
-            let builder_alloc = allocator
+            let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+            let builder_alloc = cb_allocator
                 .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
                 .unwrap()
                 .next()
@@ -704,8 +705,10 @@ mod tests {
                 },
             )
             .unwrap();
+
+            let memory_allocator = StandardMemoryAllocator::new_default(device);
             let buf = CpuAccessibleBuffer::from_data(
-                device,
+                &memory_allocator,
                 BufferUsage {
                     vertex_buffer: true,
                     ..BufferUsage::empty()

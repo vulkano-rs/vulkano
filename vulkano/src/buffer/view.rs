@@ -24,26 +24,28 @@
 //! use vulkano::buffer::view::{BufferView, BufferViewCreateInfo};
 //! use vulkano::format::Format;
 //!
-//! # let device: Arc<vulkano::device::Device> = return;
 //! # let queue: Arc<vulkano::device::Queue> = return;
+//! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
 //! let usage = BufferUsage {
 //!     storage_texel_buffer: true,
 //!     ..BufferUsage::empty()
 //! };
 //!
 //! let buffer = DeviceLocalBuffer::<[u32]>::array(
-//!     device.clone(),
+//!     &memory_allocator,
 //!     128,
 //!     usage,
 //!     [queue.queue_family_index()],
-//! ).unwrap();
+//! )
+//! .unwrap();
 //! let _view = BufferView::new(
 //!     buffer,
 //!     BufferViewCreateInfo {
 //!         format: Some(Format::R32_UINT),
 //!         ..Default::default()
 //!     },
-//! ).unwrap();
+//! )
+//! .unwrap();
 //! ```
 
 use super::{BufferAccess, BufferAccessObject, BufferInner};
@@ -477,27 +479,31 @@ impl Hash for dyn BufferViewAbstract {
 
 #[cfg(test)]
 mod tests {
+    use super::{BufferView, BufferViewCreateInfo, BufferViewCreationError};
     use crate::{
-        buffer::{
-            view::{BufferView, BufferViewCreateInfo, BufferViewCreationError},
-            BufferUsage, DeviceLocalBuffer,
-        },
+        buffer::{BufferUsage, DeviceLocalBuffer},
         format::Format,
+        memory::allocator::StandardMemoryAllocator,
     };
 
     #[test]
     fn create_uniform() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
 
         let usage = BufferUsage {
             uniform_texel_buffer: true,
             ..BufferUsage::empty()
         };
 
-        let buffer =
-            DeviceLocalBuffer::<[[u8; 4]]>::array(device, 128, usage, [queue.queue_family_index()])
-                .unwrap();
+        let buffer = DeviceLocalBuffer::<[[u8; 4]]>::array(
+            &memory_allocator,
+            128,
+            usage,
+            [queue.queue_family_index()],
+        )
+        .unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -512,15 +518,20 @@ mod tests {
     fn create_storage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
             ..BufferUsage::empty()
         };
 
-        let buffer =
-            DeviceLocalBuffer::<[[u8; 4]]>::array(device, 128, usage, [queue.queue_family_index()])
-                .unwrap();
+        let buffer = DeviceLocalBuffer::<[[u8; 4]]>::array(
+            &memory_allocator,
+            128,
+            usage,
+            [queue.queue_family_index()],
+        )
+        .unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -535,15 +546,20 @@ mod tests {
     fn create_storage_atomic() {
         // `VK_FORMAT_R32_UINT` guaranteed to be a supported format for atomics
         let (device, queue) = gfx_dev_and_queue!();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
             ..BufferUsage::empty()
         };
 
-        let buffer =
-            DeviceLocalBuffer::<[u32]>::array(device, 128, usage, [queue.queue_family_index()])
-                .unwrap();
+        let buffer = DeviceLocalBuffer::<[u32]>::array(
+            &memory_allocator,
+            128,
+            usage,
+            [queue.queue_family_index()],
+        )
+        .unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -558,9 +574,10 @@ mod tests {
     fn wrong_usage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
 
         let buffer = DeviceLocalBuffer::<[[u8; 4]]>::array(
-            device,
+            &memory_allocator,
             128,
             BufferUsage {
                 transfer_dst: true, // Dummy value
@@ -585,6 +602,7 @@ mod tests {
     #[test]
     fn unsupported_format() {
         let (device, queue) = gfx_dev_and_queue!();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
 
         let usage = BufferUsage {
             uniform_texel_buffer: true,
@@ -593,7 +611,7 @@ mod tests {
         };
 
         let buffer = DeviceLocalBuffer::<[[f64; 4]]>::array(
-            device,
+            &memory_allocator,
             128,
             usage,
             [queue.queue_family_index()],

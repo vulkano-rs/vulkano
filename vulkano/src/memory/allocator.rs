@@ -230,7 +230,7 @@ use crate::{
         ImageCreationError, ImageTiling,
     },
     memory::{DeviceMemory, MemoryProperties},
-    DeviceSize, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use crossbeam_queue::ArrayQueue;
@@ -565,6 +565,17 @@ impl MemoryAlloc {
             .map(|ptr| slice::from_raw_parts_mut(ptr.as_ptr().cast(), self.size as usize))
     }
 
+    pub(crate) unsafe fn write(&self, range: Range<DeviceSize>) -> Option<&mut [u8]> {
+        debug_assert!(!range.is_empty() && range.end <= self.size);
+
+        self.mapped_ptr.map(|ptr| {
+            slice::from_raw_parts_mut(
+                ptr.as_ptr().add(range.start as usize).cast(),
+                (range.end - range.start) as usize,
+            )
+        })
+    }
+
     /// Invalidates the host (CPU) cache for a range of the allocation.
     ///
     /// You must call this method before the memory is read by the host, if the device previously
@@ -589,7 +600,7 @@ impl MemoryAlloc {
     /// [host-coherent]: super::MemoryPropertyFlags::host_coherent
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
+    pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), OomError> {
         // VUID-VkMappedMemoryRange-memory-00684
         if let Some(atom_size) = self.non_coherent_atom_size {
             let range = self.create_memory_range(range, atom_size.get());
@@ -599,7 +610,8 @@ impl MemoryAlloc {
                 .result()
                 .map_err(VulkanError::from)?;
         } else {
-            self.debug_validate_memory_range(&range);
+            // FIXME:
+            // self.debug_validate_memory_range(&range);
         }
 
         Ok(())
@@ -629,7 +641,7 @@ impl MemoryAlloc {
     /// [host-coherent]: super::MemoryPropertyFlags::host_coherent
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
+    pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), OomError> {
         // VUID-VkMappedMemoryRange-memory-00684
         if let Some(atom_size) = self.non_coherent_atom_size {
             let range = self.create_memory_range(range, atom_size.get());
@@ -639,7 +651,8 @@ impl MemoryAlloc {
                 .result()
                 .map_err(VulkanError::from)?;
         } else {
-            self.debug_validate_memory_range(&range);
+            // FIXME:
+            // self.debug_validate_memory_range(&range);
         }
 
         Ok(())
@@ -993,6 +1006,15 @@ impl Display for AllocationCreationError {
 
 impl Error for AllocationCreationError {}
 
+impl From<OomError> for AllocationCreationError {
+    fn from(err: OomError) -> Self {
+        match err {
+            OomError::OutOfHostMemory => AllocationCreationError::OutOfHostMemory,
+            OomError::OutOfDeviceMemory => AllocationCreationError::OutOfDeviceMemory,
+        }
+    }
+}
+
 /// Standard memory allocator intended as a global and general-purpose allocator.
 ///
 /// This type of allocator should work well in most cases, it is however **not** to be used when
@@ -1212,7 +1234,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             .physical_device()
             .properties()
             .max_memory_allocation_count;
-        let max_memory_allocation_count = max_memory_allocation_count * 3 / 4;
+        let max_memory_allocation_count = max_memory_allocation_count / 4 * 3;
 
         GenericMemoryAllocator {
             device,
@@ -1540,16 +1562,16 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                     if prefer_dedicated {
                         self.allocate_dedicated(memory_type_index, size, dedicated_allocation)
                             // Fall back to suballocation.
-                            .or_else(|e| {
+                            .or_else(|err| {
                                 if size < block_size {
                                     self.allocate_from_type_unchecked(
                                         memory_type_index,
                                         create_info.clone(),
                                         true, // A dedicated allocation already failed.
                                     )
-                                    .map_err(|_| e)
+                                    .map_err(|_| err)
                                 } else {
-                                    Err(e)
+                                    Err(err)
                                 }
                             })
                     } else {
@@ -1648,7 +1670,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         };
         let device_memory =
             DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None).map_err(
-                |e| match e {
+                |err| match err {
                     VulkanError::OutOfHostMemory => AllocationCreationError::OutOfHostMemory,
                     VulkanError::OutOfDeviceMemory => AllocationCreationError::OutOfDeviceMemory,
                     VulkanError::TooManyObjects => AllocationCreationError::TooManyObjects,
@@ -1708,7 +1730,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(|e| match e.into() {
+            .map_err(|err| match err.into() {
                 VulkanError::OutOfHostMemory => AllocationCreationError::OutOfHostMemory,
                 VulkanError::OutOfDeviceMemory => AllocationCreationError::OutOfDeviceMemory,
                 VulkanError::MemoryMapFailed => AllocationCreationError::MemoryMapFailed,
@@ -1818,9 +1840,11 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         Result<(Arc<UnsafeBuffer>, MemoryAlloc), AllocationCreationError>,
         BufferCreationError,
     > {
+        let size = create_info.size;
         let buffer = UnsafeBuffer::new(self.device().clone(), create_info)?;
+        let requirements = buffer.memory_requirements();
         let create_info = AllocationCreateInfo {
-            requirements: buffer.memory_requirements(),
+            requirements,
             allocation_type: AllocationType::Linear,
             usage,
             allocate_preference,
@@ -1829,7 +1853,10 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         };
 
         Ok(match unsafe { self.allocate_unchecked(create_info) } {
-            Ok(alloc) => {
+            Ok(mut alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                alloc.shrink(size);
                 unsafe { buffer.bind_memory(alloc.device_memory(), alloc.offset()) }?;
 
                 Ok((buffer, alloc))
@@ -1854,8 +1881,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     {
         let allocation_type = create_info.tiling.into();
         let image = UnsafeImage::new(self.device().clone(), create_info)?;
+        let requirements = image.memory_requirements();
         let create_info = AllocationCreateInfo {
-            requirements: image.memory_requirements(),
+            requirements,
             allocation_type,
             usage,
             allocate_preference,
@@ -1865,6 +1893,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
         Ok(match unsafe { self.allocate_unchecked(create_info) } {
             Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
                 unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
 
                 Ok((image, alloc))

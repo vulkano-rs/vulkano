@@ -17,6 +17,7 @@ use vulkano::{
         debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
         Instance, InstanceCreateInfo, InstanceExtensions,
     },
+    memory::allocator::StandardMemoryAllocator,
     Version, VulkanLibrary,
 };
 
@@ -105,6 +106,7 @@ pub struct VulkanoContext {
     device: Arc<Device>,
     graphics_queue: Arc<Queue>,
     compute_queue: Arc<Queue>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
 }
 
 impl Default for VulkanoContext {
@@ -173,12 +175,15 @@ impl VulkanoContext {
             config.device_features,
         );
 
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
         Self {
             instance,
             _debug_utils_messenger,
             device,
             graphics_queue,
             compute_queue,
+            memory_allocator,
         }
     }
 
@@ -291,5 +296,11 @@ impl VulkanoContext {
     #[inline]
     pub fn compute_queue(&self) -> &Arc<Queue> {
         &self.compute_queue
+    }
+
+    /// Returns the memory allocator.
+    #[inline]
+    pub fn memory_allocator(&self) -> &Arc<StandardMemoryAllocator> {
+        &self.memory_allocator
     }
 }

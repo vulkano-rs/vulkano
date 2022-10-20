@@ -31,7 +31,10 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     macros::vulkan_bitflags,
-    memory::{DeviceMemory, DeviceMemoryError, ExternalMemoryHandleTypes, MemoryRequirements},
+    memory::{
+        allocator::AllocationCreationError, DeviceMemory, ExternalMemoryHandleTypes,
+        MemoryRequirements,
+    },
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
@@ -584,7 +587,7 @@ impl Default for UnsafeBufferCreateInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BufferCreationError {
     /// Allocating memory failed.
-    AllocError(DeviceMemoryError),
+    AllocError(AllocationCreationError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -645,11 +648,11 @@ impl From<OomError> for BufferCreationError {
 impl From<VulkanError> for BufferCreationError {
     fn from(err: VulkanError) -> BufferCreationError {
         match err {
-            err @ VulkanError::OutOfHostMemory => {
-                BufferCreationError::AllocError(DeviceMemoryError::from(err))
+            VulkanError::OutOfHostMemory => {
+                BufferCreationError::AllocError(AllocationCreationError::OutOfHostMemory)
             }
-            err @ VulkanError::OutOfDeviceMemory => {
-                BufferCreationError::AllocError(DeviceMemoryError::from(err))
+            VulkanError::OutOfDeviceMemory => {
+                BufferCreationError::AllocError(AllocationCreationError::OutOfDeviceMemory)
             }
             _ => panic!("unexpected error: {:?}", err),
         }
