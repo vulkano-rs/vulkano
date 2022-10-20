@@ -487,8 +487,7 @@ impl PipelineLayout {
             _ne: _,
         } = create_info;
 
-        let set_layouts: SmallVec<[_; 4]> =
-            set_layouts.iter().map(|l| l.internal_object()).collect();
+        let set_layouts: SmallVec<[_; 4]> = set_layouts.iter().map(|l| l.handle()).collect();
 
         let push_constant_ranges: SmallVec<[_; 4]> = push_constant_ranges
             .iter()
@@ -512,7 +511,7 @@ impl PipelineLayout {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_pipeline_layout)(
-                device.internal_object(),
+                device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -670,20 +669,16 @@ impl Drop for PipelineLayout {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline_layout)(
-                self.device.internal_object(),
-                self.handle,
-                ptr::null(),
-            );
+            (fns.v1_0.destroy_pipeline_layout)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for PipelineLayout {
-    type Object = ash::vk::PipelineLayout;
+    type Handle = ash::vk::PipelineLayout;
 
     #[inline]
-    fn internal_object(&self) -> Self::Object {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

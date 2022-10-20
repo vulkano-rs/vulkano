@@ -129,7 +129,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_headless_surface.create_headless_surface_ext)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -208,7 +208,7 @@ impl Surface {
 
         let create_info = ash::vk::DisplaySurfaceCreateInfoKHR {
             flags: ash::vk::DisplaySurfaceCreateFlagsKHR::empty(),
-            display_mode: display_mode.internal_object(),
+            display_mode: display_mode.handle(),
             plane_index: plane.index(),
             plane_stack_index: 0, // FIXME: plane.properties.currentStackIndex,
             transform: ash::vk::SurfaceTransformFlagsKHR::IDENTITY, // TODO: let user choose
@@ -226,7 +226,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_display.create_display_plane_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -266,11 +266,7 @@ impl Surface {
     ) -> Result<Arc<Self>, SurfaceCreationError> {
         Self::validate_from_android(&instance, window)?;
 
-        Ok(Self::from_android_unchecked(
-            instance,
-            window,
-            object,
-        )?)
+        Ok(Self::from_android_unchecked(instance, window, object)?)
     }
 
     fn validate_from_android<W>(
@@ -309,7 +305,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_android_surface.create_android_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -352,10 +348,7 @@ impl Surface {
         Self::validate_from_directfb(&instance, dfb, surface)?;
 
         Ok(Self::from_directfb_unchecked(
-            instance,
-            dfb,
-            surface,
-            object,
+            instance, dfb, surface, object,
         )?)
     }
 
@@ -401,7 +394,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_directfb_surface.create_direct_fb_surface_ext)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -485,7 +478,7 @@ impl Surface {
             let mut output = MaybeUninit::uninit();
             (fns.fuchsia_imagepipe_surface
                 .create_image_pipe_surface_fuchsia)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -569,7 +562,7 @@ impl Surface {
             let mut output = MaybeUninit::uninit();
             (fns.ggp_stream_descriptor_surface
                 .create_stream_descriptor_surface_ggp)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -611,11 +604,7 @@ impl Surface {
     ) -> Result<Arc<Self>, SurfaceCreationError> {
         Self::validate_from_ios(&instance, &metal_layer)?;
 
-        Ok(Self::from_ios_unchecked(
-            instance,
-            metal_layer,
-            object,
-        )?)
+        Ok(Self::from_ios_unchecked(instance, metal_layer, object)?)
     }
 
     #[cfg(target_os = "ios")]
@@ -659,7 +648,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.mvk_ios_surface.create_ios_surface_mvk)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -744,7 +733,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.mvk_macos_surface.create_mac_os_surface_mvk)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -820,7 +809,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_metal_surface.create_metal_surface_ext)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -863,10 +852,7 @@ impl Surface {
         Self::validate_from_qnx_screen(&instance, context, window)?;
 
         Ok(Self::from_qnx_screen_unchecked(
-            instance,
-            context,
-            window,
-            object,
+            instance, context, window, object,
         )?)
     }
 
@@ -912,7 +898,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.qnx_screen_surface.create_screen_surface_qnx)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -991,7 +977,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.nn_vi_surface.create_vi_surface_nn)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1036,10 +1022,7 @@ impl Surface {
         Self::validate_from_wayland(&instance, display, surface)?;
 
         Ok(Self::from_wayland_unchecked(
-            instance,
-            display,
-            surface,
-            object,
+            instance, display, surface, object,
         )?)
     }
 
@@ -1085,7 +1068,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_wayland_surface.create_wayland_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1130,10 +1113,7 @@ impl Surface {
         Self::validate_from_win32(&instance, hinstance, hwnd)?;
 
         Ok(Self::from_win32_unchecked(
-            instance,
-            hinstance,
-            hwnd,
-            object,
+            instance, hinstance, hwnd, object,
         )?)
     }
 
@@ -1179,7 +1159,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_win32_surface.create_win32_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1224,10 +1204,7 @@ impl Surface {
         Self::validate_from_xcb(&instance, connection, window)?;
 
         Ok(Self::from_xcb_unchecked(
-            instance,
-            connection,
-            window,
-            object,
+            instance, connection, window, object,
         )?)
     }
 
@@ -1273,7 +1250,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_xcb_surface.create_xcb_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1318,10 +1295,7 @@ impl Surface {
         Self::validate_from_xlib(&instance, display, window)?;
 
         Ok(Self::from_xlib_unchecked(
-            instance,
-            display,
-            window,
-            object,
+            instance, display, window, object,
         )?)
     }
 
@@ -1367,7 +1341,7 @@ impl Surface {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_xlib_surface.create_xlib_surface_khr)(
-                instance.internal_object(),
+                instance.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -1434,19 +1408,15 @@ impl Drop for Surface {
     fn drop(&mut self) {
         unsafe {
             let fns = self.instance.fns();
-            (fns.khr_surface.destroy_surface_khr)(
-                self.instance.internal_object(),
-                self.handle,
-                ptr::null(),
-            );
+            (fns.khr_surface.destroy_surface_khr)(self.instance.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for Surface {
-    type Object = ash::vk::SurfaceKHR;
+    type Handle = ash::vk::SurfaceKHR;
 
-    fn internal_object(&self) -> ash::vk::SurfaceKHR {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

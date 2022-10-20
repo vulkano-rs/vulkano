@@ -448,7 +448,7 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                 let mut execute = UnsafeCommandBufferBuilderExecuteCommands::new();
                 self.0
                     .iter()
-                    .for_each(|cbuf| execute.add_raw(cbuf.inner().internal_object()));
+                    .for_each(|cbuf| execute.add_raw(cbuf.inner().handle()));
                 out.execute_commands(execute);
             }
         }
@@ -544,7 +544,7 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
     /// Adds a command buffer to the list.
     pub fn add(&mut self, cb: &(impl SecondaryCommandBuffer + ?Sized)) {
         // TODO: debug assert that it is a secondary command buffer?
-        self.raw_cbs.push(cb.inner().internal_object());
+        self.raw_cbs.push(cb.inner().handle());
     }
 
     /// Adds a command buffer to the list.

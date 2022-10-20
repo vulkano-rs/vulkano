@@ -102,10 +102,10 @@ impl Drop for Queue {
 }
 
 unsafe impl VulkanObject for Queue {
-    type Object = ash::vk::Queue;
+    type Handle = ash::vk::Queue;
 
     #[inline]
-    fn internal_object(&self) -> Self::Object {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
@@ -230,7 +230,7 @@ impl<'a> QueueGuard<'a> {
 
                 let wait_semaphores_vk: SmallVec<[_; 4]> = wait_semaphores
                     .iter()
-                    .map(|semaphore| semaphore.internal_object())
+                    .map(|semaphore| semaphore.handle())
                     .collect();
 
                 let (buffer_bind_infos_vk, buffer_binds_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
@@ -239,7 +239,7 @@ impl<'a> QueueGuard<'a> {
                         .map(|(buffer, memory_binds)| {
                             (
                                 ash::vk::SparseBufferMemoryBindInfo {
-                                    buffer: buffer.inner().buffer.internal_object(),
+                                    buffer: buffer.inner().buffer.handle(),
                                     bind_count: 0,
                                     p_binds: ptr::null(),
                                 },
@@ -255,7 +255,7 @@ impl<'a> QueueGuard<'a> {
                                         let (memory, memory_offset) = memory.as_ref().map_or_else(
                                             Default::default,
                                             |(memory, memory_offset)| {
-                                                (memory.internal_object(), *memory_offset)
+                                                (memory.handle(), *memory_offset)
                                             },
                                         );
 
@@ -280,7 +280,7 @@ impl<'a> QueueGuard<'a> {
                     .map(|(image, memory_binds)| {
                         (
                             ash::vk::SparseImageOpaqueMemoryBindInfo {
-                                image: image.inner().image.internal_object(),
+                                image: image.inner().image.handle(),
                                 bind_count: 0,
                                 p_binds: ptr::null(),
                             },
@@ -296,9 +296,7 @@ impl<'a> QueueGuard<'a> {
 
                                     let (memory, memory_offset) = memory.as_ref().map_or_else(
                                         Default::default,
-                                        |(memory, memory_offset)| {
-                                            (memory.internal_object(), *memory_offset)
-                                        },
+                                        |(memory, memory_offset)| (memory.handle(), *memory_offset),
                                     );
 
                                     ash::vk::SparseMemoryBind {
@@ -324,7 +322,7 @@ impl<'a> QueueGuard<'a> {
                         .map(|(image, memory_binds)| {
                             (
                                 ash::vk::SparseImageMemoryBindInfo {
-                                    image: image.inner().image.internal_object(),
+                                    image: image.inner().image.handle(),
                                     bind_count: 0,
                                     p_binds: ptr::null(),
                                 },
@@ -343,7 +341,7 @@ impl<'a> QueueGuard<'a> {
                                         let (memory, memory_offset) = memory.as_ref().map_or_else(
                                             Default::default,
                                             |(memory, memory_offset)| {
-                                                (memory.internal_object(), *memory_offset)
+                                                (memory.handle(), *memory_offset)
                                             },
                                         );
 
@@ -375,7 +373,7 @@ impl<'a> QueueGuard<'a> {
 
                 let signal_semaphores_vk: SmallVec<[_; 4]> = signal_semaphores
                     .iter()
-                    .map(|semaphore| semaphore.internal_object())
+                    .map(|semaphore| semaphore.handle())
                     .collect();
 
                 (
@@ -460,7 +458,7 @@ impl<'a> QueueGuard<'a> {
             bind_infos_vk.as_ptr(),
             fence
                 .as_ref()
-                .map_or_else(Default::default, |(fence, _)| fence.internal_object()),
+                .map_or_else(Default::default, |(fence, _)| fence.handle()),
         )
         .result()
         .map_err(VulkanError::from)?;
@@ -514,7 +512,7 @@ impl<'a> QueueGuard<'a> {
 
         let wait_semaphores_vk: SmallVec<[_; 4]> = wait_semaphores
             .iter()
-            .map(|semaphore| semaphore.internal_object())
+            .map(|semaphore| semaphore.handle())
             .collect();
 
         let mut swapchains_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
@@ -536,7 +534,7 @@ impl<'a> QueueGuard<'a> {
                 _ne: _,
             } = swapchain_info;
 
-            swapchains_vk.push(swapchain.internal_object());
+            swapchains_vk.push(swapchain.handle());
             image_indices_vk.push(image_index);
             present_ids_vk.push(present_id.map_or(0, u64::from));
             present_regions_vk.push(ash::vk::PresentRegionKHR::default());
@@ -718,7 +716,7 @@ impl<'a> QueueGuard<'a> {
                                 } = semaphore_submit_info;
 
                                 ash::vk::SemaphoreSubmitInfo {
-                                    semaphore: semaphore.internal_object(),
+                                    semaphore: semaphore.handle(),
                                     value: 0, // TODO:
                                     stage_mask: stages.into(),
                                     device_index: 0, // TODO:
@@ -730,7 +728,7 @@ impl<'a> QueueGuard<'a> {
                         let command_buffer_infos_vk = command_buffers
                             .iter()
                             .map(|cb| ash::vk::CommandBufferSubmitInfo {
-                                command_buffer: cb.inner().internal_object(),
+                                command_buffer: cb.inner().handle(),
                                 device_mask: 0, // TODO:
                                 ..Default::default()
                             })
@@ -746,7 +744,7 @@ impl<'a> QueueGuard<'a> {
                                 } = semaphore_submit_info;
 
                                 ash::vk::SemaphoreSubmitInfo {
-                                    semaphore: semaphore.internal_object(),
+                                    semaphore: semaphore.handle(),
                                     value: 0, // TODO:
                                     stage_mask: stages.into(),
                                     device_index: 0, // TODO:
@@ -804,7 +802,7 @@ impl<'a> QueueGuard<'a> {
                     submit_info_vk.as_ptr(),
                     fence
                         .as_ref()
-                        .map_or_else(Default::default, |(fence, _)| fence.internal_object()),
+                        .map_or_else(Default::default, |(fence, _)| fence.handle()),
                 )
             } else {
                 debug_assert!(self.queue.device.enabled_extensions().khr_synchronization2);
@@ -814,7 +812,7 @@ impl<'a> QueueGuard<'a> {
                     submit_info_vk.as_ptr(),
                     fence
                         .as_ref()
-                        .map_or_else(Default::default, |(fence, _)| fence.internal_object()),
+                        .map_or_else(Default::default, |(fence, _)| fence.handle()),
                 )
             }
             .result()
@@ -847,13 +845,13 @@ impl<'a> QueueGuard<'a> {
                                     _ne: _,
                                 } = semaphore_submit_info;
 
-                                (semaphore.internal_object(), stages.into())
+                                (semaphore.handle(), stages.into())
                             })
                             .unzip();
 
                         let command_buffers_vk = command_buffers
                             .iter()
-                            .map(|cb| cb.inner().internal_object())
+                            .map(|cb| cb.inner().handle())
                             .collect();
 
                         let signal_semaphores_vk = signal_semaphores
@@ -865,7 +863,7 @@ impl<'a> QueueGuard<'a> {
                                     _ne: _,
                                 } = semaphore_submit_info;
 
-                                semaphore.internal_object()
+                                semaphore.handle()
                             })
                             .collect();
 
@@ -919,7 +917,7 @@ impl<'a> QueueGuard<'a> {
                 submit_info_vk.as_ptr(),
                 fence
                     .as_ref()
-                    .map_or_else(Default::default, |(fence, _)| fence.internal_object()),
+                    .map_or_else(Default::default, |(fence, _)| fence.handle()),
             )
             .result()
             .map_err(VulkanError::from)?;

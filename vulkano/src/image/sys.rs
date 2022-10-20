@@ -915,14 +915,9 @@ impl UnsafeImage {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_image)(
-                device.internal_object(),
-                &info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
-            .result()
-            .map_err(VulkanError::from)?;
+            (fns.v1_0.create_image)(device.handle(), &info_vk, ptr::null(), output.as_mut_ptr())
+                .result()
+                .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -1115,21 +1110,21 @@ impl UnsafeImage {
             {
                 if self.device.api_version() >= Version::V1_1 {
                     (fns.v1_1.get_image_memory_requirements2)(
-                        self.device.internal_object(),
+                        self.device.handle(),
                         &image_memory_requirements_info2,
                         &mut memory_requirements2,
                     );
                 } else {
                     (fns.khr_get_memory_requirements2
                         .get_image_memory_requirements2_khr)(
-                        self.device.internal_object(),
+                        self.device.handle(),
                         &image_memory_requirements_info2,
                         &mut memory_requirements2,
                     );
                 }
             } else {
                 (fns.v1_0.get_image_memory_requirements)(
-                    self.device.internal_object(),
+                    self.device.handle(),
                     self.handle,
                     &mut memory_requirements2.memory_requirements,
                 );
@@ -1163,7 +1158,7 @@ impl UnsafeImage {
 
                 if device.api_version() >= Version::V1_1 {
                     (fns.v1_1.get_image_sparse_memory_requirements2)(
-                        device.internal_object(),
+                        device.handle(),
                         &info2,
                         &mut count,
                         ptr::null_mut(),
@@ -1171,7 +1166,7 @@ impl UnsafeImage {
                 } else {
                     (fns.khr_get_memory_requirements2
                         .get_image_sparse_memory_requirements2_khr)(
-                        device.internal_object(),
+                        device.handle(),
                         &info2,
                         &mut count,
                         ptr::null_mut(),
@@ -1183,7 +1178,7 @@ impl UnsafeImage {
 
                 if device.api_version() >= Version::V1_1 {
                     (fns.v1_1.get_image_sparse_memory_requirements2)(
-                        self.device.internal_object(),
+                        self.device.handle(),
                         &info2,
                         &mut count,
                         sparse_image_memory_requirements2.as_mut_ptr(),
@@ -1191,7 +1186,7 @@ impl UnsafeImage {
                 } else {
                     (fns.khr_get_memory_requirements2
                         .get_image_sparse_memory_requirements2_khr)(
-                        self.device.internal_object(),
+                        self.device.handle(),
                         &info2,
                         &mut count,
                         sparse_image_memory_requirements2.as_mut_ptr(),
@@ -1259,7 +1254,7 @@ impl UnsafeImage {
                 let mut count = 0;
 
                 (fns.v1_0.get_image_sparse_memory_requirements)(
-                    device.internal_object(),
+                    device.handle(),
                     self.handle,
                     &mut count,
                     ptr::null_mut(),
@@ -1269,7 +1264,7 @@ impl UnsafeImage {
                     vec![ash::vk::SparseImageMemoryRequirements::default(); count as usize];
 
                 (fns.v1_0.get_image_sparse_memory_requirements)(
-                    device.internal_object(),
+                    device.handle(),
                     self.handle,
                     &mut count,
                     sparse_image_memory_requirements.as_mut_ptr(),
@@ -1335,7 +1330,7 @@ impl UnsafeImage {
         debug_assert!({
             let mut mem_reqs = MaybeUninit::uninit();
             (fns.v1_0.get_image_memory_requirements)(
-                self.device.internal_object(),
+                self.device.handle(),
                 self.handle,
                 mem_reqs.as_mut_ptr(),
             );
@@ -1346,14 +1341,9 @@ impl UnsafeImage {
                 && mem_reqs.memory_type_bits & (1 << memory.memory_type_index()) != 0
         });
 
-        (fns.v1_0.bind_image_memory)(
-            self.device.internal_object(),
-            self.handle,
-            memory.internal_object(),
-            offset,
-        )
-        .result()
-        .map_err(VulkanError::from)?;
+        (fns.v1_0.bind_image_memory)(self.device.handle(), self.handle, memory.handle(), offset)
+            .result()
+            .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -1687,7 +1677,7 @@ impl UnsafeImage {
 
         let mut out = MaybeUninit::uninit();
         (fns.v1_0.get_image_subresource_layout)(
-            self.device.internal_object(),
+            self.device.handle(),
             self.handle,
             &subresource,
             out.as_mut_ptr(),
@@ -1713,16 +1703,16 @@ impl Drop for UnsafeImage {
 
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_image)(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_image)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for UnsafeImage {
-    type Object = ash::vk::Image;
+    type Handle = ash::vk::Image;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Image {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

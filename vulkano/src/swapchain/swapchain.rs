@@ -584,7 +584,7 @@ impl Swapchain {
 
         let mut info_vk = ash::vk::SwapchainCreateInfoKHR {
             flags: ash::vk::SwapchainCreateFlagsKHR::empty(),
-            surface: surface.internal_object(),
+            surface: surface.handle(),
             min_image_count,
             image_format: image_format.unwrap().into(),
             image_color_space: image_color_space.into(),
@@ -636,7 +636,7 @@ impl Swapchain {
         let handle = {
             let mut output = MaybeUninit::uninit();
             (fns.khr_swapchain.create_swapchain_khr)(
-                device.internal_object(),
+                device.handle(),
                 &info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -649,7 +649,7 @@ impl Swapchain {
         let image_handles = loop {
             let mut count = 0;
             (fns.khr_swapchain.get_swapchain_images_khr)(
-                device.internal_object(),
+                device.handle(),
                 handle,
                 &mut count,
                 ptr::null_mut(),
@@ -659,7 +659,7 @@ impl Swapchain {
 
             let mut images = Vec::with_capacity(count as usize);
             let result = (fns.khr_swapchain.get_swapchain_images_khr)(
-                device.internal_object(),
+                device.handle(),
                 handle,
                 &mut count,
                 images.as_mut_ptr(),
@@ -844,8 +844,7 @@ impl Swapchain {
             let fns = self.device.fns();
             (fns.ext_full_screen_exclusive
                 .acquire_full_screen_exclusive_mode_ext)(
-                self.device.internal_object(),
-                self.handle,
+                self.device.handle(), self.handle
             )
             .result()
             .map_err(VulkanError::from)?;
@@ -874,8 +873,7 @@ impl Swapchain {
             let fns = self.device.fns();
             (fns.ext_full_screen_exclusive
                 .release_full_screen_exclusive_mode_ext)(
-                self.device.internal_object(),
-                self.handle,
+                self.device.handle(), self.handle
             )
             .result()
             .map_err(VulkanError::from)?;
@@ -922,7 +920,7 @@ impl Drop for Swapchain {
         unsafe {
             let fns = self.device.fns();
             (fns.khr_swapchain.destroy_swapchain_khr)(
-                self.device.internal_object(),
+                self.device.handle(),
                 self.handle,
                 ptr::null(),
             );
@@ -932,9 +930,9 @@ impl Drop for Swapchain {
 }
 
 unsafe impl VulkanObject for Swapchain {
-    type Object = ash::vk::SwapchainKHR;
+    type Handle = ash::vk::SwapchainKHR;
 
-    fn internal_object(&self) -> ash::vk::SwapchainKHR {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
@@ -987,8 +985,8 @@ impl Debug for Swapchain {
 
         f.debug_struct("Swapchain")
             .field("handle", &handle)
-            .field("device", &device.internal_object())
-            .field("surface", &surface.internal_object())
+            .field("device", &device.handle())
+            .field("surface", &surface.handle())
             .field("min_image_count", &min_image_count)
             .field("image_format", &image_format)
             .field("image_color_space", &image_color_space)
@@ -1609,7 +1607,7 @@ pub fn wait_for_present(
 
     let result = unsafe {
         (swapchain.device.fns().khr_present_wait.wait_for_present_khr)(
-            swapchain.device.internal_object(),
+            swapchain.device.handle(),
             swapchain.handle,
             present_id,
             timeout_ns,
@@ -1707,7 +1705,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
         _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_index).unwrap();
-        if swapchain_image.image.internal_object() != image.internal_object() {
+        if swapchain_image.image.handle() != image.handle() {
             return Err(AccessCheckError::Unknown);
         }
 
@@ -2156,7 +2154,7 @@ where
             .raw_image(self.swapchain_info.image_index)
             .unwrap();
 
-        if swapchain_image.image.internal_object() == image.internal_object() {
+        if swapchain_image.image.handle() == image.handle() {
             // This future presents the swapchain image, which "unlocks" it. Therefore any attempt
             // to use this swapchain image afterwards shouldn't get granted automatic access.
             // Instead any attempt to access the image afterwards should get an authorization from
@@ -2251,15 +2249,13 @@ pub unsafe fn acquire_next_image_raw(
 
     let mut out = MaybeUninit::uninit();
     let result = (fns.khr_swapchain.acquire_next_image_khr)(
-        swapchain.device.internal_object(),
+        swapchain.device.handle(),
         swapchain.handle,
         timeout_ns,
         semaphore
-            .map(|s| s.internal_object())
+            .map(|s| s.handle())
             .unwrap_or(ash::vk::Semaphore::null()),
-        fence
-            .map(|f| f.internal_object())
-            .unwrap_or(ash::vk::Fence::null()),
+        fence.map(|f| f.handle()).unwrap_or(ash::vk::Fence::null()),
         out.as_mut_ptr(),
     );
 

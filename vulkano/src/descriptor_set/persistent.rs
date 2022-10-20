@@ -92,7 +92,7 @@ impl PersistentDescriptorSet {
 
         let alloc = allocator.allocate(&layout, variable_descriptor_count)?;
         let inner = DescriptorSetInner::new(
-            alloc.inner().internal_object(),
+            alloc.inner().handle(),
             layout,
             variable_descriptor_count,
             descriptor_writes,
@@ -133,8 +133,7 @@ where
     P: DescriptorSetAlloc,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.inner().internal_object() == other.inner().internal_object()
-            && self.device() == other.device()
+        self.inner().handle() == other.inner().handle() && self.device() == other.device()
     }
 }
 
@@ -145,7 +144,7 @@ where
     P: DescriptorSetAlloc,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().internal_object().hash(state);
+        self.inner().handle().hash(state);
         self.device().hash(state);
     }
 }

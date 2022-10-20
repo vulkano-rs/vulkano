@@ -262,7 +262,7 @@ impl UnsafeBuffer {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_buffer)(
-                device.internal_object(),
+                device.handle(),
                 &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -344,21 +344,21 @@ impl UnsafeBuffer {
             {
                 if self.device.api_version() >= Version::V1_1 {
                     (fns.v1_1.get_buffer_memory_requirements2)(
-                        self.device.internal_object(),
+                        self.device.handle(),
                         &buffer_memory_requirements_info2,
                         &mut memory_requirements2,
                     );
                 } else {
                     (fns.khr_get_memory_requirements2
                         .get_buffer_memory_requirements2_khr)(
-                        self.device.internal_object(),
+                        self.device.handle(),
                         &buffer_memory_requirements_info2,
                         &mut memory_requirements2,
                     );
                 }
             } else {
                 (fns.v1_0.get_buffer_memory_requirements)(
-                    self.device.internal_object(),
+                    self.device.handle(),
                     self.handle,
                     &mut memory_requirements2.memory_requirements,
                 );
@@ -421,7 +421,7 @@ impl UnsafeBuffer {
         debug_assert!({
             let mut mem_reqs = MaybeUninit::uninit();
             (fns.v1_0.get_buffer_memory_requirements)(
-                self.device.internal_object(),
+                self.device.handle(),
                 self.handle,
                 mem_reqs.as_mut_ptr(),
             );
@@ -453,14 +453,9 @@ impl UnsafeBuffer {
             assert!(memory.flags().device_address);
         }
 
-        (fns.v1_0.bind_buffer_memory)(
-            self.device.internal_object(),
-            self.handle,
-            memory.internal_object(),
-            offset,
-        )
-        .result()
-        .map_err(VulkanError::from)?;
+        (fns.v1_0.bind_buffer_memory)(self.device.handle(), self.handle, memory.handle(), offset)
+            .result()
+            .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -499,16 +494,16 @@ impl Drop for UnsafeBuffer {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_buffer)(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_buffer)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for UnsafeBuffer {
-    type Object = ash::vk::Buffer;
+    type Handle = ash::vk::Buffer;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Buffer {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

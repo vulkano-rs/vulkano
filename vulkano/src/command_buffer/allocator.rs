@@ -356,7 +356,7 @@ mod tests {
             .unwrap()
             .next()
             .unwrap();
-        let raw = cb.inner().internal_object();
+        let raw = cb.inner().handle();
         drop(cb);
 
         let cb2 = allocator
@@ -364,6 +364,6 @@ mod tests {
             .unwrap()
             .next()
             .unwrap();
-        assert_eq!(raw, cb2.inner().internal_object());
+        assert_eq!(raw, cb2.inner().handle());
     }
 }

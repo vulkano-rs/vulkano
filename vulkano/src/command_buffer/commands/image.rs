@@ -1595,9 +1595,9 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let blit_image_info = ash::vk::BlitImageInfo2 {
-                src_image: src_image_inner.image.internal_object(),
+                src_image: src_image_inner.image.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_image: dst_image_inner.image.internal_object(),
+                dst_image: dst_image_inner.image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -1665,9 +1665,9 @@ impl UnsafeCommandBufferBuilder {
 
             (fns.v1_0.cmd_blit_image)(
                 self.handle,
-                src_image_inner.image.internal_object(),
+                src_image_inner.image.handle(),
                 src_image_layout.into(),
-                dst_image_inner.image.internal_object(),
+                dst_image_inner.image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -1704,7 +1704,7 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
         (fns.v1_0.cmd_clear_color_image)(
             self.handle,
-            image.inner().image.internal_object(),
+            image.inner().image.handle(),
             image_layout.into(),
             &clear_value,
             ranges.len() as u32,
@@ -1740,7 +1740,7 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
         (fns.v1_0.cmd_clear_depth_stencil_image)(
             self.handle,
-            image.inner().image.internal_object(),
+            image.inner().image.handle(),
             image_layout.into(),
             &clear_value,
             ranges.len() as u32,
@@ -1821,9 +1821,9 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let resolve_image_info = ash::vk::ResolveImageInfo2 {
-                src_image: src_image_inner.image.internal_object(),
+                src_image: src_image_inner.image.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_image: dst_image_inner.image.internal_object(),
+                dst_image: dst_image_inner.image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -1882,9 +1882,9 @@ impl UnsafeCommandBufferBuilder {
 
             (fns.v1_0.cmd_resolve_image)(
                 self.handle,
-                src_image_inner.image.internal_object(),
+                src_image_inner.image.handle(),
                 src_image_layout.into(),
-                dst_image_inner.image.internal_object(),
+                dst_image_inner.image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),

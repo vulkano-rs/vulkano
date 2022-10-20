@@ -2398,7 +2398,7 @@ where
 
         match render_pass {
             PipelineRenderPassType::BeginRenderPass(subpass) => {
-                render_pass_vk = subpass.render_pass().internal_object();
+                render_pass_vk = subpass.render_pass().handle();
                 subpass_vk = subpass.index();
             }
             PipelineRenderPassType::BeginRendering(rendering_info) => {
@@ -2602,7 +2602,7 @@ where
                 stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::VERTEX,
-                    module: entry_point.module().internal_object(),
+                    module: entry_point.module().handle(),
                     p_name: entry_point.name().as_ptr(),
                     p_specialization_info: specialization_info_vk as *const _,
                     ..Default::default()
@@ -2643,7 +2643,7 @@ where
                     stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
                         flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                         stage: ash::vk::ShaderStageFlags::TESSELLATION_CONTROL,
-                        module: entry_point.module().internal_object(),
+                        module: entry_point.module().handle(),
                         p_name: entry_point.name().as_ptr(),
                         p_specialization_info: specialization_info_vk as *const _,
                         ..Default::default()
@@ -2682,7 +2682,7 @@ where
                     stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
                         flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                         stage: ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION,
-                        module: entry_point.module().internal_object(),
+                        module: entry_point.module().handle(),
                         p_name: entry_point.name().as_ptr(),
                         p_specialization_info: specialization_info_vk as *const _,
                         ..Default::default()
@@ -2722,7 +2722,7 @@ where
                 stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::GEOMETRY,
-                    module: entry_point.module().internal_object(),
+                    module: entry_point.module().handle(),
                     p_name: entry_point.name().as_ptr(),
                     p_specialization_info: specialization_info_vk as *const _,
                     ..Default::default()
@@ -3063,7 +3063,7 @@ where
                 stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::FRAGMENT,
-                    module: entry_point.module().internal_object(),
+                    module: entry_point.module().handle(),
                     p_name: entry_point.name().as_ptr(),
                     p_specialization_info: specialization_info_vk as *const _,
                     ..Default::default()
@@ -3467,7 +3467,7 @@ where
                 .as_ref()
                 .map(|s| s as *const _)
                 .unwrap_or(ptr::null()),
-            layout: pipeline_layout.internal_object(),
+            layout: pipeline_layout.handle(),
             render_pass: render_pass_vk,
             subpass: subpass_vk,
             base_pipeline_handle: ash::vk::Pipeline::null(), // TODO:
@@ -3486,7 +3486,7 @@ where
         }
 
         let cache_handle = match cache.as_ref() {
-            Some(cache) => cache.internal_object(),
+            Some(cache) => cache.handle(),
             None => ash::vk::PipelineCache::null(),
         };
 
@@ -3494,7 +3494,7 @@ where
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_graphics_pipelines)(
-                device.internal_object(),
+                device.handle(),
                 cache_handle,
                 1,
                 &create_info,

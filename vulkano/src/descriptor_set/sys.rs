@@ -94,7 +94,7 @@ impl UnsafeDescriptorSet {
         let fns = layout.device().fns();
 
         (fns.v1_0.update_descriptor_sets)(
-            layout.device().internal_object(),
+            layout.device().handle(),
             writes.len() as u32,
             writes.as_ptr(),
             0,
@@ -108,10 +108,10 @@ impl UnsafeDescriptorSet {
 }
 
 unsafe impl VulkanObject for UnsafeDescriptorSet {
-    type Object = ash::vk::DescriptorSet;
+    type Handle = ash::vk::DescriptorSet;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::DescriptorSet {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

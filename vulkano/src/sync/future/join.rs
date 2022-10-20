@@ -24,10 +24,7 @@ where
     F: GpuFuture,
     S: GpuFuture,
 {
-    assert_eq!(
-        first.device().internal_object(),
-        second.device().internal_object()
-    );
+    assert_eq!(first.device().handle(), second.device().handle());
 
     if !first.queue_change_allowed() && !second.queue_change_allowed() {
         assert!(first.queue().unwrap() == second.queue().unwrap());
@@ -50,10 +47,7 @@ where
 {
     fn device(&self) -> &Arc<Device> {
         let device = self.first.device();
-        debug_assert_eq!(
-            self.second.device().internal_object(),
-            device.internal_object()
-        );
+        debug_assert_eq!(self.second.device().handle(), device.handle());
         device
     }
 }
