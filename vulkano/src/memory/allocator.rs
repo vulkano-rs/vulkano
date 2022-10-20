@@ -220,9 +220,15 @@ use super::{
     DedicatedAllocation, MemoryAllocateFlags, MemoryAllocateInfo, MemoryRequirements, MemoryType,
 };
 use crate::{
-    buffer::sys::UnsafeBuffer,
+    buffer::{
+        sys::{UnsafeBuffer, UnsafeBufferCreateInfo},
+        BufferCreationError,
+    },
     device::{Device, DeviceOwned},
-    image::sys::UnsafeImage,
+    image::{
+        sys::{UnsafeImage, UnsafeImageCreateInfo},
+        ImageCreationError, ImageTiling,
+    },
     memory::{DeviceMemory, MemoryProperties},
     DeviceSize, Version, VulkanError, VulkanObject,
 };
@@ -264,6 +270,33 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
         &self,
         create_info: AllocationCreateInfo<'_>,
     ) -> Result<MemoryAlloc, AllocationCreationError>;
+
+    /// Conveniece method to create a (non-sparse) `UnsafeBuffer`, allocate memory for it, and bind
+    /// the memory to it.
+    ///
+    /// The implementation of this method can be optimized as no checks need to be made, since the
+    /// parameters for allocation come straight from the Vulkan implementation.
+    fn create_buffer(
+        &self,
+        create_info: UnsafeBufferCreateInfo,
+        usage: MemoryUsage,
+        allocate_preference: MemoryAllocatePreference,
+    ) -> Result<
+        Result<(Arc<UnsafeBuffer>, MemoryAlloc), AllocationCreationError>,
+        BufferCreationError,
+    >;
+
+    /// Conveniece method to create a (non-sparse) `UnsafeImage`, allocate memory for it, and bind
+    /// the memory to it.
+    ///
+    /// The implementation of this method can be optimized as no checks need to be made, since the
+    /// parameters for allocation come straight from the Vulkan implementation.
+    fn create_image(
+        &self,
+        create_info: UnsafeImageCreateInfo,
+        usage: MemoryUsage,
+        allocate_preference: MemoryAllocatePreference,
+    ) -> Result<Result<(Arc<UnsafeImage>, MemoryAlloc), AllocationCreationError>, ImageCreationError>;
 }
 
 /// Parameters to create a new [allocation] using a [memory allocator].
@@ -612,22 +645,6 @@ impl MemoryAlloc {
         Ok(())
     }
 
-    /// This exists because even if no cache control is required, the parameters should still be
-    /// valid, otherwise you might have bugs in your code forever just because your memory happens
-    /// to be host-coherent.
-    fn debug_validate_memory_range(&self, range: &Range<DeviceSize>) {
-        debug_assert!(!range.is_empty() && range.end <= self.size);
-        debug_assert!({
-            let atom_size = self
-                .device()
-                .physical_device()
-                .properties()
-                .non_coherent_atom_size;
-
-            range.start % atom_size == 0 && (range.end % atom_size == 0 || range.end == self.size)
-        });
-    }
-
     fn create_memory_range(
         &self,
         range: Range<DeviceSize>,
@@ -665,6 +682,22 @@ impl MemoryAlloc {
             size,
             ..Default::default()
         }
+    }
+
+    /// This exists because even if no cache control is required, the parameters should still be
+    /// valid, otherwise you might have bugs in your code forever just because your memory happens
+    /// to be host-coherent.
+    fn debug_validate_memory_range(&self, range: &Range<DeviceSize>) {
+        debug_assert!(!range.is_empty() && range.end <= self.size);
+        debug_assert!({
+            let atom_size = self
+                .device()
+                .physical_device()
+                .properties()
+                .non_coherent_atom_size;
+
+            range.start % atom_size == 0 && (range.end % atom_size == 0 || range.end == self.size)
+        });
     }
 
     /// Returns the underlying block of [`DeviceMemory`].
@@ -938,12 +971,6 @@ pub enum AllocationCreationError {
     /// This is returned when using [`GenericMemoryAllocator<Arc<PoolAllocator<BLOCK_SIZE>>>`] if
     /// the allocation size exceeded `BLOCK_SIZE`.
     BlockSizeExceeded,
-
-    /// No suitable memory types could be found.
-    ///
-    /// This is returned when trying to allocate host-visible memory for an optimal image for
-    /// example.
-    NoSuitableMemoryTypes,
 }
 
 impl Display for AllocationCreationError {
@@ -959,7 +986,6 @@ impl Display for AllocationCreationError {
                 Self::MemoryMapFailed => "failed to map memory",
                 Self::BlockSizeExceeded =>
                     "the allocation size was greater than the suballocator's block size",
-                Self::NoSuitableMemoryTypes => "couldn't find a suitable memory type",
             }
         )
     }
@@ -1494,7 +1520,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 preferred_flags,
                 not_preferred_flags,
             )
-            .ok_or(AllocationCreationError::NoSuitableMemoryTypes)?;
+            .expect("couldn't find a suitable memory type");
 
         loop {
             let memory_type = self.pools[memory_type_index as usize].memory_type;
@@ -1751,12 +1777,12 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///   where *n* is the number of available memory types.
     /// - Panics if `create_info.dedicated_allocation` is `Some` and
     ///   `create_info.requirements.size` doesn't match the memory requirements of the resource.
+    /// - Panics if finding a suitable memory type failed. This only happens if the
+    ///   `create_info.requirements` correspond to those of an optimal image but
+    ///   `create_info.usage` is not [`MemoryUsage::GpuOnly`].
     ///
     /// # Errors
     ///
-    /// - Returns [`NoSuitableMemoryTypes`] if finding a suitable memory type failed. This happens
-    ///   if the `create_info.requirements` correspond to those of an optimal image but
-    ///   `create_info.usage` is not [`MemoryUsage::GpuOnly`] for example.
     /// - Returns an error if allocating a new block is required and failed. This can be one of the
     ///   OOM errors or [`TooManyObjects`].
     /// - Returns [`BlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
@@ -1781,6 +1807,70 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         self.validate_allocate(&create_info);
 
         unsafe { self.allocate_unchecked(create_info) }
+    }
+
+    fn create_buffer(
+        &self,
+        create_info: UnsafeBufferCreateInfo,
+        usage: MemoryUsage,
+        allocate_preference: MemoryAllocatePreference,
+    ) -> Result<
+        Result<(Arc<UnsafeBuffer>, MemoryAlloc), AllocationCreationError>,
+        BufferCreationError,
+    > {
+        let buffer = UnsafeBuffer::new(self.device().clone(), create_info)?;
+        let create_info = AllocationCreateInfo {
+            requirements: buffer.memory_requirements(),
+            allocation_type: AllocationType::Linear,
+            usage,
+            allocate_preference,
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            ..Default::default()
+        };
+
+        Ok(match unsafe { self.allocate_unchecked(create_info) } {
+            Ok(alloc) => {
+                unsafe { buffer.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
+                Ok((buffer, alloc))
+            }
+            Err(e) => Err(e),
+        })
+    }
+
+    /// Conveniece method to create a (non-sparse) `UnsafeImage`, allocate memory for it, and bind
+    /// the memory to it.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.tiling` is [`ImageTiling::Optimal`] and `usage` is not
+    ///   [`MemoryUsage::GpuOnly`].
+    fn create_image(
+        &self,
+        create_info: UnsafeImageCreateInfo,
+        usage: MemoryUsage,
+        allocate_preference: MemoryAllocatePreference,
+    ) -> Result<Result<(Arc<UnsafeImage>, MemoryAlloc), AllocationCreationError>, ImageCreationError>
+    {
+        let allocation_type = create_info.tiling.into();
+        let image = UnsafeImage::new(self.device().clone(), create_info)?;
+        let create_info = AllocationCreateInfo {
+            requirements: image.memory_requirements(),
+            allocation_type,
+            usage,
+            allocate_preference,
+            dedicated_allocation: Some(DedicatedAllocation::Image(&image)),
+            ..Default::default()
+        };
+
+        Ok(match unsafe { self.allocate_unchecked(create_info) } {
+            Ok(alloc) => {
+                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
+                Ok((image, alloc))
+            }
+            Err(e) => Err(e),
+        })
     }
 }
 
@@ -2080,6 +2170,16 @@ pub enum AllocationType {
     /// The resource is non-linear, e.g. optimal images. A non-linear allocation following another
     /// non-linear allocation never needs to be aligned to the buffer-image granularity.
     NonLinear = 2,
+}
+
+impl From<ImageTiling> for AllocationType {
+    #[inline]
+    fn from(tiling: ImageTiling) -> Self {
+        match tiling {
+            ImageTiling::Optimal => AllocationType::NonLinear,
+            ImageTiling::Linear => AllocationType::Linear,
+        }
+    }
 }
 
 /// Error that can be returned when using a [suballocator].
