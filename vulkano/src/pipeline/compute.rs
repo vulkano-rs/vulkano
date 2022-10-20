@@ -180,7 +180,7 @@ impl ComputePipeline {
             let stage = ash::vk::PipelineShaderStageCreateInfo {
                 flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                 stage: ash::vk::ShaderStageFlags::COMPUTE,
-                module: shader.module().internal_object(),
+                module: shader.module().handle(),
                 p_name: shader.name().as_ptr(),
                 p_specialization_info: if specialization.data_size == 0 {
                     ptr::null()
@@ -193,20 +193,20 @@ impl ComputePipeline {
             let infos = ash::vk::ComputePipelineCreateInfo {
                 flags: ash::vk::PipelineCreateFlags::empty(),
                 stage,
-                layout: layout.internal_object(),
+                layout: layout.handle(),
                 base_pipeline_handle: ash::vk::Pipeline::null(),
                 base_pipeline_index: 0,
                 ..Default::default()
             };
 
             let cache_handle = match cache {
-                Some(ref cache) => cache.internal_object(),
+                Some(ref cache) => cache.handle(),
                 None => ash::vk::PipelineCache::null(),
             };
 
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_compute_pipelines)(
-                device.internal_object(),
+                device.handle(),
                 cache_handle,
                 1,
                 &infos,
@@ -281,17 +281,17 @@ impl Debug for ComputePipeline {
 impl PartialEq for ComputePipeline {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.internal_object() == other.internal_object()
+        self.handle() == other.handle()
     }
 }
 
 impl Eq for ComputePipeline {}
 
 unsafe impl VulkanObject for ComputePipeline {
-    type Object = ash::vk::Pipeline;
+    type Handle = ash::vk::Pipeline;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Pipeline {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
@@ -308,7 +308,7 @@ impl Drop for ComputePipeline {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline)(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_pipeline)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }

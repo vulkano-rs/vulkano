@@ -119,7 +119,7 @@ impl PipelineCache {
 
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_pipeline_cache)(
-                device.internal_object(),
+                device.handle(),
                 &infos,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -161,7 +161,7 @@ impl PipelineCache {
                 .collect::<Vec<_>>();
 
             (fns.v1_0.merge_pipeline_caches)(
-                self.device.internal_object(),
+                self.device.handle(),
                 self.cache,
                 pipelines.len() as u32,
                 pipelines.as_ptr(),
@@ -209,7 +209,7 @@ impl PipelineCache {
             loop {
                 let mut count = 0;
                 (fns.v1_0.get_pipeline_cache_data)(
-                    self.device.internal_object(),
+                    self.device.handle(),
                     self.cache,
                     &mut count,
                     ptr::null_mut(),
@@ -219,7 +219,7 @@ impl PipelineCache {
 
                 let mut data: Vec<u8> = Vec::with_capacity(count as usize);
                 let result = (fns.v1_0.get_pipeline_cache_data)(
-                    self.device.internal_object(),
+                    self.device.handle(),
                     self.cache,
                     &mut count,
                     data.as_mut_ptr() as *mut _,
@@ -241,10 +241,10 @@ impl PipelineCache {
 }
 
 unsafe impl VulkanObject for PipelineCache {
-    type Object = ash::vk::PipelineCache;
+    type Handle = ash::vk::PipelineCache;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::PipelineCache {
+    fn handle(&self) -> Self::Handle {
         self.cache
     }
 }
@@ -254,11 +254,7 @@ impl Drop for PipelineCache {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline_cache)(
-                self.device.internal_object(),
-                self.cache,
-                ptr::null(),
-            );
+            (fns.v1_0.destroy_pipeline_cache)(self.device.handle(), self.cache, ptr::null());
         }
     }
 }

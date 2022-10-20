@@ -85,7 +85,7 @@ impl QueryPool {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_query_pool)(
-                device.internal_object(),
+                device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -174,16 +174,16 @@ impl Drop for QueryPool {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_query_pool)(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_query_pool)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for QueryPool {
-    type Object = ash::vk::QueryPool;
+    type Handle = ash::vk::QueryPool;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::QueryPool {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
@@ -367,8 +367,8 @@ impl<'a> QueriesRange<'a> {
         let result = unsafe {
             let fns = self.pool.device.fns();
             (fns.v1_0.get_query_pool_results)(
-                self.pool.device.internal_object(),
-                self.pool.internal_object(),
+                self.pool.device.handle(),
+                self.pool.handle(),
                 self.range.start,
                 self.range.end - self.range.start,
                 size_of_val(destination),

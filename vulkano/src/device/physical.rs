@@ -872,7 +872,7 @@ impl PhysicalDevice {
                 );
             } else {
                 (fns.v1_0.get_physical_device_format_properties)(
-                    self.internal_object(),
+                    self.handle(),
                     format.into(),
                     &mut format_properties2.format_properties,
                 );
@@ -1478,9 +1478,9 @@ impl PhysicalDevice {
     /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    pub fn surface_capabilities<W>(
+    pub fn surface_capabilities(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: SurfaceInfo,
     ) -> Result<SurfaceCapabilities, PhysicalDeviceError> {
         self.validate_surface_capabilities(surface, &surface_info)?;
@@ -1488,9 +1488,9 @@ impl PhysicalDevice {
         unsafe { Ok(self.surface_capabilities_unchecked(surface, surface_info)?) }
     }
 
-    fn validate_surface_capabilities<W>(
+    fn validate_surface_capabilities(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: &SurfaceInfo,
     ) -> Result<(), PhysicalDeviceError> {
         if !(self
@@ -1543,9 +1543,9 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn surface_capabilities_unchecked<W>(
+    pub unsafe fn surface_capabilities_unchecked(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: SurfaceInfo,
     ) -> Result<SurfaceCapabilities, VulkanError> {
         /* Input */
@@ -1557,7 +1557,7 @@ impl PhysicalDevice {
         } = surface_info;
 
         let mut info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-            surface: surface.internal_object(),
+            surface: surface.handle(),
             ..Default::default()
         };
         let mut full_screen_exclusive_info = None;
@@ -1621,7 +1621,7 @@ impl PhysicalDevice {
         {
             (fns.khr_get_surface_capabilities2
                 .get_physical_device_surface_capabilities2_khr)(
-                self.internal_object(),
+                self.handle(),
                 &info2,
                 &mut capabilities2,
             )
@@ -1629,7 +1629,7 @@ impl PhysicalDevice {
             .map_err(VulkanError::from)?;
         } else {
             (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
-                self.internal_object(),
+                self.handle(),
                 info2.surface,
                 &mut capabilities2.surface_capabilities,
             )
@@ -1701,9 +1701,9 @@ impl PhysicalDevice {
     /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    pub fn surface_formats<W>(
+    pub fn surface_formats(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: SurfaceInfo,
     ) -> Result<Vec<(Format, ColorSpace)>, PhysicalDeviceError> {
         self.validate_surface_formats(surface, &surface_info)?;
@@ -1711,9 +1711,9 @@ impl PhysicalDevice {
         unsafe { Ok(self.surface_formats_unchecked(surface, surface_info)?) }
     }
 
-    fn validate_surface_formats<W>(
+    fn validate_surface_formats(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: &SurfaceInfo,
     ) -> Result<(), PhysicalDeviceError> {
         if !(self
@@ -1780,9 +1780,9 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn surface_formats_unchecked<W>(
+    pub unsafe fn surface_formats_unchecked(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
         surface_info: SurfaceInfo,
     ) -> Result<Vec<(Format, ColorSpace)>, VulkanError> {
         surface.surface_formats.get_or_try_insert(
@@ -1810,7 +1810,7 @@ impl PhysicalDevice {
                     });
 
                 let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-                    surface: surface.internal_object(),
+                    surface: surface.handle(),
                     ..Default::default()
                 };
 
@@ -1842,7 +1842,7 @@ impl PhysicalDevice {
                         let mut count = 0;
                         (fns.khr_get_surface_capabilities2
                             .get_physical_device_surface_formats2_khr)(
-                            self.internal_object(),
+                            self.handle(),
                             &surface_info2,
                             &mut count,
                             ptr::null_mut(),
@@ -1855,7 +1855,7 @@ impl PhysicalDevice {
                         let result = (fns
                             .khr_get_surface_capabilities2
                             .get_physical_device_surface_formats2_khr)(
-                            self.internal_object(),
+                            self.handle(),
                             &surface_info2,
                             &mut count,
                             surface_format2s.as_mut_ptr(),
@@ -1882,8 +1882,8 @@ impl PhysicalDevice {
                     let surface_formats = loop {
                         let mut count = 0;
                         (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                            self.internal_object(),
-                            surface.internal_object(),
+                            self.handle(),
+                            surface.handle(),
                             &mut count,
                             ptr::null_mut(),
                         )
@@ -1892,8 +1892,8 @@ impl PhysicalDevice {
 
                         let mut surface_formats = Vec::with_capacity(count as usize);
                         let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                            self.internal_object(),
-                            surface.internal_object(),
+                            self.handle(),
+                            surface.handle(),
                             &mut count,
                             surface_formats.as_mut_ptr(),
                         );
@@ -1928,19 +1928,16 @@ impl PhysicalDevice {
     /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    pub fn surface_present_modes<W>(
+    pub fn surface_present_modes(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
     ) -> Result<impl Iterator<Item = PresentMode>, PhysicalDeviceError> {
         self.validate_surface_present_modes(surface)?;
 
         unsafe { Ok(self.surface_present_modes_unchecked(surface)?) }
     }
 
-    fn validate_surface_present_modes<W>(
-        &self,
-        surface: &Surface<W>,
-    ) -> Result<(), PhysicalDeviceError> {
+    fn validate_surface_present_modes(&self, surface: &Surface) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
                 required_for: "`surface_present_modes`",
@@ -1966,9 +1963,9 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn surface_present_modes_unchecked<W>(
+    pub unsafe fn surface_present_modes_unchecked(
         &self,
-        surface: &Surface<W>,
+        surface: &Surface,
     ) -> Result<impl Iterator<Item = PresentMode>, VulkanError> {
         surface
             .surface_present_modes
@@ -1979,8 +1976,8 @@ impl PhysicalDevice {
                     let mut count = 0;
                     (fns.khr_surface
                         .get_physical_device_surface_present_modes_khr)(
-                        self.internal_object(),
-                        surface.internal_object(),
+                        self.handle(),
+                        surface.handle(),
                         &mut count,
                         ptr::null_mut(),
                     )
@@ -1991,8 +1988,8 @@ impl PhysicalDevice {
                     let result = (fns
                         .khr_surface
                         .get_physical_device_surface_present_modes_khr)(
-                        self.internal_object(),
-                        surface.internal_object(),
+                        self.handle(),
+                        surface.handle(),
                         &mut count,
                         modes.as_mut_ptr(),
                     );
@@ -2020,20 +2017,20 @@ impl PhysicalDevice {
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
     #[inline]
-    pub fn surface_support<W>(
+    pub fn surface_support(
         &self,
         queue_family_index: u32,
-        surface: &Surface<W>,
+        surface: &Surface,
     ) -> Result<bool, PhysicalDeviceError> {
         self.validate_surface_support(queue_family_index, surface)?;
 
         unsafe { Ok(self.surface_support_unchecked(queue_family_index, surface)?) }
     }
 
-    fn validate_surface_support<W>(
+    fn validate_surface_support(
         &self,
         queue_family_index: u32,
-        _surface: &Surface<W>,
+        _surface: &Surface,
     ) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
@@ -2057,10 +2054,10 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn surface_support_unchecked<W>(
+    pub unsafe fn surface_support_unchecked(
         &self,
         queue_family_index: u32,
-        surface: &Surface<W>,
+        surface: &Surface,
     ) -> Result<bool, VulkanError> {
         surface
             .surface_support
@@ -2071,7 +2068,7 @@ impl PhysicalDevice {
                 (fns.khr_surface.get_physical_device_surface_support_khr)(
                     self.handle,
                     queue_family_index,
-                    surface.internal_object(),
+                    surface.handle(),
                     output.as_mut_ptr(),
                 )
                 .result()
@@ -2121,13 +2118,13 @@ impl PhysicalDevice {
 
             if self.api_version() >= Version::V1_3 {
                 (fns.v1_3.get_physical_device_tool_properties)(
-                    self.internal_object(),
+                    self.handle(),
                     &mut count,
                     ptr::null_mut(),
                 )
             } else {
                 (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
-                    self.internal_object(),
+                    self.handle(),
                     &mut count,
                     ptr::null_mut(),
                 )
@@ -2138,13 +2135,13 @@ impl PhysicalDevice {
             let mut tool_properties = Vec::with_capacity(count as usize);
             let result = if self.api_version() >= Version::V1_3 {
                 (fns.v1_3.get_physical_device_tool_properties)(
-                    self.internal_object(),
+                    self.handle(),
                     &mut count,
                     tool_properties.as_mut_ptr(),
                 )
             } else {
                 (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
-                    self.internal_object(),
+                    self.handle(),
                     &mut count,
                     tool_properties.as_mut_ptr(),
                 )
@@ -2424,10 +2421,10 @@ impl PhysicalDevice {
 }
 
 unsafe impl VulkanObject for PhysicalDevice {
-    type Object = ash::vk::PhysicalDevice;
+    type Handle = ash::vk::PhysicalDevice;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::PhysicalDevice {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

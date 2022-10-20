@@ -158,7 +158,7 @@ impl Fence {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_fence)(
-                device.internal_object(),
+                device.handle(),
                 &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -197,7 +197,7 @@ impl Fence {
                 unsafe {
                     // Make sure the fence isn't signaled
                     let fns = device.fns();
-                    (fns.v1_0.reset_fences)(device.internal_object(), 1, &handle)
+                    (fns.v1_0.reset_fences)(device.handle(), 1, &handle)
                         .result()
                         .map_err(VulkanError::from)?;
                 }
@@ -270,7 +270,7 @@ impl Fence {
             // We must ask Vulkan for the state.
             let result = unsafe {
                 let fns = self.device.fns();
-                (fns.v1_0.get_fence_status)(self.device.internal_object(), self.handle)
+                (fns.v1_0.get_fence_status)(self.device.handle(), self.handle)
             };
 
             match result {
@@ -315,7 +315,7 @@ impl Fence {
             let result = unsafe {
                 let fns = self.device.fns();
                 (fns.v1_0.wait_for_fences)(
-                    self.device.internal_object(),
+                    self.device.handle(),
                     1,
                     &self.handle,
                     ash::vk::TRUE,
@@ -413,7 +413,7 @@ impl Fence {
             let result = {
                 let fns = device.fns();
                 (fns.v1_0.wait_for_fences)(
-                    device.internal_object(),
+                    device.handle(),
                     fences_vk.len() as u32,
                     fences_vk.as_ptr(),
                     ash::vk::TRUE, // TODO: let the user choose false here?
@@ -471,7 +471,7 @@ impl Fence {
 
     unsafe fn reset_unchecked_locked(&self, state: &mut FenceState) -> Result<(), VulkanError> {
         let fns = self.device.fns();
-        (fns.v1_0.reset_fences)(self.device.internal_object(), 1, &self.handle)
+        (fns.v1_0.reset_fences)(self.device.handle(), 1, &self.handle)
             .result()
             .map_err(VulkanError::from)?;
 
@@ -550,13 +550,9 @@ impl Fence {
         let fences_vk: SmallVec<[_; 8]> = fences.iter().map(|fence| fence.handle).collect();
 
         let fns = device.fns();
-        (fns.v1_0.reset_fences)(
-            device.internal_object(),
-            fences_vk.len() as u32,
-            fences_vk.as_ptr(),
-        )
-        .result()
-        .map_err(VulkanError::from)?;
+        (fns.v1_0.reset_fences)(device.handle(), fences_vk.len() as u32, fences_vk.as_ptr())
+            .result()
+            .map_err(VulkanError::from)?;
 
         for state in states {
             state.reset();
@@ -675,7 +671,7 @@ impl Fence {
         let mut output = MaybeUninit::uninit();
         let fns = self.device.fns();
         (fns.khr_external_fence_fd.get_fence_fd_khr)(
-            self.device.internal_object(),
+            self.device.handle(),
             &info_vk,
             output.as_mut_ptr(),
         )
@@ -805,7 +801,7 @@ impl Fence {
         let mut output = MaybeUninit::uninit();
         let fns = self.device.fns();
         (fns.khr_external_fence_win32.get_fence_win32_handle_khr)(
-            self.device.internal_object(),
+            self.device.handle(),
             &info_vk,
             output.as_mut_ptr(),
         )
@@ -927,7 +923,7 @@ impl Fence {
         };
 
         let fns = self.device.fns();
-        (fns.khr_external_fence_fd.import_fence_fd_khr)(self.device.internal_object(), &info_vk)
+        (fns.khr_external_fence_fd.import_fence_fd_khr)(self.device.handle(), &info_vk)
             .result()
             .map_err(VulkanError::from)?;
 
@@ -1046,7 +1042,7 @@ impl Fence {
 
         let fns = self.device.fns();
         (fns.khr_external_fence_win32.import_fence_win32_handle_khr)(
-            self.device.internal_object(),
+            self.device.handle(),
             &info_vk,
         )
         .result()
@@ -1071,17 +1067,17 @@ impl Drop for Fence {
                 self.device.fence_pool().lock().push(raw_fence);
             } else {
                 let fns = self.device.fns();
-                (fns.v1_0.destroy_fence)(self.device.internal_object(), self.handle, ptr::null());
+                (fns.v1_0.destroy_fence)(self.device.handle(), self.handle, ptr::null());
             }
         }
     }
 }
 
 unsafe impl VulkanObject for Fence {
-    type Object = ash::vk::Fence;
+    type Handle = ash::vk::Fence;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Fence {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
@@ -1778,12 +1774,12 @@ mod tests {
         let fence1_internal_obj = {
             let fence = Fence::from_pool(device.clone()).unwrap();
             assert_eq!(device.fence_pool().lock().len(), 0);
-            fence.internal_object()
+            fence.handle()
         };
 
         assert_eq!(device.fence_pool().lock().len(), 1);
         let fence2 = Fence::from_pool(device.clone()).unwrap();
         assert_eq!(device.fence_pool().lock().len(), 0);
-        assert_eq!(fence2.internal_object(), fence1_internal_obj);
+        assert_eq!(fence2.handle(), fence1_internal_obj);
     }
 }

@@ -133,10 +133,10 @@ unsafe impl<T: ?Sized> SafeDeref for Box<T> {}
 /// Gives access to the internal identifier of an object.
 pub unsafe trait VulkanObject {
     /// The type of the object.
-    type Object: ash::vk::Handle;
+    type Handle: ash::vk::Handle;
 
-    /// Returns a reference to the object.
-    fn internal_object(&self) -> Self::Object;
+    /// Returns the raw Vulkan handle of the object.
+    fn handle(&self) -> Self::Handle;
 }
 
 /// Error type returned by most Vulkan functions.

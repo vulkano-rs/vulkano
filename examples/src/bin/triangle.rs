@@ -40,8 +40,8 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
-        SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -214,6 +214,7 @@ fn main() {
                 .unwrap()[0]
                 .0,
         );
+        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(
@@ -237,7 +238,7 @@ fn main() {
                 //
                 // Both of these cases need the swapchain to use the window dimensions, so we just
                 // use that.
-                image_extent: surface.window().inner_size().into(),
+                image_extent: window.inner_size().into(),
 
                 image_usage: ImageUsage {
                     color_attachment: true,
@@ -459,7 +460,8 @@ fn main() {
             Event::RedrawEventsCleared => {
                 // Do not draw frame when screen dimensions are zero.
                 // On Windows, this can occur from minimizing the application.
-                let dimensions = surface.window().inner_size();
+                let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                let dimensions = window.inner_size();
                 if dimensions.width == 0 || dimensions.height == 0 {
                     return;
                 }
@@ -615,7 +617,7 @@ fn main() {
 
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage<Window>>],
+    images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {

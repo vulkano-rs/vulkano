@@ -39,9 +39,7 @@ use vulkano::{
         GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    swapchain::{
-        PresentMode, Swapchain, SwapchainAbstract, SwapchainCreateInfo, SwapchainPresentInfo,
-    },
+    swapchain::{PresentMode, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
     sync::{FenceSignalFuture, GpuFuture},
     VulkanLibrary,
 };
@@ -49,7 +47,7 @@ use vulkano_win::VkSurfaceBuild;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    window::{Window, WindowBuilder},
 };
 
 const WINDOW_WIDTH: u32 = 800;
@@ -453,7 +451,8 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::RedrawEventsCleared => {
-                let dimensions = surface.window().inner_size();
+                let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                let dimensions = window.inner_size();
                 if dimensions.width == 0 || dimensions.height == 0 {
                     return;
                 }

@@ -135,7 +135,7 @@ impl Semaphore {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_semaphore)(
-                device.internal_object(),
+                device.handle(),
                 &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -330,7 +330,7 @@ impl Semaphore {
         let mut output = MaybeUninit::uninit();
         let fns = self.device.fns();
         (fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
-            self.device.internal_object(),
+            self.device.handle(),
             &info,
             output.as_mut_ptr(),
         )
@@ -474,9 +474,7 @@ impl Semaphore {
         let fns = self.device.fns();
         (fns.khr_external_semaphore_win32
             .get_semaphore_win32_handle_khr)(
-            self.device.internal_object(),
-            &info_vk,
-            output.as_mut_ptr(),
+            self.device.handle(), &info_vk, output.as_mut_ptr()
         )
         .result()
         .map_err(VulkanError::from)?;
@@ -597,9 +595,7 @@ impl Semaphore {
         let fns = self.device.fns();
         (fns.fuchsia_external_semaphore
             .get_semaphore_zircon_handle_fuchsia)(
-            self.device.internal_object(),
-            &info,
-            output.as_mut_ptr(),
+            self.device.handle(), &info, output.as_mut_ptr()
         )
         .result()
         .map_err(VulkanError::from)?;
@@ -721,12 +717,9 @@ impl Semaphore {
         };
 
         let fns = self.device.fns();
-        (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(
-            self.device.internal_object(),
-            &info_vk,
-        )
-        .result()
-        .map_err(VulkanError::from)?;
+        (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
+            .result()
+            .map_err(VulkanError::from)?;
 
         state.import(handle_type, flags.temporary);
 
@@ -850,7 +843,7 @@ impl Semaphore {
 
         let fns = self.device.fns();
         (fns.khr_external_semaphore_win32
-            .import_semaphore_win32_handle_khr)(self.device.internal_object(), &info_vk)
+            .import_semaphore_win32_handle_khr)(self.device.handle(), &info_vk)
         .result()
         .map_err(VulkanError::from)?;
 
@@ -967,9 +960,7 @@ impl Semaphore {
 
         let fns = self.device.fns();
         (fns.fuchsia_external_semaphore
-            .import_semaphore_zircon_handle_fuchsia)(
-            self.device.internal_object(), &info_vk
-        )
+            .import_semaphore_zircon_handle_fuchsia)(self.device.handle(), &info_vk)
         .result()
         .map_err(VulkanError::from)?;
 
@@ -992,21 +983,17 @@ impl Drop for Semaphore {
                 self.device.semaphore_pool().lock().push(raw_sem);
             } else {
                 let fns = self.device.fns();
-                (fns.v1_0.destroy_semaphore)(
-                    self.device.internal_object(),
-                    self.handle,
-                    ptr::null(),
-                );
+                (fns.v1_0.destroy_semaphore)(self.device.handle(), self.handle, ptr::null());
             }
         }
     }
 }
 
 unsafe impl VulkanObject for Semaphore {
-    type Object = ash::vk::Semaphore;
+    type Handle = ash::vk::Semaphore;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::Semaphore {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
@@ -1686,13 +1673,13 @@ mod tests {
         let sem1_internal_obj = {
             let sem = Semaphore::from_pool(device.clone()).unwrap();
             assert_eq!(device.semaphore_pool().lock().len(), 0);
-            sem.internal_object()
+            sem.handle()
         };
 
         assert_eq!(device.semaphore_pool().lock().len(), 1);
         let sem2 = Semaphore::from_pool(device.clone()).unwrap();
         assert_eq!(device.semaphore_pool().lock().len(), 0);
-        assert_eq!(sem2.internal_object(), sem1_internal_obj);
+        assert_eq!(sem2.handle(), sem1_internal_obj);
     }
 
     #[test]

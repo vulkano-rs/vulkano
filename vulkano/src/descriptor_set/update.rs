@@ -239,7 +239,7 @@ impl WriteDescriptorSet {
                                     as DeviceSize
                             );
                             ash::vk::DescriptorBufferInfo {
-                                buffer: buffer.internal_object(),
+                                buffer: buffer.handle(),
                                 offset,
                                 range: size,
                             }
@@ -255,7 +255,7 @@ impl WriteDescriptorSet {
                 DescriptorWriteInfo::BufferView(
                     elements
                         .iter()
-                        .map(|buffer_view| buffer_view.internal_object())
+                        .map(|buffer_view| buffer_view.handle())
                         .collect(),
                 )
             }
@@ -277,7 +277,7 @@ impl WriteDescriptorSet {
                             );
                             ash::vk::DescriptorImageInfo {
                                 sampler: ash::vk::Sampler::null(),
-                                image_view: image_view.internal_object(),
+                                image_view: image_view.handle(),
                                 image_layout: layouts.layout_for(descriptor_type).into(),
                             }
                         })
@@ -297,8 +297,8 @@ impl WriteDescriptorSet {
                                 "descriptor_layouts must return Some when used in an image view",
                             );
                             ash::vk::DescriptorImageInfo {
-                                sampler: sampler.internal_object(),
-                                image_view: image_view.internal_object(),
+                                sampler: sampler.handle(),
+                                image_view: image_view.handle(),
                                 image_layout: layouts.layout_for(descriptor_type).into(),
                             }
                         })
@@ -311,7 +311,7 @@ impl WriteDescriptorSet {
                     elements
                         .iter()
                         .map(|sampler| ash::vk::DescriptorImageInfo {
-                            sampler: sampler.internal_object(),
+                            sampler: sampler.handle(),
                             image_view: ash::vk::ImageView::null(),
                             image_layout: ash::vk::ImageLayout::UNDEFINED,
                         })
@@ -421,10 +421,7 @@ pub(crate) fn check_descriptor_write<'a>(
             match layout_binding.descriptor_type {
                 DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
                     for (index, buffer) in elements.iter().enumerate() {
-                        assert_eq!(
-                            buffer.device().internal_object(),
-                            layout.device().internal_object(),
-                        );
+                        assert_eq!(buffer.device().handle(), layout.device().handle(),);
 
                         if !buffer.inner().buffer.usage().storage_buffer {
                             return Err(DescriptorSetUpdateError::MissingUsage {
@@ -437,10 +434,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 }
                 DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
                     for (index, buffer) in elements.iter().enumerate() {
-                        assert_eq!(
-                            buffer.device().internal_object(),
-                            layout.device().internal_object(),
-                        );
+                        assert_eq!(buffer.device().handle(), layout.device().handle(),);
 
                         if !buffer.inner().buffer.usage().uniform_buffer {
                             return Err(DescriptorSetUpdateError::MissingUsage {
@@ -473,10 +467,7 @@ pub(crate) fn check_descriptor_write<'a>(
             match layout_binding.descriptor_type {
                 DescriptorType::StorageTexelBuffer => {
                     for (index, buffer_view) in elements.iter().enumerate() {
-                        assert_eq!(
-                            buffer_view.device().internal_object(),
-                            layout.device().internal_object(),
-                        );
+                        assert_eq!(buffer_view.device().handle(), layout.device().handle(),);
 
                         // TODO: storage_texel_buffer_atomic
                         if !buffer_view
@@ -496,10 +487,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 }
                 DescriptorType::UniformTexelBuffer => {
                     for (index, buffer_view) in elements.iter().enumerate() {
-                        assert_eq!(
-                            buffer_view.device().internal_object(),
-                            layout.device().internal_object(),
-                        );
+                        assert_eq!(buffer_view.device().handle(), layout.device().handle(),);
 
                         if !buffer_view
                             .buffer()
@@ -533,10 +521,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 for (index, (image_view, sampler)) in
                     elements.iter().zip(immutable_samplers).enumerate()
                 {
-                    assert_eq!(
-                        image_view.device().internal_object(),
-                        layout.device().internal_object(),
-                    );
+                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
                     if !image_view.usage().sampled {
@@ -581,10 +566,7 @@ pub(crate) fn check_descriptor_write<'a>(
             }
             DescriptorType::SampledImage => {
                 for (index, image_view) in elements.iter().enumerate() {
-                    assert_eq!(
-                        image_view.device().internal_object(),
-                        layout.device().internal_object(),
-                    );
+                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
                     if !image_view.usage().sampled {
@@ -631,10 +613,7 @@ pub(crate) fn check_descriptor_write<'a>(
             }
             DescriptorType::StorageImage => {
                 for (index, image_view) in elements.iter().enumerate() {
-                    assert_eq!(
-                        image_view.device().internal_object(),
-                        layout.device().internal_object(),
-                    );
+                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00339
                     if !image_view.usage().storage {
@@ -689,10 +668,7 @@ pub(crate) fn check_descriptor_write<'a>(
             }
             DescriptorType::InputAttachment => {
                 for (index, image_view) in elements.iter().enumerate() {
-                    assert_eq!(
-                        image_view.device().internal_object(),
-                        layout.device().internal_object(),
-                    );
+                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00338
                     if !image_view.usage().input_attachment {
@@ -770,14 +746,8 @@ pub(crate) fn check_descriptor_write<'a>(
                 }
 
                 for (index, (image_view, sampler)) in elements.iter().enumerate() {
-                    assert_eq!(
-                        image_view.device().internal_object(),
-                        layout.device().internal_object(),
-                    );
-                    assert_eq!(
-                        sampler.device().internal_object(),
-                        layout.device().internal_object(),
-                    );
+                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
+                    assert_eq!(sampler.device().handle(), layout.device().handle(),);
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
                     if !image_view.usage().sampled {
@@ -851,10 +821,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 }
 
                 for (index, sampler) in elements.iter().enumerate() {
-                    assert_eq!(
-                        sampler.device().internal_object(),
-                        layout.device().internal_object(),
-                    );
+                    assert_eq!(sampler.device().handle(), layout.device().handle(),);
 
                     if sampler.sampler_ycbcr_conversion().is_some() {
                         return Err(DescriptorSetUpdateError::SamplerHasSamplerYcbcrConversion {

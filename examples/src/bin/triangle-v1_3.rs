@@ -47,8 +47,8 @@ use vulkano::{
     },
     render_pass::{LoadOp, StoreOp},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
-        SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     Version, VulkanLibrary,
@@ -234,6 +234,7 @@ fn main() {
                 .unwrap()[0]
                 .0,
         );
+        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(
@@ -257,7 +258,7 @@ fn main() {
                 //
                 // Both of these cases need the swapchain to use the window dimensions, so we just
                 // use that.
-                image_extent: surface.window().inner_size().into(),
+                image_extent: window.inner_size().into(),
 
                 image_usage: ImageUsage {
                     color_attachment: true,
@@ -460,10 +461,11 @@ fn main() {
                 // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
                 if recreate_swapchain {
                     // Get the new dimensions of the window.
+                    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
                     let (new_swapchain, new_images) =
                         match swapchain.recreate(SwapchainCreateInfo {
-                            image_extent: surface.window().inner_size().into(),
+                            image_extent: window.inner_size().into(),
                             ..swapchain.create_info()
                         }) {
                             Ok(r) => r,
@@ -605,9 +607,9 @@ fn main() {
 
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage<Window>>],
+    images: &[Arc<SwapchainImage>],
     viewport: &mut Viewport,
-) -> Vec<Arc<ImageView<SwapchainImage<Window>>>> {
+) -> Vec<Arc<ImageView<SwapchainImage>>> {
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 

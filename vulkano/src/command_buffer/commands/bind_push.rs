@@ -971,7 +971,7 @@ impl UnsafeCommandBufferBuilder {
     ) {
         let fns = self.device.fns();
 
-        let sets: SmallVec<[_; 12]> = sets.into_iter().map(|s| s.internal_object()).collect();
+        let sets: SmallVec<[_; 12]> = sets.into_iter().map(|s| s.handle()).collect();
         if sets.is_empty() {
             return;
         }
@@ -983,7 +983,7 @@ impl UnsafeCommandBufferBuilder {
         (fns.v1_0.cmd_bind_descriptor_sets)(
             self.handle,
             pipeline_bind_point.into(),
-            pipeline_layout.internal_object(),
+            pipeline_layout.handle(),
             first_set,
             num_bindings,
             sets.as_ptr(),
@@ -1003,7 +1003,7 @@ impl UnsafeCommandBufferBuilder {
 
         (fns.v1_0.cmd_bind_index_buffer)(
             self.handle,
-            inner.buffer.internal_object(),
+            inner.buffer.handle(),
             inner.offset,
             index_type.into(),
         );
@@ -1016,7 +1016,7 @@ impl UnsafeCommandBufferBuilder {
         (fns.v1_0.cmd_bind_pipeline)(
             self.handle,
             ash::vk::PipelineBindPoint::COMPUTE,
-            pipeline.internal_object(),
+            pipeline.handle(),
         );
     }
 
@@ -1027,7 +1027,7 @@ impl UnsafeCommandBufferBuilder {
         (fns.v1_0.cmd_bind_pipeline)(
             self.handle,
             ash::vk::PipelineBindPoint::GRAPHICS,
-            pipeline.internal_object(),
+            pipeline.handle(),
         );
     }
 
@@ -1091,7 +1091,7 @@ impl UnsafeCommandBufferBuilder {
 
         (fns.v1_0.cmd_push_constants)(
             self.handle,
-            pipeline_layout.internal_object(),
+            pipeline_layout.handle(),
             stages.into(),
             offset as u32,
             size as u32,
@@ -1153,7 +1153,7 @@ impl UnsafeCommandBufferBuilder {
         (fns.khr_push_descriptor.cmd_push_descriptor_set_khr)(
             self.handle,
             pipeline_bind_point.into(),
-            pipeline_layout.internal_object(),
+            pipeline_layout.handle(),
             set_num,
             writes.len() as u32,
             writes.as_ptr(),
@@ -1185,7 +1185,7 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
     pub fn add(&mut self, buffer: &dyn BufferAccess) {
         let inner = buffer.inner();
         debug_assert!(inner.buffer.usage().vertex_buffer);
-        self.raw_buffers.push(inner.buffer.internal_object());
+        self.raw_buffers.push(inner.buffer.handle());
         self.offsets.push(inner.offset);
     }
 }

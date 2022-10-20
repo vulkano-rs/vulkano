@@ -2521,8 +2521,8 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let copy_buffer_info = ash::vk::CopyBufferInfo2 {
-                src_buffer: src_buffer_inner.buffer.internal_object(),
-                dst_buffer: dst_buffer_inner.buffer.internal_object(),
+                src_buffer: src_buffer_inner.buffer.handle(),
+                dst_buffer: dst_buffer_inner.buffer.handle(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
                 ..Default::default()
@@ -2554,8 +2554,8 @@ impl UnsafeCommandBufferBuilder {
 
             (fns.v1_0.cmd_copy_buffer)(
                 self.handle,
-                src_buffer_inner.buffer.internal_object(),
-                dst_buffer_inner.buffer.internal_object(),
+                src_buffer_inner.buffer.handle(),
+                dst_buffer_inner.buffer.handle(),
                 regions.len() as u32,
                 regions.as_ptr(),
             );
@@ -2635,9 +2635,9 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let copy_image_info = ash::vk::CopyImageInfo2 {
-                src_image: src_image_inner.image.internal_object(),
+                src_image: src_image_inner.image.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_image: dst_image_inner.image.internal_object(),
+                dst_image: dst_image_inner.image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -2696,9 +2696,9 @@ impl UnsafeCommandBufferBuilder {
 
             (fns.v1_0.cmd_copy_image)(
                 self.handle,
-                src_image_inner.image.internal_object(),
+                src_image_inner.image.handle(),
                 src_image_layout.into(),
-                dst_image_inner.image.internal_object(),
+                dst_image_inner.image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -2774,8 +2774,8 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let copy_buffer_to_image_info = ash::vk::CopyBufferToImageInfo2 {
-                src_buffer: src_buffer_inner.buffer.internal_object(),
-                dst_image: dst_image_inner.image.internal_object(),
+                src_buffer: src_buffer_inner.buffer.handle(),
+                dst_image: dst_image_inner.image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -2830,8 +2830,8 @@ impl UnsafeCommandBufferBuilder {
 
             (fns.v1_0.cmd_copy_buffer_to_image)(
                 self.handle,
-                src_buffer_inner.buffer.internal_object(),
-                dst_image_inner.image.internal_object(),
+                src_buffer_inner.buffer.handle(),
+                dst_image_inner.image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -2907,9 +2907,9 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let copy_image_to_buffer_info = ash::vk::CopyImageToBufferInfo2 {
-                src_image: src_image_inner.image.internal_object(),
+                src_image: src_image_inner.image.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_buffer: dst_buffer_inner.buffer.internal_object(),
+                dst_buffer: dst_buffer_inner.buffer.handle(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
                 ..Default::default()
@@ -2962,9 +2962,9 @@ impl UnsafeCommandBufferBuilder {
 
             (fns.v1_0.cmd_copy_image_to_buffer)(
                 self.handle,
-                src_image_inner.image.internal_object(),
+                src_image_inner.image.handle(),
                 src_image_layout.into(),
-                dst_buffer_inner.buffer.internal_object(),
+                dst_buffer_inner.buffer.handle(),
                 regions.len() as u32,
                 regions.as_ptr(),
             );
@@ -2987,7 +2987,7 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
         (fns.v1_0.cmd_fill_buffer)(
             self.handle,
-            dst_buffer_inner.buffer.internal_object(),
+            dst_buffer_inner.buffer.handle(),
             dst_offset,
             size,
             data,
@@ -3008,7 +3008,7 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
         (fns.v1_0.cmd_update_buffer)(
             self.handle,
-            dst_buffer_inner.buffer.internal_object(),
+            dst_buffer_inner.buffer.handle(),
             dst_buffer_inner.offset + dst_offset,
             size_of_val(data) as DeviceSize,
             data.as_bytes().as_ptr() as *const _,

@@ -1046,8 +1046,7 @@ impl CurrentState {
             Entry::Occupied(entry) => {
                 let state = entry.into_mut();
 
-                let invalidate_from = if state.pipeline_layout.internal_object()
-                    == pipeline_layout.internal_object()
+                let invalidate_from = if state.pipeline_layout.handle() == pipeline_layout.handle()
                 {
                     // If we're still using the exact same layout, then of course it's compatible.
                     None

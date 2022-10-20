@@ -305,7 +305,7 @@ impl DescriptorSetLayout {
                 let sampler_handles = binding
                     .immutable_samplers
                     .iter()
-                    .map(|s| s.internal_object())
+                    .map(|s| s.handle())
                     .collect::<Vec<_>>()
                     .into_boxed_slice();
                 let p_immutable_samplers = sampler_handles.as_ptr();
@@ -360,7 +360,7 @@ impl DescriptorSetLayout {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_descriptor_set_layout)(
-                device.internal_object(),
+                device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -429,7 +429,7 @@ impl Drop for DescriptorSetLayout {
         unsafe {
             let fns = self.device.fns();
             (fns.v1_0.destroy_descriptor_set_layout)(
-                self.device.internal_object(),
+                self.device.handle(),
                 self.handle,
                 ptr::null(),
             );
@@ -438,10 +438,10 @@ impl Drop for DescriptorSetLayout {
 }
 
 unsafe impl VulkanObject for DescriptorSetLayout {
-    type Object = ash::vk::DescriptorSetLayout;
+    type Handle = ash::vk::DescriptorSetLayout;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::DescriptorSetLayout {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }

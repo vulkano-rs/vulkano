@@ -40,8 +40,8 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainAbstract,
-        SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -55,8 +55,8 @@ use winit::{
 
 // A struct to contain resources related to a window
 struct WindowSurface {
-    surface: Arc<Surface<Window>>,
-    swapchain: Arc<Swapchain<Window>>,
+    surface: Arc<Surface>,
+    swapchain: Arc<Swapchain>,
     framebuffers: Vec<Arc<Framebuffer>>,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
@@ -84,7 +84,8 @@ fn main() {
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
     // Use the window's id as a means to access it from the hashmap
-    let window_id = surface.window().id();
+    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+    let window_id = window.id();
 
     // Find the device and a queue.
     // TODO: it is assumed the device, queue, and surface surface_capabilities are the same for all windows
@@ -155,6 +156,7 @@ fn main() {
                 .unwrap()[0]
                 .0,
         );
+        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
         Swapchain::new(
             device.clone(),
@@ -162,7 +164,7 @@ fn main() {
             SwapchainCreateInfo {
                 min_image_count: surface_caps.min_image_count,
                 image_format,
-                image_extent: surface.window().inner_size().into(),
+                image_extent: window.inner_size().into(),
                 image_usage: ImageUsage {
                     color_attachment: true,
                     ..ImageUsage::empty()
@@ -318,7 +320,8 @@ fn main() {
             let surface = WindowBuilder::new()
                 .build_vk_surface(event_loop, instance.clone())
                 .unwrap();
-            let window_id = surface.window().id();
+            let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+            let window_id = window.id();
             let (swapchain, images) = {
                 let composite_alpha = surface_caps
                     .supported_composite_alpha
@@ -339,7 +342,7 @@ fn main() {
                     SwapchainCreateInfo {
                         min_image_count: surface_caps.min_image_count,
                         image_format,
-                        image_extent: surface.window().inner_size().into(),
+                        image_extent: window.inner_size().into(),
                         image_usage: ImageUsage {
                             color_attachment: true,
                             ..ImageUsage::empty()
@@ -367,9 +370,15 @@ fn main() {
             );
         }
         Event::RedrawEventsCleared => {
-            window_surfaces
-                .values()
-                .for_each(|s| s.surface.window().request_redraw());
+            window_surfaces.values().for_each(|s| {
+                let window = s
+                    .surface
+                    .object()
+                    .unwrap()
+                    .downcast_ref::<Window>()
+                    .unwrap();
+                window.request_redraw()
+            });
         }
         Event::RedrawRequested(window_id) => {
             let WindowSurface {
@@ -380,7 +389,8 @@ fn main() {
                 ref mut previous_frame_end,
             } = window_surfaces.get_mut(&window_id).unwrap();
 
-            let dimensions = surface.window().inner_size();
+            let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+            let dimensions = window.inner_size();
             if dimensions.width == 0 || dimensions.height == 0 {
                 return;
             }
@@ -475,7 +485,7 @@ fn main() {
 }
 
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage<Window>>],
+    images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {

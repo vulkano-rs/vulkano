@@ -54,7 +54,7 @@ where
         self.validate_begin_query(&query_pool, query, flags)?;
 
         let ty = query_pool.query_type();
-        let raw_query_pool = query_pool.internal_object();
+        let raw_query_pool = query_pool.handle();
 
         self.inner.begin_query(query_pool, query, flags);
         self.query_state.insert(
@@ -195,7 +195,7 @@ where
             .query_state
             .get(&query_pool.query_type().into())
             .map_or(false, |state| {
-                state.query_pool == query_pool.internal_object() && state.query == query
+                state.query_pool == query_pool.handle() && state.query == query
             })
         {
             return Err(QueryError::QueryNotActive);
@@ -474,9 +474,11 @@ where
             .ok_or(QueryError::OutOfRange)?;
 
         // VUID-vkCmdResetQueryPool-None-02841
-        if self.query_state.values().any(|state| {
-            state.query_pool == query_pool.internal_object() && queries.contains(&state.query)
-        }) {
+        if self
+            .query_state
+            .values()
+            .any(|state| state.query_pool == query_pool.handle() && queries.contains(&state.query))
+        {
             return Err(QueryError::QueryIsActive);
         }
 
@@ -684,19 +686,14 @@ impl UnsafeCommandBufferBuilder {
         } else {
             ash::vk::QueryControlFlags::empty()
         };
-        (fns.v1_0.cmd_begin_query)(
-            self.handle,
-            query.pool().internal_object(),
-            query.index(),
-            flags,
-        );
+        (fns.v1_0.cmd_begin_query)(self.handle, query.pool().handle(), query.index(), flags);
     }
 
     /// Calls `vkCmdEndQuery` on the builder.
     #[inline]
     pub unsafe fn end_query(&mut self, query: Query<'_>) {
         let fns = self.device.fns();
-        (fns.v1_0.cmd_end_query)(self.handle, query.pool().internal_object(), query.index());
+        (fns.v1_0.cmd_end_query)(self.handle, query.pool().handle(), query.index());
     }
 
     /// Calls `vkCmdWriteTimestamp` on the builder.
@@ -706,7 +703,7 @@ impl UnsafeCommandBufferBuilder {
         (fns.v1_0.cmd_write_timestamp)(
             self.handle,
             stage.into(),
-            query.pool().internal_object(),
+            query.pool().handle(),
             query.index(),
         );
     }
@@ -732,10 +729,10 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
         (fns.v1_0.cmd_copy_query_pool_results)(
             self.handle,
-            queries.pool().internal_object(),
+            queries.pool().handle(),
             range.start,
             range.end - range.start,
-            destination.buffer.internal_object(),
+            destination.buffer.handle(),
             destination.offset,
             stride,
             ash::vk::QueryResultFlags::from(flags) | T::FLAG,
@@ -749,7 +746,7 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
         (fns.v1_0.cmd_reset_query_pool)(
             self.handle,
-            queries.pool().internal_object(),
+            queries.pool().handle(),
             range.start,
             range.end - range.start,
         );

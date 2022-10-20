@@ -1967,8 +1967,8 @@ impl UnsafeCommandBufferBuilder {
             .collect();
 
         let render_pass_begin_info = ash::vk::RenderPassBeginInfo {
-            render_pass: render_pass.internal_object(),
-            framebuffer: framebuffer.internal_object(),
+            render_pass: render_pass.handle(),
+            framebuffer: framebuffer.handle(),
             render_area: ash::vk::Rect2D {
                 offset: ash::vk::Offset2D {
                     x: render_area_offset[0] as i32,
@@ -2110,11 +2110,7 @@ impl UnsafeCommandBufferBuilder {
                             image_layout,
                         } = resolve;
 
-                        (
-                            mode.into(),
-                            image_view.internal_object(),
-                            image_layout.into(),
-                        )
+                        (mode.into(), image_view.handle(), image_layout.into())
                     } else {
                         (
                             ash::vk::ResolveModeFlags::NONE,
@@ -2124,7 +2120,7 @@ impl UnsafeCommandBufferBuilder {
                     };
 
                 ash::vk::RenderingAttachmentInfo {
-                    image_view: image_view.internal_object(),
+                    image_view: image_view.handle(),
                     image_layout: image_layout.into(),
                     resolve_mode,
                     resolve_image_view,

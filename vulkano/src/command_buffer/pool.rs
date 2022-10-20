@@ -151,7 +151,7 @@ impl CommandPool {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_command_pool)(
-                device.internal_object(),
+                device.handle(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -181,7 +181,7 @@ impl CommandPool {
         };
 
         let fns = self.device.fns();
-        (fns.v1_0.reset_command_pool)(self.device.internal_object(), self.handle, flags)
+        (fns.v1_0.reset_command_pool)(self.device.handle(), self.handle, flags)
             .result()
             .map_err(VulkanError::from)?;
 
@@ -215,7 +215,7 @@ impl CommandPool {
                 let fns = self.device.fns();
                 let mut out = Vec::with_capacity(command_buffer_count as usize);
                 (fns.v1_0.allocate_command_buffers)(
-                    self.device.internal_object(),
+                    self.device.handle(),
                     &allocate_info,
                     out.as_mut_ptr(),
                 )
@@ -250,7 +250,7 @@ impl CommandPool {
             command_buffers.into_iter().map(|cb| cb.handle).collect();
         let fns = self.device.fns();
         (fns.v1_0.free_command_buffers)(
-            self.device.internal_object(),
+            self.device.handle(),
             self.handle,
             command_buffers.len() as u32,
             command_buffers.as_ptr(),
@@ -287,13 +287,13 @@ impl CommandPool {
 
             if self.device.api_version() >= Version::V1_1 {
                 (fns.v1_1.trim_command_pool)(
-                    self.device.internal_object(),
+                    self.device.handle(),
                     self.handle,
                     ash::vk::CommandPoolTrimFlags::empty(),
                 );
             } else {
                 (fns.khr_maintenance1.trim_command_pool_khr)(
-                    self.device.internal_object(),
+                    self.device.handle(),
                     self.handle,
                     ash::vk::CommandPoolTrimFlagsKHR::empty(),
                 );
@@ -315,20 +315,16 @@ impl Drop for CommandPool {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_command_pool)(
-                self.device.internal_object(),
-                self.handle,
-                ptr::null(),
-            );
+            (fns.v1_0.destroy_command_pool)(self.device.handle(), self.handle, ptr::null());
         }
     }
 }
 
 unsafe impl VulkanObject for CommandPool {
-    type Object = ash::vk::CommandPool;
+    type Handle = ash::vk::CommandPool;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::CommandPool {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
@@ -484,10 +480,10 @@ impl CommandPoolAlloc {
 }
 
 unsafe impl VulkanObject for CommandPoolAlloc {
-    type Object = ash::vk::CommandBuffer;
+    type Handle = ash::vk::CommandBuffer;
 
     #[inline]
-    fn internal_object(&self) -> ash::vk::CommandBuffer {
+    fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
