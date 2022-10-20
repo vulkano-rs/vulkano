@@ -470,15 +470,11 @@ pub struct MemoryAlloc {
     size: DeviceSize,
     // Needed when binding resources to the allocation in order to avoid aliasing memory.
     allocation_type: AllocationType,
-    // Underlying block of memory. These fields are duplicated here to avoid walking up the
-    // hierarchy when binding.
-    memory: ash::vk::DeviceMemory,
-    memory_type_index: u32,
+    // Mapped pointer to the start of the allocation or `None` is the memory is not host-visible.
+    mapped_ptr: Option<NonNull<c_void>>,
     // Used by the suballocators to align allocations to the non-coherent atom size when the memory
     // type is host-visible but not host-coherent. This will be `None` for any other memory type.
     non_coherent_atom_size: Option<NonZeroU64>,
-    // Mapped pointer to the start of the allocation or `None` is the memory is not host-visible.
-    mapped_ptr: Option<NonNull<c_void>>,
     // Used in the `Drop` impl to free the allocation if required.
     parent: AllocParent,
 }
@@ -524,12 +520,6 @@ impl MemoryAlloc {
     #[inline]
     pub fn allocation_type(&self) -> AllocationType {
         self.allocation_type
-    }
-
-    /// Returns the index of the memory type that this allocation resides in.
-    #[inline]
-    pub fn memory_type_index(&self) -> u32 {
-        self.memory_type_index
     }
 
     /// Returns the mapped pointer to the start of the allocation if the memory is host-visible,
@@ -606,7 +596,7 @@ impl MemoryAlloc {
             let range = self.create_memory_range(range, atom_size.get());
             let device = self.device();
             let fns = device.fns();
-            (fns.v1_0.invalidate_mapped_memory_ranges)(device.internal_object(), 1, &range)
+            (fns.v1_0.invalidate_mapped_memory_ranges)(device.handle(), 1, &range)
                 .result()
                 .map_err(VulkanError::from)?;
         } else {
@@ -647,7 +637,7 @@ impl MemoryAlloc {
             let range = self.create_memory_range(range, atom_size.get());
             let device = self.device();
             let fns = device.fns();
-            (fns.v1_0.flush_mapped_memory_ranges)(device.internal_object(), 1, &range)
+            (fns.v1_0.flush_mapped_memory_ranges)(device.handle(), 1, &range)
                 .result()
                 .map_err(VulkanError::from)?;
         } else {
@@ -680,9 +670,10 @@ impl MemoryAlloc {
         let offset = self.offset + range.start;
 
         let mut size = range.end - range.start;
+        let device_memory = self.device_memory();
 
         // VUID-VkMappedMemoryRange-size-01390
-        if offset + size < self.device_memory().allocation_size() {
+        if offset + size < device_memory.allocation_size() {
             // We align the size in case `range.end == self.size`. We can do this without aliasing
             // other allocations because the suballocators ensure that all allocations are aligned
             // to the atom size for non-coherent host-visible memory.
@@ -690,7 +681,7 @@ impl MemoryAlloc {
         }
 
         ash::vk::MappedMemoryRange {
-            memory: self.memory,
+            memory: device_memory.handle(),
             offset,
             size,
             ..Default::default()
@@ -906,11 +897,9 @@ impl From<DeviceMemory> for MemoryAlloc {
             offset: 0,
             size: device_memory.allocation_size(),
             allocation_type: AllocationType::Unknown,
-            memory: device_memory.internal_object(),
-            memory_type_index: device_memory.memory_type_index(),
             mapped_ptr: None,
-            non_coherent_atom_size: None,
             parent: AllocParent::Root(Arc::new(device_memory)),
+            non_coherent_atom_size: None,
         }
     }
 }
@@ -943,15 +932,6 @@ unsafe impl DeviceOwned for MemoryAlloc {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.device_memory().device()
-    }
-}
-
-unsafe impl VulkanObject for MemoryAlloc {
-    type Object = ash::vk::DeviceMemory;
-
-    #[inline]
-    fn internal_object(&self) -> Self::Object {
-        self.memory
     }
 }
 
@@ -1406,8 +1386,6 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                             offset: 0,
                             size: device_memory.allocation_size(),
                             allocation_type: AllocationType::Unknown,
-                            memory: device_memory.internal_object(),
-                            memory_type_index,
                             mapped_ptr: self.mapped_ptr(&device_memory)?,
                             non_coherent_atom_size,
                             parent: AllocParent::Root(Arc::new(device_memory)),
@@ -1695,8 +1673,6 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             offset: 0,
             size: allocation_size,
             allocation_type: AllocationType::Unknown,
-            memory: device_memory.internal_object(),
-            memory_type_index,
             mapped_ptr: self.mapped_ptr(&device_memory)?,
             non_coherent_atom_size,
             parent: if is_dedicated {
@@ -1722,8 +1698,8 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             let mut output = MaybeUninit::uninit();
             // This is always valid because we are mapping the whole range.
             (fns.v1_0.map_memory)(
-                self.device.internal_object(),
-                device_memory.internal_object(),
+                self.device.handle(),
+                device_memory.handle(),
                 0,
                 ash::vk::WHOLE_SIZE,
                 ash::vk::MemoryMapFlags::empty(),
@@ -2473,8 +2449,6 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                             offset,
                             size,
                             allocation_type,
-                            memory: self.region.memory,
-                            memory_type_index: self.region.memory_type_index,
                             mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                                 NonNull::new(
                                     ptr.as_ptr().add((offset - self.region.offset) as usize),
@@ -2995,8 +2969,6 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
                         offset,
                         size: create_info.size,
                         allocation_type,
-                        memory: self.region.memory,
-                        memory_type_index: self.region.memory_type_index,
                         mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                             NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
                         }),
@@ -3364,8 +3336,6 @@ impl PoolAllocatorInner {
             offset,
             size,
             allocation_type: self.region.allocation_type,
-            memory: self.region.memory,
-            memory_type_index: self.region.memory_type_index,
             mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                 NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
             }),
@@ -3632,8 +3602,6 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
                         offset,
                         size,
                         allocation_type,
-                        memory: self.region.memory,
-                        memory_type_index: self.region.memory_type_index,
                         mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                             NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
                         }),
