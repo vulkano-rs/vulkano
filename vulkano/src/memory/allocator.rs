@@ -217,7 +217,8 @@
 
 use self::{array_vec::ArrayVec, host::SlotId};
 use super::{
-    DedicatedAllocation, MemoryAllocateFlags, MemoryAllocateInfo, MemoryRequirements, MemoryType,
+    DedicatedAllocation, DeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryProperties,
+    MemoryRequirements, MemoryType,
 };
 use crate::{
     buffer::{
@@ -229,7 +230,6 @@ use crate::{
         sys::{UnsafeImage, UnsafeImageCreateInfo},
         ImageCreationError, ImageTiling,
     },
-    memory::{DeviceMemory, MemoryProperties},
     DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
@@ -898,8 +898,8 @@ impl From<DeviceMemory> for MemoryAlloc {
             size: device_memory.allocation_size(),
             allocation_type: AllocationType::Unknown,
             mapped_ptr: None,
-            parent: AllocParent::Root(Arc::new(device_memory)),
             non_coherent_atom_size: None,
+            parent: AllocParent::Root(Arc::new(device_memory)),
         }
     }
 }
@@ -950,20 +950,26 @@ pub enum AllocationCreationError {
     /// Too many [`DeviceMemory`] allocations exist already.
     TooManyObjects,
 
+    /// Failed to map memory.
+    MemoryMapFailed,
+
     /// There is not enough memory in the pool.
     ///
     /// This is returned when using [`MemoryAllocatePreference::NeverAllocate`] and there is not
     /// enough memory in the pool.
     OutOfPoolMemory,
 
-    /// Failed to map memory.
-    MemoryMapFailed,
+    /// The block size for the suballocator was exceeded.
+    ///
+    /// This is returned when using [`MemoryAllocatePreference::NeverAllocate`] and the allocation
+    /// size exceeded the block size for all heaps of suitable memory types.
+    BlockSizeExceeded,
 
     /// The block size for the suballocator was exceeded.
     ///
     /// This is returned when using [`GenericMemoryAllocator<Arc<PoolAllocator<BLOCK_SIZE>>>`] if
     /// the allocation size exceeded `BLOCK_SIZE`.
-    BlockSizeExceeded,
+    SuballocatorBlockSizeExceeded,
 }
 
 impl Display for AllocationCreationError {
@@ -975,9 +981,12 @@ impl Display for AllocationCreationError {
                 Self::OutOfHostMemory => "out of host memory",
                 Self::OutOfDeviceMemory => "out of device memory",
                 Self::TooManyObjects => "too many `DeviceMemory` allocations exist already",
-                Self::OutOfPoolMemory => "the pool doesn't have enough free space",
                 Self::MemoryMapFailed => "failed to map memory",
+                Self::OutOfPoolMemory => "the pool doesn't have enough free space",
                 Self::BlockSizeExceeded =>
+                    "the allocation size was greater than the block size for all heaps of suitable \
+                    memory types and dedicated allocations were explicitly forbidden",
+                Self::SuballocatorBlockSizeExceeded =>
                     "the allocation size was greater than the suballocator's block size",
             }
         )
@@ -1287,7 +1296,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 match block.allocate_unchecked(create_info.clone()) {
                     Ok(alloc) => return Ok(alloc),
                     Err(SuballocationCreationError::BlockSizeExceeded) => {
-                        return Err(AllocationCreationError::BlockSizeExceeded);
+                        return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
                     }
                     Err(_) => {}
                 }
@@ -1312,7 +1321,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                     // This can happen when using the `PoolAllocator<BLOCK_SIZE>` if the allocation
                     // size is greater than `BLOCK_SIZE`.
                     Err(SuballocationCreationError::BlockSizeExceeded) => {
-                        return Err(AllocationCreationError::BlockSizeExceeded);
+                        return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
                     }
                     Err(_) => {}
                 }
@@ -1329,7 +1338,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                     // the `PoolAllocator<BLOCK_SIZE>` if the allocation size is greater than
                     // `BLOCK_SIZE`.
                     Err(SuballocationCreationError::BlockSizeExceeded) => {
-                        return Err(AllocationCreationError::BlockSizeExceeded);
+                        return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
                     }
                     Err(_) => {}
                 }
@@ -1425,7 +1434,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             // This can happen if this is the first block that was inserted and when using the
             // `PoolAllocator<BLOCK_SIZE>` if the allocation size is greater than `BLOCK_SIZE`.
             Err(SuballocationCreationError::BlockSizeExceeded) => {
-                Err(AllocationCreationError::BlockSizeExceeded)
+                Err(AllocationCreationError::SuballocatorBlockSizeExceeded)
             }
         }
     }
@@ -1576,7 +1585,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                             true,
                         )
                     } else {
-                        Err(AllocationCreationError::OutOfPoolMemory)
+                        Err(AllocationCreationError::BlockSizeExceeded)
                     }
                 }
             };
@@ -1584,8 +1593,8 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             match res {
                 Ok(alloc) => return Ok(alloc),
                 // This is not recoverable.
-                Err(AllocationCreationError::BlockSizeExceeded) => {
-                    return Err(AllocationCreationError::BlockSizeExceeded);
+                Err(AllocationCreationError::SuballocatorBlockSizeExceeded) => {
+                    return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
                 }
                 // Try a different memory type.
                 Err(e) => {
@@ -1783,21 +1792,23 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///
     /// - Returns an error if allocating a new block is required and failed. This can be one of the
     ///   OOM errors or [`TooManyObjects`].
-    /// - Returns [`BlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
-    ///   is greater than `BLOCK_SIZE` and a dedicated allocation was not created.
     /// - Returns [`OutOfPoolMemory`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is greater
     ///   than the block size for all heaps of suitable memory types.
-    /// - Returns `OutOfPoolMemory` if `create_info.allocate_preference` is
+    /// - Returns [`BlockSizeExceeded`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and none of the pools of suitable memory
     ///   types have enough free space.
+    /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
+    ///   `create_info.size` is greater than `BLOCK_SIZE` and a dedicated allocation was not
+    ///   created.
     ///
     /// [`device_local`]: MemoryPropertyFlags::device_local
     /// [`host_visible`]: MemoryPropertyFlags::host_visible
     /// [`NoSuitableMemoryTypes`]: AllocationCreationError::NoSuitableMemoryTypes
     /// [`TooManyObjects`]: AllocationCreationError::TooManyObjects
-    /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
+    /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     /// [`OutOfPoolMemory`]: AllocationCreationError::OutOfPoolMemory
+    /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
     fn allocate(
         &self,
         create_info: AllocationCreateInfo<'_>,
