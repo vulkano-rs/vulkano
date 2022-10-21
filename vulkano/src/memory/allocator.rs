@@ -1009,7 +1009,7 @@ impl From<OomError> for AllocationCreationError {
 /// This type of allocator should work well in most cases, it is however **not** to be used when
 /// allocations need to be made very frequently. For that purpose, use [`FastMemoryAllocator`].
 ///
-/// See [`FreeListAllocator`] for details about the allocation algorithm.
+/// See [`FreeListAllocator`] for details about the allocation algorithm and example usage.
 pub type StandardMemoryAllocator = GenericMemoryAllocator<Arc<FreeListAllocator>>;
 
 impl StandardMemoryAllocator {
@@ -2023,6 +2023,42 @@ impl Default for GenericMemoryAllocatorCreateInfo<'_> {
 /// method for this purpose. This means that you can replace one suballocator with another without
 /// consulting any of the higher levels in the hierarchy.
 ///
+/// # Examples
+///
+/// Allocating a region to suballocatate:
+///
+/// ```
+/// use vulkano::memory::{DeviceMemory, MemoryAllocateInfo, MemoryType};
+/// use vulkano::memory::allocator::MemoryAlloc;
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+///
+/// // First you need to find a suitable memory type.
+/// let memory_type_index = device
+///     .physical_device()
+///     .memory_properties()
+///     .memory_types
+///     .iter()
+///     .enumerate()
+///     // In a real-world scenario, you would probably want to rank the memory types based on your
+///     // requirements, instead of picking the first one that satisfies them. Also, you have to
+///     // take the requirements of the resources you want to allocate memory for into consideration.
+///     .find_map(|(index, MemoryType { property_flags, .. })| {
+///         property_flags.device_local.then_some(index)
+///     })
+///     .unwrap() as u32;
+///
+/// let region: MemoryAlloc = DeviceMemory::allocate(
+///     device.clone(),
+///     MemoryAllocateInfo {
+///         allocation_size: 64 * 1024 * 1024,
+///         memory_type_index,
+///         ..Default::default()
+///     },
+/// )
+/// .unwrap()
+/// .into();
+/// ```
+///
 /// # Implementing the trait
 ///
 /// Please don't.
@@ -2278,12 +2314,95 @@ impl Error for SuballocationCreationError {}
 /// allocations that all have the same size then that seems pretty sus. Sounds like you're in dire
 /// need of a `PoolAllocator`.
 ///
+/// # Examples
+///
+/// Most commonly you will not want to use this suballocator directly but rather use it within
+/// [`GenericMemoryAllocator`], having one global [`StandardMemoryAllocator`] for most if not all
+/// of your allocation needs.
+///
+/// Basic usage as a global allocator for long-lived resources:
+///
+/// ```
+/// use vulkano::format::Format;
+/// use vulkano::image::{ImageDimensions, ImmutableImage};
+/// use vulkano::memory::allocator::StandardMemoryAllocator;
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+///
+/// let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+///
+/// # fn read_textures() -> Vec<Vec<u8>> { Vec::new() }
+/// # let mut command_buffer_builder: vulkano::command_buffer::AutoCommandBufferBuilder<vulkano::command_buffer::PrimaryAutoCommandBuffer<vulkano::command_buffer::allocator::StandardCommandBufferAlloc>> = return;
+/// // Allocate some resources.
+/// let textures_data: Vec<Vec<u8>> = read_textures();
+/// let textures = textures_data.into_iter().map(|data| {
+///     ImmutableImage::from_iter(
+///         &memory_allocator,
+///         data,
+///         ImageDimensions::Dim2d {
+///             width: 1024,
+///             height: 1024,
+///             array_layers: 1,
+///         },
+///         1.into(),
+///         Format::R8G8B8A8_UNORM,
+///         &mut command_buffer_builder,
+///     )
+///     .unwrap()
+/// });
+/// ```
+///
+/// For use in allocating buffers for [`CpuBufferPool`]:
+///
+/// ```
+/// use std::sync::Arc;
+/// use vulkano::buffer::CpuBufferPool;
+/// use vulkano::memory::allocator::StandardMemoryAllocator;
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+///
+/// // We need to wrap the allocator in an `Arc` so that we can share ownership of it.
+/// let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+/// let buffer_pool = CpuBufferPool::<u32>::upload(memory_allocator.clone());
+///
+/// // You can continue using `memory_allocator` for other things.
+/// ```
+///
+/// Sometimes, it is neccessary to suballocate an allocation. If you don't want to allocate new
+/// [`DeviceMemory`] blocks to suballocate, perhaps because of concerns of memory wastage or
+/// allocation efficiency, you can use your existing global `StandardMemoryAllocator` to allocate
+/// regions for your suballocation needs:
+///
+/// ```
+/// use vulkano::memory::allocator::{MemoryAllocator, StandardMemoryAllocator, SuballocationCreateInfo};
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+///
+/// # let memory_type_index = 0;
+/// let region = memory_allocator.allocate_from_type(
+///     // When choosing the index, you have to make sure that the memory type is allowed for the
+///     // type of resource that you want to bind the suballocations to.
+///     memory_type_index,
+///     SuballocationCreateInfo {
+///         // This will be the size of your region.
+///         size: 16 * 1024 * 1024,
+///         // It generally does not matter what the alignment is, because you're going to
+///         // suballocate the allocation anyway, and not bind it directly.
+///         alignment: 1,
+///         ..Default::default()
+///     },
+/// )
+/// .unwrap();
+///
+/// // You can now feed the `region` into any suballocator.
+/// ```
+///
 /// [suballocator]: Suballocator
 /// [free-list]: Suballocator#free-lists
 /// [external fragmentation]: self#external-fragmentation
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<FreeListAllocator>
 /// [internal fragmentation]: self#internal-fragmentation
 /// [alignment requirements]: self#alignment
+/// [`CpuBufferPool`]: crate::buffer::CpuBufferPool
 #[derive(Debug)]
 pub struct FreeListAllocator {
     region: MemoryAlloc,
@@ -2761,7 +2880,7 @@ impl FreeListAllocatorInner {
 /// *region&nbsp;size*&nbsp;&ge;&nbsp;16).
 ///
 /// It's safe to say that this algorithm works best if you have some level of control over your
-/// allocation sizes, so that you don't end allocating twice as much memory. An example of this
+/// allocation sizes, so that you don't end up allocating twice as much memory. An example of this
 /// would be when you need to allocate regions for other allocators, such as the `PoolAllocator` or
 /// the [`BumpAllocator`].
 ///
@@ -2771,6 +2890,32 @@ impl FreeListAllocatorInner {
 /// period each time an allocation is created and freed. The time complexity of both allocation and
 /// freeing is *O*(*m*) in the worst case where *m* is the highest order, which equates to *O*(log
 /// (*n*)) where *n* is the size of the region.
+///
+/// # Examples
+///
+/// Basic usage together with [`GenericMemoryAllocator`], to allocate resources that have a
+/// moderately low life span (for example if you have a lot of images, each of which needs to be
+/// resized every now and then):
+///
+/// ```
+/// use std::sync::Arc;
+/// use vulkano::memory::allocator::{
+///     BuddyAllocator, GenericMemoryAllocator, GenericMemoryAllocatorCreateInfo,
+/// };
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// let memory_allocator = GenericMemoryAllocator::<Arc<BuddyAllocator>>::new(
+///     device.clone(),
+///     GenericMemoryAllocatorCreateInfo {
+///         // Your block sizes must be powers of two, because `BuddyAllocator` only accepts
+///         // power-of-two-sized regions.
+///         block_sizes: &[(0, 64 * 1024 * 1024)],
+///         ..Default::default()
+///     },
+/// );
+///
+/// // Now you can use `memory_allocator` to allocate whatever it is you need.
+/// ```
 ///
 /// [suballocator]: Suballocator
 /// [internal fragmentation]: self#internal-fragmentation
@@ -3114,14 +3259,34 @@ struct BuddyAllocatorInner {
 /// is not desired. If you want pools for different size classes to all have about the same number
 /// of blocks, or you even know that some size classes require more or less blocks (because of how
 /// many resources you will be allocating for each), then you need an allocator that can allocate
-/// regions of different sizes, which are still going to be predictable and tunable though. The
-/// [`BuddyAllocator`] is perfectly suited for this task. You could also consider
-/// [`FreeListAllocator`] if external fragmentation is not an issue, or you can't align your
-/// regions nicely causing too much internal fragmentation with the buddy system. On the other
-/// hand, you might also want to consider having a `PoolAllocator` at the top of a [hierarchy].
-/// Again, this allocator never needs to lock making it *the* perfect fit for a global concurrent
-/// allocator, which hands out large regions which can then be suballocated locally on a thread, by
-/// the [`BumpAllocator`] for example, for optimal performance.
+/// regions of different sizes. You can use the [`FreeListAllocator`] for this, if external
+/// fragmentation is not an issue, otherwise you might consider using the [`BuddyAllocator`]. On
+/// the other hand, you might also want to consider having a `PoolAllocator` at the top of a
+/// [hierarchy]. Again, this allocator never needs to lock making it *the* perfect fit for a global
+/// concurrent allocator, which hands out large regions which can then be suballocated locally on a
+/// thread, by the [`BumpAllocator`] for example.
+///
+/// # Examples
+///
+/// Basic usage together with [`GenericMemoryAllocator`]:
+///
+/// ```
+/// use std::sync::Arc;
+/// use vulkano::memory::allocator::{
+///     GenericMemoryAllocator, GenericMemoryAllocatorCreateInfo, PoolAllocator,
+/// };
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// let memory_allocator = GenericMemoryAllocator::<Arc<PoolAllocator<{ 64 * 1024 }>>>::new(
+///     device.clone(),
+///     GenericMemoryAllocatorCreateInfo {
+///         block_sizes: &[(0, 64 * 1024 * 1024)],
+///         ..Default::default()
+///     },
+/// );
+///
+/// // Now you can use `memory_allocator` to allocate whatever it is you need.
+/// ```
 ///
 /// [suballocator]: Suballocator
 /// [free-list]: Suballocator#free-lists
