@@ -621,22 +621,69 @@ impl RenderPass {
 
         for (dependency_num, dependency) in dependencies.iter().enumerate() {
             let &SubpassDependency {
-                source_subpass,
-                destination_subpass,
-                source_stages,
-                destination_stages,
-                source_access,
-                destination_access,
+                src_subpass,
+                dst_subpass,
+                src_stages,
+                dst_stages,
+                src_access,
+                dst_access,
                 by_region,
                 view_local,
                 _ne: _,
             } = dependency;
             let dependency_num = dependency_num as u32;
 
-            for (stages, access) in [
-                (source_stages, source_access),
-                (destination_stages, destination_access),
-            ] {
+            for (stages, access) in [(src_stages, src_access), (dst_stages, dst_access)] {
+                if !device.enabled_features().synchronization2 {
+                    if stages.is_2() {
+                        return Err(RenderPassCreationError::RequirementNotMet {
+                            required_for: "`create_info.dependencies` has an element where `src_stages` or `dst_stages` has bits set from `VkPipelineStageFlagBits2`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["synchronization2"],
+                                ..Default::default()
+                            },
+                        });
+                    }
+
+                    if access.is_2() {
+                        return Err(RenderPassCreationError::RequirementNotMet {
+                            required_for: "`create_info.dependencies` has an element where `src_access` or `dst_access` has bits set from `VkAccessFlagBits2`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["synchronization2"],
+                                ..Default::default()
+                            },
+                        });
+                    }
+                } else if !(device.api_version() >= Version::V1_2
+                    || device.enabled_extensions().khr_create_renderpass2)
+                {
+                    // If synchronization2 is enabled but we don't have create_renderpass2,
+                    // we are unable to use extension structs, so we can't use the
+                    // extra flag bits.
+
+                    if stages.is_2() {
+                        return Err(RenderPassCreationError::RequirementNotMet {
+                            required_for: "`create_info.dependencies` has an element where `src_stages` or `dst_stages` has bits set from `VkPipelineStageFlagBits2`",
+                            requires_one_of: RequiresOneOf {
+                                api_version: Some(Version::V1_2),
+                                device_extensions: &["khr_create_renderpass2"],
+                                ..Default::default()
+                            },
+                        });
+                    }
+
+                    if access.is_2() {
+                        return Err(RenderPassCreationError::RequirementNotMet {
+                            required_for: "`create_info.dependencies` has an element where `src_access` or `dst_access` has bits set from `VkAccessFlagBits2`",
+                            requires_one_of: RequiresOneOf {
+                                api_version: Some(Version::V1_2),
+                                device_extensions: &["khr_create_renderpass2"],
+                                ..Default::default()
+                            },
+                        });
+                    }
+                }
+
                 // VUID-VkSubpassDependency2-srcStageMask-parameter
                 // VUID-VkSubpassDependency2-dstStageMask-parameter
                 stages.validate_device(device)?;
@@ -666,6 +713,84 @@ impl RenderPass {
                         required_for: "`create_info.dependencies` has an element where `stages.tessellation_control_shader` or `stages.tessellation_evaluation_shader` are set",
                         requires_one_of: RequiresOneOf {
                             features: &["tessellation_shader"],
+                            ..Default::default()
+                        },
+                    });
+                }
+
+                // VUID-VkSubpassDependency2-srcStageMask-04092
+                // VUID-VkSubpassDependency2-dstStageMask-04092
+                if stages.conditional_rendering && !device.enabled_features().conditional_rendering
+                {
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.conditional_rendering` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["conditional_rendering"],
+                            ..Default::default()
+                        },
+                    });
+                }
+
+                // VUID-VkSubpassDependency2-srcStageMask-04093
+                // VUID-VkSubpassDependency2-dstStageMask-04093
+                if stages.fragment_density_process
+                    && !device.enabled_features().fragment_density_map
+                {
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.fragment_density_process` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["fragment_density_map"],
+                            ..Default::default()
+                        },
+                    });
+                }
+
+                // VUID-VkSubpassDependency2-srcStageMask-04094
+                // VUID-VkSubpassDependency2-dstStageMask-04094
+                if stages.transform_feedback && !device.enabled_features().transform_feedback {
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.transform_feedback` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["transform_feedback"],
+                            ..Default::default()
+                        },
+                    });
+                }
+
+                // VUID-VkSubpassDependency2-srcStageMask-04095
+                // VUID-VkSubpassDependency2-dstStageMask-04095
+                if stages.mesh_shader && !device.enabled_features().mesh_shader {
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.mesh_shader` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["mesh_shader"],
+                            ..Default::default()
+                        },
+                    });
+                }
+
+                // VUID-VkSubpassDependency2-srcStageMask-04096
+                // VUID-VkSubpassDependency2-dstStageMask-04096
+                if stages.task_shader && !device.enabled_features().task_shader {
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.task_shader` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["task_shader"],
+                            ..Default::default()
+                        },
+                    });
+                }
+
+                // VUID-VkSubpassDependency2-srcStageMask-07318
+                // VUID-VkSubpassDependency2-dstStageMask-07318
+                if stages.fragment_shading_rate_attachment
+                    && !(device.enabled_features().attachment_fragment_shading_rate
+                        || device.enabled_features().shading_rate_image)
+                {
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.fragment_shading_rate_attachment` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["attachment_fragment_shading_rate", "shading_rate_image"],
                             ..Default::default()
                         },
                     });
@@ -705,16 +830,13 @@ impl RenderPass {
             }
 
             // VUID-VkSubpassDependency2-srcSubpass-03085
-            if source_subpass.is_none() && destination_subpass.is_none() {
+            if src_subpass.is_none() && dst_subpass.is_none() {
                 return Err(RenderPassCreationError::DependencyBothSubpassesExternal {
                     dependency: dependency_num,
                 });
             }
 
-            for (subpass, stages) in [
-                (source_subpass, source_stages),
-                (destination_subpass, destination_stages),
-            ] {
+            for (subpass, stages) in [(src_subpass, src_stages), (dst_subpass, dst_stages)] {
                 if let Some(subpass) = subpass {
                     // VUID-VkRenderPassCreateInfo2-srcSubpass-02526
                     // VUID-VkRenderPassCreateInfo2-dstSubpass-02527
@@ -763,11 +885,9 @@ impl RenderPass {
                 }
             }
 
-            if let (Some(source_subpass), Some(destination_subpass)) =
-                (source_subpass, destination_subpass)
-            {
+            if let (Some(src_subpass), Some(dst_subpass)) = (src_subpass, dst_subpass) {
                 // VUID-VkSubpassDependency2-srcSubpass-03084
-                if source_subpass > destination_subpass {
+                if src_subpass > dst_subpass {
                     return Err(
                         RenderPassCreationError::DependencySourceSubpassAfterDestinationSubpass {
                             dependency: dependency_num,
@@ -775,26 +895,26 @@ impl RenderPass {
                     );
                 }
 
-                if source_subpass == destination_subpass {
-                    let source_stages_non_framebuffer = PipelineStages {
+                if src_subpass == dst_subpass {
+                    let src_stages_non_framebuffer = PipelineStages {
                         early_fragment_tests: false,
                         fragment_shader: false,
                         late_fragment_tests: false,
                         color_attachment_output: false,
-                        ..source_stages
+                        ..src_stages
                     };
-                    let destination_stages_non_framebuffer = PipelineStages {
+                    let dst_stages_non_framebuffer = PipelineStages {
                         early_fragment_tests: false,
                         fragment_shader: false,
                         late_fragment_tests: false,
                         color_attachment_output: false,
-                        ..destination_stages
+                        ..dst_stages
                     };
 
-                    if !source_stages_non_framebuffer.is_empty()
-                        || !destination_stages_non_framebuffer.is_empty()
+                    if !src_stages_non_framebuffer.is_empty()
+                        || !dst_stages_non_framebuffer.is_empty()
                     {
-                        let source_latest_stage = if source_stages.all_graphics {
+                        let src_latest_stage = if src_stages.all_graphics {
                             13
                         } else {
                             let PipelineStages {
@@ -812,7 +932,7 @@ impl RenderPass {
                                 late_fragment_tests,
                                 color_attachment_output,
                                 ..
-                            } = source_stages;
+                            } = src_stages;
 
                             #[allow(clippy::identity_op)]
                             [
@@ -835,7 +955,7 @@ impl RenderPass {
                             .unwrap()
                         };
 
-                        let destination_earliest_stage = if destination_stages.all_graphics {
+                        let dst_earliest_stage = if dst_stages.all_graphics {
                             1
                         } else {
                             let PipelineStages {
@@ -853,7 +973,7 @@ impl RenderPass {
                                 late_fragment_tests,
                                 color_attachment_output,
                                 ..
-                            } = destination_stages;
+                            } = dst_stages;
 
                             #[allow(clippy::identity_op)]
                             [
@@ -877,7 +997,7 @@ impl RenderPass {
                         };
 
                         // VUID-VkSubpassDependency2-srcSubpass-03087
-                        if source_latest_stage > destination_earliest_stage {
+                        if src_latest_stage > dst_earliest_stage {
                             return Err(
                                 RenderPassCreationError::DependencySelfDependencySourceStageAfterDestinationStage {
                                     dependency: dependency_num,
@@ -886,20 +1006,17 @@ impl RenderPass {
                         }
                     }
 
-                    let source_has_framebuffer_stage = source_stages.fragment_shader
-                        || source_stages.early_fragment_tests
-                        || source_stages.late_fragment_tests
-                        || source_stages.color_attachment_output;
-                    let destination_has_framebuffer_stage = destination_stages.fragment_shader
-                        || destination_stages.early_fragment_tests
-                        || destination_stages.late_fragment_tests
-                        || destination_stages.color_attachment_output;
+                    let src_has_framebuffer_stage = src_stages.fragment_shader
+                        || src_stages.early_fragment_tests
+                        || src_stages.late_fragment_tests
+                        || src_stages.color_attachment_output;
+                    let dst_has_framebuffer_stage = dst_stages.fragment_shader
+                        || dst_stages.early_fragment_tests
+                        || dst_stages.late_fragment_tests
+                        || dst_stages.color_attachment_output;
 
                     // VUID-VkSubpassDependency2-srcSubpass-02245
-                    if source_has_framebuffer_stage
-                        && destination_has_framebuffer_stage
-                        && !by_region
-                    {
+                    if src_has_framebuffer_stage && dst_has_framebuffer_stage && !by_region {
                         return Err(
                             RenderPassCreationError::DependencySelfDependencyFramebufferStagesWithoutByRegion {
                                 dependency: dependency_num,
@@ -918,11 +1035,11 @@ impl RenderPass {
                         }
                     } else {
                         // VUID-VkRenderPassCreateInfo2-pDependencies-03060
-                        if subpasses[source_subpass as usize].view_mask.count_ones() > 1 {
+                        if subpasses[src_subpass as usize].view_mask.count_ones() > 1 {
                             return Err(
                                 RenderPassCreationError::DependencySelfDependencyViewMaskMultiple {
                                     dependency: dependency_num,
-                                    subpass: source_subpass,
+                                    subpass: src_subpass,
                                 },
                             );
                         }
@@ -1070,9 +1187,29 @@ impl RenderPass {
             out
         };
 
+        let memory_barriers_vk: SmallVec<[_; 4]> = if device.enabled_features().synchronization2 {
+            debug_assert!(
+                device.api_version() >= Version::V1_3
+                    || device.enabled_extensions().khr_synchronization2
+            );
+            dependencies
+                .iter()
+                .map(|dependency| ash::vk::MemoryBarrier2 {
+                    src_stage_mask: dependency.src_stages.into(),
+                    src_access_mask: dependency.src_access.into(),
+                    dst_stage_mask: dependency.dst_stages.into(),
+                    dst_access_mask: dependency.dst_access.into(),
+                    ..Default::default()
+                })
+                .collect()
+        } else {
+            SmallVec::new()
+        };
+
         let dependencies_vk = dependencies
             .iter()
-            .map(|dependency| {
+            .enumerate()
+            .map(|(index, dependency)| {
                 let mut dependency_flags = ash::vk::DependencyFlags::empty();
 
                 if dependency.by_region {
@@ -1084,16 +1221,15 @@ impl RenderPass {
                 }
 
                 ash::vk::SubpassDependency2 {
-                    src_subpass: dependency
-                        .source_subpass
-                        .unwrap_or(ash::vk::SUBPASS_EXTERNAL),
-                    dst_subpass: dependency
-                        .destination_subpass
-                        .unwrap_or(ash::vk::SUBPASS_EXTERNAL),
-                    src_stage_mask: dependency.source_stages.into(),
-                    dst_stage_mask: dependency.destination_stages.into(),
-                    src_access_mask: dependency.source_access.into(),
-                    dst_access_mask: dependency.destination_access.into(),
+                    p_next: memory_barriers_vk
+                        .get(index)
+                        .map_or(ptr::null(), |mb| mb as *const _ as *const _),
+                    src_subpass: dependency.src_subpass.unwrap_or(ash::vk::SUBPASS_EXTERNAL),
+                    dst_subpass: dependency.dst_subpass.unwrap_or(ash::vk::SUBPASS_EXTERNAL),
+                    src_stage_mask: dependency.src_stages.into(),
+                    dst_stage_mask: dependency.dst_stages.into(),
+                    src_access_mask: dependency.src_access.into(),
+                    dst_access_mask: dependency.dst_access.into(),
                     dependency_flags,
                     // VUID-VkSubpassDependency2-dependencyFlags-03092
                     view_offset: dependency.view_local.unwrap_or(0),
@@ -1267,16 +1403,12 @@ impl RenderPass {
         let dependencies_vk = dependencies
             .iter()
             .map(|dependency| ash::vk::SubpassDependency {
-                src_subpass: dependency
-                    .source_subpass
-                    .unwrap_or(ash::vk::SUBPASS_EXTERNAL),
-                dst_subpass: dependency
-                    .destination_subpass
-                    .unwrap_or(ash::vk::SUBPASS_EXTERNAL),
-                src_stage_mask: dependency.source_stages.into(),
-                dst_stage_mask: dependency.destination_stages.into(),
-                src_access_mask: dependency.source_access.into(),
-                dst_access_mask: dependency.destination_access.into(),
+                src_subpass: dependency.src_subpass.unwrap_or(ash::vk::SUBPASS_EXTERNAL),
+                dst_subpass: dependency.dst_subpass.unwrap_or(ash::vk::SUBPASS_EXTERNAL),
+                src_stage_mask: dependency.src_stages.into(),
+                dst_stage_mask: dependency.dst_stages.into(),
+                src_access_mask: dependency.src_access.into(),
+                dst_access_mask: dependency.dst_access.into(),
                 dependency_flags: if dependency.by_region {
                     ash::vk::DependencyFlags::BY_REGION
                 } else {
@@ -1441,17 +1573,16 @@ pub enum RenderPassCreationError {
     /// A subpass dependency specified an access type that was not supported by the given stages.
     DependencyAccessNotSupportedByStages { dependency: u32 },
 
-    /// A subpass dependency has both `source_subpass` and `destination_subpass` set to `None`.
+    /// A subpass dependency has both `src_subpass` and `dst_subpass` set to `None`.
     DependencyBothSubpassesExternal { dependency: u32 },
 
     /// A subpass dependency specifies a subpass self-dependency and includes framebuffer stages in
-    /// both `source_stages` and `destination_stages`, but the `by_region` dependency was not
-    /// enabled.
+    /// both `src_stages` and `dst_stages`, but the `by_region` dependency was not enabled.
     DependencySelfDependencyFramebufferStagesWithoutByRegion { dependency: u32 },
 
     /// A subpass dependency specifies a subpass self-dependency and includes
-    /// non-framebuffer stages, but the latest stage in `source_stages` is after the earliest stage
-    /// in `destination_stages`.
+    /// non-framebuffer stages, but the latest stage in `src_stages` is after the earliest stage
+    /// in `dst_stages`.
     DependencySelfDependencySourceStageAfterDestinationStage { dependency: u32 },
 
     /// A subpass dependency specifies a subpass self-dependency and has the `view_local` dependency
@@ -1462,10 +1593,10 @@ pub enum RenderPassCreationError {
     /// dependency, but the referenced subpass has more than one bit set in its `view_mask`.
     DependencySelfDependencyViewMaskMultiple { dependency: u32, subpass: u32 },
 
-    /// A subpass dependency has a `source_subpass` that is later than the `destination_subpass`.
+    /// A subpass dependency has a `src_subpass` that is later than the `dst_subpass`.
     DependencySourceSubpassAfterDestinationSubpass { dependency: u32 },
 
-    /// A subpass dependency has a bit set in the `source_stages` or `destination_stages` that is
+    /// A subpass dependency has a bit set in the `src_stages` or `dst_stages` that is
     /// not supported for graphics pipelines.
     DependencyStageNotSupported { dependency: u32 },
 
@@ -1473,8 +1604,8 @@ pub enum RenderPassCreationError {
     /// render pass.
     DependencySubpassOutOfRange { dependency: u32, subpass: u32 },
 
-    /// A subpass dependency has the `view_local` dependency enabled, but `source_subpass` or
-    /// `destination_subpass` were set to `None`.
+    /// A subpass dependency has the `view_local` dependency enabled, but `src_subpass` or
+    /// `dst_subpass` were set to `None`.
     DependencyViewLocalExternalDependency { dependency: u32 },
 
     /// A subpass dependency has the `view_local` dependency enabled, but multiview is not enabled
@@ -1633,7 +1764,7 @@ impl Display for RenderPassCreationError {
                 write!(
                     f,
                     "subpass dependency {} specifies a subpass self-dependency and includes \
-                    framebuffer stages in both `source_stages` and `destination_stages`, but the \
+                    framebuffer stages in both `src_stages` and `dst_stages`, but the \
                     `by_region` dependency was not enabled",
                     dependency,
                 )
@@ -1642,8 +1773,8 @@ impl Display for RenderPassCreationError {
                 write!(
                     f,
                     "subpass dependency {} specifies a subpass self-dependency and includes \
-                    non-framebuffer stages, but the latest stage in `source_stages` is after the \
-                    earliest stage in `destination_stages`",
+                    non-framebuffer stages, but the latest stage in `src_stages` is after the \
+                    earliest stage in `dst_stages`",
                     dependency,
                 )
             }
@@ -1665,19 +1796,19 @@ impl Display for RenderPassCreationError {
             ),
             Self::DependencySourceSubpassAfterDestinationSubpass { dependency } => write!(
                 f,
-                "subpass dependency {} has a `source_subpass` that is later than the \
-                `destination_subpass`",
+                "subpass dependency {} has a `src_subpass` that is later than the \
+                `dst_subpass`",
                 dependency,
             ),
             Self::DependencyStageNotSupported { dependency } => write!(
                 f,
-                "subpass dependency {} has a bit set in the `source_stages` or \
-                `destination_stages` that is not supported for graphics pipelines",
+                "subpass dependency {} has a bit set in the `src_stages` or \
+                `dst_stages` that is not supported for graphics pipelines",
                 dependency,
             ),
             Self::DependencyBothSubpassesExternal { dependency } => write!(
                 f,
-                "subpass dependency {} has both `source_subpass` and `destination_subpass` set to \
+                "subpass dependency {} has both `src_subpass` and `dst_subpass` set to \
                 `None`",
                 dependency,
             ),
@@ -1693,7 +1824,7 @@ impl Display for RenderPassCreationError {
             Self::DependencyViewLocalExternalDependency { dependency } => write!(
                 f,
                 "subpass dependency {} has the `view_local` dependency enabled, but \
-                `source_subpass` or `destination_subpass` were set to `None`",
+                `src_subpass` or `dst_subpass` were set to `None`",
                 dependency,
             ),
             Self::DependencyViewLocalMultiviewNotEnabled { dependency } => write!(
