@@ -684,16 +684,16 @@ impl RenderPass {
                     }
                 }
 
-                // VUID-VkSubpassDependency2-srcStageMask-parameter
-                // VUID-VkSubpassDependency2-dstStageMask-parameter
+                // VUID-VkMemoryBarrier2-srcStageMask-parameter
+                // VUID-VkMemoryBarrier2-dstStageMask-parameter
                 stages.validate_device(device)?;
 
-                // VUID-VkSubpassDependency2-srcAccessMask-parameter
-                // VUID-VkSubpassDependency2-dstAccessMask-parameter
+                // VUID-VkMemoryBarrier2-srcAccessMask-parameter
+                // VUID-VkMemoryBarrier2-dstAccessMask-parameter
                 access.validate_device(device)?;
 
-                // VUID-VkSubpassDependency2-srcStageMask-04090
-                // VUID-VkSubpassDependency2-dstStageMask-04090
+                // VUID-VkMemoryBarrier2-srcStageMask-03929
+                // VUID-VkMemoryBarrier2-dstStageMask-03929
                 if stages.geometry_shader && !device.enabled_features().geometry_shader {
                     return Err(RenderPassCreationError::RequirementNotMet {
                         required_for: "`create_info.dependencies` has an element where `stages.geometry_shader` is set",
@@ -704,8 +704,8 @@ impl RenderPass {
                     });
                 }
 
-                // VUID-VkSubpassDependency2-srcStageMask-04091
-                // VUID-VkSubpassDependency2-dstStageMask-04091
+                // VUID-VkMemoryBarrier2-srcStageMask-03930
+                // VUID-VkMemoryBarrier2-dstStageMask-03930
                 if (stages.tessellation_control_shader || stages.tessellation_evaluation_shader)
                     && !device.enabled_features().tessellation_shader
                 {
@@ -718,8 +718,8 @@ impl RenderPass {
                     });
                 }
 
-                // VUID-VkSubpassDependency2-srcStageMask-04092
-                // VUID-VkSubpassDependency2-dstStageMask-04092
+                // VUID-VkMemoryBarrier2-srcStageMask-03931
+                // VUID-VkMemoryBarrier2-dstStageMask-03931
                 if stages.conditional_rendering && !device.enabled_features().conditional_rendering
                 {
                     return Err(RenderPassCreationError::RequirementNotMet {
@@ -731,8 +731,8 @@ impl RenderPass {
                     });
                 }
 
-                // VUID-VkSubpassDependency2-srcStageMask-04093
-                // VUID-VkSubpassDependency2-dstStageMask-04093
+                // VUID-VkMemoryBarrier2-srcStageMask-03932
+                // VUID-VkMemoryBarrier2-dstStageMask-03932
                 if stages.fragment_density_process
                     && !device.enabled_features().fragment_density_map
                 {
@@ -745,8 +745,8 @@ impl RenderPass {
                     });
                 }
 
-                // VUID-VkSubpassDependency2-srcStageMask-04094
-                // VUID-VkSubpassDependency2-dstStageMask-04094
+                // VUID-VkMemoryBarrier2-srcStageMask-03933
+                // VUID-VkMemoryBarrier2-dstStageMask-03933
                 if stages.transform_feedback && !device.enabled_features().transform_feedback {
                     return Err(RenderPassCreationError::RequirementNotMet {
                         required_for: "`create_info.dependencies` has an element where `stages.transform_feedback` is set",
@@ -757,8 +757,8 @@ impl RenderPass {
                     });
                 }
 
-                // VUID-VkSubpassDependency2-srcStageMask-04095
-                // VUID-VkSubpassDependency2-dstStageMask-04095
+                // VUID-VkMemoryBarrier2-srcStageMask-03934
+                // VUID-VkMemoryBarrier2-dstStageMask-03934
                 if stages.mesh_shader && !device.enabled_features().mesh_shader {
                     return Err(RenderPassCreationError::RequirementNotMet {
                         required_for: "`create_info.dependencies` has an element where `stages.mesh_shader` is set",
@@ -769,8 +769,8 @@ impl RenderPass {
                     });
                 }
 
-                // VUID-VkSubpassDependency2-srcStageMask-04096
-                // VUID-VkSubpassDependency2-dstStageMask-04096
+                // VUID-VkMemoryBarrier2-srcStageMask-03935
+                // VUID-VkMemoryBarrier2-dstStageMask-03935
                 if stages.task_shader && !device.enabled_features().task_shader {
                     return Err(RenderPassCreationError::RequirementNotMet {
                         required_for: "`create_info.dependencies` has an element where `stages.task_shader` is set",
@@ -781,8 +781,8 @@ impl RenderPass {
                     });
                 }
 
-                // VUID-VkSubpassDependency2-srcStageMask-07318
-                // VUID-VkSubpassDependency2-dstStageMask-07318
+                // VUID-VkMemoryBarrier2-shadingRateImage-07316
+                // VUID-VkMemoryBarrier2-shadingRateImage-07316
                 if stages.fragment_shading_rate_attachment
                     && !(device.enabled_features().attachment_fragment_shading_rate
                         || device.enabled_features().shading_rate_image)
@@ -791,6 +791,30 @@ impl RenderPass {
                         required_for: "`create_info.dependencies` has an element where `stages.fragment_shading_rate_attachment` is set",
                         requires_one_of: RequiresOneOf {
                             features: &["attachment_fragment_shading_rate", "shading_rate_image"],
+                            ..Default::default()
+                        },
+                    });
+                }
+
+                // VUID-VkMemoryBarrier2-srcStageMask-04957
+                // VUID-VkMemoryBarrier2-dstStageMask-04957
+                if stages.subpass_shading && !device.enabled_features().subpass_shading {
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.subpass_shading` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["subpass_shading"],
+                            ..Default::default()
+                        },
+                    });
+                }
+
+                // VUID-VkMemoryBarrier2-srcStageMask-04995
+                // VUID-VkMemoryBarrier2-dstStageMask-04995
+                if stages.invocation_mask && !device.enabled_features().invocation_mask {
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.invocation_mask` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["invocation_mask"],
                             ..Default::default()
                         },
                     });
