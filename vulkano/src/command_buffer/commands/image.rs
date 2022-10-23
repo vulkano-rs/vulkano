@@ -1217,7 +1217,7 @@ impl SyncCommandBufferBuilder {
                             subresource_range: src_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -1237,7 +1237,7 @@ impl SyncCommandBufferBuilder {
                             subresource_range: dst_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -1309,7 +1309,7 @@ impl SyncCommandBufferBuilder {
                         subresource_range,
                         memory: PipelineMemoryAccess {
                             stages: PipelineStages {
-                                transfer: true,
+                                all_transfer: true,
                                 ..PipelineStages::empty()
                             },
                             access: AccessFlags {
@@ -1380,7 +1380,7 @@ impl SyncCommandBufferBuilder {
                         subresource_range,
                         memory: PipelineMemoryAccess {
                             stages: PipelineStages {
-                                transfer: true,
+                                all_transfer: true,
                                 ..PipelineStages::empty()
                             },
                             access: AccessFlags {
@@ -1461,7 +1461,7 @@ impl SyncCommandBufferBuilder {
                             subresource_range: src_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -1481,7 +1481,7 @@ impl SyncCommandBufferBuilder {
                             subresource_range: dst_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {

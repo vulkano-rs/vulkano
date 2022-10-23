@@ -1004,57 +1004,57 @@ impl Default for AttachmentReference {
 /// used as the input of another one). Subpass dependencies work similar to pipeline barriers,
 /// except that they operate on whole subpasses instead of individual images.
 ///
-/// If `source_subpass` and `destination_subpass` are equal, then this specifies a
+/// If `src_subpass` and `dst_subpass` are equal, then this specifies a
 /// [subpass self-dependency](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-barriers-subpass-self-dependencies).
-/// The `source_stages` must all be
+/// The `src_stages` must all be
 /// [logically earlier in the pipeline](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-stages-order)
-/// than the `destination_stages`, and if they both contain a
+/// than the `dst_stages`, and if they both contain a
 /// [framebuffer-space stage](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-framebuffer-regions),
 /// then `by_region` must be activated.
 ///
-/// If `source_subpass` or `destination_subpass` are set to `None`, this specifies an external
+/// If `src_subpass` or `dst_subpass` are set to `None`, this specifies an external
 /// dependency. An external dependency specifies a dependency on commands that were submitted before
-/// the render pass instance began (for `source_subpass`), or on commands that will be submitted
-/// after the render pass instance ends (for `destination_subpass`). The values must not both be
+/// the render pass instance began (for `src_subpass`), or on commands that will be submitted
+/// after the render pass instance ends (for `dst_subpass`). The values must not both be
 /// `None`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubpassDependency {
-    /// The index of the subpass that writes the data that `destination_subpass` is going to use.
+    /// The index of the subpass that writes the data that `dst_subpass` is going to use.
     ///
     /// `None` specifies an external dependency.
     ///
     /// The default value is `None`.
-    pub source_subpass: Option<u32>,
+    pub src_subpass: Option<u32>,
 
-    /// The index of the subpass that reads the data that `source_subpass` wrote.
+    /// The index of the subpass that reads the data that `src_subpass` wrote.
     ///
     /// `None` specifies an external dependency.
     ///
     /// The default value is `None`.
-    pub destination_subpass: Option<u32>,
+    pub dst_subpass: Option<u32>,
 
-    /// The pipeline stages that must be finished on `source_subpass` before the
-    /// `destination_stages` of `destination_subpass` can start.
+    /// The pipeline stages that must be finished on `src_subpass` before the
+    /// `dst_stages` of `dst_subpass` can start.
     ///
     /// The default value is [`PipelineStages::empty()`].
-    pub source_stages: PipelineStages,
+    pub src_stages: PipelineStages,
 
-    /// The pipeline stages of `destination_subpass` that must wait for the `source_stages` of
-    /// `source_subpass` to be finished. Stages that are earlier than the stages specified here can
-    /// start before the `source_stages` are finished.
+    /// The pipeline stages of `dst_subpass` that must wait for the `src_stages` of
+    /// `src_subpass` to be finished. Stages that are earlier than the stages specified here can
+    /// start before the `src_stages` are finished.
     ///
     /// The default value is [`PipelineStages::empty()`].
-    pub destination_stages: PipelineStages,
+    pub dst_stages: PipelineStages,
 
-    /// The way `source_subpass` accesses the attachments on which we depend.
+    /// The way `src_subpass` accesses the attachments on which we depend.
     ///
     /// The default value is [`AccessFlags::empty()`].
-    pub source_access: AccessFlags,
+    pub src_access: AccessFlags,
 
-    /// The way `destination_subpass` accesses the attachments on which we depend.
+    /// The way `dst_subpass` accesses the attachments on which we depend.
     ///
     /// The default value is [`AccessFlags::empty()`].
-    pub destination_access: AccessFlags,
+    pub dst_access: AccessFlags,
 
     /// If false, then the source operations must be fully finished for the destination operations
     /// to start. If true, then the implementation can start the destination operation for some
@@ -1070,16 +1070,16 @@ pub struct SubpassDependency {
     pub by_region: bool,
 
     /// If multiview rendering is being used (the subpasses have a nonzero `view_mask`), then
-    /// setting this to `Some` creates a view-local dependency, between views in `source_subpass`
-    /// and views in `destination_subpass`.
+    /// setting this to `Some` creates a view-local dependency, between views in `src_subpass`
+    /// and views in `dst_subpass`.
     ///
-    /// The inner value specifies an offset relative to the view index of `destination_subpass`:
-    /// each view `d` in `destination_subpass` depends on view `d + view_offset` in
-    /// `source_subpass`. If the source view index does not exist, the dependency is ignored for
+    /// The inner value specifies an offset relative to the view index of `dst_subpass`:
+    /// each view `d` in `dst_subpass` depends on view `d + view_offset` in
+    /// `src_subpass`. If the source view index does not exist, the dependency is ignored for
     /// that view.
     ///
-    /// If multiview rendering is not being used, the value must be `None`. If `source_subpass`
-    /// and `destination_subpass` are the same, only `Some(0)` and `None` are allowed as values, and
+    /// If multiview rendering is not being used, the value must be `None`. If `src_subpass`
+    /// and `dst_subpass` are the same, only `Some(0)` and `None` are allowed as values, and
     /// if that subpass also has multiple bits set in its `view_mask`, the value must be `Some(0)`.
     ///
     /// The default value is `None`.
@@ -1092,12 +1092,12 @@ impl Default for SubpassDependency {
     #[inline]
     fn default() -> Self {
         Self {
-            source_subpass: None,
-            destination_subpass: None,
-            source_stages: PipelineStages::empty(),
-            destination_stages: PipelineStages::empty(),
-            source_access: AccessFlags::empty(),
-            destination_access: AccessFlags::empty(),
+            src_subpass: None,
+            dst_subpass: None,
+            src_stages: PipelineStages::empty(),
+            dst_stages: PipelineStages::empty(),
+            src_access: AccessFlags::empty(),
+            dst_access: AccessFlags::empty(),
             by_region: false,
             view_local: None,
             _ne: crate::NonExhaustive(()),

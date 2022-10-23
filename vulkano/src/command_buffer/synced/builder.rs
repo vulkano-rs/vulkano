@@ -479,10 +479,10 @@ impl SyncCommandBufferBuilder {
                     self.pending_barrier
                         .buffer_memory_barriers
                         .push(BufferMemoryBarrier {
-                            source_stages: state.memory.stages,
-                            source_access: state.memory.access,
-                            destination_stages: memory.stages,
-                            destination_access: memory.access,
+                            src_stages: state.memory.stages,
+                            src_access: state.memory.access,
+                            dst_stages: memory.stages,
+                            dst_access: memory.access,
                             range: range.clone(),
                             ..BufferMemoryBarrier::buffer(inner.buffer.clone())
                         });
@@ -638,13 +638,13 @@ impl SyncCommandBufferBuilder {
                                         //   cases, in the general situation it will be ok.
                                         self.pending_barrier.image_memory_barriers.push(
                                             ImageMemoryBarrier {
-                                                source_stages: PipelineStages {
+                                                src_stages: PipelineStages {
                                                     bottom_of_pipe: true,
                                                     ..PipelineStages::empty()
                                                 },
-                                                source_access: AccessFlags::empty(),
-                                                destination_stages: memory.stages,
-                                                destination_access: memory.access,
+                                                src_access: AccessFlags::empty(),
+                                                dst_stages: memory.stages,
+                                                dst_access: memory.access,
                                                 old_layout: state.initial_layout,
                                                 new_layout: start_layout,
                                                 subresource_range: inner
@@ -708,10 +708,10 @@ impl SyncCommandBufferBuilder {
                         self.pending_barrier
                             .image_memory_barriers
                             .push(ImageMemoryBarrier {
-                                source_stages: state.memory.stages,
-                                source_access: state.memory.access,
-                                destination_stages: memory.stages,
-                                destination_access: memory.access,
+                                src_stages: state.memory.stages,
+                                src_access: state.memory.access,
+                                dst_stages: memory.stages,
+                                dst_access: memory.access,
                                 old_layout: state.current_layout,
                                 new_layout: start_layout,
                                 subresource_range: inner.image.range_to_subresources(range.clone()),
@@ -770,13 +770,13 @@ impl SyncCommandBufferBuilder {
                         self.pending_barrier
                             .image_memory_barriers
                             .push(ImageMemoryBarrier {
-                                source_stages: state.memory.stages,
-                                source_access: state.memory.access,
-                                destination_stages: PipelineStages {
+                                src_stages: state.memory.stages,
+                                src_access: state.memory.access,
+                                dst_stages: PipelineStages {
                                     top_of_pipe: true,
                                     ..PipelineStages::empty()
                                 },
-                                destination_access: AccessFlags::empty(),
+                                dst_access: AccessFlags::empty(),
                                 old_layout: state.current_layout,
                                 new_layout: state.final_layout,
                                 subresource_range: image.range_to_subresources(range.clone()),
