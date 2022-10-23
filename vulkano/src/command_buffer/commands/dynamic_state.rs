@@ -998,35 +998,50 @@ where
         }
 
         // VUID?
-        if !self.device().enabled_features().geometry_shader
-            && matches!(
-                topology,
-                PrimitiveTopology::LineListWithAdjacency
-                    | PrimitiveTopology::LineStripWithAdjacency
-                    | PrimitiveTopology::TriangleListWithAdjacency
-                    | PrimitiveTopology::TriangleStripWithAdjacency
-            )
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`topology` is `PrimitiveTopology::*WithAdjacency`",
-                requires_one_of: RequiresOneOf {
-                    features: &["geometry_shader"],
-                    ..Default::default()
-                },
-            });
-        }
-
-        // VUID?
-        if !self.device().enabled_features().tessellation_shader
-            && matches!(topology, PrimitiveTopology::PatchList)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`topology` is `PrimitiveTopology::PatchList`",
-                requires_one_of: RequiresOneOf {
-                    features: &["tessellation_shader"],
-                    ..Default::default()
-                },
-            });
+        // Since these requirements exist for fixed state when creating the pipeline,
+        // I assume they exist for dynamic state as well.
+        match topology {
+            PrimitiveTopology::TriangleFan => {
+                if self.device().enabled_extensions().khr_portability_subset
+                    && !self.device().enabled_features().triangle_fans
+                {
+                    return Err(SetDynamicStateError::RequirementNotMet {
+                        required_for:
+                            "the `khr_portability_subset` extension is enabled on the device, and \
+                            `topology` is `PrimitiveTopology::TriangleFan`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["triangle_fans"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            PrimitiveTopology::LineListWithAdjacency
+            | PrimitiveTopology::LineStripWithAdjacency
+            | PrimitiveTopology::TriangleListWithAdjacency
+            | PrimitiveTopology::TriangleStripWithAdjacency => {
+                if !self.device().enabled_features().geometry_shader {
+                    return Err(SetDynamicStateError::RequirementNotMet {
+                        required_for: "`topology` is `PrimitiveTopology::*WithAdjacency`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["geometry_shader"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            PrimitiveTopology::PatchList => {
+                if !self.device().enabled_features().tessellation_shader {
+                    return Err(SetDynamicStateError::RequirementNotMet {
+                        required_for: "`topology` is `PrimitiveTopology::PatchList`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["tessellation_shader"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            _ => (),
         }
 
         Ok(())

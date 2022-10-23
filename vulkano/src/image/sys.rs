@@ -286,6 +286,23 @@ impl UnsafeImage {
             if tiling == ImageTiling::Linear {
                 return Err(ImageCreationError::MultisampleLinearTiling);
             }
+
+            // VUID-VkImageCreateInfo-multisampleArrayImage-04460
+            if device.enabled_extensions().khr_portability_subset
+                && !device.enabled_features().multisample_array_image
+                && array_layers != 1
+            {
+                return Err(ImageCreationError::RequirementNotMet {
+                    required_for:
+                        "the `khr_portability_subset` extension is enabled on the device, \
+                        `create_info.samples` is not `SampleCount::Sample1` and \
+                        `create_info.dimensions.array_layers()` is greater than `1`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["multisample_array_image"],
+                        ..Default::default()
+                    },
+                });
+            }
         }
 
         // Check limits for YCbCr formats
@@ -490,6 +507,21 @@ impl UnsafeImage {
             // VUID-VkImageCreateInfo-flags-00950
             if image_type != ImageType::Dim3d {
                 return Err(ImageCreationError::Array2dCompatibleNot3d);
+            }
+
+            // VUID-VkImageCreateInfo-imageView2DOn3DImage-04459
+            if device.enabled_extensions().khr_portability_subset
+                && !device.enabled_features().image_view2_d_on3_d_image
+            {
+                return Err(ImageCreationError::RequirementNotMet {
+                    required_for:
+                        "the `khr_portability_subset` extension is enabled on the device, and the \
+                        `array_2d_compatible` flag is enabled",
+                    requires_one_of: RequiresOneOf {
+                        features: &["image_view2_d_on3_d_image"],
+                        ..Default::default()
+                    },
+                });
             }
         }
 

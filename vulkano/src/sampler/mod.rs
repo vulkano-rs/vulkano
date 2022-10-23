@@ -187,6 +187,21 @@ impl Sampler {
             }
         }
 
+        // VUID-VkSamplerCreateInfo-samplerMipLodBias-04467
+        if device.enabled_extensions().khr_portability_subset
+            && !device.enabled_features().sampler_mip_lod_bias
+            && mip_lod_bias != 0.0
+        {
+            return Err(SamplerCreationError::RequirementNotMet {
+                required_for: "the `khr_portability_subset` extension is enabled on the device, \
+                    and `create_info.mip_lod_bias` is not zero",
+                requires_one_of: RequiresOneOf {
+                    features: &["sampker_mip_lod_bias"],
+                    ..Default::default()
+                },
+            });
+        }
+
         let (anisotropy_enable, max_anisotropy) = if let Some(max_anisotropy) = anisotropy {
             assert!(max_anisotropy >= 1.0);
 

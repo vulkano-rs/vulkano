@@ -352,60 +352,81 @@ where
 
         /* Check flags requirements */
 
-        if image_inner.block_texel_view_compatible() {
-            // VUID-VkImageViewCreateInfo-image-01583
-            if !(format.compatibility() == image_inner.format().unwrap().compatibility()
-                || format.block_size() == image_inner.format().unwrap().block_size())
+        if Some(format) != image_inner.format() {
+            // VUID-VkImageViewCreateInfo-image-01762
+            if !image_inner.mutable_format()
+                || !image_inner.format().unwrap().planes().is_empty()
+                    && subresource_range.aspects.color
             {
                 return Err(ImageViewCreationError::FormatNotCompatible);
             }
 
-            // VUID-VkImageViewCreateInfo-image-01584
-            if layer_count != 1 {
-                return Err(ImageViewCreationError::BlockTexelViewCompatibleMultipleArrayLayers);
+            // VUID-VkImageViewCreateInfo-imageViewFormatReinterpretation-04466
+            // TODO: it is unclear what the number of bits is for compressed formats.
+            // See https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2361
+            if device.enabled_extensions().khr_portability_subset
+                && !device.enabled_features().image_view_format_reinterpretation
+                && format.components() != image_inner.format().unwrap().components()
+            {
+                return Err(ImageViewCreationError::RequirementNotMet {
+                    required_for:
+                        "the `khr_portability_subset` extension is enabled on the device, \
+                        and the format of the image view does not have the same components and \
+                        number of bits per component as the parent image",
+                    requires_one_of: RequiresOneOf {
+                        features: &["image_view_format_reinterpretation"],
+                        ..Default::default()
+                    },
+                });
             }
 
-            // VUID-VkImageViewCreateInfo-image-01584
-            if level_count != 1 {
-                return Err(ImageViewCreationError::BlockTexelViewCompatibleMultipleMipLevels);
-            }
+            if image_inner.block_texel_view_compatible() {
+                // VUID-VkImageViewCreateInfo-image-01583
+                if !(format.compatibility() == image_inner.format().unwrap().compatibility()
+                    || format.block_size() == image_inner.format().unwrap().block_size())
+                {
+                    return Err(ImageViewCreationError::FormatNotCompatible);
+                }
 
-            // VUID-VkImageViewCreateInfo-image-04739
-            if format.compression().is_none() && view_type == ImageViewType::Dim3d {
-                return Err(ImageViewCreationError::BlockTexelViewCompatibleUncompressedIs3d);
-            }
-        }
-        // VUID-VkImageViewCreateInfo-image-01761
-        else if image_inner.mutable_format()
-            && image_inner.format().unwrap().planes().is_empty()
-            && format.compatibility() != image_inner.format().unwrap().compatibility()
-        {
-            return Err(ImageViewCreationError::FormatNotCompatible);
-        }
+                if format.compression().is_none() {
+                    // VUID-VkImageViewCreateInfo-image-01584
+                    if layer_count != 1 {
+                        return Err(
+                            ImageViewCreationError::BlockTexelViewCompatibleMultipleArrayLayers,
+                        );
+                    }
 
-        if image_inner.mutable_format()
-            && !image_inner.format().unwrap().planes().is_empty()
-            && !subresource_range.aspects.color
-        {
-            let plane = if subresource_range.aspects.plane0 {
-                0
-            } else if subresource_range.aspects.plane1 {
-                1
-            } else if subresource_range.aspects.plane2 {
-                2
+                    // VUID-VkImageViewCreateInfo-image-01584
+                    if level_count != 1 {
+                        return Err(
+                            ImageViewCreationError::BlockTexelViewCompatibleMultipleMipLevels,
+                        );
+                    }
+                }
             } else {
-                unreachable!()
-            };
-            let plane_format = image_inner.format().unwrap().planes()[plane];
+                if image_inner.format().unwrap().planes().is_empty() {
+                    // VUID-VkImageViewCreateInfo-image-01761
+                    if format.compatibility() != image_inner.format().unwrap().compatibility() {
+                        return Err(ImageViewCreationError::FormatNotCompatible);
+                    }
+                } else {
+                    let plane = if subresource_range.aspects.plane0 {
+                        0
+                    } else if subresource_range.aspects.plane1 {
+                        1
+                    } else if subresource_range.aspects.plane2 {
+                        2
+                    } else {
+                        unreachable!()
+                    };
+                    let plane_format = image_inner.format().unwrap().planes()[plane];
 
-            // VUID-VkImageViewCreateInfo-image-01586
-            if format.compatibility() != plane_format.compatibility() {
-                return Err(ImageViewCreationError::FormatNotCompatible);
+                    // VUID-VkImageViewCreateInfo-image-01586
+                    if format.compatibility() != plane_format.compatibility() {
+                        return Err(ImageViewCreationError::FormatNotCompatible);
+                    }
+                }
             }
-        }
-        // VUID-VkImageViewCreateInfo-image-01762
-        else if Some(format) != image_inner.format() {
-            return Err(ImageViewCreationError::FormatNotCompatible);
         }
 
         // VUID-VkImageViewCreateInfo-imageViewType-04973
@@ -423,6 +444,21 @@ where
         // VUID-VkImageViewCreateInfo-viewType-02961
         else if view_type == ImageViewType::CubeArray && layer_count % 6 != 0 {
             return Err(ImageViewCreationError::TypeCubeArrayNotMultipleOf6ArrayLayers);
+        }
+
+        // VUID-VkImageViewCreateInfo-imageViewFormatSwizzle-04465
+        if device.enabled_extensions().khr_portability_subset
+            && !device.enabled_features().image_view_format_swizzle
+            && !component_mapping.is_identity()
+        {
+            return Err(ImageViewCreationError::RequirementNotMet {
+                required_for: "the `khr_portability_subset` extension is enabled on the device, \
+                    and `create_info.component_mapping` is not the identity mapping",
+                requires_one_of: RequiresOneOf {
+                    features: &["image_view_format_swizzle"],
+                    ..Default::default()
+                },
+            });
         }
 
         // VUID-VkImageViewCreateInfo-format-04714
@@ -899,10 +935,6 @@ pub enum ImageViewCreationError {
     /// was specified.
     BlockTexelViewCompatibleMultipleMipLevels,
 
-    /// The image has the `block_texel_view_compatible` flag, and an uncompressed format was
-    /// requested, and the image view type was `Dim3d`.
-    BlockTexelViewCompatibleUncompressedIs3d,
-
     /// The requested format has chroma subsampling, but the width and/or height of the image was
     /// not a multiple of 2.
     FormatChromaSubsamplingInvalidImageDimensions,
@@ -1013,11 +1045,6 @@ impl Display for ImageViewCreationError {
                 f,
                 "the image has the `block_texel_view_compatible` flag, but a range of multiple mip \
                 levels was specified",
-            ),
-            Self::BlockTexelViewCompatibleUncompressedIs3d => write!(
-                f,
-                "the image has the `block_texel_view_compatible` flag, and an uncompressed format \
-                was requested, and the image view type was `Dim3d`",
             ),
             Self::FormatChromaSubsamplingInvalidImageDimensions => write!(
                 f,
