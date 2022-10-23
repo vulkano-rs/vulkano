@@ -370,9 +370,9 @@ where
             {
                 return Err(ImageViewCreationError::RequirementNotMet {
                     required_for:
-                        "the `khr_portability_subset` extension is enabled on the device, \
-                        and the format of the image view does not have the same components and \
-                        number of bits per component as the parent image",
+                        "this device is a portability subset device, and the format of the image \
+                        view does not have the same components and number of bits per component as \
+                        the parent image",
                     requires_one_of: RequiresOneOf {
                         features: &["image_view_format_reinterpretation"],
                         ..Default::default()
@@ -452,8 +452,8 @@ where
             && !component_mapping.is_identity()
         {
             return Err(ImageViewCreationError::RequirementNotMet {
-                required_for: "the `khr_portability_subset` extension is enabled on the device, \
-                    and `create_info.component_mapping` is not the identity mapping",
+                required_for: "this device is a portability subset device, and \
+                    `create_info.component_mapping` is not the identity mapping",
                 requires_one_of: RequiresOneOf {
                     features: &["image_view_format_swizzle"],
                     ..Default::default()
@@ -823,10 +823,21 @@ pub struct ImageViewCreateInfo {
     /// If this is set to a format that is different from the image, the image must be created with
     /// the `mutable_format` flag.
     ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if `format` does not have the same number of components and bits per component as
+    /// the parent image's format, the
+    /// [`image_view_format_reinterpretation`](crate::device::Features::image_view_format_reinterpretation)
+    /// feature must be enabled on the device.
+    ///
     /// The default value is `None`, which must be overridden.
     pub format: Option<Format>,
 
     /// How to map components of each pixel.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if `component_mapping` is not the identity mapping, the
+    /// [`image_view_format_swizzle`](crate::device::Features::image_view_format_swizzle)
+    /// feature must be enabled on the device.
     ///
     /// The default value is [`ComponentMapping::identity()`].
     pub component_mapping: ComponentMapping,

@@ -35,13 +35,18 @@ pub struct Event {
 
 impl Event {
     /// Creates a new `Event`.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, the
+    /// [`events`](crate::device::Features::events)
+    /// feature must be enabled on the device.
     #[inline]
     pub fn new(device: Arc<Device>, _create_info: EventCreateInfo) -> Result<Event, EventError> {
         // VUID-vkCreateEvent-events-04468
         if device.enabled_extensions().khr_portability_subset && !device.enabled_features().events {
             return Err(EventError::RequirementNotMet {
-                required_for: "the `khr_portability_subset` extension is enabled on the device, \
-                    and `Event::new` was called",
+                required_for: "this device is a portability subset device, and `Event::new` was \
+                    called",
                 requires_one_of: RequiresOneOf {
                     features: &["events"],
                     ..Default::default()

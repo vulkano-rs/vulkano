@@ -772,9 +772,9 @@ where
                             > binding_desc.stride as DeviceSize
                     {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for: "the `khr_portability_subset` extension is enabled on \
-                                the device, and `vertex_input_state.attributes` has an element \
-                                where `offset + format.block_size()` is greater than the stride of \
+                            required_for: "this device is a portability subset device, and \
+                                `vertex_input_state.attributes` has an element where \
+                                `offset + format.block_size()` is greater than the `stride` of \
                                 `binding`",
                             requires_one_of: RequiresOneOf {
                                 features: &["vertex_attribute_access_beyond_stride"],
@@ -806,8 +806,8 @@ where
                                 {
                                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
                                         required_for:
-                                            "the `khr_portability_subset` extension is enabled on \
-                                            the device, and `input_assembly_state.topology` is \
+                                            "this device is a portability subset device, and \
+                                            `input_assembly_state.topology` is \
                                             `StateMode::Fixed(PrimitiveTopology::TriangleFan)`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["triangle_fans"],
@@ -1225,10 +1225,9 @@ where
                             && polygon_mode == PolygonMode::Point
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for:
-                                    "the `khr_portability_subset` extension is enabled on the \
-                                    device, `rasterization_state.rasterizer_discard_enable` is
-                                    `StateMode::Fixed(false)` and
+                                required_for: "this device is a portability subset device, \
+                                    `rasterization_state.rasterizer_discard_enable` is \
+                                    `StateMode::Fixed(false)` and \
                                     `rasterization_state.polygon_mode` is `PolygonMode::Point`",
                                 requires_one_of: RequiresOneOf {
                                     features: &["point_polygons"],
@@ -2084,9 +2083,8 @@ where
                             && front_reference != back_reference
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for:
-                                    "the `khr_portability_subset` extension is enabled on the \
-                                    device, `rasterization_state.cull_mode` is \
+                                required_for: "this device is a portability subset device, \
+                                    `rasterization_state.cull_mode` is \
                                     `StateMode::Fixed(CullMode::None)`, and \
                                     `depth_stencil_state.stencil` is `Some(stencil_state)`, \
                                     where `stencil_state.front.reference` does not equal \
@@ -2368,10 +2366,9 @@ where
                         ))
                     {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for:
-                                "the `khr_portability_subset` extension is enabled on the device, \
-                                and `color_blend_state.attachments` has an element where `blend` \
-                                is `Some(blend)`, where \
+                            required_for: "this device is a portability subset device, and \
+                                `color_blend_state.attachments` has an element where `blend` is \
+                                `Some(blend)`, where \
                                 `blend.color_source` or `blend.color_destination` is \
                                 `BlendFactor::ConstantAlpha` or \
                                 `BlendFactor::OneMinusConstantAlpha`",

@@ -294,9 +294,9 @@ impl UnsafeImage {
             {
                 return Err(ImageCreationError::RequirementNotMet {
                     required_for:
-                        "the `khr_portability_subset` extension is enabled on the device, \
-                        `create_info.samples` is not `SampleCount::Sample1` and \
-                        `create_info.dimensions.array_layers()` is greater than `1`",
+                        "this device is a portability subset device, `create_info.samples` is not \
+                        `SampleCount::Sample1` and `create_info.dimensions.array_layers()` is \
+                        greater than `1`",
                     requires_one_of: RequiresOneOf {
                         features: &["multisample_array_image"],
                         ..Default::default()
@@ -515,8 +515,8 @@ impl UnsafeImage {
             {
                 return Err(ImageCreationError::RequirementNotMet {
                     required_for:
-                        "the `khr_portability_subset` extension is enabled on the device, and the \
-                        `array_2d_compatible` flag is enabled",
+                        "this device is a portability subset device, and the `array_2d_compatible`
+                        flag is enabled",
                     requires_one_of: RequiresOneOf {
                         features: &["image_view2_d_on3_d_image"],
                         ..Default::default()
@@ -1777,6 +1777,11 @@ impl Hash for UnsafeImage {
 pub struct UnsafeImageCreateInfo {
     /// The type, extent and number of array layers to create the image with.
     ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if `samples` is not [`SampleCount::Sample1`] and `dimensions.array_layers()` is
+    /// not 1, the [`multisample_array_image`](crate::device::Features::multisample_array_image)
+    /// feature must be enabled on the device.
+    ///
     /// The default value is `ImageDimensions::Dim2d { width: 0, height: 0, array_layers: 1 }`,
     /// which must be overridden.
     pub dimensions: ImageDimensions,
@@ -1792,6 +1797,11 @@ pub struct UnsafeImageCreateInfo {
     pub mip_levels: u32,
 
     /// The number of samples per texel that the image should use.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if `samples` is not [`SampleCount::Sample1`] and `dimensions.array_layers()` is
+    /// not 1, the [`multisample_array_image`](crate::device::Features::multisample_array_image)
+    /// feature must be enabled on the device.
     ///
     /// The default value is [`SampleCount::Sample1`].
     pub samples: SampleCount,
@@ -1860,6 +1870,10 @@ pub struct UnsafeImageCreateInfo {
     /// [`ImageViewType::Dim2d`](crate::image::view::ImageViewType::Dim2d) or
     /// [`ImageViewType::Dim2dArray`](crate::image::view::ImageViewType::Dim2dArray) can be created
     /// from the image.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, the [`image_view2_d_on3_d_image`](crate::device::Features::image_view2_d_on3_d_image)
+    /// feature must be enabled on the device.
     ///
     /// The default value is `false`.
     pub array_2d_compatible: bool,

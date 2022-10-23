@@ -791,9 +791,8 @@ pub(crate) fn check_descriptor_write<'a>(
                         return Err(DescriptorSetUpdateError::RequirementNotMet {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
-                            required_for:
-                                "the `khr_portability_subset` extension is enabled on the device, \
-                                and `sampler.compare()` is `Some`",
+                            required_for: "this device is a portability subset device, and \
+                                `sampler.compare()` is `Some`",
                             requires_one_of: RequiresOneOf {
                                 features: &["mutable_comparison_samplers"],
                                 ..Default::default()

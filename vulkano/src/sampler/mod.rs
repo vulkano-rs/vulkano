@@ -193,8 +193,8 @@ impl Sampler {
             && mip_lod_bias != 0.0
         {
             return Err(SamplerCreationError::RequirementNotMet {
-                required_for: "the `khr_portability_subset` extension is enabled on the device, \
-                    and `create_info.mip_lod_bias` is not zero",
+                required_for: "this device is a portability subset device, and \
+                    `create_info.mip_lod_bias` is not zero",
                 requires_one_of: RequiresOneOf {
                     features: &["sampker_mip_lod_bias"],
                     ..Default::default()
@@ -1013,6 +1013,11 @@ pub struct SamplerCreateInfo {
     /// [`max_sampler_lod_bias`](crate::device::Properties::max_sampler_lod_bias) limit of the
     /// device.
     ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if `mip_lod_bias` is not `0.0`, the
+    /// [`sampler_mip_lod_bias`](crate::device::Features::sampler_mip_lod_bias)
+    /// feature must be enabled on the device.
+    ///
     /// The default value is `0.0`.
     pub mip_lod_bias: f32,
 
@@ -1041,6 +1046,12 @@ pub struct SamplerCreateInfo {
     ///
     /// If set to `Some`, the `reduction_mode` must be set to
     /// [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if the sampler is going to be used as a mutable sampler (written to descriptor sets
+    /// rather than being an immutable part of a descriptor set layout), the
+    /// [`mutable_comparison_samplers`](crate::device::Features::mutable_comparison_samplers)
+    /// feature must be enabled on the device.
     ///
     /// The default value is `None`.
     pub compare: Option<CompareOp>,

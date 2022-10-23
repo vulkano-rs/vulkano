@@ -53,6 +53,31 @@
 //!
 //! Once you have chosen a physical device, you can create a `Device` object from it. See the
 //! `device` module for more info.
+//!
+//! # Portability subset devices and the `enumerate_portability` flag
+//!
+//! Certain devices, currently those on MacOS and iOS systems, do not fully conform to the Vulkan
+//! specification. They are usable as normal devices, but they do not implement everything that
+//! is required; some mandatory parts of Vulkan are missing. These are known as
+//! "portability subset" devices.
+//!
+//! A portability subset device will advertise support for the
+//! [`khr_portability_subset`](crate::device::DeviceExtensions::khr_portability_subset) device
+//! extension. This extension must always be enabled when it is supported, and Vulkano will
+//! automatically enable it when creating the device. When it is enabled, some parts of Vulkan that
+//! are available in standard Vulkan will not be available by default, but they can be used by
+//! enabling corresponding features when creating the device, if the device supports them.
+//!
+//! Because these devices are non-conformant, Vulkan programs that rely on full compliance may
+//! not work (crash or have validation errors) when run on them, if they happen to use a part of
+//! Vulkan that is missing from the non-conformant device. Therefore, Vulkan hides them from
+//! the user by default when calling `enumerate_physical_devices` on the instance. If there are no
+//! conformant devices on the system, `Instance::new` will return an `IncompatibleDriver` error.
+//!
+//! In order to enumerate portability subset devices, you must set the
+//! [`InstanceCreateInfo::enumerate_portability`] flag when creating the instance. However, if you
+//! do this, your program must be prepared to handle the non-conformant aspects of these devices,
+//! and must enable the appropriate features when creating the `Device` if you intend to use them.
 
 use self::debug::{
     DebugUtilsMessengerCreateInfo, UserCallback, ValidationFeatureDisable, ValidationFeatureEnable,
@@ -711,19 +736,21 @@ pub struct InstanceCreateInfo {
     /// supported instance version is 1.0, then it will be 1.0.
     pub max_api_version: Option<Version>,
 
-    /// Enumerate devices that support `VK_KHR_portability_subset`.
+    /// Include portability subset devices when enumerating physical devices.
     ///
-    /// With this enabled, devices that use non-conformant vulkan implementations can be enumerated.
-    /// (ex. MoltenVK)
+    /// If you enable this flag, you must ensure that your program is prepared to handle the
+    /// non-conformant aspects of these devices.
     ///
-    /// The default value is false.
+    /// If this flag is not enabled, and there are no fully-conformant devices on the system, then
+    /// [`Instance::new`] will return an `IncompatibleDriver` error.
+    ///
+    /// The default value is `false`.
     ///
     /// # Notes
     ///
-    /// - If `true` and `khr_portability_enumeration` extension is not preset this field will be ignored
-    ///   and the `ENUMERATE_PORTABILITY_KHR` flag will not be set.
-    /// - If `true` and `khr_portability_enumeration` extension is present, `khr_portability_enumeration`
-    ///   extension will automatically be enabled.
+    /// If this flag is enabled, and the `khr_portability_enumeration` extension is supported, it
+    /// will be enabled automatically when creating the instance. If the extension is not supported,
+    /// this flag will be ignored.
     pub enumerate_portability: bool,
 
     /// Features of the validation layer to enable.

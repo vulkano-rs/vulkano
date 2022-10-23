@@ -1007,8 +1007,8 @@ where
                 {
                     return Err(SetDynamicStateError::RequirementNotMet {
                         required_for:
-                            "the `khr_portability_subset` extension is enabled on the device, and \
-                            `topology` is `PrimitiveTopology::TriangleFan`",
+                            "this device is a portability subset device, and `topology` is \
+                            `PrimitiveTopology::TriangleFan`",
                         requires_one_of: RequiresOneOf {
                             features: &["triangle_fans"],
                             ..Default::default()
