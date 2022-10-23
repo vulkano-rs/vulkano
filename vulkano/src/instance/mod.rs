@@ -736,7 +736,8 @@ pub struct InstanceCreateInfo {
     /// supported instance version is 1.0, then it will be 1.0.
     pub max_api_version: Option<Version>,
 
-    /// Include portability subset devices when enumerating physical devices.
+    /// Include [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices when enumerating physical devices.
     ///
     /// If you enable this flag, you must ensure that your program is prepared to handle the
     /// non-conformant aspects of these devices.
@@ -748,9 +749,10 @@ pub struct InstanceCreateInfo {
     ///
     /// # Notes
     ///
-    /// If this flag is enabled, and the `khr_portability_enumeration` extension is supported, it
-    /// will be enabled automatically when creating the instance. If the extension is not supported,
-    /// this flag will be ignored.
+    /// If this flag is enabled, and the
+    /// [`khr_portability_enumeration`](crate::instance::InstanceExtensions::khr_portability_enumeration)
+    /// extension is supported, it will be enabled automatically when creating the instance.
+    /// If the extension is not supported, this flag will be ignored.
     pub enumerate_portability: bool,
 
     /// Features of the validation layer to enable.
