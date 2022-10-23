@@ -217,8 +217,8 @@
 
 use self::{array_vec::ArrayVec, host::SlotId};
 use super::{
-    DedicatedAllocation, DeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryProperties,
-    MemoryRequirements, MemoryType,
+    DedicatedAllocation, DeviceMemory, ExternalMemoryHandleTypes, MemoryAllocateFlags,
+    MemoryAllocateInfo, MemoryProperties, MemoryRequirements, MemoryType,
 };
 use crate::{
     buffer::{
@@ -230,7 +230,7 @@ use crate::{
         sys::{UnsafeImage, UnsafeImageCreateInfo},
         ImageCreationError, ImageTiling,
     },
-    DeviceSize, OomError, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use crossbeam_queue::ArrayQueue;
@@ -972,6 +972,8 @@ pub enum AllocationCreationError {
     SuballocatorBlockSizeExceeded,
 }
 
+impl Error for AllocationCreationError {}
+
 impl Display for AllocationCreationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -992,8 +994,6 @@ impl Display for AllocationCreationError {
         )
     }
 }
-
-impl Error for AllocationCreationError {}
 
 impl From<OomError> for AllocationCreationError {
     fn from(err: OomError) -> Self {
@@ -1096,6 +1096,7 @@ pub struct GenericMemoryAllocator<S: Suballocator> {
     pools: ArrayVec<Pool<S>, MAX_MEMORY_TYPES>,
     // Each memory heap has its own block size.
     block_sizes: ArrayVec<DeviceSize, MAX_MEMORY_HEAPS>,
+    export_handle_types: ArrayVec<ExternalMemoryHandleTypes, MAX_MEMORY_TYPES>,
     dedicated_allocation: bool,
     flags: MemoryAllocateFlags,
     // Global mask of memory types.
@@ -1131,16 +1132,23 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
     /// - Panics if `create_info.block_sizes` contains duplicate thresholds.
     /// - Panics if `create_info.block_sizes` does not contain a baseline threshold of `0`.
     /// - Panics if the block size for a heap exceeds the size of the heap.
-    pub fn new(device: Arc<Device>, create_info: GenericMemoryAllocatorCreateInfo<'_>) -> Self {
-        Self::validate_new(&create_info);
+    pub fn new(
+        device: Arc<Device>,
+        create_info: GenericMemoryAllocatorCreateInfo<'_, '_>,
+    ) -> Result<Self, GenericMemoryAllocatorCreationError> {
+        Self::validate_new(&device, &create_info)?;
 
-        unsafe { Self::new_unchecked(device, create_info) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) })
     }
 
-    fn validate_new(create_info: &GenericMemoryAllocatorCreateInfo<'_>) {
-        let GenericMemoryAllocatorCreateInfo {
+    fn validate_new(
+        device: &Device,
+        create_info: &GenericMemoryAllocatorCreateInfo<'_, '_>,
+    ) -> Result<(), GenericMemoryAllocatorCreationError> {
+        let &GenericMemoryAllocatorCreateInfo {
             block_sizes,
             dedicated_allocation: _,
+            export_handle_types,
             device_address: _,
             _ne: _,
         } = create_info;
@@ -1153,16 +1161,50 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             matches!(block_sizes.first(), Some((0, _))),
             "`create_info.block_sizes` must contain a baseline threshold `0`",
         );
+
+        if !export_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                && device.enabled_extensions().khr_external_memory)
+            {
+                return Err(GenericMemoryAllocatorCreationError::RequirementNotMet {
+                    required_for: "`create_info.export_handle_types` was not empty",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        device_extensions: &["khr_external_memory"],
+                        ..Default::default()
+                    },
+                });
+            }
+
+            assert!(
+                export_handle_types.len()
+                    == device
+                        .physical_device()
+                        .memory_properties()
+                        .memory_types
+                        .len(),
+                "`create_info.export_handle_types` must contain as many elements as the number of \
+                memory types if not empty",
+            );
+
+            for export_handle_types in export_handle_types {
+                // VUID-VkExportMemoryAllocateInfo-handleTypes-parameter
+                export_handle_types.validate_device(device)?;
+            }
+        }
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
-        create_info: GenericMemoryAllocatorCreateInfo<'_>,
+        create_info: GenericMemoryAllocatorCreateInfo<'_, '_>,
     ) -> Self {
         let GenericMemoryAllocatorCreateInfo {
             block_sizes,
             mut dedicated_allocation,
+            export_handle_types,
             mut device_address,
             _ne: _,
         } = create_info;
@@ -1200,6 +1242,16 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         dedicated_allocation &= device.api_version() >= Version::V1_1
             || device.enabled_extensions().khr_dedicated_allocation;
 
+        let export_handle_types = {
+            let mut types = ArrayVec::new(
+                export_handle_types.len(),
+                [ExternalMemoryHandleTypes::empty(); MAX_MEMORY_TYPES],
+            );
+            types.copy_from_slice(export_handle_types);
+
+            types
+        };
+
         // VUID-VkMemoryAllocateInfo-flags-03331
         device_address &= device.enabled_features().buffer_device_address
             && !device.enabled_extensions().ext_buffer_device_address;
@@ -1229,6 +1281,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             device,
             pools,
             block_sizes,
+            export_handle_types,
             dedicated_allocation,
             flags: MemoryAllocateFlags {
                 device_address,
@@ -1366,12 +1419,18 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         // The pool doesn't have enough real estate, so we need a new block.
         let block = {
             let block_size = self.block_sizes[pool.memory_type.heap_index as usize];
+            let export_handle_types = if !self.export_handle_types.is_empty() {
+                self.export_handle_types[memory_type_index as usize]
+            } else {
+                ExternalMemoryHandleTypes::empty()
+            };
             let mut i = 0;
 
             loop {
                 let allocate_info = MemoryAllocateInfo {
                     allocation_size: block_size >> i,
                     memory_type_index,
+                    export_handle_types,
                     dedicated_allocation: None,
                     flags: self.flags,
                     ..Default::default()
@@ -1476,6 +1535,10 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 }
             }
         }
+
+        // VUID-VkMemoryAllocateInfo-pNext-00639
+        // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
+        // Can't validate, must be ensured by user
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -1597,7 +1660,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                     return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
                 }
                 // Try a different memory type.
-                Err(e) => {
+                Err(err) => {
                     memory_type_bits &= !(1 << memory_type_index);
                     memory_type_index = self
                         .find_memory_type_index(
@@ -1606,7 +1669,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                             preferred_flags,
                             not_preferred_flags,
                         )
-                        .ok_or(e)?;
+                        .ok_or(err)?;
                 }
             }
         }
@@ -1818,6 +1881,12 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         unsafe { self.allocate_unchecked(create_info) }
     }
 
+    /// Conveniece method to create a (non-sparse) `UnsafeBuffer`, allocate memory for it, and bind
+    /// the memory to it.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.sparse` is not [`None`].
     fn create_buffer(
         &self,
         create_info: UnsafeBufferCreateInfo,
@@ -1827,8 +1896,10 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         Result<(Arc<UnsafeBuffer>, MemoryAlloc), AllocationCreationError>,
         BufferCreationError,
     > {
-        let size = create_info.size;
-        let buffer = UnsafeBuffer::new(self.device().clone(), create_info)?;
+        // VUID-vkBindBufferMemory-buffer-01030
+        assert!(create_info.sparse.is_none());
+
+        let buffer = UnsafeBuffer::new(self.device.clone(), create_info)?;
         let requirements = buffer.memory_requirements();
         let create_info = AllocationCreateInfo {
             requirements,
@@ -1840,15 +1911,14 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         };
 
         Ok(match unsafe { self.allocate_unchecked(create_info) } {
-            Ok(mut alloc) => {
+            Ok(alloc) => {
                 debug_assert!(alloc.offset() % requirements.alignment == 0);
                 debug_assert!(alloc.size() == requirements.size);
-                alloc.shrink(size);
                 unsafe { buffer.bind_memory(alloc.device_memory(), alloc.offset()) }?;
 
                 Ok((buffer, alloc))
             }
-            Err(e) => Err(e),
+            Err(err) => Err(err),
         })
     }
 
@@ -1866,8 +1936,10 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         allocate_preference: MemoryAllocatePreference,
     ) -> Result<Result<(Arc<UnsafeImage>, MemoryAlloc), AllocationCreationError>, ImageCreationError>
     {
+        // TODO: Check for sparse binding once it's implemented for images.
+
         let allocation_type = create_info.tiling.into();
-        let image = UnsafeImage::new(self.device().clone(), create_info)?;
+        let image = UnsafeImage::new(self.device.clone(), create_info)?;
         let requirements = image.memory_requirements();
         let create_info = AllocationCreateInfo {
             requirements,
@@ -1886,7 +1958,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
                 Ok((image, alloc))
             }
-            Err(e) => Err(e),
+            Err(err) => Err(err),
         })
     }
 }
@@ -1899,7 +1971,7 @@ unsafe impl<S: Suballocator> DeviceOwned for GenericMemoryAllocator<S> {
 
 /// Parameters to create a new [`GenericMemoryAllocator`].
 #[derive(Clone, Debug)]
-pub struct GenericMemoryAllocatorCreateInfo<'b> {
+pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
     /// Lets you configure the block sizes for various heap size classes.
     ///
     /// Each entry is a pair of the threshold for the heap size and the block size that should be
@@ -1947,6 +2019,16 @@ pub struct GenericMemoryAllocatorCreateInfo<'b> {
     /// [`khr_dedicated_allocation`]: crate::device::DeviceExtensions::khr_dedicated_allocation
     pub dedicated_allocation: bool,
 
+    /// Lets you configure the external memory handle types that the [`DeviceMemory`] blocks will
+    /// be allocated with.
+    ///
+    /// Must be either empty or contain one element for each memory type. When `DeviceMemory` is
+    /// allocated, the external handle types corresponding to the memory type index are looked up
+    /// here and used for the allocation.
+    ///
+    /// The default value is `&[]`.
+    pub export_handle_types: &'e [ExternalMemoryHandleTypes],
+
     /// Whether the allocator should allocate the [`DeviceMemory`] blocks with the
     /// [`device_address`] flag set.
     ///
@@ -1974,14 +2056,50 @@ pub type Threshold = DeviceSize;
 
 pub type BlockSize = DeviceSize;
 
-impl Default for GenericMemoryAllocatorCreateInfo<'_> {
+impl Default for GenericMemoryAllocatorCreateInfo<'_, '_> {
     #[inline]
     fn default() -> Self {
         GenericMemoryAllocatorCreateInfo {
             block_sizes: &[],
             dedicated_allocation: true,
+            export_handle_types: &[],
             device_address: true,
             _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Error that can be returned when creating a [`GenericMemoryAllocator`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GenericMemoryAllocatorCreationError {
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+}
+
+impl Error for GenericMemoryAllocatorCreationError {}
+
+impl Display for GenericMemoryAllocatorCreationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
+    }
+}
+
+impl From<RequirementNotMet> for GenericMemoryAllocatorCreationError {
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -2255,6 +2373,8 @@ pub enum SuballocationCreationError {
     BlockSizeExceeded,
 }
 
+impl Error for SuballocationCreationError {}
+
 impl Display for SuballocationCreationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -2269,8 +2389,6 @@ impl Display for SuballocationCreationError {
         )
     }
 }
-
-impl Error for SuballocationCreationError {}
 
 /// A [suballocator] that uses the most generic [free-list].
 ///
@@ -3825,13 +3943,13 @@ unsafe impl DeviceOwned for BumpAllocator {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BumpAllocatorResetError;
 
+impl Error for BumpAllocatorResetError {}
+
 impl Display for BumpAllocatorResetError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("the allocator is still in use")
     }
 }
-
-impl Error for BumpAllocatorResetError {}
 
 fn align_up(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
     align_down(val + alignment - 1, alignment)
