@@ -32,6 +32,7 @@ Changes to command buffers and command pools:
 - Renamed `CommandPool` to `CommandBufferAllocator`, `StandardCommandPool` to `StandardCommandBufferAllocator`, and `UnsafeCommandPool` to `CommandPool` to better reflect their action.
 - Removed `Device::with_standard_command_pool`.
 - `AutoCommandBufferBuilder::{primary, secondary}` now take an implementation of `CommandBufferAllocator` instead of the `Device`.
+- The `PrimaryCommandBuffer` and `SecondaryCommandBuffer` traits are renamed to `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract`.
 
 Changes to descriptor sets and descriptor pools:
 - Renamed `DescriptorPool` to `DescriptorSetAllocator`, `StandardDescriptorPool` to `StandardDescriptorSetAllocator`, and `UnsafeDescriptorPool` to `DescriptorPool` to better reflect their action.
