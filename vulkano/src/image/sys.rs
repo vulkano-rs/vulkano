@@ -2206,7 +2206,7 @@ impl ImageState {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn check_cpu_read(&mut self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
+    pub(crate) fn check_cpu_read(&self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
                 CurrentAccess::CpuExclusive { .. } => return Err(ReadLockError::CpuWriteLocked),
@@ -2247,10 +2247,7 @@ impl ImageState {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn check_cpu_write(
-        &mut self,
-        range: Range<DeviceSize>,
-    ) -> Result<(), WriteLockError> {
+    pub(crate) fn check_cpu_write(&self, range: Range<DeviceSize>) -> Result<(), WriteLockError> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
                 CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
@@ -2298,7 +2295,7 @@ impl ImageState {
     }
 
     pub(crate) fn check_gpu_read(
-        &mut self,
+        &self,
         range: Range<DeviceSize>,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
@@ -2346,7 +2343,7 @@ impl ImageState {
     }
 
     pub(crate) fn check_gpu_write(
-        &mut self,
+        &self,
         range: Range<DeviceSize>,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {

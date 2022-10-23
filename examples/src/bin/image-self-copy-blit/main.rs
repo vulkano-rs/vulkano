@@ -14,7 +14,7 @@ use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
         BufferImageCopy, ClearColorImageInfo, CommandBufferUsage, CopyBufferToImageInfo,
-        CopyImageInfo, ImageBlit, ImageCopy, PrimaryCommandBuffer, RenderPassBeginInfo,
+        CopyImageInfo, ImageBlit, ImageCopy, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
         SubpassContents,
     },
     descriptor_set::{

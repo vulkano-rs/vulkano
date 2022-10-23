@@ -14,7 +14,7 @@ use crate::{
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferInheritanceRenderPassType,
-        CommandBufferUsage, SecondaryCommandBuffer, SubpassContents,
+        CommandBufferUsage, SecondaryCommandBufferAbstract, SubpassContents,
     },
     device::DeviceOwned,
     format::Format,
@@ -46,12 +46,12 @@ where
         command_buffer: C,
     ) -> Result<&mut Self, ExecuteCommandsError>
     where
-        C: SecondaryCommandBuffer + 'static,
+        C: SecondaryCommandBufferAbstract + 'static,
     {
         self.validate_execute_commands(&command_buffer, 0)?;
 
         unsafe {
-            let secondary_usage = command_buffer.inner().usage();
+            let secondary_usage = command_buffer.usage();
             let mut builder = self.inner.execute_commands();
             builder.add(command_buffer);
             builder.submit()?;
@@ -78,7 +78,7 @@ where
         command_buffers: Vec<C>,
     ) -> Result<&mut Self, ExecuteCommandsError>
     where
-        C: SecondaryCommandBuffer + 'static,
+        C: SecondaryCommandBufferAbstract + 'static,
     {
         for (command_buffer_index, command_buffer) in command_buffers.iter().enumerate() {
             self.validate_execute_commands(command_buffer, command_buffer_index as u32)?;
@@ -89,7 +89,7 @@ where
 
             let mut builder = self.inner.execute_commands();
             for command_buffer in command_buffers {
-                secondary_usage = std::cmp::min(secondary_usage, command_buffer.inner().usage());
+                secondary_usage = std::cmp::min(secondary_usage, command_buffer.usage());
                 builder.add(command_buffer);
             }
             builder.submit()?;
@@ -111,7 +111,7 @@ where
         command_buffer_index: u32,
     ) -> Result<(), ExecuteCommandsError>
     where
-        C: SecondaryCommandBuffer + 'static,
+        C: SecondaryCommandBufferAbstract + 'static,
     {
         // VUID-vkCmdExecuteCommands-commonparent
         assert_eq!(self.device(), command_buffer.device());
@@ -408,20 +408,20 @@ impl SyncCommandBufferBuilder {
 /// Prototype for a `vkCmdExecuteCommands`.
 pub struct SyncCommandBufferBuilderExecuteCommands<'a> {
     builder: &'a mut SyncCommandBufferBuilder,
-    inner: Vec<Box<dyn SecondaryCommandBuffer>>,
+    inner: Vec<Box<dyn SecondaryCommandBufferAbstract>>,
 }
 
 impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
     /// Adds a command buffer to the list.
-    pub fn add(&mut self, command_buffer: impl SecondaryCommandBuffer + 'static) {
+    pub fn add(&mut self, command_buffer: impl SecondaryCommandBufferAbstract + 'static) {
         self.inner.push(Box::new(command_buffer));
     }
 
     #[inline]
     pub unsafe fn submit(self) -> Result<(), SyncCommandBufferBuilderError> {
-        struct DropUnlock(Box<dyn SecondaryCommandBuffer>);
+        struct DropUnlock(Box<dyn SecondaryCommandBufferAbstract>);
         impl std::ops::Deref for DropUnlock {
-            type Target = Box<dyn SecondaryCommandBuffer>;
+            type Target = Box<dyn SecondaryCommandBufferAbstract>;
 
             fn deref(&self) -> &Self::Target {
                 &self.0
@@ -448,7 +448,7 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                 let mut execute = UnsafeCommandBufferBuilderExecuteCommands::new();
                 self.0
                     .iter()
-                    .for_each(|cbuf| execute.add_raw(cbuf.inner().handle()));
+                    .for_each(|cbuf| execute.add_raw(cbuf.handle()));
                 out.execute_commands(execute);
             }
         }
@@ -542,9 +542,9 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
     }
 
     /// Adds a command buffer to the list.
-    pub fn add(&mut self, cb: &(impl SecondaryCommandBuffer + ?Sized)) {
+    pub fn add(&mut self, cb: &(impl SecondaryCommandBufferAbstract + ?Sized)) {
         // TODO: debug assert that it is a secondary command buffer?
-        self.raw_cbs.push(cb.inner().handle());
+        self.raw_cbs.push(cb.handle());
     }
 
     /// Adds a command buffer to the list.

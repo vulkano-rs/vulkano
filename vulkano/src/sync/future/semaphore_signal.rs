@@ -132,7 +132,9 @@ where
                         .signal_semaphores
                         .push(SemaphoreSubmitInfo::semaphore(self.semaphore.clone()));
 
-                    queue.with(|mut q| q.submit_unchecked([submit_info], fence))?;
+                    queue.with(|mut q| {
+                        q.submit_with_future(submit_info, fence, &self.previous, &queue)
+                    })?;
                 }
                 SubmitAnyBuilder::BindSparse(_, _) => {
                     unimplemented!() // TODO: how to do that?
