@@ -124,13 +124,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_dynamic_rendering`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_dynamic_rendering.html)
 	- Suspend/resume
 - [`VK_KHR_synchronization2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_synchronization2.html)
-	- `vkCmdResetEvent2KHR`
-	- `vkCmdSetEvent2KHR`
-	- `vkCmdWaitEvents2KHR`
-	- `vkCmdWriteTimestamp2KHR`
 	- `vkQueueSubmit2KHR` / `VkSemaphoreSubmitInfoKHR` (missing parameters related to device groups)
-	- `VkMemoryBarrier2KHR` extending `VkSubpassDependency`
-	- `VkAccessFlagBits2KHR` / `VkPipelineStageFlagBits2KHR` (only the base Vulkan 1.0 bits are defined)
 
 ### Unsupported
 
@@ -199,7 +193,8 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_external_semaphore_win32`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_win32.html)
 	- `VkD3D12FenceSubmitInfoKHR`
 - [`VK_KHR_portability_subset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_portability_subset.html) (provisional)
-	- Still missing almost all validation checks
+	- Check for `tessellationIsolines`
+	- Check for `tessellationPointMode`
 - [`VK_EXT_buffer_device_address`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_buffer_device_address.html) (deprecated)
 	- `VkBufferDeviceAddressCreateInfoEXT`
 - [`VK_EXT_debug_utils`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_debug_utils.html)
