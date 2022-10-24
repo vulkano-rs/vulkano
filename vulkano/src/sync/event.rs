@@ -9,9 +9,11 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    OomError, VulkanError, VulkanObject,
+    OomError, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -33,8 +35,25 @@ pub struct Event {
 
 impl Event {
     /// Creates a new `Event`.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, the
+    /// [`events`](crate::device::Features::events)
+    /// feature must be enabled on the device.
     #[inline]
-    pub fn new(device: Arc<Device>, _create_info: EventCreateInfo) -> Result<Event, OomError> {
+    pub fn new(device: Arc<Device>, _create_info: EventCreateInfo) -> Result<Event, EventError> {
+        // VUID-vkCreateEvent-events-04468
+        if device.enabled_extensions().khr_portability_subset && !device.enabled_features().events {
+            return Err(EventError::RequirementNotMet {
+                required_for: "this device is a portability subset device, and `Event::new` was \
+                    called",
+                requires_one_of: RequiresOneOf {
+                    features: &["events"],
+                    ..Default::default()
+                },
+            });
+        }
+
         let create_info = ash::vk::EventCreateInfo {
             flags: ash::vk::EventCreateFlags::empty(),
             ..Default::default()
@@ -68,7 +87,7 @@ impl Event {
     /// For most applications, using the event pool should be preferred,
     /// in order to avoid creating new events every frame.
     #[inline]
-    pub fn from_pool(device: Arc<Device>) -> Result<Event, OomError> {
+    pub fn from_pool(device: Arc<Device>) -> Result<Event, EventError> {
         let handle = device.event_pool().lock().pop();
         let event = match handle {
             Some(handle) => {
@@ -234,6 +253,53 @@ impl Default for EventCreateInfo {
     fn default() -> Self {
         Self {
             _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EventError {
+    /// Not enough memory available.
+    OomError(OomError),
+
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+}
+
+impl Error for EventError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::OomError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl Display for EventError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
+    }
+}
+
+impl From<VulkanError> for EventError {
+    fn from(err: VulkanError) -> Self {
+        match err {
+            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+                Self::OomError(e.into())
+            }
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }

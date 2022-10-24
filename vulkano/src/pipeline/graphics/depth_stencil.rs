@@ -197,6 +197,12 @@ pub struct StencilOpState {
     /// Reference value that is used in the unsigned stencil comparison. The stencil test is
     /// considered to pass if the `compare_op` between the stencil buffer value and this reference
     /// value yields true.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if culling is disabled, and the `reference` values of the front and back face
+    /// are not equal, then the
+    /// [`separate_stencil_mask_ref`](crate::device::Features::separate_stencil_mask_ref)
+    /// feature must be enabled on the device.
     pub reference: StateMode<u32>,
 }
 

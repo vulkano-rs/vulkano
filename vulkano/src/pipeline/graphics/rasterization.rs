@@ -239,7 +239,11 @@ vulkan_enum! {
     // TODO: document
     Line = LINE,
 
-    // TODO: document
+    // TODO: document further
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, unless `rasterizer_discard_enable` is active, the
+    /// [`point_polygons`](crate::device::Features::point_polygons)
+    /// feature must be enabled on the device.
     Point = POINT,
 
     /*

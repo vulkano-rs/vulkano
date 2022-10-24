@@ -777,6 +777,12 @@ impl From<FeatureRestrictionError> for DeviceCreationError {
 pub struct DeviceCreateInfo {
     /// The extensions to enable on the device.
     ///
+    /// If the [`khr_portability_subset`](DeviceExtensions::khr_portability_subset) extension is
+    /// available, it will be enabled automatically, so you do not have to do this yourself.
+    /// You are responsible for ensuring that your program can work correctly on such devices.
+    /// See [the documentation of the `instance` module](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// for more information.
+    ///
     /// The default value is [`DeviceExtensions::empty()`].
     pub enabled_extensions: DeviceExtensions,
 
