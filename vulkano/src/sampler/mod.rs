@@ -196,7 +196,7 @@ impl Sampler {
                 required_for: "this device is a portability subset device, and \
                     `create_info.mip_lod_bias` is not zero",
                 requires_one_of: RequiresOneOf {
-                    features: &["sampker_mip_lod_bias"],
+                    features: &["sampler_mip_lod_bias"],
                     ..Default::default()
                 },
             });
