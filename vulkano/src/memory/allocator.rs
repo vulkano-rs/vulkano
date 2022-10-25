@@ -1390,6 +1390,9 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 || property_flags.device_uncached
                 || property_flags.rdma_capable
             {
+                // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
+                // VUID-vkAllocateMemory-deviceCoherentMemory-02790
+                // Lazily allocated memory would just cause problems for suballocation in general.
                 memory_type_bits &= !(1 << index);
             }
         }
@@ -1429,6 +1432,16 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 || self.device.enabled_features().protected_memory,
             "attempted to allocate from a protected memory type without the `protected_memory` \
             feature being enabled on the device",
+        );
+
+        // VUID-vkAllocateMemory-deviceCoherentMemory-02790
+        assert!(
+            !memory_type.property_flags.intersects(
+                ash::vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD
+                    | ash::vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD
+            ) || self.device.enabled_features().device_coherent_memory,
+            "attempted to allocate memory from a device-coherent/device-uncached memory type \
+            without the `device_coherent_memory` feature being enabled on the device",
         );
 
         let block_size = self.block_sizes[memory_type.heap_index as usize];
