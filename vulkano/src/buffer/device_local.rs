@@ -20,15 +20,16 @@ use super::{
     CpuAccessibleBuffer, TypedBufferAccess,
 };
 use crate::{
-    buffer::BufferCreationError,
+    buffer::{BufferCreationError, ExternalBufferInfo},
     command_buffer::{allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CopyBufferInfo},
     device::{Device, DeviceOwned},
     memory::{
         allocator::{
-            AllocationCreationError, MemoryAlloc, MemoryAllocatePreference, MemoryAllocator,
-            MemoryUsage,
+            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
         },
-        DeviceMemoryError, ExternalMemoryHandleType,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes,
     },
     sync::Sharing,
     DeviceSize,
@@ -336,34 +337,49 @@ where
     ) -> Result<Arc<DeviceLocalBuffer<T>>, AllocationCreationError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        allocator
-            .create_buffer(
-                UnsafeBufferCreateInfo {
-                    sharing: if queue_family_indices.len() >= 2 {
-                        Sharing::Concurrent(queue_family_indices.clone())
-                    } else {
-                        Sharing::Exclusive
-                    },
-                    size,
-                    usage,
-                    ..Default::default()
+        let buffer = UnsafeBuffer::new(
+            allocator.device().clone(),
+            UnsafeBufferCreateInfo {
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices.clone())
+                } else {
+                    Sharing::Exclusive
                 },
-                MemoryUsage::GpuOnly,
-                MemoryAllocatePreference::Unknown,
-            )
-            .map_err(|err| match err {
-                BufferCreationError::AllocError(err) => err,
-                // We don't use sparse-binding, therefore the other errors can't happen.
-                _ => unreachable!(),
-            })?
-            .map(|(inner, memory)| {
-                Arc::new(DeviceLocalBuffer {
-                    inner,
-                    memory,
+                size,
+                usage,
+                ..Default::default()
+            },
+        )
+        .map_err(|err| match err {
+            BufferCreationError::AllocError(err) => err,
+            // We don't use sparse-binding, therefore the other errors can't happen.
+            _ => unreachable!(),
+        })?;
+        let requirements = buffer.memory_requirements();
+        let create_info = AllocationCreateInfo {
+            requirements,
+            allocation_type: AllocationType::Linear,
+            usage: MemoryUsage::GpuOnly,
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            ..Default::default()
+        };
+
+        match allocator.allocate_unchecked(create_info) {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                buffer.bind_memory(alloc.device_memory(), alloc.offset())?;
+
+                Ok(Arc::new(DeviceLocalBuffer {
+                    inner: buffer,
+                    memory: alloc,
                     queue_family_indices,
                     marker: PhantomData,
-                })
-            })
+                }))
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// Same as `raw` but with exportable fd option for the allocated memory on Linux/BSD
@@ -383,33 +399,74 @@ where
 
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        allocator
-            .create_buffer(
-                UnsafeBufferCreateInfo {
-                    sharing: if queue_family_indices.len() >= 2 {
-                        Sharing::Concurrent(queue_family_indices.clone())
-                    } else {
-                        Sharing::Exclusive
-                    },
-                    size,
-                    usage,
-                    ..Default::default()
+        let external_memory_properties = allocator
+            .device()
+            .physical_device()
+            .external_buffer_properties(ExternalBufferInfo {
+                usage,
+                ..ExternalBufferInfo::handle_type(ExternalMemoryHandleType::OpaqueFd)
+            })
+            .unwrap()
+            .external_memory_properties;
+        // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
+        assert!(external_memory_properties.exportable);
+
+        // VUID-VkMemoryAllocateInfo-pNext-00639
+        // Guaranteed because we always create a dedicated allocation
+
+        let external_memory_handle_types = ExternalMemoryHandleTypes {
+            opaque_fd: true,
+            ..ExternalMemoryHandleTypes::empty()
+        };
+        let buffer = UnsafeBuffer::new(
+            allocator.device().clone(),
+            UnsafeBufferCreateInfo {
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices.clone())
+                } else {
+                    Sharing::Exclusive
                 },
-                MemoryUsage::GpuOnly,
-                MemoryAllocatePreference::AlwaysAllocate,
-            )
-            .map_err(|err| match err {
-                BufferCreationError::AllocError(err) => err,
-                _ => unreachable!(),
-            })?
-            .map(|(inner, memory)| {
-                Arc::new(DeviceLocalBuffer {
-                    inner,
-                    memory,
+                size,
+                usage,
+                external_memory_handle_types,
+                ..Default::default()
+            },
+        )
+        .map_err(|err| match err {
+            BufferCreationError::AllocError(err) => err,
+            // We don't use sparse-binding, therefore the other errors can't happen.
+            _ => unreachable!(),
+        })?;
+        let requirements = buffer.memory_requirements();
+        let memory_type_index = allocator
+            .find_memory_type_index(requirements.memory_type_bits, MemoryUsage::GpuOnly.into())
+            .expect("failed to find a suitable memory type");
+
+        let memory_properties = allocator.device().physical_device().memory_properties();
+        let heap_index = memory_properties.memory_types[memory_type_index as usize].heap_index;
+        // VUID-vkAllocateMemory-pAllocateInfo-01713
+        assert!(size <= memory_properties.memory_heaps[heap_index as usize].size);
+
+        match allocator.allocate_dedicated_unchecked(
+            memory_type_index,
+            requirements.size,
+            Some(DedicatedAllocation::Buffer(&buffer)),
+            external_memory_handle_types,
+        ) {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                buffer.bind_memory(alloc.device_memory(), alloc.offset())?;
+
+                Ok(Arc::new(DeviceLocalBuffer {
+                    inner: buffer,
+                    memory: alloc,
                     queue_family_indices,
                     marker: PhantomData,
-                })
-            })
+                }))
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// Exports posix file descriptor for the allocated memory

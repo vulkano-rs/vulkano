@@ -21,9 +21,12 @@ use crate::{
     device::{Device, DeviceOwned},
     format::Format,
     image::sys::UnsafeImageCreateInfo,
-    memory::allocator::{
-        AllocationCreationError, MemoryAlloc, MemoryAllocatePreference, MemoryAllocator,
-        MemoryUsage,
+    memory::{
+        allocator::{
+            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
+        },
+        DedicatedAllocation,
     },
     sampler::Filter,
     sync::Sharing,
@@ -114,35 +117,48 @@ impl ImmutableImage {
     {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        allocator
-            .create_image(
-                UnsafeImageCreateInfo {
-                    dimensions,
-                    format: Some(format),
-                    mip_levels: match mip_levels.into() {
-                        MipmapsCount::Specific(num) => num,
-                        MipmapsCount::Log2 => dimensions.max_mip_levels(),
-                        MipmapsCount::One => 1,
-                    },
-                    usage,
-                    sharing: if queue_family_indices.len() >= 2 {
-                        Sharing::Concurrent(queue_family_indices)
-                    } else {
-                        Sharing::Exclusive
-                    },
-                    mutable_format: flags.mutable_format,
-                    cube_compatible: flags.cube_compatible,
-                    array_2d_compatible: flags.array_2d_compatible,
-                    block_texel_view_compatible: flags.block_texel_view_compatible,
-                    ..Default::default()
+        let image = UnsafeImage::new(
+            allocator.device().clone(),
+            UnsafeImageCreateInfo {
+                dimensions,
+                format: Some(format),
+                mip_levels: match mip_levels.into() {
+                    MipmapsCount::Specific(num) => num,
+                    MipmapsCount::Log2 => dimensions.max_mip_levels(),
+                    MipmapsCount::One => 1,
                 },
-                MemoryUsage::GpuOnly,
-                MemoryAllocatePreference::Unknown,
-            )?
-            .map(|(image, memory)| {
+                usage,
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
+                } else {
+                    Sharing::Exclusive
+                },
+                mutable_format: flags.mutable_format,
+                cube_compatible: flags.cube_compatible,
+                array_2d_compatible: flags.array_2d_compatible,
+                block_texel_view_compatible: flags.block_texel_view_compatible,
+                ..Default::default()
+            },
+        )?;
+        let requirements = image.memory_requirements();
+        let create_info = AllocationCreateInfo {
+            requirements,
+            allocation_type: AllocationType::NonLinear,
+            usage: MemoryUsage::GpuOnly,
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            dedicated_allocation: Some(DedicatedAllocation::Image(&image)),
+            ..Default::default()
+        };
+
+        match unsafe { allocator.allocate_unchecked(create_info) } {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
                 let image = Arc::new(ImmutableImage {
                     image,
-                    _memory: memory,
+                    _memory: alloc,
                     dimensions,
                     layout,
                 });
@@ -151,9 +167,10 @@ impl ImmutableImage {
                     image: image.clone(),
                 });
 
-                (image, init)
-            })
-            .map_err(Into::into)
+                Ok((image, init))
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 
     /// Construct an ImmutableImage from the contents of `iter`.

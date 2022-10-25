@@ -14,9 +14,12 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    memory::allocator::{
-        AllocationCreationError, MemoryAlloc, MemoryAllocatePreference, MemoryAllocator,
-        MemoryUsage, StandardMemoryAllocator,
+    memory::{
+        allocator::{
+            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            MemoryAllocatePreference, MemoryAllocator, MemoryUsage, StandardMemoryAllocator,
+        },
+        DedicatedAllocation,
     },
     DeviceSize,
 };
@@ -426,30 +429,48 @@ where
             None => return Err(AllocationCreationError::OutOfDeviceMemory),
         };
 
-        self.allocator
-            .create_buffer(
-                UnsafeBufferCreateInfo {
-                    size,
-                    usage: self.buffer_usage,
-                    ..Default::default()
-                },
-                self.memory_usage,
-                MemoryAllocatePreference::Unknown,
-            )
-            .map_err(|err| match err {
-                BufferCreationError::AllocError(err) => err,
-                // We don't use sparse-binding, therefore the other errors can't happen.
-                _ => unreachable!(),
-            })?
-            .map(|(inner, memory)| {
+        let buffer = UnsafeBuffer::new(
+            self.device().clone(),
+            UnsafeBufferCreateInfo {
+                size,
+                usage: self.buffer_usage,
+                ..Default::default()
+            },
+        )
+        .map_err(|err| match err {
+            BufferCreationError::AllocError(err) => err,
+            // We don't use sparse-binding, therefore the other errors can't happen.
+            _ => unreachable!(),
+        })?;
+        let requirements = buffer.memory_requirements();
+        let create_info = AllocationCreateInfo {
+            requirements,
+            allocation_type: AllocationType::Linear,
+            usage: self.memory_usage,
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            ..Default::default()
+        };
+
+        match unsafe { self.allocator.allocate_unchecked(create_info) } {
+            Ok(mut alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                alloc.shrink(size);
+                unsafe { buffer.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
                 **cur_buf_mutex = Some(Arc::new(ActualBuffer {
-                    inner,
-                    memory,
+                    inner: buffer,
+                    memory: alloc,
                     chunks_in_use: Mutex::new(vec![]),
                     next_index: AtomicU64::new(0),
                     capacity,
                 }));
-            })
+
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
     }
 
     // Tries to lock a subbuffer from the current buffer.

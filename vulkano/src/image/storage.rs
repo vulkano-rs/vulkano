@@ -14,10 +14,14 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned, Queue},
     format::Format,
-    image::{sys::UnsafeImageCreateInfo, view::ImageView},
+    image::{sys::UnsafeImageCreateInfo, view::ImageView, ImageFormatInfo},
     memory::{
-        allocator::{MemoryAlloc, MemoryAllocatePreference, MemoryAllocator, MemoryUsage},
-        DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        allocator::{
+            AllocationCreateInfo, AllocationType, MemoryAlloc, MemoryAllocatePreference,
+            MemoryAllocator, MemoryUsage,
+        },
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes,
     },
     sync::Sharing,
     DeviceSize,
@@ -91,34 +95,48 @@ impl StorageImage {
     ) -> Result<Arc<StorageImage>, ImageCreationError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        allocator
-            .create_image(
-                UnsafeImageCreateInfo {
-                    dimensions,
-                    format: Some(format),
-                    usage,
-                    sharing: if queue_family_indices.len() >= 2 {
-                        Sharing::Concurrent(queue_family_indices)
-                    } else {
-                        Sharing::Exclusive
-                    },
-                    mutable_format: flags.mutable_format,
-                    cube_compatible: flags.cube_compatible,
-                    array_2d_compatible: flags.array_2d_compatible,
-                    block_texel_view_compatible: flags.block_texel_view_compatible,
-                    ..Default::default()
+        let image = UnsafeImage::new(
+            allocator.device().clone(),
+            UnsafeImageCreateInfo {
+                dimensions,
+                format: Some(format),
+                usage,
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
+                } else {
+                    Sharing::Exclusive
                 },
-                MemoryUsage::GpuOnly,
-                MemoryAllocatePreference::AlwaysAllocate,
-            )?
-            .map(|(image, memory)| {
-                Arc::new(StorageImage {
+                mutable_format: flags.mutable_format,
+                cube_compatible: flags.cube_compatible,
+                array_2d_compatible: flags.array_2d_compatible,
+                block_texel_view_compatible: flags.block_texel_view_compatible,
+                ..Default::default()
+            },
+        )?;
+        let requirements = image.memory_requirements();
+        let create_info = AllocationCreateInfo {
+            requirements,
+            allocation_type: AllocationType::NonLinear,
+            usage: MemoryUsage::GpuOnly,
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            dedicated_allocation: Some(DedicatedAllocation::Image(&image)),
+            ..Default::default()
+        };
+
+        match unsafe { allocator.allocate_unchecked(create_info) } {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
+                Ok(Arc::new(StorageImage {
                     image,
-                    memory,
+                    memory: alloc,
                     dimensions,
-                })
-            })
-            .map_err(Into::into)
+                }))
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 
     pub fn new_with_exportable_fd(
@@ -131,38 +149,78 @@ impl StorageImage {
     ) -> Result<Arc<StorageImage>, ImageCreationError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        allocator
-            .create_image(
-                UnsafeImageCreateInfo {
-                    dimensions,
-                    format: Some(format),
-                    usage,
-                    sharing: if queue_family_indices.len() >= 2 {
-                        Sharing::Concurrent(queue_family_indices)
-                    } else {
-                        Sharing::Exclusive
-                    },
-                    external_memory_handle_types: ExternalMemoryHandleTypes {
-                        opaque_fd: true,
-                        ..ExternalMemoryHandleTypes::empty()
-                    },
-                    mutable_format: flags.mutable_format,
-                    cube_compatible: flags.cube_compatible,
-                    array_2d_compatible: flags.array_2d_compatible,
-                    block_texel_view_compatible: flags.block_texel_view_compatible,
-                    ..Default::default()
-                },
-                MemoryUsage::GpuOnly,
-                MemoryAllocatePreference::AlwaysAllocate,
-            )?
-            .map(|(image, memory)| {
-                Arc::new(StorageImage {
-                    image,
-                    memory,
-                    dimensions,
-                })
+        let external_memory_properties = allocator
+            .device()
+            .physical_device()
+            .image_format_properties(ImageFormatInfo {
+                format: Some(format),
+                image_type: dimensions.image_type(),
+                usage,
+                external_memory_handle_type: Some(ExternalMemoryHandleType::OpaqueFd),
+                mutable_format: flags.mutable_format,
+                cube_compatible: flags.cube_compatible,
+                array_2d_compatible: flags.array_2d_compatible,
+                block_texel_view_compatible: flags.block_texel_view_compatible,
+                ..Default::default()
             })
-            .map_err(Into::into)
+            .unwrap()
+            .unwrap()
+            .external_memory_properties;
+        // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
+        assert!(external_memory_properties.exportable);
+
+        // VUID-VkMemoryAllocateInfo-pNext-00639
+        // Guaranteed because we always create a dedicated allocation
+
+        let external_memory_handle_types = ExternalMemoryHandleTypes {
+            opaque_fd: true,
+            ..ExternalMemoryHandleTypes::empty()
+        };
+        let image = UnsafeImage::new(
+            allocator.device().clone(),
+            UnsafeImageCreateInfo {
+                dimensions,
+                format: Some(format),
+                usage,
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
+                } else {
+                    Sharing::Exclusive
+                },
+                external_memory_handle_types,
+                mutable_format: flags.mutable_format,
+                cube_compatible: flags.cube_compatible,
+                array_2d_compatible: flags.array_2d_compatible,
+                block_texel_view_compatible: flags.block_texel_view_compatible,
+                ..Default::default()
+            },
+        )?;
+        let requirements = image.memory_requirements();
+        let memory_type_index = allocator
+            .find_memory_type_index(requirements.memory_type_bits, MemoryUsage::GpuOnly.into())
+            .expect("failed to find a suitable memory type");
+
+        match unsafe {
+            allocator.allocate_dedicated_unchecked(
+                memory_type_index,
+                requirements.size,
+                Some(DedicatedAllocation::Image(&image)),
+                external_memory_handle_types,
+            )
+        } {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
+                Ok(Arc::new(StorageImage {
+                    image,
+                    memory: alloc,
+                    dimensions,
+                }))
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 
     /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.

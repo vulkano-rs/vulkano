@@ -23,9 +23,12 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBufferCreateInfo, TypedBufferAccess},
     device::{Device, DeviceOwned},
-    memory::allocator::{
-        AllocationCreationError, MemoryAlloc, MemoryAllocatePreference, MemoryAllocator,
-        MemoryUsage,
+    memory::{
+        allocator::{
+            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
+        },
+        DedicatedAllocation,
     },
     sync::Sharing,
     DeviceSize,
@@ -214,38 +217,57 @@ where
     ) -> Result<Arc<CpuAccessibleBuffer<T>>, AllocationCreationError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        allocator
-            .create_buffer(
-                UnsafeBufferCreateInfo {
-                    sharing: if queue_family_indices.len() >= 2 {
-                        Sharing::Concurrent(queue_family_indices.clone())
-                    } else {
-                        Sharing::Exclusive
-                    },
-                    size,
-                    usage,
-                    ..Default::default()
-                },
-                if host_cached {
-                    MemoryUsage::Download
+        let buffer = UnsafeBuffer::new(
+            allocator.device().clone(),
+            UnsafeBufferCreateInfo {
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices.clone())
                 } else {
-                    MemoryUsage::Upload
+                    Sharing::Exclusive
                 },
-                MemoryAllocatePreference::Unknown,
-            )
-            .map_err(|err| match err {
-                BufferCreationError::AllocError(err) => err,
-                // We don't use sparse-binding, therefore the other errors can't happen.
-                _ => unreachable!(),
-            })?
-            .map(|(inner, memory)| {
-                Arc::new(CpuAccessibleBuffer {
-                    inner,
-                    memory,
+                size,
+                usage,
+                ..Default::default()
+            },
+        )
+        .map_err(|err| match err {
+            BufferCreationError::AllocError(err) => err,
+            // We don't use sparse-binding, therefore the other errors can't happen.
+            _ => unreachable!(),
+        })?;
+        let requirements = buffer.memory_requirements();
+        let create_info = AllocationCreateInfo {
+            requirements,
+            allocation_type: AllocationType::Linear,
+            usage: if host_cached {
+                MemoryUsage::Download
+            } else {
+                MemoryUsage::Upload
+            },
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            ..Default::default()
+        };
+
+        match allocator.allocate_unchecked(create_info) {
+            Ok(mut alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                // The implementation might require a larger size than we wanted. With this it is
+                // easier to invalidate and flush the whole buffer. It does not affect the
+                // allocation in any way.
+                alloc.shrink(size);
+                buffer.bind_memory(alloc.device_memory(), alloc.offset())?;
+
+                Ok(Arc::new(CpuAccessibleBuffer {
+                    inner: buffer,
+                    memory: alloc,
                     queue_family_indices,
                     marker: PhantomData,
-                })
-            })
+                }))
+            }
+            Err(err) => Err(err),
+        }
     }
 }
 

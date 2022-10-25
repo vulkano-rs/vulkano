@@ -14,10 +14,14 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     format::Format,
-    image::{sys::UnsafeImageCreateInfo, ImageDimensions},
+    image::{sys::UnsafeImageCreateInfo, ImageDimensions, ImageFormatInfo},
     memory::{
-        allocator::{MemoryAlloc, MemoryAllocatePreference, MemoryAllocator, MemoryUsage},
-        DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        allocator::{
+            AllocationCreateInfo, AllocationType, MemoryAlloc, MemoryAllocatePreference,
+            MemoryAllocator, MemoryUsage,
+        },
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes,
     },
     DeviceSize,
 };
@@ -425,39 +429,53 @@ impl AttachmentImage {
             panic!() // TODO: message?
         }
 
-        allocator
-            .create_image(
-                UnsafeImageCreateInfo {
-                    dimensions: ImageDimensions::Dim2d {
-                        width: dimensions[0],
-                        height: dimensions[1],
-                        array_layers,
-                    },
-                    format: Some(format),
-                    samples,
-                    usage: ImageUsage {
-                        color_attachment: !is_depth,
-                        depth_stencil_attachment: is_depth,
-                        ..base_usage
-                    },
-                    ..Default::default()
+        let image = UnsafeImage::new(
+            allocator.device().clone(),
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: dimensions[0],
+                    height: dimensions[1],
+                    array_layers,
                 },
-                MemoryUsage::GpuOnly,
-                MemoryAllocatePreference::Unknown,
-            )?
-            .map(|(image, memory)| {
-                Arc::new(AttachmentImage {
+                format: Some(format),
+                samples,
+                usage: ImageUsage {
+                    color_attachment: !is_depth,
+                    depth_stencil_attachment: is_depth,
+                    ..base_usage
+                },
+                ..Default::default()
+            },
+        )?;
+        let requirements = image.memory_requirements();
+        let create_info = AllocationCreateInfo {
+            requirements,
+            allocation_type: AllocationType::NonLinear,
+            usage: MemoryUsage::GpuOnly,
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            dedicated_allocation: Some(DedicatedAllocation::Image(&image)),
+            ..Default::default()
+        };
+
+        match unsafe { allocator.allocate_unchecked(create_info) } {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
+                Ok(Arc::new(AttachmentImage {
                     image,
-                    memory,
+                    memory: alloc,
                     attachment_layout: if is_depth {
                         ImageLayout::DepthStencilAttachmentOptimal
                     } else {
                         ImageLayout::ColorAttachmentOptimal
                     },
                     initialized: AtomicBool::new(false),
-                })
-            })
-            .map_err(Into::into)
+                }))
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 
     pub fn new_with_exportable_fd(
@@ -483,45 +501,82 @@ impl AttachmentImage {
 
         let aspects = format.aspects();
         let is_depth = aspects.depth || aspects.stencil;
+        let usage = ImageUsage {
+            color_attachment: !is_depth,
+            depth_stencil_attachment: is_depth,
+            ..base_usage
+        };
 
-        allocator
-            .create_image(
-                UnsafeImageCreateInfo {
-                    dimensions: ImageDimensions::Dim2d {
-                        width: dimensions[0],
-                        height: dimensions[1],
-                        array_layers,
-                    },
-                    format: Some(format),
-                    samples,
-                    usage: ImageUsage {
-                        color_attachment: !is_depth,
-                        depth_stencil_attachment: is_depth,
-                        ..base_usage
-                    },
-                    external_memory_handle_types: ExternalMemoryHandleTypes {
-                        opaque_fd: true,
-                        ..ExternalMemoryHandleTypes::empty()
-                    },
-                    mutable_format: true,
-                    ..Default::default()
+        let external_memory_properties = allocator
+            .device()
+            .physical_device()
+            .image_format_properties(ImageFormatInfo {
+                format: Some(format),
+                usage,
+                external_memory_handle_type: Some(ExternalMemoryHandleType::OpaqueFd),
+                mutable_format: true,
+                ..Default::default()
+            })
+            .unwrap()
+            .unwrap()
+            .external_memory_properties;
+        // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
+        assert!(external_memory_properties.exportable);
+
+        // VUID-VkMemoryAllocateInfo-pNext-00639
+        // Guaranteed because we always create a dedicated allocation
+
+        let external_memory_handle_types = ExternalMemoryHandleTypes {
+            opaque_fd: true,
+            ..ExternalMemoryHandleTypes::empty()
+        };
+        let image = UnsafeImage::new(
+            allocator.device().clone(),
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: dimensions[0],
+                    height: dimensions[1],
+                    array_layers,
                 },
-                MemoryUsage::GpuOnly,
-                MemoryAllocatePreference::AlwaysAllocate,
-            )?
-            .map(|(image, memory)| {
-                Arc::new(AttachmentImage {
+                format: Some(format),
+                samples,
+                usage,
+                external_memory_handle_types,
+                mutable_format: true,
+                ..Default::default()
+            },
+        )?;
+        let requirements = image.memory_requirements();
+        let memory_type_index = allocator
+            .find_memory_type_index(requirements.memory_type_bits, MemoryUsage::GpuOnly.into())
+            .expect("failed to find a suitable memory type");
+
+        match unsafe {
+            allocator.allocate_dedicated_unchecked(
+                memory_type_index,
+                requirements.size,
+                Some(DedicatedAllocation::Image(&image)),
+                external_memory_handle_types,
+            )
+        } {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
+                Ok(Arc::new(AttachmentImage {
                     image,
-                    memory,
+                    memory: alloc,
                     attachment_layout: if is_depth {
                         ImageLayout::DepthStencilAttachmentOptimal
                     } else {
                         ImageLayout::ColorAttachmentOptimal
                     },
                     initialized: AtomicBool::new(false),
-                })
-            })
-            .map_err(Into::into)
+                }))
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 
     /// Exports posix file descriptor for the allocated memory.
