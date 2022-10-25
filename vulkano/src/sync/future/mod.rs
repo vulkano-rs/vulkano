@@ -17,7 +17,7 @@ use super::{AccessFlags, Fence, FenceError, PipelineStages, Semaphore};
 use crate::{
     buffer::sys::UnsafeBuffer,
     command_buffer::{
-        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer, SubmitInfo,
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
@@ -27,6 +27,7 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::{
+    borrow::Cow,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     ops::Range,
@@ -173,7 +174,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
-        Cb: PrimaryCommandBuffer + 'static,
+        Cb: PrimaryCommandBufferAbstract + 'static,
     {
         command_buffer.execute_after(self, queue)
     }
@@ -188,7 +189,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
-        Cb: PrimaryCommandBuffer + 'static,
+        Cb: PrimaryCommandBufferAbstract + 'static,
     {
         let queue = self.queue().unwrap();
         command_buffer.execute_after(self, queue)
@@ -515,6 +516,22 @@ pub enum FlushError {
     /// A non-zero present_id must be greater than any non-zero present_id passed previously
     /// for the same swapchain.
     PresentIdLessThanOrEqual,
+
+    /// Access to a resource has been denied.
+    ResourceAccessError {
+        error: AccessError,
+        command_name: Cow<'static, str>,
+        command_param: Cow<'static, str>,
+        command_offset: usize,
+    },
+
+    /// The command buffer or one of the secondary command buffers it executes was created with the
+    /// "one time submit" flag, but has already been submitted it the past.
+    OneTimeSubmitAlreadySubmitted,
+
+    /// The command buffer or one of the secondary command buffers it executes is already in use by
+    /// the GPU and was not created with the "concurrent" flag.
+    ExclusiveAlreadyInUse,
 }
 
 impl Error for FlushError {
@@ -522,6 +539,7 @@ impl Error for FlushError {
         match self {
             FlushError::AccessError(err) => Some(err),
             FlushError::OomError(err) => Some(err),
+            FlushError::ResourceAccessError { error, .. } => Some(error),
             _ => None,
         }
     }
@@ -546,6 +564,16 @@ impl Display for FlushError {
                 }
                 FlushError::PresentIdLessThanOrEqual => {
                     "present id is less than or equal to previous"
+                }
+                FlushError::ResourceAccessError { .. } => "access to a resource has been denied",
+                FlushError::OneTimeSubmitAlreadySubmitted => {
+                    "the command buffer or one of the secondary command buffers it executes was \
+                    created with the \"one time submit\" flag, but has already been submitted in \
+                    the past"
+                }
+                FlushError::ExclusiveAlreadyInUse => {
+                    "the command buffer or one of the secondary command buffers it executes is \
+                    already in use was not created with the \"concurrent\" flag"
                 }
             }
         )

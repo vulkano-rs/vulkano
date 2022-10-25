@@ -435,7 +435,7 @@ pub struct SparseBufferMemoryBind {
     /// The offset in bytes from the start of the buffer's memory, where memory is to be (un)bound.
     ///
     /// The default value is `0`.
-    pub resource_offset: DeviceSize,
+    pub offset: DeviceSize,
 
     /// The size in bytes of the memory to be (un)bound.
     ///
@@ -460,7 +460,7 @@ pub struct SparseImageOpaqueMemoryBind {
     /// The offset in bytes from the start of the image's memory, where memory is to be (un)bound.
     ///
     /// The default value is `0`.
-    pub resource_offset: DeviceSize,
+    pub offset: DeviceSize,
 
     /// The size in bytes of the memory to be (un)bound.
     ///

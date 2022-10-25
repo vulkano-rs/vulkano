@@ -63,7 +63,7 @@ use std::{
 /// use vulkano::buffer::CpuBufferPool;
 /// use vulkano::command_buffer::AutoCommandBufferBuilder;
 /// use vulkano::command_buffer::CommandBufferUsage;
-/// use vulkano::command_buffer::PrimaryCommandBuffer;
+/// use vulkano::command_buffer::PrimaryCommandBufferAbstract;
 /// use vulkano::sync::GpuFuture;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 /// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;

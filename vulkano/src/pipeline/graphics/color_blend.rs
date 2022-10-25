@@ -365,9 +365,21 @@ vulkan_enum! {
     OneMinusConstantColor = ONE_MINUS_CONSTANT_COLOR,
 
     /// `blend_constants.a` for all components.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if this value is used for the `color_source` or `color_destination` blend factors,
+    /// then the
+    /// [`constant_alpha_color_blend_factors`](crate::device::Features::constant_alpha_color_blend_factors)
+    /// feature must be enabled on the device.
     ConstantAlpha = CONSTANT_ALPHA,
 
     /// `1 - blend_constants.a` for all components.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if this value is used for the `color_source` or `color_destination` blend factors,
+    /// then the
+    /// [`constant_alpha_color_blend_factors`](crate::device::Features::constant_alpha_color_blend_factors)
+    /// feature must be enabled on the device.
     OneMinusConstantAlpha = ONE_MINUS_CONSTANT_ALPHA,
 
     /// For the alpha component, always `1`. For the color components,

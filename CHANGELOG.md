@@ -32,6 +32,7 @@ Changes to command buffers and command pools:
 - Renamed `CommandPool` to `CommandBufferAllocator`, `StandardCommandPool` to `StandardCommandBufferAllocator`, and `UnsafeCommandPool` to `CommandPool` to better reflect their action.
 - Removed `Device::with_standard_command_pool`.
 - `AutoCommandBufferBuilder::{primary, secondary}` now take an implementation of `CommandBufferAllocator` instead of the `Device`.
+- The `PrimaryCommandBuffer` and `SecondaryCommandBuffer` traits are renamed to `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract`.
 
 Changes to descriptor sets and descriptor pools:
 - Renamed `DescriptorPool` to `DescriptorSetAllocator`, `StandardDescriptorPool` to `StandardDescriptorSetAllocator`, and `UnsafeDescriptorPool` to `DescriptorPool` to better reflect their action.
@@ -50,6 +51,16 @@ Changes to buffers:
 Changes to the `VulkanObject` trait:
 - The method `internal_object` is renamed to `handle`, and the associated type `Object` is renamed to `Handle`.
 
+Changes to `PipelineStages`:
+- The `transfer` flag has been renamed to `all_transfer`.
+
+Changes to `SubpassDependency`, `MemoryBarrier`, `BufferMemoryBarrier`, `ImageMemoryBarrier`:
+- Fields that start with `source_` have been renamed to `src_`.
+- Fields that start with `destination_` have been renamed to `dst_`.
+
+Changes to the `set_event` command:
+- This command now takes a `DependencyInfo` instead of `PipelineStages`, to enable use of the `vkCmdSetEvent2` version.
+
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
 - Added the `device_coherent`, `device_uncached` and `rdma_capable` flags to `MemoryPropertyFlags`, and improved the documentation of all flags with additional usage advice.
@@ -66,12 +77,16 @@ Changes to the `VulkanObject` trait:
 - Added `Device::allocation_count`.
 - Support for the `khr_external_semaphore_fd`, `khr_external_semaphore_win32` and `fuchsia_external_semaphore` extensions.
 - `Semaphore::export_fd` is no longer unsafe.
+- Added support for all remaining `PipelineStages` and `AccessFlags`, including those from the `synchronization2` feature.
+- Added support for `synchronization2` to the `set_event`, `reset_event` and `write_timestamp` commands, and to `SubpassDependency` when creating a render pass.
+- Added the `wait_events` command to `SyncCommandBufferBuilder` and `UnsafeCommandBufferBuilder`.
 
 ### Bugs fixed
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
 - [#1871](https://github.com/vulkano-rs/vulkano/issues/1871): Layer extensions are not included when validating extensions to enable on an instance.
 - Fixed missing validation when binding memory to a buffer with the `shader_device_address` usage.
 - Queue family count isn't being set in either `ash::vk::BufferCreateInfo` or `ash::vk::ImageCreateInfo`.
+- Validation checks for `khr_portability_subset` devices.
 
 # Version 0.31.1 (2022-10-04)
 

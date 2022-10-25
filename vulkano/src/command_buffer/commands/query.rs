@@ -22,7 +22,7 @@ use crate::{
         QueryType,
     },
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStage, PipelineStages},
-    DeviceSize, RequirementNotMet, RequiresOneOf, VulkanObject,
+    DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanObject,
 };
 use std::{
     error::Error,
@@ -239,29 +239,46 @@ where
         query: u32,
         stage: PipelineStage,
     ) -> Result<(), QueryError> {
+        let device = self.device();
+
+        if !device.enabled_features().synchronization2 && PipelineStages::from(stage).is_2() {
+            return Err(QueryError::RequirementNotMet {
+                required_for: "`stage` has bits set from `VkPipelineStageFlagBits2`",
+                requires_one_of: RequiresOneOf {
+                    features: &["synchronization2"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkCmdWriteTimestamp2-stage-parameter
+        stage.validate_device(device)?;
+
         let queue_family_properties = self.queue_family_properties();
 
-        // VUID-vkCmdWriteTimestamp-commandBuffer-cmdpool
+        // VUID-vkCmdWriteTimestamp2-commandBuffer-cmdpool
         if !(queue_family_properties.queue_flags.transfer
             || queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+            || queue_family_properties.queue_flags.compute
+            || queue_family_properties.queue_flags.video_decode
+            || queue_family_properties.queue_flags.video_encode)
         {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 
         let device = self.device();
 
-        // VUID-vkCmdWriteTimestamp-commonparent
+        // VUID-vkCmdWriteTimestamp2-commonparent
         assert_eq!(device, query_pool.device());
 
-        // VUID-vkCmdWriteTimestamp-pipelineStage-04074
+        // VUID-vkCmdWriteTimestamp2-stage-03860
         if !queue_family_properties.supports_stage(stage) {
             return Err(QueryError::StageNotSupported);
         }
 
         match stage {
             PipelineStage::GeometryShader => {
-                // VUID-vkCmdWriteTimestamp-pipelineStage-04075
+                // VUID-vkCmdWriteTimestamp2-stage-03929
                 if !device.enabled_features().geometry_shader {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::GeometryShader`",
@@ -274,7 +291,7 @@ where
             }
             PipelineStage::TessellationControlShader
             | PipelineStage::TessellationEvaluationShader => {
-                // VUID-vkCmdWriteTimestamp-pipelineStage-04076
+                // VUID-vkCmdWriteTimestamp2-stage-03930
                 if !device.enabled_features().tessellation_shader {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::TessellationControlShader` or `PipelineStage::TessellationEvaluationShader`",
@@ -285,31 +302,129 @@ where
                     });
                 }
             }
+            PipelineStage::ConditionalRendering => {
+                // VUID-vkCmdWriteTimestamp2-stage-03931
+                if !device.enabled_features().conditional_rendering {
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::ConditionalRendering`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["conditional_rendering"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            PipelineStage::FragmentDensityProcess => {
+                // VUID-vkCmdWriteTimestamp2-stage-03932
+                if !device.enabled_features().fragment_density_map {
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::FragmentDensityProcess`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["fragment_density_map"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            PipelineStage::TransformFeedback => {
+                // VUID-vkCmdWriteTimestamp2-stage-03933
+                if !device.enabled_features().transform_feedback {
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::TransformFeedback`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["transform_feedback"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            PipelineStage::MeshShader => {
+                // VUID-vkCmdWriteTimestamp2-stage-03934
+                if !device.enabled_features().mesh_shader {
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::MeshShader`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["mesh_shader"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            PipelineStage::TaskShader => {
+                // VUID-vkCmdWriteTimestamp2-stage-03935
+                if !device.enabled_features().task_shader {
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::TaskShader`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["task_shader"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            PipelineStage::FragmentShadingRateAttachment => {
+                // VUID-vkCmdWriteTimestamp2-shadingRateImage-07316
+                if !(device.enabled_features().attachment_fragment_shading_rate
+                    || device.enabled_features().shading_rate_image)
+                {
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::FragmentShadingRateAttachment`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["attachment_fragment_shading_rate", "shading_rate_image"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            PipelineStage::SubpassShading => {
+                // VUID-vkCmdWriteTimestamp2-stage-04957
+                if !device.enabled_features().subpass_shading {
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::SubpassShading`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["subpass_shading"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            PipelineStage::InvocationMask => {
+                // VUID-vkCmdWriteTimestamp2-stage-04995
+                if !device.enabled_features().invocation_mask {
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::InvocationMask`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["invocation_mask"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
             _ => (),
         }
 
-        // VUID-vkCmdWriteTimestamp-queryPool-01416
+        // VUID-vkCmdWriteTimestamp2-queryPool-03861
         if !matches!(query_pool.query_type(), QueryType::Timestamp) {
             return Err(QueryError::NotPermitted);
         }
 
-        // VUID-vkCmdWriteTimestamp-timestampValidBits-00829
+        // VUID-vkCmdWriteTimestamp2-timestampValidBits-03863
         if queue_family_properties.timestamp_valid_bits.is_none() {
             return Err(QueryError::NoTimestampValidBits);
         }
 
-        // VUID-vkCmdWriteTimestamp-query-04904
+        // VUID-vkCmdWriteTimestamp2-query-04903
         query_pool.query(query).ok_or(QueryError::OutOfRange)?;
 
         if let Some(render_pass_state) = &self.render_pass_state {
-            // VUID-vkCmdWriteTimestamp-query-00831
+            // VUID-vkCmdWriteTimestamp2-query-03865
             if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }
 
-        // VUID-vkCmdWriteTimestamp-queryPool-00828
-        // VUID-vkCmdWriteTimestamp-None-00830
+        // VUID-vkCmdWriteTimestamp2-queryPool-03862
+        // VUID-vkCmdWriteTimestamp2-None-03864
         // Not checked, therefore unsafe.
         // TODO: add check.
 
@@ -620,7 +735,7 @@ impl SyncCommandBufferBuilder {
                 range: 0..destination.size(), // TODO:
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages {
-                        transfer: true,
+                        all_transfer: true,
                         ..PipelineStages::empty()
                     },
                     access: AccessFlags {
@@ -700,12 +815,32 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn write_timestamp(&mut self, query: Query<'_>, stage: PipelineStage) {
         let fns = self.device.fns();
-        (fns.v1_0.cmd_write_timestamp)(
-            self.handle,
-            stage.into(),
-            query.pool().handle(),
-            query.index(),
-        );
+
+        if self.device.enabled_features().synchronization2 {
+            if self.device.api_version() >= Version::V1_3 {
+                (fns.v1_3.cmd_write_timestamp2)(
+                    self.handle,
+                    stage.into(),
+                    query.pool().handle(),
+                    query.index(),
+                );
+            } else {
+                debug_assert!(self.device.enabled_extensions().khr_synchronization2);
+                (fns.khr_synchronization2.cmd_write_timestamp2_khr)(
+                    self.handle,
+                    stage.into(),
+                    query.pool().handle(),
+                    query.index(),
+                );
+            }
+        } else {
+            (fns.v1_0.cmd_write_timestamp)(
+                self.handle,
+                stage.into(),
+                query.pool().handle(),
+                query.index(),
+            );
+        }
     }
 
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.

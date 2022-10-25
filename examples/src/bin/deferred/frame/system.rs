@@ -17,7 +17,8 @@ use std::{rc::Rc, sync::Arc};
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryCommandBuffer, SubpassContents,
+        PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryCommandBufferAbstract,
+        SubpassContents,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
@@ -478,7 +479,7 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     #[inline]
     pub fn execute<C>(&mut self, command_buffer: C)
     where
-        C: SecondaryCommandBuffer + 'static,
+        C: SecondaryCommandBufferAbstract + 'static,
     {
         self.frame
             .command_buffer_builder

@@ -12,11 +12,12 @@ use super::{
         CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc,
         StandardCommandBufferAlloc, StandardCommandBufferAllocator,
     },
-    synced::{CommandBufferState, SyncCommandBuffer, SyncCommandBufferBuilder},
-    sys::{CommandBufferBeginInfo, UnsafeCommandBuffer},
+    synced::{CommandBufferBuilderState, SyncCommandBuffer, SyncCommandBufferBuilder},
+    sys::CommandBufferBeginInfo,
     CommandBufferExecError, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassInfo,
-    CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandBufferUsage,
-    PrimaryCommandBuffer, RenderingAttachmentInfo, SecondaryCommandBuffer, SubpassContents,
+    CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandBufferResourcesUsage,
+    CommandBufferState, CommandBufferUsage, PrimaryCommandBufferAbstract, RenderingAttachmentInfo,
+    SecondaryCommandBufferAbstract, SubpassContents,
 };
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
@@ -26,10 +27,11 @@ use crate::{
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     query::{QueryControlFlags, QueryType},
     render_pass::{Framebuffer, Subpass},
-    sync::{AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf,
+    sync::{AccessCheckError, AccessFlags, PipelineMemoryAccess, PipelineStages},
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanObject,
 };
 use ahash::HashMap;
+use parking_lot::{Mutex, MutexGuard};
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
@@ -615,20 +617,12 @@ where
             return Err(BuildError::QueryActive);
         }
 
-        let submit_state = match self.usage {
-            CommandBufferUsage::MultipleSubmit => SubmitState::ExclusiveUse {
-                in_use: AtomicBool::new(false),
-            },
-            CommandBufferUsage::SimultaneousUse => SubmitState::Concurrent,
-            CommandBufferUsage::OneTimeSubmit => SubmitState::OneTime {
-                already_submitted: AtomicBool::new(false),
-            },
-        };
-
         Ok(PrimaryAutoCommandBuffer {
             inner: self.inner.build()?,
             _alloc: self.builder_alloc.into_alloc(),
-            submit_state,
+            usage: self.usage,
+
+            state: Mutex::new(Default::default()),
         })
     }
 }
@@ -656,6 +650,7 @@ where
         Ok(SecondaryAutoCommandBuffer {
             inner: self.inner.build()?,
             _alloc: self.builder_alloc.into_alloc(),
+            usage: self.usage,
             inheritance_info: self.inheritance_info.unwrap(),
             submit_state,
         })
@@ -710,7 +705,7 @@ where
     }
 
     /// Returns the binding/setting state.
-    pub fn state(&self) -> CommandBufferState<'_> {
+    pub fn state(&self) -> CommandBufferBuilderState<'_> {
         self.inner.state()
     }
 }
@@ -727,85 +722,31 @@ where
 pub struct PrimaryAutoCommandBuffer<A = StandardCommandBufferAlloc> {
     inner: SyncCommandBuffer,
     _alloc: A, // Safety: must be dropped after `inner`
+    usage: CommandBufferUsage,
 
-    // Tracks usage of the command buffer on the GPU.
-    submit_state: SubmitState,
+    state: Mutex<CommandBufferState>,
 }
 
-unsafe impl<P> DeviceOwned for PrimaryAutoCommandBuffer<P> {
+unsafe impl<A> DeviceOwned for PrimaryAutoCommandBuffer<A> {
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 }
 
-unsafe impl<A> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<A>
+unsafe impl<A> VulkanObject for PrimaryAutoCommandBuffer<A> {
+    type Handle = ash::vk::CommandBuffer;
+
+    fn handle(&self) -> Self::Handle {
+        self.inner.as_ref().handle()
+    }
+}
+
+unsafe impl<A> PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer<A>
 where
     A: CommandBufferAlloc,
 {
-    fn inner(&self) -> &UnsafeCommandBuffer {
-        self.inner.as_ref()
-    }
-
-    fn lock_submit(
-        &self,
-        future: &dyn GpuFuture,
-        queue: &Queue,
-    ) -> Result<(), CommandBufferExecError> {
-        match self.submit_state {
-            SubmitState::OneTime {
-                ref already_submitted,
-            } => {
-                let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
-                if was_already_submitted {
-                    return Err(CommandBufferExecError::OneTimeSubmitAlreadySubmitted);
-                }
-            }
-            SubmitState::ExclusiveUse { ref in_use } => {
-                let already_in_use = in_use.swap(true, Ordering::SeqCst);
-                if already_in_use {
-                    return Err(CommandBufferExecError::ExclusiveAlreadyInUse);
-                }
-            }
-            SubmitState::Concurrent => (),
-        };
-
-        let err = match self.inner.lock_submit(future, queue) {
-            Ok(()) => return Ok(()),
-            Err(err) => err,
-        };
-
-        // If `self.inner.lock_submit()` failed, we revert action.
-        match self.submit_state {
-            SubmitState::OneTime {
-                ref already_submitted,
-            } => {
-                already_submitted.store(false, Ordering::SeqCst);
-            }
-            SubmitState::ExclusiveUse { ref in_use } => {
-                in_use.store(false, Ordering::SeqCst);
-            }
-            SubmitState::Concurrent => (),
-        };
-
-        Err(err)
-    }
-
-    unsafe fn unlock(&self) {
-        // Because of panic safety, we unlock the inner command buffer first.
-        self.inner.unlock();
-
-        match self.submit_state {
-            SubmitState::OneTime {
-                ref already_submitted,
-            } => {
-                debug_assert!(already_submitted.load(Ordering::SeqCst));
-            }
-            SubmitState::ExclusiveUse { ref in_use } => {
-                let old_val = in_use.swap(false, Ordering::SeqCst);
-                debug_assert!(old_val);
-            }
-            SubmitState::Concurrent => (),
-        };
+    fn usage(&self) -> CommandBufferUsage {
+        self.usage
     }
 
     fn check_buffer_access(
@@ -830,15 +771,32 @@ where
         self.inner
             .check_image_access(image, range, exclusive, expected_layout, queue)
     }
+
+    fn state(&self) -> MutexGuard<'_, CommandBufferState> {
+        self.state.lock()
+    }
+
+    fn resources_usage(&self) -> &CommandBufferResourcesUsage {
+        self.inner.resources_usage()
+    }
 }
 
 pub struct SecondaryAutoCommandBuffer<A = StandardCommandBufferAlloc> {
     inner: SyncCommandBuffer,
     _alloc: A, // Safety: must be dropped after `inner`
+    usage: CommandBufferUsage,
     inheritance_info: CommandBufferInheritanceInfo,
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
+}
+
+unsafe impl<A> VulkanObject for SecondaryAutoCommandBuffer<A> {
+    type Handle = ash::vk::CommandBuffer;
+
+    fn handle(&self) -> Self::Handle {
+        self.inner.as_ref().handle()
+    }
 }
 
 unsafe impl<A> DeviceOwned for SecondaryAutoCommandBuffer<A> {
@@ -847,12 +805,16 @@ unsafe impl<A> DeviceOwned for SecondaryAutoCommandBuffer<A> {
     }
 }
 
-unsafe impl<A> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<A>
+unsafe impl<A> SecondaryCommandBufferAbstract for SecondaryAutoCommandBuffer<A>
 where
     A: CommandBufferAlloc,
 {
-    fn inner(&self) -> &UnsafeCommandBuffer {
-        self.inner.as_ref()
+    fn usage(&self) -> CommandBufferUsage {
+        self.usage
+    }
+
+    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
+        &self.inheritance_info
     }
 
     fn lock_record(&self) -> Result<(), CommandBufferExecError> {
@@ -890,10 +852,6 @@ where
             }
             SubmitState::Concurrent => (),
         };
-    }
-
-    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
-        &self.inheritance_info
     }
 
     fn num_buffers(&self) -> usize {
@@ -961,6 +919,7 @@ mod tests {
         },
         device::{DeviceCreateInfo, QueueCreateInfo},
         memory::allocator::StandardMemoryAllocator,
+        sync::GpuFuture,
     };
 
     #[test]

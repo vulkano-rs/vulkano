@@ -194,6 +194,12 @@ pub struct VertexInputAttributeDescription {
     pub format: Format,
 
     /// Number of bytes between the start of a vertex buffer element and the location of attribute.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if the sum of `offset + format.block_size()` is greater than the `stride` of
+    /// `binding`, the
+    /// [`vertex_attribute_access_beyond_stride`](crate::device::Features::vertex_attribute_access_beyond_stride)
+    /// feature must be enabled on the device.
     pub offset: u32,
 }
 

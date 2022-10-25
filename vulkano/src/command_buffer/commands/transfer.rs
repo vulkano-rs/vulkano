@@ -1993,7 +1993,7 @@ impl SyncCommandBufferBuilder {
                             range: src_offset..src_offset + size,
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -2011,7 +2011,7 @@ impl SyncCommandBufferBuilder {
                             range: dst_offset..dst_offset + size,
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -2091,7 +2091,7 @@ impl SyncCommandBufferBuilder {
                             subresource_range: src_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -2111,7 +2111,7 @@ impl SyncCommandBufferBuilder {
                             subresource_range: dst_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -2194,7 +2194,7 @@ impl SyncCommandBufferBuilder {
                                 ..buffer_offset + region.buffer_copy_size(dst_image.format()),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -2212,7 +2212,7 @@ impl SyncCommandBufferBuilder {
                             subresource_range: image_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -2296,7 +2296,7 @@ impl SyncCommandBufferBuilder {
                             subresource_range: image_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -2317,7 +2317,7 @@ impl SyncCommandBufferBuilder {
                                 ..buffer_offset + region.buffer_copy_size(src_image.format()),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
-                                    transfer: true,
+                                    all_transfer: true,
                                     ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
@@ -2382,7 +2382,7 @@ impl SyncCommandBufferBuilder {
                 range: dst_offset..dst_offset + size,
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages {
-                        transfer: true,
+                        all_transfer: true,
                         ..PipelineStages::empty()
                     },
                     access: AccessFlags {
@@ -2445,7 +2445,7 @@ impl SyncCommandBufferBuilder {
                 range: dst_offset..dst_offset + size_of_val(data.deref()) as DeviceSize,
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages {
-                        transfer: true,
+                        all_transfer: true,
                         ..PipelineStages::empty()
                     },
                     access: AccessFlags {

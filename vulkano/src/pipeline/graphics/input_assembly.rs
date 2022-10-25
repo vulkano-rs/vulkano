@@ -119,6 +119,10 @@ vulkan_enum! {
     TriangleStrip = TRIANGLE_STRIP,
 
     /// A series of consecutive triangle primitives, with all triangles sharing a common vertex (the first).
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, the [`triangle_fans`](crate::device::Features::triangle_fans)
+    /// feature must be enabled on the device.
     TriangleFan = TRIANGLE_FAN,
 
     /// As `LineList, but with adjacency, used in combination with geometry shaders. Requires the

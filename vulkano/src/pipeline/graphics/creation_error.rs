@@ -125,6 +125,16 @@ pub enum GraphicsPipelineCreationError {
         obtained: u32,
     },
 
+    /// The `min_vertex_input_binding_stride_alignment` limit was exceeded.
+    MinVertexInputBindingStrideAlignmentExceeded {
+        /// Index of the faulty binding.
+        binding: u32,
+        /// Maximum allowed value.
+        max: u32,
+        /// Value that was passed.
+        obtained: u32,
+    },
+
     /// The maximum dimensions of viewports has been exceeded.
     MaxViewportDimensionsExceeded,
 
@@ -299,6 +309,10 @@ impl Display for GraphicsPipelineCreationError {
             Self::MaxViewportDimensionsExceeded => {
                 write!(f, "the maximum dimensions of viewports has been exceeded")
             }
+            Self::MinVertexInputBindingStrideAlignmentExceeded { .. } => write!(
+                f,
+                "the `min_vertex_input_binding_stride_alignment` limit has been exceeded",
+            ),
             Self::MismatchBlendingAttachmentsCount => write!(
                 f,
                 "the number of attachments specified in the blending does not match the number of \

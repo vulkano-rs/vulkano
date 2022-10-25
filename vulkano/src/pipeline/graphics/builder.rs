@@ -639,6 +639,22 @@ where
                         );
                     }
 
+                    // VUID-VkVertexInputBindingDescription-stride-04456
+                    if device.enabled_extensions().khr_portability_subset
+                        && (stride == 0
+                            || stride
+                                % properties
+                                    .min_vertex_input_binding_stride_alignment
+                                    .unwrap()
+                                != 0)
+                    {
+                        return Err(GraphicsPipelineCreationError::MinVertexInputBindingStrideAlignmentExceeded {
+                            binding,
+                            max: properties.min_vertex_input_binding_stride_alignment.unwrap(),
+                            obtained: binding,
+                        });
+                    }
+
                     match input_rate {
                         VertexInputRate::Instance { divisor } if divisor != 1 => {
                             // VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateDivisor-02229
@@ -712,14 +728,12 @@ where
                     // VUID-VkVertexInputAttributeDescription-location-00620
 
                     // VUID-VkPipelineVertexInputStateCreateInfo-binding-00615
-                    if !bindings.contains_key(&binding) {
-                        return Err(
-                            GraphicsPipelineCreationError::VertexInputAttributeInvalidBinding {
-                                location,
-                                binding,
-                            },
-                        );
-                    }
+                    let binding_desc = bindings.get(&binding).ok_or(
+                        GraphicsPipelineCreationError::VertexInputAttributeInvalidBinding {
+                            location,
+                            binding,
+                        },
+                    )?;
 
                     // VUID-VkVertexInputAttributeDescription-offset-00622
                     if offset > properties.max_vertex_input_attribute_offset {
@@ -748,6 +762,26 @@ where
                             },
                         );
                     }
+
+                    // VUID-VkVertexInputAttributeDescription-vertexAttributeAccessBeyondStride-04457
+                    if device.enabled_extensions().khr_portability_subset
+                        && !device
+                            .enabled_features()
+                            .vertex_attribute_access_beyond_stride
+                        && offset as DeviceSize + format.block_size().unwrap()
+                            > binding_desc.stride as DeviceSize
+                    {
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "this device is a portability subset device, and \
+                                `vertex_input_state.attributes` has an element where \
+                                `offset + format.block_size()` is greater than the `stride` of \
+                                `binding`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["vertex_attribute_access_beyond_stride"],
+                                ..Default::default()
+                            },
+                        });
+                    }
                 }
             }
 
@@ -765,6 +799,23 @@ where
                         topology.validate_device(device)?;
 
                         match topology {
+                            PrimitiveTopology::TriangleFan => {
+                                // VUID-VkPipelineInputAssemblyStateCreateInfo-triangleFans-04452
+                                if device.enabled_extensions().khr_portability_subset
+                                    && !device.enabled_features().triangle_fans
+                                {
+                                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                        required_for:
+                                            "this device is a portability subset device, and \
+                                            `input_assembly_state.topology` is \
+                                            `StateMode::Fixed(PrimitiveTopology::TriangleFan)`",
+                                        requires_one_of: RequiresOneOf {
+                                            features: &["triangle_fans"],
+                                            ..Default::default()
+                                        },
+                                    });
+                                }
+                            }
                             PrimitiveTopology::LineListWithAdjacency
                             | PrimitiveTopology::LineStripWithAdjacency
                             | PrimitiveTopology::TriangleListWithAdjacency
@@ -1151,19 +1202,41 @@ where
                     });
                 }
 
-                // VUID?
-                if matches!(rasterizer_discard_enable, StateMode::Dynamic)
-                    && !(device.api_version() >= Version::V1_3
-                        || device.enabled_features().extended_dynamic_state2)
-                {
-                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                        required_for: "`rasterization_state.rasterizer_discard_enable` is `StateMode::Dynamic`",
-                        requires_one_of: RequiresOneOf {
-                            api_version: Some(Version::V1_3),
-                            features: &["extended_dynamic_state"],
-                            ..Default::default()
-                        },
-                    });
+                match rasterizer_discard_enable {
+                    StateMode::Dynamic => {
+                        // VUID?
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state2)
+                        {
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`rasterization_state.rasterizer_discard_enable` is `StateMode::Dynamic`",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
+                            });
+                        }
+                    }
+                    StateMode::Fixed(false) => {
+                        // VUID-VkPipelineRasterizationStateCreateInfo-pointPolygons-04458
+                        if device.enabled_extensions().khr_portability_subset
+                            && !device.enabled_features().point_polygons
+                            && polygon_mode == PolygonMode::Point
+                        {
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "this device is a portability subset device, \
+                                    `rasterization_state.rasterizer_discard_enable` is \
+                                    `StateMode::Fixed(false)` and \
+                                    `rasterization_state.polygon_mode` is `PolygonMode::Point`",
+                                requires_one_of: RequiresOneOf {
+                                    features: &["point_polygons"],
+                                    ..Default::default()
+                                },
+                            });
+                        }
+                    }
+                    _ => (),
                 }
 
                 // VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-01507
@@ -1998,12 +2071,33 @@ where
                     return Err(GraphicsPipelineCreationError::WrongStencilState);
                 }
 
-                if !matches!(
-                    (front.reference, back.reference),
-                    (StateMode::Fixed(_), StateMode::Fixed(_))
-                        | (StateMode::Dynamic, StateMode::Dynamic)
-                ) {
-                    return Err(GraphicsPipelineCreationError::WrongStencilState);
+                match (front.reference, back.reference) {
+                    (StateMode::Fixed(front_reference), StateMode::Fixed(back_reference)) => {
+                        // VUID-VkPipelineDepthStencilStateCreateInfo-separateStencilMaskRef-04453
+                        if device.enabled_extensions().khr_portability_subset
+                            && !device.enabled_features().separate_stencil_mask_ref
+                            && matches!(
+                                rasterization_state.cull_mode,
+                                StateMode::Fixed(CullMode::None)
+                            )
+                            && front_reference != back_reference
+                        {
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "this device is a portability subset device, \
+                                    `rasterization_state.cull_mode` is \
+                                    `StateMode::Fixed(CullMode::None)`, and \
+                                    `depth_stencil_state.stencil` is `Some(stencil_state)`, \
+                                    where `stencil_state.front.reference` does not equal \
+                                    `stencil_state.back.reference`",
+                                requires_one_of: RequiresOneOf {
+                                    features: &["separate_stencil_mask_ref"],
+                                    ..Default::default()
+                                },
+                            });
+                        }
+                    }
+                    (StateMode::Dynamic, StateMode::Dynamic) => (),
+                    _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
                 }
 
                 // TODO:
@@ -2217,7 +2311,10 @@ where
                         })
                     {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for: "`color_blend_state.attachments` has an element where `blend` is `Some(blend)`, where `blend.color_source`, `blend.color_destination`, `blend.alpha_source` or `blend.alpha_destination` is `BlendFactor::Src1*`",
+                            required_for: "`color_blend_state.attachments` has an element where \
+                            `blend` is `Some(blend)`, where `blend.color_source`, \
+                            `blend.color_destination`, `blend.alpha_source` or \
+                            `blend.alpha_destination` is `BlendFactor::Src1*`",
                             requires_one_of: RequiresOneOf {
                                 features: &["dual_src_blend"],
                                 ..Default::default()
@@ -2254,6 +2351,32 @@ where
                                 attachment_index: attachment_index as u32,
                             },
                         );
+                    }
+
+                    // VUID-VkPipelineColorBlendAttachmentState-constantAlphaColorBlendFactors-04454
+                    // VUID-VkPipelineColorBlendAttachmentState-constantAlphaColorBlendFactors-04455
+                    if device.enabled_extensions().khr_portability_subset
+                        && !device.enabled_features().constant_alpha_color_blend_factors
+                        && (matches!(
+                            color_source,
+                            BlendFactor::ConstantAlpha | BlendFactor::OneMinusConstantAlpha
+                        ) || matches!(
+                            color_destination,
+                            BlendFactor::ConstantAlpha | BlendFactor::OneMinusConstantAlpha
+                        ))
+                    {
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "this device is a portability subset device, and \
+                                `color_blend_state.attachments` has an element where `blend` is \
+                                `Some(blend)`, where \
+                                `blend.color_source` or `blend.color_destination` is \
+                                `BlendFactor::ConstantAlpha` or \
+                                `BlendFactor::OneMinusConstantAlpha`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["constant_alpha_color_blend_factors"],
+                                ..Default::default()
+                            },
+                        });
                     }
                 }
 

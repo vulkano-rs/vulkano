@@ -13,7 +13,7 @@ use crate::{
     device::DeviceOwned,
     image::{view::ImageViewType, ImageType, ImageViewAbstract},
     sampler::{Sampler, SamplerImageViewIncompatibleError},
-    DeviceSize, VulkanObject,
+    DeviceSize, RequiresOneOf, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -377,6 +377,8 @@ pub(crate) fn check_descriptor_write<'a>(
     layout: &'a DescriptorSetLayout,
     variable_descriptor_count: u32,
 ) -> Result<&'a DescriptorSetLayoutBinding, DescriptorSetUpdateError> {
+    let device = layout.device();
+
     let layout_binding = match layout.bindings().get(&write.binding()) {
         Some(binding) => binding,
         None => {
@@ -421,7 +423,7 @@ pub(crate) fn check_descriptor_write<'a>(
             match layout_binding.descriptor_type {
                 DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
                     for (index, buffer) in elements.iter().enumerate() {
-                        assert_eq!(buffer.device().handle(), layout.device().handle(),);
+                        assert_eq!(device, buffer.device());
 
                         if !buffer.inner().buffer.usage().storage_buffer {
                             return Err(DescriptorSetUpdateError::MissingUsage {
@@ -434,7 +436,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 }
                 DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
                     for (index, buffer) in elements.iter().enumerate() {
-                        assert_eq!(buffer.device().handle(), layout.device().handle(),);
+                        assert_eq!(device, buffer.device());
 
                         if !buffer.inner().buffer.usage().uniform_buffer {
                             return Err(DescriptorSetUpdateError::MissingUsage {
@@ -461,13 +463,13 @@ pub(crate) fn check_descriptor_write<'a>(
             // TODO: eventually shouldn't be an assert ; for now robust_buffer_access is always
             //       enabled so this assert should never fail in practice, but we put it anyway
             //       in case we forget to adjust this code
-            assert!(layout.device().enabled_features().robust_buffer_access);
+            assert!(device.enabled_features().robust_buffer_access);
         }
         WriteDescriptorSetElements::BufferView(elements) => {
             match layout_binding.descriptor_type {
                 DescriptorType::StorageTexelBuffer => {
                     for (index, buffer_view) in elements.iter().enumerate() {
-                        assert_eq!(buffer_view.device().handle(), layout.device().handle(),);
+                        assert_eq!(device, buffer_view.device());
 
                         // TODO: storage_texel_buffer_atomic
                         if !buffer_view
@@ -487,7 +489,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 }
                 DescriptorType::UniformTexelBuffer => {
                     for (index, buffer_view) in elements.iter().enumerate() {
-                        assert_eq!(buffer_view.device().handle(), layout.device().handle(),);
+                        assert_eq!(device, buffer_view.device());
 
                         if !buffer_view
                             .buffer()
@@ -521,7 +523,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 for (index, (image_view, sampler)) in
                     elements.iter().zip(immutable_samplers).enumerate()
                 {
-                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
+                    assert_eq!(device, image_view.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
                     if !image_view.usage().sampled {
@@ -566,7 +568,7 @@ pub(crate) fn check_descriptor_write<'a>(
             }
             DescriptorType::SampledImage => {
                 for (index, image_view) in elements.iter().enumerate() {
-                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
+                    assert_eq!(device, image_view.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
                     if !image_view.usage().sampled {
@@ -613,7 +615,7 @@ pub(crate) fn check_descriptor_write<'a>(
             }
             DescriptorType::StorageImage => {
                 for (index, image_view) in elements.iter().enumerate() {
-                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
+                    assert_eq!(device, image_view.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00339
                     if !image_view.usage().storage {
@@ -668,7 +670,7 @@ pub(crate) fn check_descriptor_write<'a>(
             }
             DescriptorType::InputAttachment => {
                 for (index, image_view) in elements.iter().enumerate() {
-                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
+                    assert_eq!(device, image_view.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00338
                     if !image_view.usage().input_attachment {
@@ -746,8 +748,8 @@ pub(crate) fn check_descriptor_write<'a>(
                 }
 
                 for (index, (image_view, sampler)) in elements.iter().enumerate() {
-                    assert_eq!(image_view.device().handle(), layout.device().handle(),);
-                    assert_eq!(sampler.device().handle(), layout.device().handle(),);
+                    assert_eq!(device, image_view.device());
+                    assert_eq!(device, sampler.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
                     if !image_view.usage().sampled {
@@ -778,6 +780,23 @@ pub(crate) fn check_descriptor_write<'a>(
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450
+                    if device.enabled_extensions().khr_portability_subset
+                        && !device.enabled_features().mutable_comparison_samplers
+                        && sampler.compare().is_some()
+                    {
+                        return Err(DescriptorSetUpdateError::RequirementNotMet {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                            required_for: "this device is a portability subset device, and \
+                                `sampler.compare()` is `Some`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["mutable_comparison_samplers"],
+                                ..Default::default()
+                            },
                         });
                     }
 
@@ -821,7 +840,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 }
 
                 for (index, sampler) in elements.iter().enumerate() {
-                    assert_eq!(sampler.device().handle(), layout.device().handle(),);
+                    assert_eq!(device, sampler.device());
 
                     if sampler.sampler_ycbcr_conversion().is_some() {
                         return Err(DescriptorSetUpdateError::SamplerHasSamplerYcbcrConversion {
@@ -844,6 +863,13 @@ pub(crate) fn check_descriptor_write<'a>(
 
 #[derive(Clone, Copy, Debug)]
 pub enum DescriptorSetUpdateError {
+    RequirementNotMet {
+        binding: u32,
+        index: u32,
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
     /// Tried to write more elements than were available in a binding.
     ArrayIndexOutOfBounds {
         /// Binding that is affected.
@@ -913,6 +939,17 @@ impl Error for DescriptorSetUpdateError {
 impl Display for DescriptorSetUpdateError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
+            Self::RequirementNotMet {
+                binding,
+                index,
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement on binding {} index {} was not met for: {}; requires one of: {}",
+                binding, index, required_for, requires_one_of,
+            ),
+
             Self::ArrayIndexOutOfBounds {
                 binding,
                 available_count,

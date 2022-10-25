@@ -270,8 +270,15 @@ where
                     assert!(fence.is_none());
 
                     queue
-                        .with(|mut q| q.submit_unchecked([submit_info], Some(new_fence.clone())))
-                        .map_err(|err| OutcomeErr::Full(err.into()))
+                        .with(|mut q| {
+                            q.submit_with_future(
+                                submit_info,
+                                Some(new_fence.clone()),
+                                &previous,
+                                &queue,
+                            )
+                        })
+                        .map_err(OutcomeErr::Full)
                 }
                 SubmitAnyBuilder::BindSparse(bind_infos, fence) => {
                     debug_assert!(!partially_flushed);
