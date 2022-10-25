@@ -1223,6 +1223,7 @@ pub struct GenericMemoryAllocator<S: Suballocator> {
     pools: ArrayVec<Pool<S>, MAX_MEMORY_TYPES>,
     // Each memory heap has its own block size.
     block_sizes: ArrayVec<DeviceSize, MAX_MEMORY_HEAPS>,
+    allocation_type: AllocationType,
     export_handle_types: ArrayVec<ExternalMemoryHandleTypes, MAX_MEMORY_TYPES>,
     dedicated_allocation: bool,
     flags: MemoryAllocateFlags,
@@ -1274,6 +1275,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
     ) -> Result<(), GenericMemoryAllocatorCreationError> {
         let &GenericMemoryAllocatorCreateInfo {
             block_sizes,
+            allocation_type: _,
             dedicated_allocation: _,
             export_handle_types,
             device_address: _,
@@ -1330,6 +1332,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
     ) -> Self {
         let GenericMemoryAllocatorCreateInfo {
             block_sizes,
+            allocation_type,
             dedicated_allocation,
             export_handle_types,
             mut device_address,
@@ -1407,6 +1410,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             device,
             pools,
             block_sizes,
+            allocation_type,
             export_handle_types,
             dedicated_allocation,
             flags: MemoryAllocateFlags {
@@ -1937,7 +1941,10 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                 },
             )?;
 
-        MemoryAlloc::new_inner(device_memory, is_dedicated)
+        MemoryAlloc::new_inner(device_memory, is_dedicated).map(|mut alloc| {
+            alloc.set_allocation_type(self.allocation_type);
+            alloc
+        })
     }
 }
 
@@ -1970,6 +1977,15 @@ pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
     ///
     /// The default value is `&[]`, which must be overridden.
     pub block_sizes: &'b [(Threshold, BlockSize)],
+
+    /// The allocation type that should be used for root allocations.
+    ///
+    /// You only need to worry about this if you're using [`PoolAllocator`] as the suballocator, as
+    /// all suballocations that the pool allocator makes inherit their allocation type from the
+    /// parent allocation. In all other cases it doesn't matter that this is.
+    ///
+    /// The default value is [`AllocationType::Unknown`].
+    pub allocation_type: AllocationType,
 
     /// Whether the allocator should use the dedicated allocation APIs.
     ///
@@ -2039,6 +2055,7 @@ impl Default for GenericMemoryAllocatorCreateInfo<'_, '_> {
     fn default() -> Self {
         GenericMemoryAllocatorCreateInfo {
             block_sizes: &[],
+            allocation_type: AllocationType::Unknown,
             dedicated_allocation: true,
             export_handle_types: &[],
             device_address: true,
