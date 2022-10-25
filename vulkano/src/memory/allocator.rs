@@ -543,7 +543,7 @@ pub struct MemoryAlloc {
     mapped_ptr: Option<NonNull<c_void>>,
     // Used by the suballocators to align allocations to the non-coherent atom size when the memory
     // type is host-visible but not host-coherent. This will be `None` for any other memory type.
-    non_coherent_atom_size: Option<NonZeroU64>,
+    atom_size: Option<NonZeroU64>,
     // Used in the `Drop` impl to free the allocation if required.
     parent: AllocParent,
 }
@@ -627,7 +627,7 @@ impl MemoryAlloc {
             None
         };
 
-        let non_coherent_atom_size = (property_flags.host_visible && !property_flags.host_coherent)
+        let atom_size = (property_flags.host_visible && !property_flags.host_coherent)
             .then_some(physical_device.properties().non_coherent_atom_size)
             .and_then(NonZeroU64::new);
 
@@ -636,7 +636,7 @@ impl MemoryAlloc {
             size: device_memory.allocation_size(),
             allocation_type: AllocationType::Unknown,
             mapped_ptr,
-            non_coherent_atom_size,
+            atom_size,
             parent: if dedicated {
                 AllocParent::Dedicated(device_memory)
             } else {
@@ -733,7 +733,7 @@ impl MemoryAlloc {
     #[inline]
     pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), OomError> {
         // VUID-VkMappedMemoryRange-memory-00684
-        if let Some(atom_size) = self.non_coherent_atom_size {
+        if let Some(atom_size) = self.atom_size {
             let range = self.create_memory_range(range, atom_size.get());
             let device = self.device();
             let fns = device.fns();
@@ -774,7 +774,7 @@ impl MemoryAlloc {
     #[inline]
     pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), OomError> {
         // VUID-VkMappedMemoryRange-memory-00684
-        if let Some(atom_size) = self.non_coherent_atom_size {
+        if let Some(atom_size) = self.atom_size {
             let range = self.create_memory_range(range, atom_size.get());
             let device = self.device();
             let fns = device.fns();
@@ -1229,7 +1229,7 @@ pub struct GenericMemoryAllocator<S: Suballocator> {
     // Global mask of memory types.
     memory_type_bits: u32,
     // How many `DeviceMemory` allocations should be allowed before restricting them.
-    max_memory_allocation_count: u32,
+    max_allocations: u32,
 }
 
 #[derive(Debug)]
@@ -1401,7 +1401,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             .physical_device()
             .properties()
             .max_memory_allocation_count;
-        let max_memory_allocation_count = max_memory_allocation_count / 4 * 3;
+        let max_allocations = max_memory_allocation_count / 4 * 3;
 
         GenericMemoryAllocator {
             device,
@@ -1414,7 +1414,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 ..Default::default()
             },
             memory_type_bits,
-            max_memory_allocation_count,
+            max_allocations,
         }
     }
 
@@ -1826,9 +1826,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     if size > block_size / 2 {
                         prefer_dedicated = true;
                     }
-                    if self.device.allocation_count() > self.max_memory_allocation_count
-                        && size < block_size
-                    {
+                    if self.device.allocation_count() > self.max_allocations && size < block_size {
                         prefer_dedicated = false;
                     }
 
@@ -2497,6 +2495,7 @@ pub struct FreeListAllocator {
     region: MemoryAlloc,
     device_memory: Arc<DeviceMemory>,
     buffer_image_granularity: DeviceSize,
+    atom_size: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
     inner: Mutex<FreeListAllocatorInner>,
@@ -2530,6 +2529,7 @@ impl FreeListAllocator {
             .physical_device()
             .properties()
             .buffer_image_granularity;
+        let atom_size = region.atom_size.map(NonZeroU64::get).unwrap_or(1);
         let free_size = AtomicU64::new(region.size);
 
         let capacity = (region.size / AVERAGE_ALLOCATION_SIZE) as usize;
@@ -2549,6 +2549,7 @@ impl FreeListAllocator {
             region,
             device_memory,
             buffer_image_granularity,
+            atom_size,
             free_size,
             inner,
         })
@@ -2626,13 +2627,7 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
             _ne: _,
         } = create_info;
 
-        let alignment = DeviceSize::max(
-            alignment,
-            self.region
-                .non_coherent_atom_size
-                .map(NonZeroU64::get)
-                .unwrap_or(1),
-        );
+        let alignment = DeviceSize::max(alignment, self.atom_size);
         let mut inner = self.inner.lock();
 
         match inner.free_list.last() {
@@ -2681,7 +2676,7 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                                     ptr.as_ptr().add((offset - self.region.offset) as usize),
                                 )
                             }),
-                            non_coherent_atom_size: self.region.non_coherent_atom_size,
+                            atom_size: self.region.atom_size,
                             parent: AllocParent::FreeList {
                                 allocator: self.clone(),
                                 id,
@@ -3025,6 +3020,7 @@ pub struct BuddyAllocator {
     region: MemoryAlloc,
     device_memory: Arc<DeviceMemory>,
     buffer_image_granularity: DeviceSize,
+    atom_size: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
     inner: Mutex<BuddyAllocatorInner>,
@@ -3069,6 +3065,7 @@ impl BuddyAllocator {
             .physical_device()
             .properties()
             .buffer_image_granularity;
+        let atom_size = region.atom_size.map(NonZeroU64::get).unwrap_or(1);
         let free_size = AtomicU64::new(region.size);
 
         let mut free_list = ArrayVec::new(max_order + 1, [EMPTY_FREE_LIST; Self::MAX_ORDERS]);
@@ -3080,6 +3077,7 @@ impl BuddyAllocator {
             region,
             device_memory,
             buffer_image_granularity,
+            atom_size,
             free_size,
             inner,
         })
@@ -3185,13 +3183,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
         }
 
         let size = DeviceSize::max(size, BuddyAllocator::MIN_NODE_SIZE).next_power_of_two();
-        let alignment = DeviceSize::max(
-            alignment,
-            self.region
-                .non_coherent_atom_size
-                .map(NonZeroU64::get)
-                .unwrap_or(1),
-        );
+        let alignment = DeviceSize::max(alignment, self.atom_size);
         let min_order = (size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
         let mut inner = self.inner.lock();
 
@@ -3233,7 +3225,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
                         mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                             NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
                         }),
-                        non_coherent_atom_size: self.region.non_coherent_atom_size,
+                        atom_size: self.region.atom_size,
                         parent: AllocParent::Buddy {
                             allocator: self.clone(),
                             order: min_order,
@@ -3548,6 +3540,7 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> DeviceOwned for PoolAllocator<BLOCK_SI
 struct PoolAllocatorInner {
     region: MemoryAlloc,
     device_memory: Arc<DeviceMemory>,
+    atom_size: DeviceSize,
     block_size: DeviceSize,
     // Unsorted list of free block indices.
     free_list: ArrayQueue<DeviceSize>,
@@ -3569,6 +3562,7 @@ impl PoolAllocatorInner {
             .physical_device()
             .properties()
             .buffer_image_granularity;
+        let atom_size = region.atom_size.map(NonZeroU64::get).unwrap_or(1);
         if region.allocation_type == AllocationType::Unknown {
             block_size = align_up(block_size, buffer_image_granularity);
         }
@@ -3582,6 +3576,7 @@ impl PoolAllocatorInner {
         PoolAllocatorInner {
             region,
             device_memory,
+            atom_size,
             block_size,
             free_list,
         }
@@ -3598,13 +3593,7 @@ impl PoolAllocatorInner {
             _ne: _,
         } = create_info;
 
-        let alignment = DeviceSize::max(
-            alignment,
-            self.region
-                .non_coherent_atom_size
-                .map(NonZeroU64::get)
-                .unwrap_or(1),
-        );
+        let alignment = DeviceSize::max(alignment, self.atom_size);
         let index = self
             .free_list
             .pop()
@@ -3625,7 +3614,7 @@ impl PoolAllocatorInner {
             mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                 NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
             }),
-            non_coherent_atom_size: self.region.non_coherent_atom_size,
+            atom_size: self.region.atom_size,
             parent: AllocParent::Pool {
                 allocator: self,
                 index,
@@ -3696,6 +3685,7 @@ pub struct BumpAllocator {
     region: MemoryAlloc,
     device_memory: Arc<DeviceMemory>,
     buffer_image_granularity: DeviceSize,
+    atom_size: DeviceSize,
     // Encodes the previous allocation type in the 2 least signifficant bits and the free start in
     // the rest.
     state: AtomicU64,
@@ -3721,12 +3711,14 @@ impl BumpAllocator {
             .physical_device()
             .properties()
             .buffer_image_granularity;
+        let atom_size = region.atom_size.map(NonZeroU64::get).unwrap_or(1);
         let state = AtomicU64::new(region.allocation_type as u64);
 
         Arc::new(BumpAllocator {
             region,
             device_memory,
             buffer_image_granularity,
+            atom_size,
             state,
         })
     }
@@ -3849,13 +3841,7 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
             _ne: _,
         } = create_info;
 
-        let alignment = DeviceSize::max(
-            alignment,
-            self.region
-                .non_coherent_atom_size
-                .map(NonZeroU64::get)
-                .unwrap_or(1),
-        );
+        let alignment = DeviceSize::max(alignment, self.atom_size);
         let backoff = Backoff::new();
         let mut state = self.state.load(Ordering::Relaxed);
 
@@ -3899,7 +3885,7 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
                         mapped_ptr: self.region.mapped_ptr.and_then(|ptr| {
                             NonNull::new(ptr.as_ptr().add((offset - self.region.offset) as usize))
                         }),
-                        non_coherent_atom_size: self.region.non_coherent_atom_size,
+                        atom_size: self.region.atom_size,
                         parent: AllocParent::Bump(self.clone()),
                     });
                 }
