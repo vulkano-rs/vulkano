@@ -41,6 +41,7 @@ use vulkano::{
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::{MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -254,23 +255,27 @@ fn main() {
     let fs = fs::load(device.clone()).unwrap();
     let cs = cs::load(device.clone()).unwrap();
 
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
     // Each frame we generate a new set of vertices and each frame we need a new DrawIndirectCommand struct to
     // set the number of vertices to draw
     let indirect_args_pool: CpuBufferPool<DrawIndirectCommand> = CpuBufferPool::new(
-        device.clone(),
+        memory_allocator.clone(),
         BufferUsage {
             indirect_buffer: true,
             storage_buffer: true,
             ..BufferUsage::empty()
         },
+        MemoryUsage::Upload,
     );
     let vertex_pool: CpuBufferPool<Vertex> = CpuBufferPool::new(
-        device.clone(),
+        memory_allocator,
         BufferUsage {
             storage_buffer: true,
             vertex_buffer: true,
             ..BufferUsage::empty()
         },
+        MemoryUsage::Upload,
     );
 
     let compute_pipeline = ComputePipeline::new(

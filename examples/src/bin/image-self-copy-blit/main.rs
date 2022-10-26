@@ -30,6 +30,7 @@ use vulkano::{
     },
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -160,6 +161,8 @@ fn main() {
         .unwrap()
     };
 
+    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+
     #[repr(C)]
     #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
     struct Vertex {
@@ -182,7 +185,7 @@ fn main() {
         },
     ];
     let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
-        device.clone(),
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -237,7 +240,7 @@ fn main() {
         reader.next_frame(&mut image_data).unwrap();
 
         let image = StorageImage::new(
-            device.clone(),
+            &memory_allocator,
             dimensions,
             Format::R8G8B8A8_UNORM,
             [queue.queue_family_index()],
@@ -245,7 +248,7 @@ fn main() {
         .unwrap();
 
         let buffer = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()

@@ -32,6 +32,7 @@ use vulkano::{
     },
     impl_vertex,
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -129,8 +130,10 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
+    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+
     let image = StorageImage::with_usage(
-        device.clone(),
+        &memory_allocator,
         ImageDimensions::Dim2d {
             width: 512,
             height: 512,
@@ -168,7 +171,7 @@ fn main() {
         },
     ];
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -281,7 +284,7 @@ fn main() {
 
     let create_buffer = || {
         CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
@@ -351,7 +354,7 @@ fn main() {
 
     let command_buffer = builder.build().unwrap();
 
-    let future = sync::now(device.clone())
+    let future = sync::now(device)
         .then_execute(queue, command_buffer)
         .unwrap()
         .then_signal_fence_and_flush()

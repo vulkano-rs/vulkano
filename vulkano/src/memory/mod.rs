@@ -92,13 +92,9 @@
 //! get memory from that pool. By default if you don't specify any pool when creating a buffer or
 //! an image, an instance of `StandardMemoryPool` that is shared by the `Device` object is used.
 
-pub use self::{
-    device_memory::{
-        DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-        MappedDeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryImportInfo,
-        MemoryMapError,
-    },
-    pool::MemoryPool,
+pub use self::device_memory::{
+    DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+    MappedDeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryImportInfo, MemoryMapError,
 };
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
@@ -109,8 +105,8 @@ use crate::{
 };
 use std::sync::Arc;
 
+pub mod allocator;
 mod device_memory;
-pub mod pool;
 
 /// Properties of the memory in a physical device.
 #[derive(Clone, Debug)]

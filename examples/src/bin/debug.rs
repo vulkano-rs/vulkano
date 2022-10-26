@@ -24,6 +24,7 @@ use vulkano::{
         },
         Instance, InstanceCreateInfo, InstanceExtensions,
     },
+    memory::allocator::StandardMemoryAllocator,
     VulkanLibrary,
 };
 
@@ -175,7 +176,7 @@ fn main() {
     .expect("failed to create device");
     let queue = queues.next().unwrap();
 
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
     let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
         &command_buffer_allocator,
         queue.queue_family_index(),
@@ -191,7 +192,9 @@ fn main() {
         array_layers: 1,
     };
     static DATA: [[u8; 4]; 4096 * 4096] = [[0; 4]; 4096 * 4096];
+    let memory_allocator = StandardMemoryAllocator::new_default(device);
     let _ = ImmutableImage::from_iter(
+        &memory_allocator,
         DATA.iter().copied(),
         dimensions,
         MipmapsCount::One,

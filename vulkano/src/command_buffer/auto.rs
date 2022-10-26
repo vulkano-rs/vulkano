@@ -727,17 +727,17 @@ pub struct PrimaryAutoCommandBuffer<A = StandardCommandBufferAlloc> {
     state: Mutex<CommandBufferState>,
 }
 
+unsafe impl<A> DeviceOwned for PrimaryAutoCommandBuffer<A> {
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+}
+
 unsafe impl<A> VulkanObject for PrimaryAutoCommandBuffer<A> {
     type Handle = ash::vk::CommandBuffer;
 
     fn handle(&self) -> Self::Handle {
         self.inner.as_ref().handle()
-    }
-}
-
-unsafe impl<A> DeviceOwned for PrimaryAutoCommandBuffer<A> {
-    fn device(&self) -> &Arc<Device> {
-        self.inner.device()
     }
 }
 
@@ -918,6 +918,7 @@ mod tests {
             ExecuteCommandsError,
         },
         device::{DeviceCreateInfo, QueueCreateInfo},
+        memory::allocator::StandardMemoryAllocator,
         sync::GpuFuture,
     };
 
@@ -943,9 +944,10 @@ mod tests {
         .unwrap();
 
         let queue = queues.next().unwrap();
+        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
         let source = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
@@ -956,7 +958,7 @@ mod tests {
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
@@ -966,9 +968,9 @@ mod tests {
         )
         .unwrap();
 
-        let allocator = StandardCommandBufferAllocator::new(device);
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
         let mut cbb = AutoCommandBufferBuilder::primary(
-            &allocator,
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -1004,11 +1006,11 @@ mod tests {
     fn secondary_nonconcurrent_conflict() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let allocator = StandardCommandBufferAllocator::new(device);
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
 
         // Make a secondary CB that doesn't support simultaneous use.
         let builder = AutoCommandBufferBuilder::secondary(
-            &allocator,
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             Default::default(),
@@ -1018,7 +1020,7 @@ mod tests {
 
         {
             let mut builder = AutoCommandBufferBuilder::primary(
-                &allocator,
+                &cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -1041,7 +1043,7 @@ mod tests {
 
         {
             let mut builder = AutoCommandBufferBuilder::primary(
-                &allocator,
+                &cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -1050,7 +1052,7 @@ mod tests {
             let cb1 = builder.build().unwrap();
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                &allocator,
+                &cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -1078,8 +1080,9 @@ mod tests {
     fn buffer_self_copy_overlapping() {
         let (device, queue) = gfx_dev_and_queue!();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let source = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 transfer_src: true,
                 transfer_dst: true,
@@ -1090,9 +1093,9 @@ mod tests {
         )
         .unwrap();
 
-        let allocator = StandardCommandBufferAllocator::new(device);
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
         let mut builder = AutoCommandBufferBuilder::primary(
-            &allocator,
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -1129,8 +1132,9 @@ mod tests {
     fn buffer_self_copy_not_overlapping() {
         let (device, queue) = gfx_dev_and_queue!();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let source = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 transfer_src: true,
                 transfer_dst: true,
@@ -1141,9 +1145,9 @@ mod tests {
         )
         .unwrap();
 
-        let allocator = StandardCommandBufferAllocator::new(device);
+        let cb_allocator = StandardCommandBufferAllocator::new(device);
         let mut builder = AutoCommandBufferBuilder::primary(
-            &allocator,
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

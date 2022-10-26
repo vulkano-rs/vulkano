@@ -35,6 +35,7 @@ mod linux {
             debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
             Instance, InstanceCreateInfo, InstanceExtensions,
         },
+        memory::allocator::StandardMemoryAllocator,
         pipeline::{
             graphics::{
                 color_blend::ColorBlendState,
@@ -94,11 +95,12 @@ mod linux {
             mut framebuffers,
             sampler,
             pipeline,
+            memory_allocator,
             vertex_buffer,
         ) = vk_setup(display, &event_loop);
 
         let image = StorageImage::new_with_exportable_fd(
-            device.clone(),
+            &memory_allocator,
             vulkano::image::ImageDimensions::Dim2d {
                 width: 200,
                 height: 200,
@@ -416,6 +418,7 @@ mod linux {
         Vec<Arc<Framebuffer>>,
         Arc<vulkano::sampler::Sampler>,
         Arc<GraphicsPipeline>,
+        StandardMemoryAllocator,
         Arc<CpuAccessibleBuffer<[Vertex]>>,
     ) {
         let library = VulkanLibrary::new().unwrap();
@@ -561,6 +564,8 @@ mod linux {
             .unwrap()
         };
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+
         let vertices = [
             Vertex {
                 position: [-0.5, -0.5],
@@ -576,7 +581,7 @@ mod linux {
             },
         ];
         let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 vertex_buffer: true,
                 ..BufferUsage::empty()
@@ -652,6 +657,7 @@ mod linux {
             framebuffers,
             sampler,
             pipeline,
+            memory_allocator,
             vertex_buffer,
         )
     }

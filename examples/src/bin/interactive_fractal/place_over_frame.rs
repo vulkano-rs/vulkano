@@ -18,6 +18,7 @@ use vulkano::{
     device::Queue,
     format::Format,
     image::ImageAccess,
+    memory::allocator::MemoryAllocator,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
@@ -34,6 +35,7 @@ pub struct RenderPassPlaceOverFrame {
 impl RenderPassPlaceOverFrame {
     pub fn new(
         gfx_queue: Arc<Queue>,
+        memory_allocator: &impl MemoryAllocator,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
         output_format: Format,
@@ -48,8 +50,8 @@ impl RenderPassPlaceOverFrame {
                 }
             },
             pass: {
-                    color: [color],
-                    depth_stencil: {}
+                color: [color],
+                depth_stencil: {}
             }
         )
         .unwrap();
@@ -57,6 +59,7 @@ impl RenderPassPlaceOverFrame {
         let pixels_draw_pipeline = PixelsDrawPipeline::new(
             gfx_queue.clone(),
             subpass,
+            memory_allocator,
             command_buffer_allocator.clone(),
             descriptor_set_allocator,
         );

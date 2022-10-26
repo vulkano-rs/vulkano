@@ -915,6 +915,7 @@ mod tests {
         },
         format::Format,
         image::{ImageAccess, ImageDimensions, ImmutableImage, MipmapsCount},
+        memory::allocator::StandardMemoryAllocator,
     };
 
     #[test]
@@ -1021,14 +1022,15 @@ mod tests {
     fn mipmap_working_immutable_image() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
-        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            &command_buffer_allocator,
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let mut cbb = AutoCommandBufferBuilder::primary(
+            &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let dimensions = ImageDimensions::Dim2d {
             width: 512,
             height: 512,
@@ -1040,11 +1042,12 @@ mod tests {
             vec.resize(512 * 512, 0u8);
 
             let image = ImmutableImage::from_iter(
+                &memory_allocator,
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::One,
                 Format::R8_UNORM,
-                &mut command_buffer_builder,
+                &mut cbb,
             )
             .unwrap();
             assert_eq!(image.mip_levels(), 1);
@@ -1055,11 +1058,12 @@ mod tests {
             vec.resize(512 * 512, 0u8);
 
             let image = ImmutableImage::from_iter(
+                &memory_allocator,
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::Log2,
                 Format::R8_UNORM,
-                &mut command_buffer_builder,
+                &mut cbb,
             )
             .unwrap();
             assert_eq!(image.mip_levels(), 10);

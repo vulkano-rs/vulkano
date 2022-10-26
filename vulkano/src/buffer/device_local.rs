@@ -16,31 +16,26 @@
 
 use super::{
     sys::{UnsafeBuffer, UnsafeBufferCreateInfo},
-    BufferAccess, BufferAccessObject, BufferContents, BufferCreationError, BufferInner,
-    BufferUsage, CpuAccessibleBuffer, TypedBufferAccess,
+    BufferAccess, BufferAccessObject, BufferContents, BufferInner, BufferUsage,
+    CpuAccessibleBuffer, TypedBufferAccess,
 };
 use crate::{
-    command_buffer::{
-        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferBeginError,
-        CopyBufferInfo,
-    },
+    buffer::{BufferCreationError, ExternalBufferInfo},
+    command_buffer::{allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CopyBufferInfo},
     device::{Device, DeviceOwned},
     memory::{
-        pool::{
-            alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
-            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation,
-            StandardMemoryPoolAlloc,
+        allocator::{
+            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
         },
-        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType, MemoryPool,
-        MemoryRequirements,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes,
     },
     sync::Sharing,
     DeviceSize,
 };
 use smallvec::SmallVec;
 use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
     fs::File,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -79,6 +74,7 @@ use std::{
 /// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
 /// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 ///
 /// // Simple iterator to construct test data.
@@ -86,7 +82,7 @@ use std::{
 ///
 /// // Create a CPU accessible buffer initialized with the data.
 /// let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
-///     device.clone(),
+///     &memory_allocator,
 ///     BufferUsage { transfer_src: true, ..BufferUsage::empty() }, // Specify this buffer will be used as a transfer source.
 ///     false,
 ///     data,
@@ -95,7 +91,7 @@ use std::{
 ///
 /// // Create a buffer array on the GPU with enough space for `10_000` floats.
 /// let device_local_buffer = DeviceLocalBuffer::<[f32]>::array(
-///     device.clone(),
+///     &memory_allocator,
 ///     10_000 as vulkano::DeviceSize,
 ///     BufferUsage {
 ///         storage_buffer: true,
@@ -129,7 +125,7 @@ use std::{
 ///     .unwrap()
 /// ```
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T, A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>>
+pub struct DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
 {
@@ -137,7 +133,7 @@ where
     inner: Arc<UnsafeBuffer>,
 
     // The memory held by the buffer.
-    memory: A,
+    memory: MemoryAlloc,
 
     // Queue families allowed to access this buffer.
     queue_family_indices: SmallVec<[u32; 4]>,
@@ -156,13 +152,13 @@ where
     ///
     /// - Panics if `T` has zero size.
     pub fn new(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         usage: BufferUsage,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryError> {
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, AllocationCreationError> {
         unsafe {
             DeviceLocalBuffer::raw(
-                device,
+                allocator,
                 size_of::<T>() as DeviceSize,
                 usage,
                 queue_family_indices,
@@ -183,16 +179,12 @@ where
     ///
     /// `command_buffer_builder` can then be used to record other commands, built, and executed as
     /// normal. If it is not executed, the buffer contents will be left undefined.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub fn from_buffer<B, L, A>(
+        allocator: &(impl MemoryAllocator + ?Sized),
         source: Arc<B>,
         usage: BufferUsage,
         command_buffer_builder: &mut AutoCommandBufferBuilder<L, A>,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceLocalBufferCreationError>
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, AllocationCreationError>
     where
         B: TypedBufferAccess<Content = T> + 'static,
         A: CommandBufferAllocator,
@@ -205,7 +197,7 @@ where
             };
 
             let buffer = DeviceLocalBuffer::raw(
-                source.device().clone(),
+                allocator,
                 source.size(),
                 actual_usage,
                 source
@@ -237,18 +229,17 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub fn from_data<L, A>(
+        allocator: &(impl MemoryAllocator + ?Sized),
         data: T,
         usage: BufferUsage,
         command_buffer_builder: &mut AutoCommandBufferBuilder<L, A>,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceLocalBufferCreationError>
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, AllocationCreationError>
     where
         A: CommandBufferAllocator,
     {
         let source = CpuAccessibleBuffer::from_data(
-            command_buffer_builder.device().clone(),
+            allocator,
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
@@ -256,7 +247,7 @@ where
             false,
             data,
         )?;
-        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_builder)
+        DeviceLocalBuffer::from_buffer(allocator, source, usage, command_buffer_builder)
     }
 }
 
@@ -274,20 +265,19 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `data` is empty.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub fn from_iter<D, L, A>(
+        allocator: &(impl MemoryAllocator + ?Sized),
         data: D,
         usage: BufferUsage,
         command_buffer_builder: &mut AutoCommandBufferBuilder<L, A>,
-    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceLocalBufferCreationError>
+    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, AllocationCreationError>
     where
         D: IntoIterator<Item = T>,
         D::IntoIter: ExactSizeIterator,
         A: CommandBufferAllocator,
     {
         let source = CpuAccessibleBuffer::from_iter(
-            command_buffer_builder.device().clone(),
+            allocator,
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
@@ -295,7 +285,7 @@ where
             false,
             data,
         )?;
-        DeviceLocalBuffer::from_buffer(source, usage, command_buffer_builder)
+        DeviceLocalBuffer::from_buffer(allocator, source, usage, command_buffer_builder)
     }
 }
 
@@ -309,17 +299,15 @@ where
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `len` is zero.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub fn array(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         len: DeviceSize,
         usage: BufferUsage,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryError> {
+    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, AllocationCreationError> {
         unsafe {
             DeviceLocalBuffer::raw(
-                device,
+                allocator,
                 len * size_of::<T>() as DeviceSize,
                 usage,
                 queue_family_indices,
@@ -341,41 +329,57 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub unsafe fn raw(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         size: DeviceSize,
         usage: BufferUsage,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryError> {
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, AllocationCreationError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_family_indices)?;
-
-        let memory = MemoryPool::alloc_from_requirements(
-            &device.standard_memory_pool(),
-            &mem_reqs,
-            AllocLayout::Linear,
-            MappingRequirement::DoNotMap,
-            Some(DedicatedAllocation::Buffer(&buffer)),
-            |t| {
-                if t.property_flags.device_local {
-                    AllocFromRequirementsFilter::Preferred
+        let buffer = UnsafeBuffer::new(
+            allocator.device().clone(),
+            UnsafeBufferCreateInfo {
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices.clone())
                 } else {
-                    AllocFromRequirementsFilter::Allowed
-                }
+                    Sharing::Exclusive
+                },
+                size,
+                usage,
+                ..Default::default()
             },
-        )?;
-        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
-        buffer.bind_memory(memory.memory(), memory.offset())?;
+        )
+        .map_err(|err| match err {
+            BufferCreationError::AllocError(err) => err,
+            // We don't use sparse-binding, therefore the other errors can't happen.
+            _ => unreachable!(),
+        })?;
+        let requirements = buffer.memory_requirements();
+        let create_info = AllocationCreateInfo {
+            requirements,
+            allocation_type: AllocationType::Linear,
+            usage: MemoryUsage::GpuOnly,
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            ..Default::default()
+        };
 
-        Ok(Arc::new(DeviceLocalBuffer {
-            inner: buffer,
-            memory,
-            queue_family_indices,
-            marker: PhantomData,
-        }))
+        match allocator.allocate_unchecked(create_info) {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                buffer.bind_memory(alloc.device_memory(), alloc.offset())?;
+
+                Ok(Arc::new(DeviceLocalBuffer {
+                    inner: buffer,
+                    memory: alloc,
+                    queue_family_indices,
+                    marker: PhantomData,
+                }))
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// Same as `raw` but with exportable fd option for the allocated memory on Linux/BSD
@@ -383,76 +387,86 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
     pub unsafe fn raw_with_exportable_fd(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         size: DeviceSize,
         usage: BufferUsage,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryError> {
-        assert!(device.enabled_extensions().khr_external_memory_fd);
-        assert!(device.enabled_extensions().khr_external_memory);
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, AllocationCreationError> {
+        let enabled_extensions = allocator.device().enabled_extensions();
+        assert!(enabled_extensions.khr_external_memory_fd);
+        assert!(enabled_extensions.khr_external_memory);
 
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_family_indices)?;
+        let external_memory_properties = allocator
+            .device()
+            .physical_device()
+            .external_buffer_properties(ExternalBufferInfo {
+                usage,
+                ..ExternalBufferInfo::handle_type(ExternalMemoryHandleType::OpaqueFd)
+            })
+            .unwrap()
+            .external_memory_properties;
+        // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
+        assert!(external_memory_properties.exportable);
 
-        let memory = alloc_dedicated_with_exportable_fd(
-            device,
-            &mem_reqs,
-            AllocLayout::Linear,
-            MappingRequirement::DoNotMap,
-            DedicatedAllocation::Buffer(&buffer),
-            |t| {
-                if t.property_flags.device_local {
-                    AllocFromRequirementsFilter::Preferred
-                } else {
-                    AllocFromRequirementsFilter::Allowed
-                }
-            },
-        )?;
-        let mem_offset = memory.offset();
-        debug_assert!((mem_offset % mem_reqs.alignment) == 0);
-        buffer.bind_memory(memory.memory(), mem_offset)?;
+        // VUID-VkMemoryAllocateInfo-pNext-00639
+        // Guaranteed because we always create a dedicated allocation
 
-        Ok(Arc::new(DeviceLocalBuffer {
-            inner: buffer,
-            memory,
-            queue_family_indices,
-            marker: PhantomData,
-        }))
-    }
-
-    unsafe fn build_buffer(
-        device: &Arc<Device>,
-        size: DeviceSize,
-        usage: BufferUsage,
-        queue_family_indices: &SmallVec<[u32; 4]>,
-    ) -> Result<(Arc<UnsafeBuffer>, MemoryRequirements), DeviceMemoryError> {
-        let buffer = {
-            match UnsafeBuffer::new(
-                device.clone(),
-                UnsafeBufferCreateInfo {
-                    sharing: if queue_family_indices.len() >= 2 {
-                        Sharing::Concurrent(queue_family_indices.clone())
-                    } else {
-                        Sharing::Exclusive
-                    },
-                    size,
-                    usage,
-                    ..Default::default()
-                },
-            ) {
-                Ok(b) => b,
-                Err(BufferCreationError::AllocError(err)) => return Err(err),
-                Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
-                                          // errors can't happen
-            }
+        let external_memory_handle_types = ExternalMemoryHandleTypes {
+            opaque_fd: true,
+            ..ExternalMemoryHandleTypes::empty()
         };
-        let mem_reqs = buffer.memory_requirements();
+        let buffer = UnsafeBuffer::new(
+            allocator.device().clone(),
+            UnsafeBufferCreateInfo {
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices.clone())
+                } else {
+                    Sharing::Exclusive
+                },
+                size,
+                usage,
+                external_memory_handle_types,
+                ..Default::default()
+            },
+        )
+        .map_err(|err| match err {
+            BufferCreationError::AllocError(err) => err,
+            // We don't use sparse-binding, therefore the other errors can't happen.
+            _ => unreachable!(),
+        })?;
+        let requirements = buffer.memory_requirements();
+        let memory_type_index = allocator
+            .find_memory_type_index(requirements.memory_type_bits, MemoryUsage::GpuOnly.into())
+            .expect("failed to find a suitable memory type");
 
-        Ok((buffer, mem_reqs))
+        let memory_properties = allocator.device().physical_device().memory_properties();
+        let heap_index = memory_properties.memory_types[memory_type_index as usize].heap_index;
+        // VUID-vkAllocateMemory-pAllocateInfo-01713
+        assert!(size <= memory_properties.memory_heaps[heap_index as usize].size);
+
+        match allocator.allocate_dedicated_unchecked(
+            memory_type_index,
+            requirements.size,
+            Some(DedicatedAllocation::Buffer(&buffer)),
+            external_memory_handle_types,
+        ) {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                buffer.bind_memory(alloc.device_memory(), alloc.offset())?;
+
+                Ok(Arc::new(DeviceLocalBuffer {
+                    inner: buffer,
+                    memory: alloc,
+                    queue_family_indices,
+                    marker: PhantomData,
+                }))
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// Exports posix file descriptor for the allocated memory
@@ -460,12 +474,12 @@ where
     /// Only works on Linux/BSD.
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
-            .memory()
+            .device_memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
     }
 }
 
-impl<T, A> DeviceLocalBuffer<T, A>
+impl<T> DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
 {
@@ -475,7 +489,7 @@ where
     }
 }
 
-unsafe impl<T, A> DeviceOwned for DeviceLocalBuffer<T, A>
+unsafe impl<T> DeviceOwned for DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
 {
@@ -484,10 +498,9 @@ where
     }
 }
 
-unsafe impl<T, A> BufferAccess for DeviceLocalBuffer<T, A>
+unsafe impl<T> BufferAccess for DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync,
 {
     fn inner(&self) -> BufferInner<'_> {
         BufferInner {
@@ -501,85 +514,40 @@ where
     }
 }
 
-impl<T, A> BufferAccessObject for Arc<DeviceLocalBuffer<T, A>>
+impl<T> BufferAccessObject for Arc<DeviceLocalBuffer<T>>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync + 'static,
 {
     fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
         self.clone()
     }
 }
 
-unsafe impl<T, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
+unsafe impl<T> TypedBufferAccess for DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync,
 {
     type Content = T;
 }
 
-impl<T, A> PartialEq for DeviceLocalBuffer<T, A>
+impl<T> PartialEq for DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync,
 {
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
-impl<T, A> Eq for DeviceLocalBuffer<T, A>
-where
-    T: BufferContents + ?Sized,
-    A: Send + Sync,
-{
-}
+impl<T> Eq for DeviceLocalBuffer<T> where T: BufferContents + ?Sized {}
 
-impl<T, A> Hash for DeviceLocalBuffer<T, A>
+impl<T> Hash for DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
-    A: Send + Sync,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum DeviceLocalBufferCreationError {
-    DeviceMemoryAllocationError(DeviceMemoryError),
-    CommandBufferBeginError(CommandBufferBeginError),
-}
-
-impl Error for DeviceLocalBufferCreationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::DeviceMemoryAllocationError(err) => Some(err),
-            Self::CommandBufferBeginError(err) => Some(err),
-        }
-    }
-}
-
-impl Display for DeviceLocalBufferCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::DeviceMemoryAllocationError(err) => err.fmt(f),
-            Self::CommandBufferBeginError(err) => err.fmt(f),
-        }
-    }
-}
-
-impl From<DeviceMemoryError> for DeviceLocalBufferCreationError {
-    fn from(e: DeviceMemoryError) -> Self {
-        Self::DeviceMemoryAllocationError(e)
-    }
-}
-
-impl From<CommandBufferBeginError> for DeviceLocalBufferCreationError {
-    fn from(e: CommandBufferBeginError) -> Self {
-        Self::CommandBufferBeginError(e)
     }
 }
 
@@ -591,6 +559,7 @@ mod tests {
             allocator::StandardCommandBufferAllocator, CommandBufferUsage,
             PrimaryCommandBufferAbstract,
         },
+        memory::allocator::StandardMemoryAllocator,
         sync::GpuFuture,
     };
 
@@ -605,8 +574,10 @@ mod tests {
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
 
         let buffer = DeviceLocalBuffer::from_data(
+            &memory_allocator,
             12u32,
             BufferUsage {
                 transfer_src: true,
@@ -617,7 +588,7 @@ mod tests {
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_data(
-            device,
+            &memory_allocator,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
@@ -653,8 +624,10 @@ mod tests {
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
+        let allocator = StandardMemoryAllocator::new_default(device);
 
         let buffer = DeviceLocalBuffer::from_iter(
+            &allocator,
             (0..512u32).map(|n| n * 2),
             BufferUsage {
                 transfer_src: true,
@@ -665,7 +638,7 @@ mod tests {
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_iter(
-            device,
+            &allocator,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
@@ -697,16 +670,18 @@ mod tests {
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             &command_buffer_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
+        let allocator = StandardMemoryAllocator::new_default(device);
 
         assert_should_panic!({
             DeviceLocalBuffer::from_data(
+                &allocator,
                 (),
                 BufferUsage {
                     transfer_dst: true,

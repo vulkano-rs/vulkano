@@ -14,14 +14,14 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned, Queue},
     format::Format,
-    image::{sys::UnsafeImageCreateInfo, view::ImageView},
+    image::{sys::UnsafeImageCreateInfo, view::ImageView, ImageFormatInfo},
     memory::{
-        pool::{
-            alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
-            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StandardMemoryPool,
+        allocator::{
+            AllocationCreateInfo, AllocationType, MemoryAlloc, MemoryAllocatePreference,
+            MemoryAllocator, MemoryUsage,
         },
         DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes, MemoryPool,
+        ExternalMemoryHandleTypes,
     },
     sync::Sharing,
     DeviceSize,
@@ -36,15 +36,12 @@ use std::{
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
 /// specialized image.
 #[derive(Debug)]
-pub struct StorageImage<A = Arc<StandardMemoryPool>>
-where
-    A: MemoryPool,
-{
+pub struct StorageImage {
     // Inner implementation.
     image: Arc<UnsafeImage>,
 
     // Memory used to back the image.
-    memory: PotentialDedicatedAllocation<A::Alloc>,
+    memory: MemoryAlloc,
 
     // Dimensions of the image.
     dimensions: ImageDimensions,
@@ -53,7 +50,7 @@ where
 impl StorageImage {
     /// Creates a new image with the given dimensions and format.
     pub fn new(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         dimensions: ImageDimensions,
         format: Format,
         queue_family_indices: impl IntoIterator<Item = u32>,
@@ -78,7 +75,7 @@ impl StorageImage {
         let flags = ImageCreateFlags::empty();
 
         StorageImage::with_usage(
-            device,
+            allocator,
             dimensions,
             format,
             usage,
@@ -89,7 +86,7 @@ impl StorageImage {
 
     /// Same as `new`, but allows specifying the usage.
     pub fn with_usage(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         dimensions: ImageDimensions,
         format: Format,
         usage: ImageUsage,
@@ -99,7 +96,7 @@ impl StorageImage {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let image = UnsafeImage::new(
-            device.clone(),
+            allocator.device().clone(),
             UnsafeImageCreateInfo {
                 dimensions,
                 format: Some(format),
@@ -116,36 +113,34 @@ impl StorageImage {
                 ..Default::default()
             },
         )?;
+        let requirements = image.memory_requirements();
+        let create_info = AllocationCreateInfo {
+            requirements,
+            allocation_type: AllocationType::NonLinear,
+            usage: MemoryUsage::GpuOnly,
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            dedicated_allocation: Some(DedicatedAllocation::Image(&image)),
+            ..Default::default()
+        };
 
-        let mem_reqs = image.memory_requirements();
-        let memory = MemoryPool::alloc_from_requirements(
-            &device.standard_memory_pool(),
-            &mem_reqs,
-            AllocLayout::Optimal,
-            MappingRequirement::DoNotMap,
-            Some(DedicatedAllocation::Image(&image)),
-            |t| {
-                if t.property_flags.device_local {
-                    AllocFromRequirementsFilter::Preferred
-                } else {
-                    AllocFromRequirementsFilter::Allowed
-                }
-            },
-        )?;
-        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
-        unsafe {
-            image.bind_memory(memory.memory(), memory.offset())?;
+        match unsafe { allocator.allocate_unchecked(create_info) } {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
+                Ok(Arc::new(StorageImage {
+                    image,
+                    memory: alloc,
+                    dimensions,
+                }))
+            }
+            Err(err) => Err(err.into()),
         }
-
-        Ok(Arc::new(StorageImage {
-            image,
-            memory,
-            dimensions,
-        }))
     }
 
     pub fn new_with_exportable_fd(
-        device: Arc<Device>,
+        allocator: &(impl MemoryAllocator + ?Sized),
         dimensions: ImageDimensions,
         format: Format,
         usage: ImageUsage,
@@ -154,8 +149,35 @@ impl StorageImage {
     ) -> Result<Arc<StorageImage>, ImageCreationError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
+        let external_memory_properties = allocator
+            .device()
+            .physical_device()
+            .image_format_properties(ImageFormatInfo {
+                format: Some(format),
+                image_type: dimensions.image_type(),
+                usage,
+                external_memory_handle_type: Some(ExternalMemoryHandleType::OpaqueFd),
+                mutable_format: flags.mutable_format,
+                cube_compatible: flags.cube_compatible,
+                array_2d_compatible: flags.array_2d_compatible,
+                block_texel_view_compatible: flags.block_texel_view_compatible,
+                ..Default::default()
+            })
+            .unwrap()
+            .unwrap()
+            .external_memory_properties;
+        // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
+        assert!(external_memory_properties.exportable);
+
+        // VUID-VkMemoryAllocateInfo-pNext-00639
+        // Guaranteed because we always create a dedicated allocation
+
+        let external_memory_handle_types = ExternalMemoryHandleTypes {
+            opaque_fd: true,
+            ..ExternalMemoryHandleTypes::empty()
+        };
         let image = UnsafeImage::new(
-            device.clone(),
+            allocator.device().clone(),
             UnsafeImageCreateInfo {
                 dimensions,
                 format: Some(format),
@@ -165,10 +187,7 @@ impl StorageImage {
                 } else {
                     Sharing::Exclusive
                 },
-                external_memory_handle_types: ExternalMemoryHandleTypes {
-                    opaque_fd: true,
-                    ..ExternalMemoryHandleTypes::empty()
-                },
+                external_memory_handle_types,
                 mutable_format: flags.mutable_format,
                 cube_compatible: flags.cube_compatible,
                 array_2d_compatible: flags.array_2d_compatible,
@@ -176,37 +195,38 @@ impl StorageImage {
                 ..Default::default()
             },
         )?;
+        let requirements = image.memory_requirements();
+        let memory_type_index = allocator
+            .find_memory_type_index(requirements.memory_type_bits, MemoryUsage::GpuOnly.into())
+            .expect("failed to find a suitable memory type");
 
-        let mem_reqs = image.memory_requirements();
-        let memory = alloc_dedicated_with_exportable_fd(
-            device,
-            &mem_reqs,
-            AllocLayout::Optimal,
-            MappingRequirement::DoNotMap,
-            DedicatedAllocation::Image(&image),
-            |t| {
-                if t.property_flags.device_local {
-                    AllocFromRequirementsFilter::Preferred
-                } else {
-                    AllocFromRequirementsFilter::Allowed
-                }
-            },
-        )?;
-        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
-        unsafe {
-            image.bind_memory(memory.memory(), memory.offset())?;
+        match unsafe {
+            allocator.allocate_dedicated_unchecked(
+                memory_type_index,
+                requirements.size,
+                Some(DedicatedAllocation::Image(&image)),
+                external_memory_handle_types,
+            )
+        } {
+            Ok(alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+
+                Ok(Arc::new(StorageImage {
+                    image,
+                    memory: alloc,
+                    dimensions,
+                }))
+            }
+            Err(err) => Err(err.into()),
         }
-
-        Ok(Arc::new(StorageImage {
-            image,
-            memory,
-            dimensions,
-        }))
     }
 
     /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.
     #[inline]
     pub fn general_purpose_image_view(
+        allocator: &(impl MemoryAllocator + ?Sized),
         queue: Arc<Queue>,
         size: [u32; 2],
         format: Format,
@@ -219,7 +239,7 @@ impl StorageImage {
         };
         let flags = ImageCreateFlags::empty();
         let image_result = StorageImage::with_usage(
-            queue.device().clone(),
+            allocator,
             dims,
             format,
             usage,
@@ -244,30 +264,26 @@ impl StorageImage {
     #[inline]
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
-            .memory()
+            .device_memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
     }
 
     /// Return the size of the allocated memory (used e.g. with cuda).
     #[inline]
     pub fn mem_size(&self) -> DeviceSize {
-        self.memory.memory().allocation_size()
+        self.memory.device_memory().allocation_size()
     }
 }
 
-unsafe impl<A> DeviceOwned for StorageImage<A>
-where
-    A: MemoryPool,
-{
+unsafe impl DeviceOwned for StorageImage {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.image.device()
     }
 }
 
-unsafe impl<A> ImageAccess for StorageImage<A>
-where
-    A: MemoryPool,
-{
+unsafe impl ImageAccess for StorageImage {
+    #[inline]
     fn inner(&self) -> ImageInner<'_> {
         ImageInner {
             image: &self.image,
@@ -278,14 +294,17 @@ where
         }
     }
 
+    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         ImageLayout::General
     }
 
+    #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         ImageLayout::General
     }
 
+    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
             storage_image: ImageLayout::General,
@@ -296,30 +315,22 @@ where
     }
 }
 
-unsafe impl<P, A> ImageContent<P> for StorageImage<A>
-where
-    A: MemoryPool,
-{
+unsafe impl<P> ImageContent<P> for StorageImage {
     fn matches_format(&self) -> bool {
         true // FIXME:
     }
 }
 
-impl<A> PartialEq for StorageImage<A>
-where
-    A: MemoryPool,
-{
+impl PartialEq for StorageImage {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
 }
 
-impl<A> Eq for StorageImage<A> where A: MemoryPool {}
+impl Eq for StorageImage {}
 
-impl<A> Hash for StorageImage<A>
-where
-    A: MemoryPool,
-{
+impl Hash for StorageImage {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
@@ -327,20 +338,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::StorageImage;
-    use crate::{
-        format::Format,
-        image::{
-            view::ImageViewCreationError, ImageAccess, ImageCreationError, ImageDimensions,
-            ImageUsage,
-        },
-    };
+    use super::*;
+    use crate::{image::view::ImageViewCreationError, memory::allocator::StandardMemoryAllocator};
 
     #[test]
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let _img = StorageImage::new(
-            device,
+            &memory_allocator,
             ImageDimensions::Dim2d {
                 width: 32,
                 height: 32,
@@ -354,7 +360,8 @@ mod tests {
 
     #[test]
     fn create_general_purpose_image_view() {
-        let (_device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let usage = ImageUsage {
             transfer_src: true,
             transfer_dst: true,
@@ -362,6 +369,7 @@ mod tests {
             ..ImageUsage::empty()
         };
         let img_view = StorageImage::general_purpose_image_view(
+            &memory_allocator,
             queue,
             [32, 32],
             Format::R8G8B8A8_UNORM,
@@ -373,13 +381,15 @@ mod tests {
 
     #[test]
     fn create_general_purpose_image_view_failed() {
-        let (_device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         // Not valid for image view...
         let usage = ImageUsage {
             transfer_src: true,
             ..ImageUsage::empty()
         };
         let img_result = StorageImage::general_purpose_image_view(
+            &memory_allocator,
             queue,
             [32, 32],
             Format::R8G8B8A8_UNORM,

@@ -15,13 +15,13 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     memory::{
-        pool::{
-            AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
-            PotentialDedicatedAllocation, StandardMemoryPool,
+        allocator::{
+            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            MemoryAllocatePreference, MemoryAllocator, MemoryUsage, StandardMemoryAllocator,
         },
-        DedicatedAllocation, DeviceMemoryError, MemoryPool,
+        DedicatedAllocation,
     },
-    DeviceSize, OomError,
+    DeviceSize,
 };
 use std::{
     hash::{Hash, Hasher},
@@ -65,12 +65,12 @@ use std::{
 /// use vulkano::command_buffer::CommandBufferUsage;
 /// use vulkano::command_buffer::PrimaryCommandBufferAbstract;
 /// use vulkano::sync::GpuFuture;
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
 /// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 ///
 /// // Create the ring buffer.
-/// let buffer = CpuBufferPool::upload(device.clone());
+/// let buffer = CpuBufferPool::upload(memory_allocator);
 ///
 /// for n in 0 .. 25u32 {
 ///     // Each loop grabs a new entry from that ring buffer and stores ` data` in it.
@@ -95,22 +95,21 @@ use std::{
 ///     .unwrap();
 /// }
 /// ```
-pub struct CpuBufferPool<T, A = Arc<StandardMemoryPool>>
+pub struct CpuBufferPool<T, A = StandardMemoryAllocator>
 where
     [T]: BufferContents,
-    A: MemoryPool,
+    A: MemoryAllocator + ?Sized,
 {
-    // The device of the pool.
-    device: Arc<Device>,
-
     // The memory pool to use for allocations.
-    pool: A,
+    allocator: Arc<A>,
 
     // Current buffer from which elements are grabbed.
-    current_buffer: Mutex<Option<Arc<ActualBuffer<A>>>>,
+    current_buffer: Mutex<Option<Arc<ActualBuffer>>>,
 
     // Buffer usage.
-    usage: BufferUsage,
+    buffer_usage: BufferUsage,
+
+    memory_usage: MemoryUsage,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -118,15 +117,12 @@ where
 
 // One buffer of the pool.
 #[derive(Debug)]
-struct ActualBuffer<A>
-where
-    A: MemoryPool,
-{
+struct ActualBuffer {
     // Inner content.
     inner: Arc<UnsafeBuffer>,
 
     // The memory held by the buffer.
-    memory: PotentialDedicatedAllocation<A::Alloc>,
+    memory: MemoryAlloc,
 
     // List of the chunks that are reserved.
     chunks_in_use: Mutex<Vec<ActualBufferChunk>>,
@@ -154,12 +150,11 @@ struct ActualBufferChunk {
 /// A subbuffer allocated from a `CpuBufferPool`.
 ///
 /// When this object is destroyed, the subbuffer is automatically reclaimed by the pool.
-pub struct CpuBufferPoolChunk<T, A>
+pub struct CpuBufferPoolChunk<T>
 where
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    buffer: Arc<ActualBuffer<A>>,
+    buffer: Arc<ActualBuffer>,
 
     // Index of the subbuffer within `buffer`. In number of elements.
     index: DeviceSize,
@@ -179,37 +174,38 @@ where
 /// A subbuffer allocated from a `CpuBufferPool`.
 ///
 /// When this object is destroyed, the subbuffer is automatically reclaimed by the pool.
-pub struct CpuBufferPoolSubbuffer<T, A>
+pub struct CpuBufferPoolSubbuffer<T>
 where
     [T]: BufferContents,
-    A: MemoryPool,
 {
     // This struct is just a wrapper around `CpuBufferPoolChunk`.
-    chunk: CpuBufferPoolChunk<T, A>,
+    chunk: CpuBufferPoolChunk<T>,
 }
 
-impl<T> CpuBufferPool<T>
+impl<T, A> CpuBufferPool<T, A>
 where
     [T]: BufferContents,
+    A: MemoryAllocator + ?Sized,
 {
     /// Builds a `CpuBufferPool`.
     ///
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    /// - Panics if `usage.shader_device_address` is `true`.
-    // TODO: ^
-    #[inline]
-    pub fn new(device: Arc<Device>, usage: BufferUsage) -> CpuBufferPool<T> {
+    /// - Panics if `memory_usage` is [`MemoryUsage::GpuOnly`].
+    pub fn new(
+        allocator: Arc<A>,
+        buffer_usage: BufferUsage,
+        memory_usage: MemoryUsage,
+    ) -> CpuBufferPool<T, A> {
         assert!(size_of::<T>() > 0);
-        assert!(!usage.shader_device_address);
-        let pool = device.standard_memory_pool();
+        assert!(memory_usage != MemoryUsage::GpuOnly);
 
         CpuBufferPool {
-            device,
-            pool,
+            allocator,
             current_buffer: Mutex::new(None),
-            usage,
+            buffer_usage,
+            memory_usage,
             marker: PhantomData,
         }
     }
@@ -222,14 +218,14 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    #[inline]
-    pub fn upload(device: Arc<Device>) -> CpuBufferPool<T> {
+    pub fn upload(allocator: Arc<A>) -> CpuBufferPool<T, A> {
         CpuBufferPool::new(
-            device,
+            allocator,
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
             },
+            MemoryUsage::Upload,
         )
     }
 
@@ -241,14 +237,14 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    #[inline]
-    pub fn download(device: Arc<Device>) -> CpuBufferPool<T> {
+    pub fn download(allocator: Arc<A>) -> CpuBufferPool<T, A> {
         CpuBufferPool::new(
-            device,
+            allocator,
             BufferUsage {
                 transfer_dst: true,
                 ..BufferUsage::empty()
             },
+            MemoryUsage::Download,
         )
     }
 
@@ -260,14 +256,14 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    #[inline]
-    pub fn uniform_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
+    pub fn uniform_buffer(allocator: Arc<A>) -> CpuBufferPool<T, A> {
         CpuBufferPool::new(
-            device,
+            allocator,
             BufferUsage {
                 uniform_buffer: true,
                 ..BufferUsage::empty()
             },
+            MemoryUsage::Upload,
         )
     }
 
@@ -279,14 +275,14 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    #[inline]
-    pub fn vertex_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
+    pub fn vertex_buffer(allocator: Arc<A>) -> CpuBufferPool<T, A> {
         CpuBufferPool::new(
-            device,
+            allocator,
             BufferUsage {
                 vertex_buffer: true,
                 ..BufferUsage::empty()
             },
+            MemoryUsage::Upload,
         )
     }
 
@@ -298,14 +294,14 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
-    #[inline]
-    pub fn indirect_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
+    pub fn indirect_buffer(allocator: Arc<A>) -> CpuBufferPool<T, A> {
         CpuBufferPool::new(
-            device,
+            allocator,
             BufferUsage {
                 indirect_buffer: true,
                 ..BufferUsage::empty()
             },
+            MemoryUsage::Upload,
         )
     }
 }
@@ -313,7 +309,7 @@ where
 impl<T, A> CpuBufferPool<T, A>
 where
     [T]: BufferContents,
-    A: MemoryPool,
+    A: MemoryAllocator + ?Sized,
 {
     /// Returns the current capacity of the pool, in number of elements.
     pub fn capacity(&self) -> DeviceSize {
@@ -327,7 +323,7 @@ where
     /// case.
     ///
     /// Since this can involve a memory allocation, an `OomError` can happen.
-    pub fn reserve(&self, capacity: DeviceSize) -> Result<(), DeviceMemoryError> {
+    pub fn reserve(&self, capacity: DeviceSize) -> Result<(), AllocationCreationError> {
         if capacity == 0 {
             return Ok(());
         }
@@ -352,11 +348,10 @@ where
     ///
     /// > **Note**: You can think of it like a `Vec`. If you insert an element and the `Vec` is not
     /// > large enough, a new chunk of memory is automatically allocated.
-    #[inline]
     pub fn from_data(
         &self,
         data: T,
-    ) -> Result<Arc<CpuBufferPoolSubbuffer<T, A>>, DeviceMemoryError> {
+    ) -> Result<Arc<CpuBufferPoolSubbuffer<T>>, AllocationCreationError> {
         Ok(Arc::new(CpuBufferPoolSubbuffer {
             chunk: self.chunk_impl([data].into_iter())?,
         }))
@@ -373,9 +368,10 @@ where
     /// # Panic
     ///
     /// Panics if the length of the iterator didn't match the actual number of elements.
-    ///
-    #[inline]
-    pub fn from_iter<I>(&self, iter: I) -> Result<Arc<CpuBufferPoolChunk<T, A>>, DeviceMemoryError>
+    pub fn from_iter<I>(
+        &self,
+        iter: I,
+    ) -> Result<Arc<CpuBufferPoolChunk<T>>, AllocationCreationError>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
@@ -386,7 +382,7 @@ where
     fn chunk_impl(
         &self,
         data: impl ExactSizeIterator<Item = T>,
-    ) -> Result<CpuBufferPoolChunk<T, A>, DeviceMemoryError> {
+    ) -> Result<CpuBufferPoolChunk<T>, AllocationCreationError> {
         let mut mutex = self.current_buffer.lock().unwrap();
 
         let data = match self.try_next_impl(&mut mutex, data) {
@@ -413,8 +409,7 @@ where
     ///
     /// A `CpuBufferPool` is always empty the first time you use it, so you shouldn't use
     /// `try_next` the first time you use it.
-    #[inline]
-    pub fn try_next(&self, data: T) -> Option<Arc<CpuBufferPoolSubbuffer<T, A>>> {
+    pub fn try_next(&self, data: T) -> Option<Arc<CpuBufferPoolSubbuffer<T>>> {
         let mut mutex = self.current_buffer.lock().unwrap();
         self.try_next_impl(&mut mutex, [data])
             .map(|c| Arc::new(CpuBufferPoolSubbuffer { chunk: c }))
@@ -426,50 +421,55 @@ where
     // `cur_buf_mutex` must be an active lock of `self.current_buffer`.
     fn reset_buf(
         &self,
-        cur_buf_mutex: &mut MutexGuard<'_, Option<Arc<ActualBuffer<A>>>>,
+        cur_buf_mutex: &mut MutexGuard<'_, Option<Arc<ActualBuffer>>>,
         capacity: DeviceSize,
-    ) -> Result<(), DeviceMemoryError> {
+    ) -> Result<(), AllocationCreationError> {
         let size = match (size_of::<T>() as DeviceSize).checked_mul(capacity) {
             Some(s) => s,
-            None => return Err(DeviceMemoryError::OomError(OomError::OutOfDeviceMemory)),
+            None => return Err(AllocationCreationError::OutOfDeviceMemory),
         };
-        let buffer = match UnsafeBuffer::new(
-            self.device.clone(),
+
+        let buffer = UnsafeBuffer::new(
+            self.device().clone(),
             UnsafeBufferCreateInfo {
                 size,
-                usage: self.usage,
+                usage: self.buffer_usage,
                 ..Default::default()
             },
-        ) {
-            Ok(b) => b,
-            Err(BufferCreationError::AllocError(err)) => return Err(err),
-            Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
-                                      // errors can't happen
+        )
+        .map_err(|err| match err {
+            BufferCreationError::AllocError(err) => err,
+            // We don't use sparse-binding, therefore the other errors can't happen.
+            _ => unreachable!(),
+        })?;
+        let requirements = buffer.memory_requirements();
+        let create_info = AllocationCreateInfo {
+            requirements,
+            allocation_type: AllocationType::Linear,
+            usage: self.memory_usage,
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            ..Default::default()
         };
-        let mem_reqs = buffer.memory_requirements();
 
-        unsafe {
-            let mem = MemoryPool::alloc_from_requirements(
-                &self.pool,
-                &mem_reqs,
-                AllocLayout::Linear,
-                MappingRequirement::Map,
-                Some(DedicatedAllocation::Buffer(&buffer)),
-                |_| AllocFromRequirementsFilter::Allowed,
-            )?;
-            debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-            debug_assert!(mem.mapped_memory().is_some());
-            buffer.bind_memory(mem.memory(), mem.offset())?;
+        match unsafe { self.allocator.allocate_unchecked(create_info) } {
+            Ok(mut alloc) => {
+                debug_assert!(alloc.offset() % requirements.alignment == 0);
+                debug_assert!(alloc.size() == requirements.size);
+                alloc.shrink(size);
+                unsafe { buffer.bind_memory(alloc.device_memory(), alloc.offset()) }?;
 
-            **cur_buf_mutex = Some(Arc::new(ActualBuffer {
-                inner: buffer,
-                memory: mem,
-                chunks_in_use: Mutex::new(vec![]),
-                next_index: AtomicU64::new(0),
-                capacity,
-            }));
+                **cur_buf_mutex = Some(Arc::new(ActualBuffer {
+                    inner: buffer,
+                    memory: alloc,
+                    chunks_in_use: Mutex::new(vec![]),
+                    next_index: AtomicU64::new(0),
+                    capacity,
+                }));
 
-            Ok(())
+                Ok(())
+            }
+            Err(err) => Err(err),
         }
     }
 
@@ -482,12 +482,11 @@ where
     // # Panic
     //
     // Panics if the length of the iterator didn't match the actual number of element.
-    //
     fn try_next_impl<I>(
         &self,
-        cur_buf_mutex: &mut MutexGuard<'_, Option<Arc<ActualBuffer<A>>>>,
+        cur_buf_mutex: &mut MutexGuard<'_, Option<Arc<ActualBuffer>>>,
         data: I,
-    ) -> Result<CpuBufferPoolChunk<T, A>, I::IntoIter>
+    ) -> Result<CpuBufferPoolChunk<T>, I::IntoIter>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
@@ -533,7 +532,7 @@ where
                 let idx = current_buffer.next_index.load(Ordering::SeqCst);
 
                 // Find the required alignment in bytes.
-                let align_uniform = if self.usage.uniform_buffer {
+                let align_uniform = if self.buffer_usage.uniform_buffer {
                     self.device()
                         .physical_device()
                         .properties()
@@ -541,7 +540,7 @@ where
                 } else {
                     1
                 };
-                let align_storage = if self.usage.storage_buffer {
+                let align_storage = if self.buffer_usage.storage_buffer {
                     self.device()
                         .physical_device()
                         .properties()
@@ -586,12 +585,10 @@ where
 
         // Write `data` in the memory.
         unsafe {
-            let mem_off = current_buffer.memory.offset();
-            let range = (index * size_of::<T>() as DeviceSize + align_offset + mem_off)
-                ..((index + requested_len) * size_of::<T>() as DeviceSize + align_offset + mem_off);
+            let range = (index * size_of::<T>() as DeviceSize + align_offset)
+                ..((index + requested_len) * size_of::<T>() as DeviceSize + align_offset);
 
-            let mapped_memory = current_buffer.memory.mapped_memory().unwrap();
-            let bytes = mapped_memory.write(range.clone()).unwrap();
+            let bytes = current_buffer.memory.write(range.clone()).unwrap();
             let mapping = <[T]>::from_bytes_mut(bytes).unwrap();
 
             let mut written = 0;
@@ -600,12 +597,12 @@ where
                 written += 1;
             }
 
-            mapped_memory.flush_range(range).unwrap();
+            current_buffer.memory.flush_range(range).unwrap();
 
             assert_eq!(
                 written, requested_len,
                 "Iterator passed to CpuBufferPool::chunk has a mismatch between reported \
-                        length and actual number of elements"
+                length and actual number of elements"
             );
         }
 
@@ -634,16 +631,16 @@ where
 impl<T, A> Clone for CpuBufferPool<T, A>
 where
     [T]: BufferContents,
-    A: MemoryPool + Clone,
+    A: MemoryAllocator + ?Sized,
 {
     fn clone(&self) -> Self {
         let buf = self.current_buffer.lock().unwrap();
 
         CpuBufferPool {
-            device: self.device.clone(),
-            pool: self.pool.clone(),
+            allocator: self.allocator.clone(),
             current_buffer: Mutex::new(buf.clone()),
-            usage: self.usage,
+            buffer_usage: self.buffer_usage,
+            memory_usage: self.memory_usage,
             marker: PhantomData,
         }
     }
@@ -652,20 +649,18 @@ where
 unsafe impl<T, A> DeviceOwned for CpuBufferPool<T, A>
 where
     [T]: BufferContents,
-    A: MemoryPool,
+    A: MemoryAllocator + ?Sized,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.device
+        self.allocator.device()
     }
 }
 
-impl<T, A> Clone for CpuBufferPoolChunk<T, A>
+impl<T> Clone for CpuBufferPoolChunk<T>
 where
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    fn clone(&self) -> CpuBufferPoolChunk<T, A> {
+    fn clone(&self) -> CpuBufferPoolChunk<T> {
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
         let chunk = chunks_in_use_lock
             .iter_mut()
@@ -688,13 +683,11 @@ where
     }
 }
 
-unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
+unsafe impl<T> BufferAccess for CpuBufferPoolChunk<T>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    #[inline]
     fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.buffer.inner,
@@ -702,28 +695,24 @@ where
         }
     }
 
-    #[inline]
     fn size(&self) -> DeviceSize {
         self.requested_len * size_of::<T>() as DeviceSize
     }
 }
 
-impl<T, A> BufferAccessObject for Arc<CpuBufferPoolChunk<T, A>>
+impl<T> BufferAccessObject for Arc<CpuBufferPoolChunk<T>>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool + 'static,
 {
-    #[inline]
     fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
         self.clone()
     }
 }
 
-impl<T, A> Drop for CpuBufferPoolChunk<T, A>
+impl<T> Drop for CpuBufferPoolChunk<T>
 where
     [T]: BufferContents,
-    A: MemoryPool,
 {
     fn drop(&mut self) {
         // If `requested_len` is 0, then no entry was added in the chunks.
@@ -745,147 +734,125 @@ where
     }
 }
 
-unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolChunk<T, A>
+unsafe impl<T> TypedBufferAccess for CpuBufferPoolChunk<T>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool,
 {
     type Content = [T];
 }
 
-unsafe impl<T, A> DeviceOwned for CpuBufferPoolChunk<T, A>
+unsafe impl<T> DeviceOwned for CpuBufferPoolChunk<T>
 where
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.buffer.inner.device()
     }
 }
 
-impl<T, A> PartialEq for CpuBufferPoolChunk<T, A>
+impl<T> PartialEq for CpuBufferPoolChunk<T>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
-impl<T, A> Eq for CpuBufferPoolChunk<T, A>
+impl<T> Eq for CpuBufferPoolChunk<T>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool,
 {
 }
 
-impl<T, A> Hash for CpuBufferPoolChunk<T, A>
+impl<T> Hash for CpuBufferPoolChunk<T>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);
     }
 }
 
-impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
+impl<T> Clone for CpuBufferPoolSubbuffer<T>
 where
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    fn clone(&self) -> CpuBufferPoolSubbuffer<T, A> {
+    fn clone(&self) -> CpuBufferPoolSubbuffer<T> {
         CpuBufferPoolSubbuffer {
             chunk: self.chunk.clone(),
         }
     }
 }
 
-unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
+unsafe impl<T> BufferAccess for CpuBufferPoolSubbuffer<T>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    #[inline]
     fn inner(&self) -> BufferInner<'_> {
         self.chunk.inner()
     }
 
-    #[inline]
     fn size(&self) -> DeviceSize {
         self.chunk.size()
     }
 }
 
-impl<T, A> BufferAccessObject for Arc<CpuBufferPoolSubbuffer<T, A>>
+impl<T> BufferAccessObject for Arc<CpuBufferPoolSubbuffer<T>>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool + 'static,
 {
-    #[inline]
     fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
         self.clone()
     }
 }
 
-unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolSubbuffer<T, A>
+unsafe impl<T> TypedBufferAccess for CpuBufferPoolSubbuffer<T>
 where
     T: BufferContents,
     [T]: BufferContents,
-    A: MemoryPool,
 {
     type Content = T;
 }
 
-unsafe impl<T, A> DeviceOwned for CpuBufferPoolSubbuffer<T, A>
+unsafe impl<T> DeviceOwned for CpuBufferPoolSubbuffer<T>
 where
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.chunk.buffer.inner.device()
     }
 }
 
-impl<T, A> PartialEq for CpuBufferPoolSubbuffer<T, A>
+impl<T> PartialEq for CpuBufferPoolSubbuffer<T>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
-impl<T, A> Eq for CpuBufferPoolSubbuffer<T, A>
+impl<T> Eq for CpuBufferPoolSubbuffer<T>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool,
 {
 }
 
-impl<T, A> Hash for CpuBufferPoolSubbuffer<T, A>
+impl<T> Hash for CpuBufferPoolSubbuffer<T>
 where
     T: Send + Sync,
     [T]: BufferContents,
-    A: MemoryPool,
 {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);
@@ -894,20 +861,22 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::buffer::CpuBufferPool;
+    use super::*;
     use std::mem;
 
     #[test]
     fn basic_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = CpuBufferPool::<u8>::upload(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let _ = CpuBufferPool::<u8>::upload(memory_allocator);
     }
 
     #[test]
     fn reserve() {
         let (device, _) = gfx_dev_and_queue!();
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
-        let pool = CpuBufferPool::<u8>::upload(device);
+        let pool = CpuBufferPool::<u8>::upload(memory_allocator);
         assert_eq!(pool.capacity(), 0);
 
         pool.reserve(83).unwrap();
@@ -917,8 +886,9 @@ mod tests {
     #[test]
     fn capacity_increase() {
         let (device, _) = gfx_dev_and_queue!();
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
-        let pool = CpuBufferPool::upload(device);
+        let pool = CpuBufferPool::upload(memory_allocator);
         assert_eq!(pool.capacity(), 0);
 
         pool.from_data(12).unwrap();
@@ -935,8 +905,9 @@ mod tests {
     #[test]
     fn reuse_subbuffers() {
         let (device, _) = gfx_dev_and_queue!();
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
-        let pool = CpuBufferPool::upload(device);
+        let pool = CpuBufferPool::upload(memory_allocator);
         assert_eq!(pool.capacity(), 0);
 
         let mut capacity = None;
@@ -955,8 +926,9 @@ mod tests {
     #[test]
     fn chunk_loopback() {
         let (device, _) = gfx_dev_and_queue!();
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
-        let pool = CpuBufferPool::<u8>::upload(device);
+        let pool = CpuBufferPool::<u8>::upload(memory_allocator);
         pool.reserve(5).unwrap();
 
         let a = pool.from_iter(vec![0, 0]).unwrap();
@@ -973,8 +945,9 @@ mod tests {
     #[test]
     fn chunk_0_elems_doesnt_pollute() {
         let (device, _) = gfx_dev_and_queue!();
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
-        let pool = CpuBufferPool::<u8>::upload(device);
+        let pool = CpuBufferPool::<u8>::upload(memory_allocator);
 
         let _ = pool.from_iter(vec![]).unwrap();
         let _ = pool.from_iter(vec![0, 0]).unwrap();

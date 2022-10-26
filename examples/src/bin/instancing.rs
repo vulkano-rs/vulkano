@@ -26,6 +26,7 @@ use vulkano::{
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -175,6 +176,8 @@ fn main() {
         .unwrap()
     };
 
+    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+
     // We now create a buffer that will store the shape of our triangle.
     // This triangle is identical to the one in the `triangle.rs` example.
     let vertices = [
@@ -190,7 +193,7 @@ fn main() {
     ];
     let vertex_buffer = {
         CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 vertex_buffer: true,
                 ..BufferUsage::empty()
@@ -225,7 +228,7 @@ fn main() {
         data
     };
     let instance_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()

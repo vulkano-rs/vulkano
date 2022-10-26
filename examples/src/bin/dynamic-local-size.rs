@@ -30,6 +30,7 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, ImageDimensions, StorageImage},
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
     VulkanLibrary,
@@ -198,11 +199,12 @@ fn main() {
     )
     .unwrap();
 
+    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
 
     let image = StorageImage::new(
-        device.clone(),
+        &memory_allocator,
         ImageDimensions::Dim2d {
             width: 1024,
             height: 1024,
@@ -223,7 +225,7 @@ fn main() {
     .unwrap();
 
     let buf = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &memory_allocator,
         BufferUsage {
             transfer_dst: true,
             ..BufferUsage::empty()

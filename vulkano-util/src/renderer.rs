@@ -16,6 +16,7 @@ use vulkano::{
     image::{
         view::ImageView, ImageAccess, ImageUsage, ImageViewAbstract, StorageImage, SwapchainImage,
     },
+    memory::allocator::StandardMemoryAllocator,
     swapchain::{
         self, AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -46,6 +47,7 @@ pub struct VulkanoWindowRenderer {
     compute_queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
     final_views: Vec<SwapchainImageView>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
     /// Additional image views that you can add which are resized with the window.
     /// Use associated functions to get access to these.
     additional_image_views: HashMap<usize, DeviceImageView>,
@@ -64,6 +66,7 @@ impl VulkanoWindowRenderer {
         window: winit::window::Window,
         descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
+        memory_allocator: Arc<StandardMemoryAllocator>,
     ) -> VulkanoWindowRenderer {
         // Create rendering surface from window
         let surface =
@@ -86,6 +89,7 @@ impl VulkanoWindowRenderer {
             compute_queue: vulkano_context.compute_queue().clone(),
             swapchain: swap_chain,
             final_views,
+            memory_allocator,
             additional_image_views: HashMap::default(),
             recreate_swapchain: false,
             previous_frame_end,
@@ -239,6 +243,7 @@ impl VulkanoWindowRenderer {
     pub fn add_additional_image_view(&mut self, key: usize, format: Format, usage: ImageUsage) {
         let size = self.swapchain_image_size();
         let image = StorageImage::general_purpose_image_view(
+            &*self.memory_allocator,
             self.graphics_queue.clone(),
             size,
             format,

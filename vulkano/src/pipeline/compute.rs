@@ -409,6 +409,7 @@ mod tests {
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
         },
+        memory::allocator::StandardMemoryAllocator,
         pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
         shader::{ShaderModule, SpecializationConstants, SpecializationMapEntry},
         sync::{now, GpuFuture},
@@ -491,8 +492,9 @@ mod tests {
         )
         .unwrap();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let data_buffer = CpuAccessibleBuffer::from_data(
-            device.clone(),
+            &memory_allocator,
             BufferUsage {
                 storage_buffer: true,
                 ..BufferUsage::empty()

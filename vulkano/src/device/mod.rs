@@ -114,9 +114,8 @@ pub use crate::{
     fns::DeviceFunctions,
 };
 use crate::{
-    instance::Instance,
-    memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
-    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    instance::Instance, memory::ExternalMemoryHandleType, OomError, RequirementNotMet,
+    RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::Mutex;
@@ -132,7 +131,7 @@ use std::{
     ptr,
     sync::{
         atomic::{AtomicU32, Ordering},
-        Arc, Weak,
+        Arc,
     },
 };
 
@@ -153,7 +152,6 @@ pub struct Device {
     api_version: Version,
 
     fns: DeviceFunctions,
-    standard_memory_pool: Mutex<Weak<StandardMemoryPool>>,
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_family_indices: SmallVec<[u32; 2]>,
@@ -410,7 +408,6 @@ impl Device {
             physical_device,
             api_version,
             fns,
-            standard_memory_pool: Mutex::new(Weak::new()),
             enabled_extensions,
             enabled_features,
             active_queue_family_indices,
@@ -489,21 +486,6 @@ impl Device {
     #[inline]
     pub fn enabled_features(&self) -> &Features {
         &self.enabled_features
-    }
-
-    /// Returns the standard memory pool used by default if you don't provide any other pool.
-    pub fn standard_memory_pool(self: &Arc<Self>) -> Arc<StandardMemoryPool> {
-        let mut pool = self.standard_memory_pool.lock();
-
-        if let Some(p) = pool.upgrade() {
-            return p;
-        }
-
-        // The weak pointer is empty, so we create the pool.
-        let new_pool = StandardMemoryPool::new(self.clone());
-        *pool = Arc::downgrade(&new_pool);
-
-        new_pool
     }
 
     /// Returns the current number of active [`DeviceMemory`] allocations the device has.

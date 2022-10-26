@@ -79,6 +79,7 @@ use vulkano::{
     image::{view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage},
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             multisample::MultisampleState,
@@ -151,13 +152,15 @@ fn main() {
     .unwrap();
     let queue = queues.next().unwrap();
 
+    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+
     // Creating our intermediate multisampled image.
     //
     // As explained in the introduction, we pass the same dimensions and format as for the final
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
     let intermediary = ImageView::new_default(
         AttachmentImage::transient_multisampled(
-            device.clone(),
+            &memory_allocator,
             [1024, 1024],
             SampleCount::Sample4,
             Format::R8G8B8A8_UNORM,
@@ -168,7 +171,7 @@ fn main() {
 
     // This is the final image that will receive the anti-aliased triangle.
     let image = StorageImage::new(
-        device.clone(),
+        &memory_allocator,
         ImageDimensions::Dim2d {
             width: 1024,
             height: 1024,
@@ -284,7 +287,7 @@ fn main() {
         },
     ];
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -314,10 +317,10 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
 
     let buf = CpuAccessibleBuffer::from_iter(
-        device,
+        &memory_allocator,
         BufferUsage {
             transfer_dst: true,
             ..BufferUsage::empty()

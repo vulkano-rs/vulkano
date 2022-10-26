@@ -24,6 +24,7 @@ use vulkano::{
     device::Queue,
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract},
+    memory::allocator::StandardMemoryAllocator,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
@@ -38,6 +39,7 @@ pub struct FrameSystem {
     // in of a change in the dimensions.
     render_pass: Arc<RenderPass>,
 
+    memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
 
     // Intermediate render target that will contain the albedo of each pixel of the scene.
@@ -71,6 +73,7 @@ impl FrameSystem {
     pub fn new(
         gfx_queue: Arc<Queue>,
         final_output_format: Format,
+        memory_allocator: Arc<StandardMemoryAllocator>,
         command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
     ) -> FrameSystem {
         // Creating the render pass.
@@ -152,7 +155,7 @@ impl FrameSystem {
         // These images will be replaced the first time we call `frame()`.
         let diffuse_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
-                gfx_queue.device().clone(),
+                &*memory_allocator,
                 [1, 1],
                 Format::A2B10G10R10_UNORM_PACK32,
                 ImageUsage {
@@ -166,7 +169,7 @@ impl FrameSystem {
         .unwrap();
         let normals_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
-                gfx_queue.device().clone(),
+                &*memory_allocator,
                 [1, 1],
                 Format::R16G16B16A16_SFLOAT,
                 ImageUsage {
@@ -180,7 +183,7 @@ impl FrameSystem {
         .unwrap();
         let depth_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
-                gfx_queue.device().clone(),
+                &*memory_allocator,
                 [1, 1],
                 Format::D16_UNORM,
                 ImageUsage {
@@ -203,18 +206,21 @@ impl FrameSystem {
         let ambient_lighting_system = AmbientLightingSystem::new(
             gfx_queue.clone(),
             lighting_subpass.clone(),
+            &*memory_allocator,
             command_buffer_allocator.clone(),
             descriptor_set_allocator.clone(),
         );
         let directional_lighting_system = DirectionalLightingSystem::new(
             gfx_queue.clone(),
             lighting_subpass.clone(),
+            &*memory_allocator,
             command_buffer_allocator.clone(),
             descriptor_set_allocator.clone(),
         );
         let point_lighting_system = PointLightingSystem::new(
             gfx_queue.clone(),
             lighting_subpass,
+            &*memory_allocator,
             command_buffer_allocator.clone(),
             descriptor_set_allocator,
         );
@@ -222,6 +228,7 @@ impl FrameSystem {
         FrameSystem {
             gfx_queue,
             render_pass,
+            memory_allocator,
             command_buffer_allocator,
             diffuse_buffer,
             normals_buffer,
@@ -270,7 +277,7 @@ impl FrameSystem {
             // render pass their content becomes undefined.
             self.diffuse_buffer = ImageView::new_default(
                 AttachmentImage::with_usage(
-                    self.gfx_queue.device().clone(),
+                    &*self.memory_allocator,
                     img_dims,
                     Format::A2B10G10R10_UNORM_PACK32,
                     ImageUsage {
@@ -284,7 +291,7 @@ impl FrameSystem {
             .unwrap();
             self.normals_buffer = ImageView::new_default(
                 AttachmentImage::with_usage(
-                    self.gfx_queue.device().clone(),
+                    &*self.memory_allocator,
                     img_dims,
                     Format::R16G16B16A16_SFLOAT,
                     ImageUsage {
@@ -298,7 +305,7 @@ impl FrameSystem {
             .unwrap();
             self.depth_buffer = ImageView::new_default(
                 AttachmentImage::with_usage(
-                    self.gfx_queue.device().clone(),
+                    &*self.memory_allocator,
                     img_dims,
                     Format::D16_UNORM,
                     ImageUsage {

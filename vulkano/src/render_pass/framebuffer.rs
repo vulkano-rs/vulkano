@@ -720,6 +720,7 @@ mod tests {
     use crate::{
         format::Format,
         image::{attachment::AttachmentImage, view::ImageView},
+        memory::allocator::StandardMemoryAllocator,
         render_pass::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError, RenderPass},
     };
 
@@ -743,8 +744,9 @@ mod tests {
         )
         .unwrap();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(device, [1024, 768], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(&memory_allocator, [1024, 768], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let _ = Framebuffer::new(
@@ -810,8 +812,9 @@ mod tests {
         )
         .unwrap();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(device, [1024, 768], Format::R8_UNORM).unwrap(),
+            AttachmentImage::new(&memory_allocator, [1024, 768], Format::R8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -849,8 +852,9 @@ mod tests {
         )
         .unwrap();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(device, [600, 600], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(&memory_allocator, [600, 600], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -886,8 +890,9 @@ mod tests {
         )
         .unwrap();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(device, [512, 700], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(&memory_allocator, [512, 700], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -931,12 +936,13 @@ mod tests {
         )
         .unwrap();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let a = ImageView::new_default(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(&memory_allocator, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let b = ImageView::new_default(
-            AttachmentImage::new(device, [512, 128], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(&memory_allocator, [512, 128], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -981,8 +987,9 @@ mod tests {
         )
         .unwrap();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(device, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(&memory_allocator, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -1023,12 +1030,13 @@ mod tests {
         )
         .unwrap();
 
+        let memory_allocator = StandardMemoryAllocator::new_default(device);
         let a = ImageView::new_default(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(&memory_allocator, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let b = ImageView::new_default(
-            AttachmentImage::new(device, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(&memory_allocator, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 

@@ -30,7 +30,7 @@ use crate::{
     triangle_draw_system::TriangleDrawSystem,
 };
 use cgmath::{Matrix4, SquareMatrix, Vector3};
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     command_buffer::allocator::StandardCommandBufferAllocator,
     device::{
@@ -38,6 +38,7 @@ use vulkano::{
     },
     image::{view::ImageView, ImageUsage},
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::StandardMemoryAllocator,
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -164,17 +165,20 @@ fn main() {
         (swapchain, images)
     };
 
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
     let command_buffer_allocator = Rc::new(StandardCommandBufferAllocator::new(device.clone()));
 
     // Here is the basic initialization for the deferred system.
     let mut frame_system = FrameSystem::new(
         queue.clone(),
         swapchain.image_format(),
+        memory_allocator.clone(),
         command_buffer_allocator.clone(),
     );
     let triangle_draw_system = TriangleDrawSystem::new(
         queue.clone(),
         frame_system.deferred_subpass(),
+        &memory_allocator,
         command_buffer_allocator,
     );
 

@@ -36,6 +36,7 @@ use vulkano::{
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -169,8 +170,10 @@ fn main() {
         .unwrap()
     };
 
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
     // Vertex Buffer Pool
-    let buffer_pool: CpuBufferPool<Vertex> = CpuBufferPool::vertex_buffer(device.clone());
+    let buffer_pool: CpuBufferPool<Vertex> = CpuBufferPool::vertex_buffer(memory_allocator);
 
     mod vs {
         vulkano_shaders::shader! {
