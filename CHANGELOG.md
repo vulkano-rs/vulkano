@@ -42,10 +42,8 @@ Changes to descriptor sets and descriptor pools:
 - Descriptor set allocators must now be managed manually.
   - `PersistentDescriptorSet::{new, new_variable}` now take an implementation of `DescriptorSetAllocator`, `PersistentDescriptorSet::new_with_pool` has been removed.
 
-Changes to buffer and image uploads:
+Changes to buffers and images:
 - `DeviceLocalBuffer::{from_buffer, from_data, from_iter}` and `ImmutableImage::{from_iter, from_buffer}` now take a mutable reference to an `AutoCommandBufferBuilder` instead of a queue, and no longer return a future. The upload command will be recorded into the provided command buffer, which should be executed later.
-
-Changes to buffers:
 - When binding memory to a buffer with the `shader_device_address` usage, and the `ext_buffer_device_address` extension isn't enabled, the memory must now have been allocated with the `MemoryAllocateFlags::device_address` flag set.
 
 Changes to the `VulkanObject` trait:
@@ -60,6 +58,12 @@ Changes to `SubpassDependency`, `MemoryBarrier`, `BufferMemoryBarrier`, `ImageMe
 
 Changes to the `set_event` command:
 - This command now takes a `DependencyInfo` instead of `PipelineStages`, to enable use of the `vkCmdSetEvent2` version.
+
+Changes to memory allocation:
+- `MemoryPool` has been replaced with `MemoryAllocator` and `StandardMemoryPool` has been replaced with `StandardMemoryAllocator`.
+- Removed `AllocFromRequirementsFilter`, `MemoryPoolAlloc`, `MappingRequirement`, `AllocLayout`, `PotentialDedicatedAllocation`, `StandardNonHostVisibleMemoryTypePool`, `StandardNonHostVisibleMemoryTypePoolAlloc`, `StandardHostVisibleMemoryTypePool`, `StandardHostVisibleMemoryTypePoolAlloc` and `StandardMemoryPoolAlloc`.
+- Memory allocators must now be managed manually.
+  - Buffer and image constructors now take an implementation of the `MemoryAllocator` trait.
 
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
@@ -80,6 +84,9 @@ Changes to the `set_event` command:
 - Added support for all remaining `PipelineStages` and `AccessFlags`, including those from the `synchronization2` feature.
 - Added support for `synchronization2` to the `set_event`, `reset_event` and `write_timestamp` commands, and to `SubpassDependency` when creating a render pass.
 - Added the `wait_events` command to `SyncCommandBufferBuilder` and `UnsafeCommandBufferBuilder`.
+- Added the `Suballocator` trait and 4 of its implementors: `FreeListAllocator`, `BuddyAllocator`, `PoolAllocator` and `BumpAllocator`.
+- Added `GenericMemoryAllocator` and its configuration `GenericMemoryAllocatorCreateInfo`.
+- Added `MemoryAlloc`, `AllocationCreateInfo`, `AllocationCreationError`, `MemoryUsage`, `MemoryAllocatePreference`, `MemoryTypeFilter`, `SuballocationCreateInfo` and `SuballocationCreationError`.
 
 ### Bugs fixed
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
