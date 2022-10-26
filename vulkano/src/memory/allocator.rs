@@ -556,6 +556,7 @@ enum AllocParent {
     Buddy {
         allocator: Arc<BuddyAllocator>,
         order: usize,
+        offset: DeviceSize,
     },
     Pool {
         allocator: Arc<PoolAllocatorInner>,
@@ -1037,8 +1038,12 @@ impl Drop for MemoryAlloc {
             AllocParent::FreeList { allocator, id } => {
                 allocator.free(*id);
             }
-            AllocParent::Buddy { allocator, order } => {
-                allocator.free(*order, self.offset);
+            AllocParent::Buddy {
+                allocator,
+                order,
+                offset,
+            } => {
+                allocator.free(*order, *offset);
             }
             AllocParent::Pool { allocator, index } => {
                 allocator.free(*index);
@@ -3243,6 +3248,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
                         parent: AllocParent::Buddy {
                             allocator: self.clone(),
                             order: min_order,
+                            offset, // The offset in the alloc itself can change.
                         },
                     });
                 }
