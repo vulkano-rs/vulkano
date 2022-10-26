@@ -1446,7 +1446,7 @@ pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
 
     /// Whether the allocator should use the dedicated allocation APIs.
     ///
-    /// This means that when the allocator decices that an allocation should not be suballocated,
+    /// This means that when the allocator decides that an allocation should not be suballocated,
     /// but rather have its own block of [`DeviceMemory`], that that allocation will be made a
     /// dedicated allocation. Otherwise they are still made free-standing ([root]) allocations,
     /// just not [dedicated] ones.
