@@ -313,7 +313,7 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     /// - `allocation_size` must not exceed the size of the heap that the memory type corresponding
     ///   to `memory_type_index` resides in.
     /// - The handle types in `export_handle_types` must be supported and compatible, as reported by
-    ///   [`ExternalBufferProperties`]  or [`ImageFormatProperties`].
+    ///   [`ExternalBufferProperties`] or [`ImageFormatProperties`].
     /// - If any of the handle types in `export_handle_types` require a dedicated allocation, as
     ///   reported by [`ExternalBufferProperties::external_memory_properties`] or
     ///   [`ImageFormatProperties::external_memory_properties`], then `dedicated_allocation` must
@@ -321,6 +321,8 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     ///
     /// [`ExternalBufferProperties`]: crate::buffer::ExternalBufferProperties
     /// [`ImageFormatProperties`]: crate::image::ImageFormatProperties
+    /// [`ExternalBufferProperties::external_memory_properties`]: crate::buffer::ExternalBufferProperties
+    /// [`ImageFormatProperties::external_memory_properties`]: crate::image::ImageFormatProperties::external_memory_properties
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     unsafe fn allocate_dedicated_unchecked(
         &self,
@@ -331,8 +333,8 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     ) -> Result<MemoryAlloc, AllocationCreationError>;
 }
 
-/// Describes what memory property flags that are required, preferred and not preferred when
-/// picking a memory type index.
+/// Describes what memory property flags are required, preferred and not preferred when picking a
+/// memory type index.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MemoryTypeFilter {
     pub required_flags: MemoryPropertyFlags,
@@ -521,17 +523,14 @@ pub enum MemoryAllocatePreference {
     AlwaysAllocate,
 }
 
-/// Memory allocations are portions of memory that are are reserved for a specific resource or
-/// purpose.
+/// Memory allocations are portions of memory that are reserved for a specific resource or purpose.
 ///
 /// There's a few ways you can obtain a `MemoryAlloc` in Vulkano. Most commonly you will probably
-/// want to use a [memory allocator]. If you want a root allocation, and already have a
-/// [`DeviceMemory`] block on hand, you can turn it into a `MemoryAlloc` by using the [`From`]
-/// implementation. Lastly, you can use a [suballocator] if you want to create multiple smaller
-/// allocations out of a bigger one.
+/// want to use a [memory allocator]. If you already have a [`DeviceMemory`] block on hand that you
+/// would like to turn into an allocation, you can use one of the constructors. Lastly, you can use
+/// a [suballocator] if you want to create multiple smaller allocations out of a bigger one.
 ///
 /// [memory allocator]: MemoryAllocator
-/// [`From`]: Self#impl-From<DeviceMemory>-for-MemoryAlloc
 /// [suballocator]: Suballocator
 #[derive(Debug)]
 pub struct MemoryAlloc {
@@ -1086,7 +1085,7 @@ pub enum AllocationCreationError {
     /// enough memory in the pool.
     OutOfPoolMemory,
 
-    /// The block size for the suballocator was exceeded.
+    /// The block size for the allocator was exceeded.
     ///
     /// This is returned when using [`MemoryAllocatePreference::NeverAllocate`] and the allocation
     /// size exceeded the block size for all heaps of suitable memory types.
@@ -1134,7 +1133,8 @@ impl From<OomError> for AllocationCreationError {
 /// Standard memory allocator intended as a global and general-purpose allocator.
 ///
 /// This type of allocator should work well in most cases, it is however **not** to be used when
-/// allocations need to be made very frequently. For that purpose, use [`FastMemoryAllocator`].
+/// allocations need to be made very frequently (say, once or more per frame). For that purpose,
+/// use [`FastMemoryAllocator`].
 ///
 /// See [`FreeListAllocator`] for details about the allocation algorithm and example usage.
 pub type StandardMemoryAllocator = GenericMemoryAllocator<Arc<FreeListAllocator>>;
@@ -1982,14 +1982,14 @@ pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
     ///
     /// You only need to worry about this if you're using [`PoolAllocator`] as the suballocator, as
     /// all suballocations that the pool allocator makes inherit their allocation type from the
-    /// parent allocation. In all other cases it doesn't matter that this is.
+    /// parent allocation. In all other cases it doesn't matter what this is.
     ///
     /// The default value is [`AllocationType::Unknown`].
     pub allocation_type: AllocationType,
 
     /// Whether the allocator should use the dedicated allocation APIs.
     ///
-    /// This means that when the allocator dedices that an allocation should not be suballocated,
+    /// This means that when the allocator decices that an allocation should not be suballocated,
     /// but rather have its own block of [`DeviceMemory`], that that allocation will be made a
     /// dedicated allocation. Otherwise they are still made free-standing ([root]) allocations,
     /// just not [dedicated] ones.
@@ -2381,7 +2381,7 @@ impl Display for SuballocationCreationError {
 /// The strength of this allocator is that it can create and free allocations completely
 /// dynamically, which means they can be any size and created/freed in any order. The downside is
 /// that this always leads to horrific [external fragmentation] the more such dynamic allocations
-/// are made. Therefore, this allocator is best suited for long-lived allocations. If you need need
+/// are made. Therefore, this allocator is best suited for long-lived allocations. If you need
 /// to create allocations of various sizes, but can't afford this fragmentation, then the
 /// [`BuddyAllocator`] is your best buddy. If you need to create allocations which share a similar
 /// size, consider the [`PoolAllocator`]. Lastly, if you need to allocate very often, then
@@ -3224,10 +3224,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
                         let right_child = offset + size;
 
                         // Insert the right child in sorted order.
-                        let index = match free_list.binary_search(&right_child) {
-                            Ok(index) => index,
-                            Err(index) => index,
-                        };
+                        let (Ok(index) | Err(index)) = free_list.binary_search(&right_child);
                         free_list.insert(index, right_child);
 
                         // Repeat splitting for the left child if required in the next loop turn.
@@ -4092,8 +4089,8 @@ mod host {
                 // We're reusing a slot, initialize it with the new value.
                 *x = val;
             } else {
-                // We're using a fresh slot. We always pick IDs in order into the free-list, so the
-                //  next free ID must be for the slot right after the end of the occupied slots.
+                // We're using a fresh slot. We always put IDs in order into the free-list, so the
+                // next free ID must be for the slot right after the end of the occupied slots.
                 debug_assert!(id.0.get() - 1 == self.pool.len());
                 self.pool.push(val);
             }
