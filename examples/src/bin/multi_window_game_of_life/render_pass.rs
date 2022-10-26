@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::pixels_draw::PixelsDrawPipeline;
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
@@ -29,15 +29,15 @@ pub struct RenderPassPlaceOverFrame {
     gfx_queue: Arc<Queue>,
     render_pass: Arc<RenderPass>,
     pixels_draw_pipeline: PixelsDrawPipeline,
-    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
 }
 
 impl RenderPassPlaceOverFrame {
     pub fn new(
         gfx_queue: Arc<Queue>,
         memory_allocator: &impl MemoryAllocator,
-        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
         output_format: Format,
     ) -> RenderPassPlaceOverFrame {
         let render_pass = vulkano::single_pass_renderpass!(gfx_queue.device().clone(),

@@ -10,8 +10,8 @@
 use crate::fractal_compute_pipeline::FractalComputePipeline;
 use crate::place_over_frame::RenderPassPlaceOverFrame;
 use cgmath::Vector2;
+use std::sync::Arc;
 use std::time::Instant;
-use std::{rc::Rc, sync::Arc};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::device::Queue;
@@ -64,10 +64,10 @@ impl FractalApp {
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(
             gfx_queue.device().clone(),
         ));
-        let command_buffer_allocator = Rc::new(StandardCommandBufferAllocator::new(
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             gfx_queue.device().clone(),
         ));
-        let descriptor_set_allocator = Rc::new(StandardDescriptorSetAllocator::new(
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             gfx_queue.device().clone(),
         ));
 

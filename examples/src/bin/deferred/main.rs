@@ -30,7 +30,7 @@ use crate::{
     triangle_draw_system::TriangleDrawSystem,
 };
 use cgmath::{Matrix4, SquareMatrix, Vector3};
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     command_buffer::allocator::StandardCommandBufferAllocator,
     device::{
@@ -166,7 +166,7 @@ fn main() {
     };
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let command_buffer_allocator = Rc::new(StandardCommandBufferAllocator::new(device.clone()));
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(device.clone()));
 
     // Here is the basic initialization for the deferred system.
     let mut frame_system = FrameSystem::new(

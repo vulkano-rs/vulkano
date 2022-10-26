@@ -9,7 +9,7 @@
 
 use cgmath::Vector2;
 use rand::Rng;
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::image::{ImageUsage, StorageImage};
@@ -34,8 +34,8 @@ use vulkano_util::renderer::DeviceImageView;
 pub struct GameOfLifeComputePipeline {
     compute_queue: Arc<Queue>,
     compute_life_pipeline: Arc<ComputePipeline>,
-    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     life_in: Arc<CpuAccessibleBuffer<[u32]>>,
     life_out: Arc<CpuAccessibleBuffer<[u32]>>,
     image: DeviceImageView,
@@ -63,8 +63,8 @@ impl GameOfLifeComputePipeline {
     pub fn new(
         compute_queue: Arc<Queue>,
         memory_allocator: &impl MemoryAllocator,
-        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
         size: [u32; 2],
     ) -> GameOfLifeComputePipeline {
         let life_in = rand_grid(memory_allocator, size);

@@ -30,6 +30,7 @@ use crate::{
 use crossbeam_queue::SegQueue;
 use smallvec::SmallVec;
 use std::{cell::UnsafeCell, marker::PhantomData, mem::ManuallyDrop, sync::Arc, vec::IntoIter};
+use thread_local::ThreadLocal;
 
 /// Types that manage the memory of command buffers.
 ///
@@ -100,9 +101,20 @@ pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync + 'static {
 
 /// Standard implementation of a command buffer allocator.
 ///
-/// A thread can have as many `StandardCommandBufferAllocator`s as needed, but they can't be shared
-/// between threads. This is done so that there are no locks involved when creating command
-/// buffers. You are encouraged to create one allocator per frame in flight per thread.
+/// The intended way to use this allocator is to have one that is used globally for the duration of
+/// the program, in order to avoid creating and destroying [`CommandPool`]s, as that is expensive.
+///
+/// Internally, this allocator keeps one `CommandPool` per queue family index per thread, using
+/// Thread-Local Storage. When a thread first allocates, an entry is reserved for it in the TLS.
+/// After a thread exists and the allocator wasn't dropped yet, its entry is freed, but the pools
+/// it used are not dropped. The next time a new thread allocates for the first time, the entry is
+/// reused along with the pools. If all threads drop their reference to the allocator, all entries
+/// along with the allocator are dropped, even if the threads didn't exit yet, which is why you
+/// should keep the allocator alive for as long as you need to allocate so that the pools can keep
+/// being reused.
+///
+/// This allocator only needs to lock when a thread first allocates or when a thread that
+/// previously allocated exits. In all other cases, allocation is lock-free.
 ///
 /// Command buffers can't be moved between threads during the building process, but finished command
 /// buffers can. When a command buffer is dropped, it is returned back to the pool for reuse.
@@ -110,21 +122,28 @@ pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync + 'static {
 pub struct StandardCommandBufferAllocator {
     device: Arc<Device>,
     /// Each queue family index points directly to its pool.
-    pools: SmallVec<[UnsafeCell<Option<Arc<Pool>>>; 8]>,
+    pools: ThreadLocal<SmallVec<[UnsafeCell<Option<Pool>>; 8]>>,
 }
+
+#[derive(Debug)]
+struct Pool {
+    inner: Arc<PoolInner>,
+}
+
+// This is needed because of the blanket impl of `Send` on `Arc<T>`, which requires that `T` is
+// `Send + Sync`. `PoolInner` is `Send + !Sync` because `CommandPool` is `!Sync`. That's fine
+// however hecause we never access the `CommandPool` concurrently, only drop it once the `Arc`
+// containing it is dropped.
+unsafe impl Send for Pool {}
 
 impl StandardCommandBufferAllocator {
     /// Creates a new `StandardCommandBufferAllocator`.
     #[inline]
     pub fn new(device: Arc<Device>) -> Self {
-        let pools = device
-            .physical_device()
-            .queue_family_properties()
-            .iter()
-            .map(|_| UnsafeCell::new(None))
-            .collect();
-
-        StandardCommandBufferAllocator { device, pools }
+        StandardCommandBufferAllocator {
+            device,
+            pools: ThreadLocal::new(),
+        }
     }
 }
 
@@ -135,6 +154,10 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
 
     type Alloc = StandardCommandBufferAlloc;
 
+    /// Allocates command buffers.
+    ///
+    /// Returns an iterator that contains the requested amount of allocated command buffers.
+    ///
     /// # Panics
     ///
     /// - Panics if the queue family index is not active on the device.
@@ -151,12 +174,26 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
             .active_queue_family_indices()
             .contains(&queue_family_index));
 
-        let pool = unsafe { &mut *self.pools[queue_family_index as usize].get() };
+        let pools = self.pools.get_or(|| {
+            self.device
+                .physical_device()
+                .queue_family_properties()
+                .iter()
+                .map(|_| UnsafeCell::new(None))
+                .collect()
+        });
+
+        let pool = unsafe { &mut *pools[queue_family_index as usize].get() };
         if pool.is_none() {
-            *pool = Some(Pool::new(self.device.clone(), queue_family_index)?);
+            *pool = Some(Pool {
+                inner: PoolInner::new(self.device.clone(), queue_family_index)?,
+            });
         }
 
-        pool.as_ref().unwrap().allocate(level, command_buffer_count)
+        pool.as_ref()
+            .unwrap()
+            .inner
+            .allocate(level, command_buffer_count)
     }
 }
 
@@ -168,7 +205,7 @@ unsafe impl DeviceOwned for StandardCommandBufferAllocator {
 }
 
 #[derive(Debug)]
-struct Pool {
+struct PoolInner {
     // The Vulkan pool specific to a device's queue family.
     inner: CommandPool,
     // List of existing primary command buffers that are available for reuse.
@@ -177,7 +214,7 @@ struct Pool {
     secondary_pool: SegQueue<CommandPoolAlloc>,
 }
 
-impl Pool {
+impl PoolInner {
     fn new(device: Arc<Device>, queue_family_index: u32) -> Result<Arc<Self>, OomError> {
         CommandPool::new(
             device,
@@ -188,7 +225,7 @@ impl Pool {
             },
         )
         .map(|inner| {
-            Arc::new(Pool {
+            Arc::new(PoolInner {
                 inner,
                 primary_pool: Default::default(),
                 secondary_pool: Default::default(),
@@ -224,7 +261,7 @@ impl Pool {
                             cmd: ManuallyDrop::new(cmd),
                             pool: self.clone(),
                         },
-                        dummy_avoid_send_sync: PhantomData,
+                        _marker: PhantomData,
                     });
                 } else {
                     break;
@@ -249,7 +286,7 @@ impl Pool {
                         cmd: ManuallyDrop::new(cmd),
                         pool: self.clone(),
                     },
-                    dummy_avoid_send_sync: PhantomData,
+                    _marker: PhantomData,
                 });
             }
         }
@@ -267,7 +304,7 @@ pub struct StandardCommandBufferBuilderAlloc {
     // Therefore we just share the structs.
     inner: StandardCommandBufferAlloc,
     // Unimplemented `Send` and `Sync` from the builder.
-    dummy_avoid_send_sync: PhantomData<*const u8>,
+    _marker: PhantomData<*const ()>,
 }
 
 unsafe impl CommandBufferBuilderAlloc for StandardCommandBufferBuilderAlloc {
@@ -301,7 +338,7 @@ pub struct StandardCommandBufferAlloc {
     // The actual command buffer. Extracted in the `Drop` implementation.
     cmd: ManuallyDrop<CommandPoolAlloc>,
     // We hold a reference to the command pool for our destructor.
-    pool: Arc<Pool>,
+    pool: Arc<PoolInner>,
 }
 
 unsafe impl Send for StandardCommandBufferAlloc {}
@@ -340,10 +377,9 @@ impl Drop for StandardCommandBufferAlloc {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
-    };
-    use crate::{command_buffer::CommandBufferLevel, VulkanObject};
+    use super::*;
+    use crate::VulkanObject;
+    use std::thread;
 
     #[test]
     fn reuse_command_buffers() {
@@ -365,5 +401,37 @@ mod tests {
             .next()
             .unwrap();
         assert_eq!(raw, cb2.inner().handle());
+    }
+
+    #[test]
+    fn threads_use_different_pools() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let allocator = StandardCommandBufferAllocator::new(device);
+
+        let pool1 = allocator
+            .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
+            .unwrap()
+            .next()
+            .unwrap()
+            .into_alloc()
+            .pool
+            .inner
+            .handle();
+
+        thread::spawn(move || {
+            let pool2 = allocator
+                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
+                .unwrap()
+                .into_alloc()
+                .pool
+                .inner
+                .handle();
+            assert_ne!(pool1, pool2);
+        })
+        .join()
+        .unwrap();
     }
 }

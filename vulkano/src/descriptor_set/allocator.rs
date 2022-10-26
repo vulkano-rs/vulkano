@@ -30,6 +30,7 @@ use crate::{
 };
 use ahash::HashMap;
 use std::{cell::UnsafeCell, sync::Arc};
+use thread_local::ThreadLocal;
 
 /// Types that manage the memory of descriptor sets.
 ///
@@ -69,12 +70,26 @@ pub trait DescriptorSetAlloc: Send + Sync {
 
 /// Standard implementation of a descriptor set allocator.
 ///
-/// Internally, this implementation uses one [`SingleLayoutDescriptorSetPool`] /
-/// [`SingleLayoutVariableDescriptorSetPool`] per descriptor set layout.
+/// The intended way to use this allocator is to have one that is used globally for the duration of
+/// the program, in order to avoid creating and destroying [`DescriptorPool`]s, as that is
+/// expensive.
+///
+/// Internally, this allocator uses one [`SingleLayoutDescriptorSetPool`] /
+/// [`SingleLayoutVariableDescriptorSetPool`] per descriptor set layout per thread, using
+/// Thread-Local Storage. When a thread first allocates, an entry is reserved for it in the TLS.
+/// After a thread exists and the allocator wasn't dropped yet, its entry is freed, but the pools
+/// it used are not dropped. The next time a new thread allocates for the first time, the entry is
+/// reused along with the pools. If all threads drop their reference to the allocator, all entries
+/// along with the allocator are dropped, even if the threads didn't exit yet, which is why you
+/// should keep the allocator alive for as long as you need to allocate so that the pools can keep
+/// being reused.
+///
+/// This allocator only needs to lock when a thread first allocates or when a thread that
+/// previously allocated exits. In all other cases, allocation is lock-free.
 #[derive(Debug)]
 pub struct StandardDescriptorSetAllocator {
     device: Arc<Device>,
-    pools: UnsafeCell<HashMap<Arc<DescriptorSetLayout>, Pool>>,
+    pools: ThreadLocal<UnsafeCell<HashMap<Arc<DescriptorSetLayout>, Pool>>>,
 }
 
 #[derive(Debug)]
@@ -89,7 +104,7 @@ impl StandardDescriptorSetAllocator {
     pub fn new(device: Arc<Device>) -> StandardDescriptorSetAllocator {
         StandardDescriptorSetAllocator {
             device,
-            pools: UnsafeCell::new(HashMap::default()),
+            pools: ThreadLocal::new(),
         }
     }
 }
@@ -97,6 +112,14 @@ impl StandardDescriptorSetAllocator {
 unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
     type Alloc = StandardDescriptorSetAlloc;
 
+    /// Allocates a descriptor set.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the provided `layout` is for push descriptors rather than regular descriptor
+    ///   sets.
+    /// - Panics if the provided `variable_descriptor_count` is greater than the maximum number of
+    ///   variable count descriptors in the set.
     #[inline]
     fn allocate(
         &self,
@@ -119,7 +142,8 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
             max_count,
         );
 
-        let pools = unsafe { &mut *self.pools.get() };
+        let pools = self.pools.get_or(|| UnsafeCell::new(HashMap::default()));
+        let pools = unsafe { &mut *pools.get() };
 
         // We do this instead of using `HashMap::entry` directly because that would involve cloning
         // an `Arc` every time. `hash_raw_entry` is still not stabilized >:(
@@ -179,5 +203,59 @@ impl DescriptorSetAlloc for StandardDescriptorSetAlloc {
             PoolAlloc::Fixed(alloc) => alloc.inner_mut(),
             PoolAlloc::Variable(alloc) => alloc.inner_mut(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        descriptor_set::layout::{
+            DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType,
+        },
+        shader::ShaderStages,
+        VulkanObject,
+    };
+    use std::thread;
+
+    #[test]
+    fn threads_use_different_pools() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let layout = DescriptorSetLayout::new(
+            device.clone(),
+            DescriptorSetLayoutCreateInfo {
+                bindings: [(
+                    0,
+                    DescriptorSetLayoutBinding {
+                        stages: ShaderStages::all_graphics(),
+                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                    },
+                )]
+                .into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let allocator = StandardDescriptorSetAllocator::new(device);
+
+        let pool1 = if let PoolAlloc::Fixed(alloc) = allocator.allocate(&layout, 0).unwrap().inner {
+            alloc.pool().handle()
+        } else {
+            unreachable!()
+        };
+
+        thread::spawn(move || {
+            let pool2 =
+                if let PoolAlloc::Fixed(alloc) = allocator.allocate(&layout, 0).unwrap().inner {
+                    alloc.pool().handle()
+                } else {
+                    unreachable!()
+                };
+            assert_ne!(pool1, pool2);
+        })
+        .join()
+        .unwrap();
     }
 }

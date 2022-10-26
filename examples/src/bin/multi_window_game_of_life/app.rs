@@ -11,7 +11,7 @@ use crate::{
     game_of_life::GameOfLifeComputePipeline, render_pass::RenderPassPlaceOverFrame, SCALING,
     WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
-use std::{collections::HashMap, rc::Rc, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::memory::allocator::StandardMemoryAllocator;
@@ -33,10 +33,10 @@ impl RenderPipeline {
         swapchain_format: Format,
     ) -> RenderPipeline {
         let memory_allocator = StandardMemoryAllocator::new_default(gfx_queue.device().clone());
-        let command_buffer_allocator = Rc::new(StandardCommandBufferAllocator::new(
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             gfx_queue.device().clone(),
         ));
-        let descriptor_set_allocator = Rc::new(StandardDescriptorSetAllocator::new(
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             gfx_queue.device().clone(),
         ));
 
