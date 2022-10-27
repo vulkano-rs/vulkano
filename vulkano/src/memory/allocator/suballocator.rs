@@ -1005,7 +1005,7 @@ pub struct FreeListAllocator {
     atom_size: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
-    inner: Mutex<FreeListAllocatorInner>,
+    state: Mutex<FreeListAllocatorState>,
 }
 
 impl FreeListAllocator {
@@ -1050,7 +1050,7 @@ impl FreeListAllocator {
             ty: SuballocationType::Free,
         });
         free_list.push(root_id);
-        let inner = Mutex::new(FreeListAllocatorInner { nodes, free_list });
+        let state = Mutex::new(FreeListAllocatorState { nodes, free_list });
 
         Arc::new(FreeListAllocator {
             region,
@@ -1058,17 +1058,17 @@ impl FreeListAllocator {
             buffer_image_granularity,
             atom_size,
             free_size,
-            inner,
+            state,
         })
     }
 
     fn free(&self, id: SlotId) {
-        let mut inner = self.inner.lock();
+        let mut state = self.state.lock();
         self.free_size
-            .fetch_add(inner.nodes.get(id).size, Ordering::Release);
-        inner.nodes.get_mut(id).ty = SuballocationType::Free;
-        inner.coalesce(id);
-        inner.free(id);
+            .fetch_add(state.nodes.get(id).size, Ordering::Release);
+        state.nodes.get_mut(id).ty = SuballocationType::Free;
+        state.coalesce(id);
+        state.free(id);
     }
 }
 
@@ -1135,13 +1135,13 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
         } = create_info;
 
         let alignment = DeviceSize::max(alignment, self.atom_size);
-        let mut inner = self.inner.lock();
+        let mut state = self.state.lock();
 
-        match inner.free_list.last() {
-            Some(&last) if inner.nodes.get(last).size >= size => {
-                let index = match inner
+        match state.free_list.last() {
+            Some(&last) if state.nodes.get(last).size >= size => {
+                let index = match state
                     .free_list
-                    .binary_search_by_key(&size, |&x| inner.nodes.get(x).size)
+                    .binary_search_by_key(&size, |&x| state.nodes.get(x).size)
                 {
                     // Exact fit.
                     Ok(index) => index,
@@ -1150,12 +1150,12 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                     Err(index) => index,
                 };
 
-                for &id in &inner.free_list[index..] {
-                    let suballoc = inner.nodes.get(id);
+                for &id in &state.free_list[index..] {
+                    let suballoc = state.nodes.get(id);
                     let mut offset = align_up(suballoc.offset, alignment);
 
                     if let Some(prev_id) = suballoc.prev {
-                        let prev = inner.nodes.get(prev_id);
+                        let prev = state.nodes.get(prev_id);
 
                         if are_blocks_on_same_page(
                             prev.offset,
@@ -1169,9 +1169,9 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                     }
 
                     if offset + size <= suballoc.offset + suballoc.size {
-                        inner.allocate(id);
-                        inner.split(id, offset, size);
-                        inner.nodes.get_mut(id).ty = allocation_type.into();
+                        state.allocate(id);
+                        state.split(id, offset, size);
+                        state.nodes.get_mut(id).ty = allocation_type.into();
                         self.free_size.fetch_sub(size, Ordering::Release);
 
                         return Ok(MemoryAlloc {
@@ -1233,7 +1233,7 @@ unsafe impl DeviceOwned for FreeListAllocator {
 }
 
 #[derive(Debug)]
-struct FreeListAllocatorInner {
+struct FreeListAllocatorState {
     nodes: host::PoolAllocator<SuballocationListNode>,
     // Free suballocations sorted by size in ascending order. This means we can always find a
     // best-fit in *O*(log(*n*)) time in the worst case, and iterating in order is very efficient.
@@ -1269,7 +1269,7 @@ impl From<AllocationType> for SuballocationType {
     }
 }
 
-impl FreeListAllocatorInner {
+impl FreeListAllocatorState {
     /// Removes the target suballocation from the free-list. The free-list must contain it.
     fn allocate(&mut self, node_id: SlotId) {
         debug_assert!(self.free_list.contains(&node_id));
@@ -1527,7 +1527,7 @@ pub struct BuddyAllocator {
     atom_size: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
-    inner: Mutex<BuddyAllocatorInner>,
+    state: Mutex<BuddyAllocatorState>,
 }
 
 impl BuddyAllocator {
@@ -1575,7 +1575,7 @@ impl BuddyAllocator {
         let mut free_list = ArrayVec::new(max_order + 1, [EMPTY_FREE_LIST; Self::MAX_ORDERS]);
         // The root node has the lowest offset and highest order, so it's the whole region.
         free_list[max_order].push(region.offset);
-        let inner = Mutex::new(BuddyAllocatorInner { free_list });
+        let state = Mutex::new(BuddyAllocatorState { free_list });
 
         Arc::new(BuddyAllocator {
             region,
@@ -1583,15 +1583,15 @@ impl BuddyAllocator {
             buffer_image_granularity,
             atom_size,
             free_size,
-            inner,
+            state,
         })
     }
 
     fn free(&self, min_order: usize, mut offset: DeviceSize) {
-        let mut inner = self.inner.lock();
+        let mut state = self.state.lock();
 
         // Try to coalesce nodes while incrementing the order.
-        for (order, free_list) in inner.free_list.iter_mut().enumerate().skip(min_order) {
+        for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
             let size = Self::MIN_NODE_SIZE << order;
             let buddy_offset = ((offset - self.region.offset) ^ size) + self.region.offset;
 
@@ -1686,17 +1686,17 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
         let size = DeviceSize::max(size, BuddyAllocator::MIN_NODE_SIZE).next_power_of_two();
         let alignment = DeviceSize::max(alignment, self.atom_size);
         let min_order = (size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
-        let mut inner = self.inner.lock();
+        let mut state = self.state.lock();
 
         // Start searching at the lowest possible order going up.
-        for (order, free_list) in inner.free_list.iter_mut().enumerate().skip(min_order) {
+        for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
             for (index, &offset) in free_list.iter().enumerate() {
                 if offset % alignment == 0 {
                     free_list.remove(index);
 
                     // Go in the opposite direction, splitting nodes from higher orders. The lowest
                     // order doesn't need any splitting.
-                    for (order, free_list) in inner
+                    for (order, free_list) in state
                         .free_list
                         .iter_mut()
                         .enumerate()
@@ -1774,7 +1774,7 @@ unsafe impl DeviceOwned for BuddyAllocator {
 }
 
 #[derive(Debug)]
-struct BuddyAllocatorInner {
+struct BuddyAllocatorState {
     // Every order has its own free-list for convenience, so that we don't have to traverse a tree.
     // Each free-list is sorted by offset because we want to find the first-fit as this strategy
     // minimizes external fragmentation.
