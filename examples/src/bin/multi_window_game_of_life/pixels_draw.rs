@@ -8,7 +8,7 @@
 // according to those terms.
 
 use bytemuck::{Pod, Zeroable};
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
@@ -72,8 +72,8 @@ pub struct PixelsDrawPipeline {
     gfx_queue: Arc<Queue>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
-    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     vertices: Arc<CpuAccessibleBuffer<[TexturedVertex]>>,
     indices: Arc<CpuAccessibleBuffer<[u32]>>,
 }
@@ -83,8 +83,8 @@ impl PixelsDrawPipeline {
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
         memory_allocator: &impl MemoryAllocator,
-        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let vertex_buffer = CpuAccessibleBuffer::<[TexturedVertex]>::from_iter(

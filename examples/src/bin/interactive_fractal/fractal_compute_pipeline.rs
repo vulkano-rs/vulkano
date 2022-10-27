@@ -9,7 +9,7 @@
 
 use cgmath::Vector2;
 use rand::Rng;
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
@@ -31,8 +31,8 @@ pub struct FractalComputePipeline {
     queue: Arc<Queue>,
     pipeline: Arc<ComputePipeline>,
     memory_allocator: Arc<StandardMemoryAllocator>,
-    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     palette: Arc<CpuAccessibleBuffer<[[f32; 4]]>>,
     palette_size: i32,
     end_color: [f32; 4],
@@ -42,8 +42,8 @@ impl FractalComputePipeline {
     pub fn new(
         queue: Arc<Queue>,
         memory_allocator: Arc<StandardMemoryAllocator>,
-        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> FractalComputePipeline {
         // Initial colors
         let colors = vec![

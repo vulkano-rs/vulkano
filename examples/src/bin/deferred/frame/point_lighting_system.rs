@@ -9,7 +9,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{Matrix4, Vector3};
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
@@ -40,8 +40,8 @@ pub struct PointLightingSystem {
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
-    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-    descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 }
 
 impl PointLightingSystem {
@@ -50,8 +50,8 @@ impl PointLightingSystem {
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
         memory_allocator: &impl MemoryAllocator,
-        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Rc<StandardDescriptorSetAllocator>,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> PointLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader

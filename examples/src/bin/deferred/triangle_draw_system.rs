@@ -8,7 +8,7 @@
 // according to those terms.
 
 use bytemuck::{Pod, Zeroable};
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
@@ -35,7 +35,7 @@ pub struct TriangleDrawSystem {
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
-    command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
 }
 
 impl TriangleDrawSystem {
@@ -44,7 +44,7 @@ impl TriangleDrawSystem {
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
         memory_allocator: &StandardMemoryAllocator,
-        command_buffer_allocator: Rc<StandardCommandBufferAllocator>,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     ) -> TriangleDrawSystem {
         let vertices = [
             Vertex {

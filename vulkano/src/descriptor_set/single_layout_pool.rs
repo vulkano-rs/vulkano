@@ -52,8 +52,9 @@ pub struct SingleLayoutDescriptorSetPool {
     layout: Arc<DescriptorSetLayout>,
 }
 
-// This is needed because of the blanket impl on `Arc<T>`, which requires that `T` is `Send + Sync`.
-// `SingleLayoutPool` is `Send + !Sync`.
+// This is needed because of the blanket impl of `Send` on `Arc<T>`, which requires that `T` is
+// `Send + Sync`. `SingleLayoutPool` is `Send + !Sync` because `DescriptorPool` is `!Sync`. That's
+// fine however because we never access the `DescriptorPool`.
 unsafe impl Send for SingleLayoutDescriptorSetPool {}
 
 impl SingleLayoutDescriptorSetPool {
@@ -191,6 +192,13 @@ pub(crate) struct SingleLayoutPoolAlloc {
     pool: Arc<SingleLayoutPool>,
 }
 
+impl SingleLayoutPoolAlloc {
+    #[cfg(test)]
+    pub(crate) fn pool(&self) -> &DescriptorPool {
+        &self.pool._inner
+    }
+}
+
 // This is required for the same reason as for `SingleLayoutDescriptorSetPool`.
 unsafe impl Send for SingleLayoutPoolAlloc {}
 // `DescriptorPool` is `!Sync`, but we never access it, only keep it alive.
@@ -278,8 +286,10 @@ pub struct SingleLayoutVariableDescriptorSetPool {
     allocated_sets: Cell<usize>,
 }
 
-// This is needed because of the blanket impl on `Arc<T>`, which requires that `T` is `Send + Sync`.
-// `SingleLayoutVariablePool` is `Send + !Sync`.
+// This is needed because of the blanket impl of `Send` on `Arc<T>`, which requires that `T` is
+// `Send + Sync`. `SingleLayoutVariablePool` is `Send + !Sync` because `DescriptorPool` is `!Sync`.
+// That's fine however because we never access the `DescriptorPool` concurrently, only drop it once
+// the `Arc` containing it is dropped.
 unsafe impl Send for SingleLayoutVariableDescriptorSetPool {}
 
 impl SingleLayoutVariableDescriptorSetPool {
