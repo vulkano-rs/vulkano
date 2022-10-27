@@ -1393,13 +1393,9 @@ impl FreeListAllocatorInner {
         debug_assert!(!self.free_list.contains(&node_id));
 
         let node = self.nodes.get(node_id);
-        let index = match self
+        let (Ok(index) | Err(index)) = self
             .free_list
-            .binary_search_by_key(&node.size, |&x| self.nodes.get(x).size)
-        {
-            Ok(index) => index,
-            Err(index) => index,
-        };
+            .binary_search_by_key(&node.size, |&x| self.nodes.get(x).size);
         self.free_list.insert(index, node_id);
     }
 
@@ -1607,10 +1603,7 @@ impl BuddyAllocator {
                 }
                 // Otherwise free the node.
                 Err(_) => {
-                    let index = match free_list.binary_search(&offset) {
-                        Ok(index) => index,
-                        Err(index) => index,
-                    };
+                    let (Ok(index) | Err(index)) = free_list.binary_search(&offset);
                     free_list.insert(index, offset);
                     self.free_size
                         .fetch_add(Self::MIN_NODE_SIZE << min_order, Ordering::Release);
