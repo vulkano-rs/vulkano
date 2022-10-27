@@ -1036,7 +1036,7 @@ impl FreeListAllocator {
         let root_id = nodes.allocate(SuballocationListNode {
             prev: None,
             next: None,
-            offset: 0,
+            offset: region.offset,
             size: region.size,
             ty: SuballocationType::Free,
         });
@@ -1143,7 +1143,7 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
 
                 for &id in &inner.free_list[index..] {
                     let suballoc = inner.nodes.get(id);
-                    let mut offset = align_up(self.region.offset + suballoc.offset, alignment);
+                    let mut offset = align_up(suballoc.offset, alignment);
 
                     if let Some(prev_id) = suballoc.prev {
                         let prev = inner.nodes.get(prev_id);
@@ -2095,13 +2095,18 @@ impl PoolAllocatorInner {
             .free_list
             .pop()
             .ok_or(SuballocationCreationError::OutOfRegionMemory)?;
-        let unaligned_offset = index * self.block_size;
+        let unaligned_offset = self.region.offset + index * self.block_size;
         let offset = align_up(unaligned_offset, alignment);
 
         if offset + size > unaligned_offset + self.block_size {
             self.free_list.push(index).unwrap();
 
-            return Err(SuballocationCreationError::BlockSizeExceeded);
+            return if size > self.block_size {
+                Err(SuballocationCreationError::BlockSizeExceeded)
+            } else {
+                // There is not enough space due to alignment requirements.
+                Err(SuballocationCreationError::OutOfRegionMemory)
+            };
         }
 
         Ok(MemoryAlloc {
@@ -2255,7 +2260,7 @@ impl BumpAllocator {
     #[inline]
     pub unsafe fn reset_unchecked(&self) {
         self.state
-            .store(self.region.allocation_type as u64, Ordering::Relaxed);
+            .store(self.region.allocation_type as u64, Ordering::Release);
     }
 }
 

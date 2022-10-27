@@ -1028,7 +1028,11 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     memory_type_index,
                     create_info.size,
                     None,
-                    self.export_handle_types[memory_type_index as usize],
+                    if !self.export_handle_types.is_empty() {
+                        self.export_handle_types[memory_type_index as usize]
+                    } else {
+                        ExternalMemoryHandleTypes::empty()
+                    },
                 )
             };
         }
