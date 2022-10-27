@@ -1,3 +1,12 @@
+// Copyright (c) 2016 The vulkano developers
+// Licensed under the Apache License, Version 2.0
+// <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
+// at your option. All files in the project carrying such
+// notice may not be copied, modified, or distributed except
+// according to those terms.
+
 //! Suballocators are used to divide a *region* into smaller *suballocations*.
 //!
 //! See also [the parent module] for details about memory allocation in Vulkan.
@@ -1502,7 +1511,8 @@ impl FreeListAllocatorInner {
 ///         block_sizes: &[(0, 64 * 1024 * 1024)],
 ///         ..Default::default()
 ///     },
-/// );
+/// )
+/// .unwrap();
 ///
 /// // Now you can use `memory_allocator` to allocate whatever it is you need.
 /// ```
@@ -1876,7 +1886,8 @@ struct BuddyAllocatorInner {
 ///         block_sizes: &[(0, 64 * 1024 * 1024)],
 ///         ..Default::default()
 ///     },
-/// );
+/// )
+/// .unwrap();
 ///
 /// // Now you can use `memory_allocator` to allocate whatever it is you need.
 /// ```
@@ -1963,6 +1974,9 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLO
 
     /// Creates a new suballocation within the [region].
     ///
+    /// > **Note**: `create_info.allocation_type` is silently ignored because all suballocations
+    /// > inherit the allocation type from the region.
+    ///
     /// # Panics
     ///
     /// - Panics if `create_info.size` is zero.
@@ -1976,6 +1990,7 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLO
     ///   block in the free-list is tried, which means that if one block isn't usable due to
     ///   [internal fragmentation] but a different one would be, you still get this error. See the
     ///   [type-level documentation] for details on how to properly configure your allocator.
+    /// - Returns [`BlockSizeExceeded`] if `create_info.size` exceeds `BLOCK_SIZE`.
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
@@ -1983,6 +1998,7 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLO
     /// [free-list]: Suballocator#free-lists
     /// [internal fragmentation]: super#internal-fragmentation
     /// [type-level documentation]: PoolAllocator
+    /// [`BlockSizeExceeded`]: SuballocationCreationError::BlockSizeExceeded
     #[inline]
     fn allocate(
         &self,
