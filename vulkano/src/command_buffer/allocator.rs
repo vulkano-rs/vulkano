@@ -106,7 +106,7 @@ pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync + 'static {
 ///
 /// Internally, this allocator keeps one `CommandPool` per queue family index per thread, using
 /// Thread-Local Storage. When a thread first allocates, an entry is reserved for it in the TLS.
-/// After a thread exists and the allocator wasn't dropped yet, its entry is freed, but the pools
+/// After a thread exits and the allocator wasn't dropped yet, its entry is freed, but the pools
 /// it used are not dropped. The next time a new thread allocates for the first time, the entry is
 /// reused along with the pools. If all threads drop their reference to the allocator, all entries
 /// along with the allocator are dropped, even if the threads didn't exit yet, which is why you
@@ -132,7 +132,7 @@ struct Pool {
 
 // This is needed because of the blanket impl of `Send` on `Arc<T>`, which requires that `T` is
 // `Send + Sync`. `PoolInner` is `Send + !Sync` because `CommandPool` is `!Sync`. That's fine
-// however hecause we never access the `CommandPool` concurrently, only drop it once the `Arc`
+// however because we never access the `CommandPool` concurrently, only drop it once the `Arc`
 // containing it is dropped.
 unsafe impl Send for Pool {}
 
