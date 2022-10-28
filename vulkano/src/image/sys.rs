@@ -20,6 +20,7 @@ use super::{
 };
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
+    cache::OnceCache,
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     image::{
@@ -73,6 +74,7 @@ pub struct RawImage {
 
     memory_requirements: SmallVec<[MemoryRequirements; 3]>,
     needs_destruction: bool, // `vkDestroyImage` is called only if true.
+    subresource_layout: OnceCache<(ImageAspect, u32, u32), SubresourceLayout>,
 }
 
 impl RawImage {
@@ -1024,6 +1026,7 @@ impl RawImage {
 
             memory_requirements,
             needs_destruction,
+            subresource_layout: OnceCache::new(),
         }
     }
 
@@ -1695,10 +1698,8 @@ impl RawImage {
     /// Multi-planar formats are supported, but you must specify one of the planes as the `aspect`,
     /// not [`ImageAspect::Color`].
     ///
-    /// The layout is invariant for each image. However it is not cached, as this would waste
-    /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
-    /// somewhere in order to avoid calling this semi-expensive function at every single memory
-    /// access.
+    /// The results of this function are cached, so that future calls with the same arguments
+    /// do not need to make a call to the Vulkan API again.
     pub fn subresource_layout(
         &self,
         aspect: ImageAspect,
@@ -1782,31 +1783,36 @@ impl RawImage {
         mip_level: u32,
         array_layer: u32,
     ) -> SubresourceLayout {
-        let fns = self.device.fns();
+        self.subresource_layout.get_or_insert(
+            (aspect, mip_level, array_layer),
+            |&(aspect, mip_level, array_layer)| {
+                let fns = self.device.fns();
 
-        let subresource = ash::vk::ImageSubresource {
-            aspect_mask: aspect.into(),
-            mip_level,
-            array_layer,
-        };
+                let subresource = ash::vk::ImageSubresource {
+                    aspect_mask: aspect.into(),
+                    mip_level,
+                    array_layer,
+                };
 
-        let mut output = MaybeUninit::uninit();
-        (fns.v1_0.get_image_subresource_layout)(
-            self.device.handle(),
-            self.handle,
-            &subresource,
-            output.as_mut_ptr(),
-        );
-        let output = output.assume_init();
+                let mut output = MaybeUninit::uninit();
+                (fns.v1_0.get_image_subresource_layout)(
+                    self.device.handle(),
+                    self.handle,
+                    &subresource,
+                    output.as_mut_ptr(),
+                );
+                let output = output.assume_init();
 
-        SubresourceLayout {
-            offset: output.offset,
-            size: output.size,
-            row_pitch: output.row_pitch,
-            array_pitch: (self.dimensions.array_layers() > 1).then_some(output.array_pitch),
-            depth_pitch: matches!(self.dimensions, ImageDimensions::Dim3d { .. })
-                .then_some(output.depth_pitch),
-        }
+                SubresourceLayout {
+                    offset: output.offset,
+                    size: output.size,
+                    row_pitch: output.row_pitch,
+                    array_pitch: (self.dimensions.array_layers() > 1).then_some(output.array_pitch),
+                    depth_pitch: matches!(self.dimensions, ImageDimensions::Dim3d { .. })
+                        .then_some(output.depth_pitch),
+                }
+            },
+        )
     }
 }
 
