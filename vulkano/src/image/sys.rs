@@ -1985,7 +1985,7 @@ pub enum ImageMemory {
     /// The image is backed by sparse memory, bound with [`bind_sparse`].
     ///
     /// [`bind_sparse`]: crate::device::QueueGuard::bind_sparse
-    Sparse,
+    Sparse(Vec<SparseImageMemoryRequirements>),
 
     /// The image is backed by memory owned by a [`Swapchain`].
     Swapchain {
