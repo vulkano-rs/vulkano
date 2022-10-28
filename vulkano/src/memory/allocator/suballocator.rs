@@ -1,3 +1,12 @@
+// Copyright (c) 2016 The vulkano developers
+// Licensed under the Apache License, Version 2.0
+// <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
+// at your option. All files in the project carrying such
+// notice may not be copied, modified, or distributed except
+// according to those terms.
+
 //! Suballocators are used to divide a *region* into smaller *suballocations*.
 //!
 //! See also [the parent module] for details about memory allocation in Vulkan.
@@ -996,7 +1005,7 @@ pub struct FreeListAllocator {
     atom_size: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
-    inner: Mutex<FreeListAllocatorInner>,
+    state: Mutex<FreeListAllocatorState>,
 }
 
 impl FreeListAllocator {
@@ -1036,12 +1045,12 @@ impl FreeListAllocator {
         let root_id = nodes.allocate(SuballocationListNode {
             prev: None,
             next: None,
-            offset: 0,
+            offset: region.offset,
             size: region.size,
             ty: SuballocationType::Free,
         });
         free_list.push(root_id);
-        let inner = Mutex::new(FreeListAllocatorInner { nodes, free_list });
+        let state = Mutex::new(FreeListAllocatorState { nodes, free_list });
 
         Arc::new(FreeListAllocator {
             region,
@@ -1049,17 +1058,17 @@ impl FreeListAllocator {
             buffer_image_granularity,
             atom_size,
             free_size,
-            inner,
+            state,
         })
     }
 
     fn free(&self, id: SlotId) {
-        let mut inner = self.inner.lock();
+        let mut state = self.state.lock();
         self.free_size
-            .fetch_add(inner.nodes.get(id).size, Ordering::Release);
-        inner.nodes.get_mut(id).ty = SuballocationType::Free;
-        inner.coalesce(id);
-        inner.free(id);
+            .fetch_add(state.nodes.get(id).size, Ordering::Release);
+        state.nodes.get_mut(id).ty = SuballocationType::Free;
+        state.coalesce(id);
+        state.free(id);
     }
 }
 
@@ -1126,13 +1135,13 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
         } = create_info;
 
         let alignment = DeviceSize::max(alignment, self.atom_size);
-        let mut inner = self.inner.lock();
+        let mut state = self.state.lock();
 
-        match inner.free_list.last() {
-            Some(&last) if inner.nodes.get(last).size >= size => {
-                let index = match inner
+        match state.free_list.last() {
+            Some(&last) if state.nodes.get(last).size >= size => {
+                let index = match state
                     .free_list
-                    .binary_search_by_key(&size, |&x| inner.nodes.get(x).size)
+                    .binary_search_by_key(&size, |&x| state.nodes.get(x).size)
                 {
                     // Exact fit.
                     Ok(index) => index,
@@ -1141,12 +1150,12 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                     Err(index) => index,
                 };
 
-                for &id in &inner.free_list[index..] {
-                    let suballoc = inner.nodes.get(id);
-                    let mut offset = align_up(self.region.offset + suballoc.offset, alignment);
+                for &id in &state.free_list[index..] {
+                    let suballoc = state.nodes.get(id);
+                    let mut offset = align_up(suballoc.offset, alignment);
 
                     if let Some(prev_id) = suballoc.prev {
-                        let prev = inner.nodes.get(prev_id);
+                        let prev = state.nodes.get(prev_id);
 
                         if are_blocks_on_same_page(
                             prev.offset,
@@ -1160,9 +1169,9 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                     }
 
                     if offset + size <= suballoc.offset + suballoc.size {
-                        inner.allocate(id);
-                        inner.split(id, offset, size);
-                        inner.nodes.get_mut(id).ty = allocation_type.into();
+                        state.allocate(id);
+                        state.split(id, offset, size);
+                        state.nodes.get_mut(id).ty = allocation_type.into();
                         self.free_size.fetch_sub(size, Ordering::Release);
 
                         return Ok(MemoryAlloc {
@@ -1224,7 +1233,7 @@ unsafe impl DeviceOwned for FreeListAllocator {
 }
 
 #[derive(Debug)]
-struct FreeListAllocatorInner {
+struct FreeListAllocatorState {
     nodes: host::PoolAllocator<SuballocationListNode>,
     // Free suballocations sorted by size in ascending order. This means we can always find a
     // best-fit in *O*(log(*n*)) time in the worst case, and iterating in order is very efficient.
@@ -1260,7 +1269,7 @@ impl From<AllocationType> for SuballocationType {
     }
 }
 
-impl FreeListAllocatorInner {
+impl FreeListAllocatorState {
     /// Removes the target suballocation from the free-list. The free-list must contain it.
     fn allocate(&mut self, node_id: SlotId) {
         debug_assert!(self.free_list.contains(&node_id));
@@ -1384,13 +1393,9 @@ impl FreeListAllocatorInner {
         debug_assert!(!self.free_list.contains(&node_id));
 
         let node = self.nodes.get(node_id);
-        let index = match self
+        let (Ok(index) | Err(index)) = self
             .free_list
-            .binary_search_by_key(&node.size, |&x| self.nodes.get(x).size)
-        {
-            Ok(index) => index,
-            Err(index) => index,
-        };
+            .binary_search_by_key(&node.size, |&x| self.nodes.get(x).size);
         self.free_list.insert(index, node_id);
     }
 
@@ -1502,7 +1507,8 @@ impl FreeListAllocatorInner {
 ///         block_sizes: &[(0, 64 * 1024 * 1024)],
 ///         ..Default::default()
 ///     },
-/// );
+/// )
+/// .unwrap();
 ///
 /// // Now you can use `memory_allocator` to allocate whatever it is you need.
 /// ```
@@ -1521,7 +1527,7 @@ pub struct BuddyAllocator {
     atom_size: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
-    inner: Mutex<BuddyAllocatorInner>,
+    state: Mutex<BuddyAllocatorState>,
 }
 
 impl BuddyAllocator {
@@ -1569,7 +1575,7 @@ impl BuddyAllocator {
         let mut free_list = ArrayVec::new(max_order + 1, [EMPTY_FREE_LIST; Self::MAX_ORDERS]);
         // The root node has the lowest offset and highest order, so it's the whole region.
         free_list[max_order].push(region.offset);
-        let inner = Mutex::new(BuddyAllocatorInner { free_list });
+        let state = Mutex::new(BuddyAllocatorState { free_list });
 
         Arc::new(BuddyAllocator {
             region,
@@ -1577,15 +1583,15 @@ impl BuddyAllocator {
             buffer_image_granularity,
             atom_size,
             free_size,
-            inner,
+            state,
         })
     }
 
     fn free(&self, min_order: usize, mut offset: DeviceSize) {
-        let mut inner = self.inner.lock();
+        let mut state = self.state.lock();
 
         // Try to coalesce nodes while incrementing the order.
-        for (order, free_list) in inner.free_list.iter_mut().enumerate().skip(min_order) {
+        for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
             let size = Self::MIN_NODE_SIZE << order;
             let buddy_offset = ((offset - self.region.offset) ^ size) + self.region.offset;
 
@@ -1597,10 +1603,7 @@ impl BuddyAllocator {
                 }
                 // Otherwise free the node.
                 Err(_) => {
-                    let index = match free_list.binary_search(&offset) {
-                        Ok(index) => index,
-                        Err(index) => index,
-                    };
+                    let (Ok(index) | Err(index)) = free_list.binary_search(&offset);
                     free_list.insert(index, offset);
                     self.free_size
                         .fetch_add(Self::MIN_NODE_SIZE << min_order, Ordering::Release);
@@ -1683,17 +1686,17 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
         let size = DeviceSize::max(size, BuddyAllocator::MIN_NODE_SIZE).next_power_of_two();
         let alignment = DeviceSize::max(alignment, self.atom_size);
         let min_order = (size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
-        let mut inner = self.inner.lock();
+        let mut state = self.state.lock();
 
         // Start searching at the lowest possible order going up.
-        for (order, free_list) in inner.free_list.iter_mut().enumerate().skip(min_order) {
+        for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
             for (index, &offset) in free_list.iter().enumerate() {
                 if offset % alignment == 0 {
                     free_list.remove(index);
 
                     // Go in the opposite direction, splitting nodes from higher orders. The lowest
                     // order doesn't need any splitting.
-                    for (order, free_list) in inner
+                    for (order, free_list) in state
                         .free_list
                         .iter_mut()
                         .enumerate()
@@ -1771,7 +1774,7 @@ unsafe impl DeviceOwned for BuddyAllocator {
 }
 
 #[derive(Debug)]
-struct BuddyAllocatorInner {
+struct BuddyAllocatorState {
     // Every order has its own free-list for convenience, so that we don't have to traverse a tree.
     // Each free-list is sorted by offset because we want to find the first-fit as this strategy
     // minimizes external fragmentation.
@@ -1876,7 +1879,8 @@ struct BuddyAllocatorInner {
 ///         block_sizes: &[(0, 64 * 1024 * 1024)],
 ///         ..Default::default()
 ///     },
-/// );
+/// )
+/// .unwrap();
 ///
 /// // Now you can use `memory_allocator` to allocate whatever it is you need.
 /// ```
@@ -1963,6 +1967,9 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLO
 
     /// Creates a new suballocation within the [region].
     ///
+    /// > **Note**: `create_info.allocation_type` is silently ignored because all suballocations
+    /// > inherit the allocation type from the region.
+    ///
     /// # Panics
     ///
     /// - Panics if `create_info.size` is zero.
@@ -1976,6 +1983,7 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLO
     ///   block in the free-list is tried, which means that if one block isn't usable due to
     ///   [internal fragmentation] but a different one would be, you still get this error. See the
     ///   [type-level documentation] for details on how to properly configure your allocator.
+    /// - Returns [`BlockSizeExceeded`] if `create_info.size` exceeds `BLOCK_SIZE`.
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
@@ -1983,6 +1991,7 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLO
     /// [free-list]: Suballocator#free-lists
     /// [internal fragmentation]: super#internal-fragmentation
     /// [type-level documentation]: PoolAllocator
+    /// [`BlockSizeExceeded`]: SuballocationCreationError::BlockSizeExceeded
     #[inline]
     fn allocate(
         &self,
@@ -2095,13 +2104,18 @@ impl PoolAllocatorInner {
             .free_list
             .pop()
             .ok_or(SuballocationCreationError::OutOfRegionMemory)?;
-        let unaligned_offset = index * self.block_size;
+        let unaligned_offset = self.region.offset + index * self.block_size;
         let offset = align_up(unaligned_offset, alignment);
 
         if offset + size > unaligned_offset + self.block_size {
             self.free_list.push(index).unwrap();
 
-            return Err(SuballocationCreationError::BlockSizeExceeded);
+            return if size > self.block_size {
+                Err(SuballocationCreationError::BlockSizeExceeded)
+            } else {
+                // There is not enough space due to alignment requirements.
+                Err(SuballocationCreationError::OutOfRegionMemory)
+            };
         }
 
         Ok(MemoryAlloc {
@@ -2255,7 +2269,7 @@ impl BumpAllocator {
     #[inline]
     pub unsafe fn reset_unchecked(&self) {
         self.state
-            .store(self.region.allocation_type as u64, Ordering::Relaxed);
+            .store(self.region.allocation_type as u64, Ordering::Release);
     }
 }
 

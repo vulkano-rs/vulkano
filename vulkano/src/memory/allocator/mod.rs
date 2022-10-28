@@ -382,7 +382,6 @@ pub struct AllocationCreateInfo<'d> {
     ///
     /// [`alignment`]: MemoryRequirements::alignment
     /// [`memory_type_bits`]: MemoryRequirements::memory_type_bits
-    ///
     /// [`UnsafeBuffer::memory_requirements`]: crate::buffer::sys::UnsafeBuffer::memory_requirements
     /// [`UnsafeImage::memory_requirements`]: crate::image::sys::UnsafeImage::memory_requirements
     pub requirements: MemoryRequirements,
@@ -465,8 +464,8 @@ pub enum MemoryUsage {
     /// once and then never again, or resources that are only written and read by the GPU, like
     /// render targets and intermediary buffers.
     ///
-    /// [`device_local`]: super::MemoryPropertyFlags::device_local
-    /// [`host_visible`]: super::MemoryPropertyFlags::host_visible
+    /// [`device_local`]: MemoryPropertyFlags::device_local
+    /// [`host_visible`]: MemoryPropertyFlags::host_visible
     GpuOnly,
 
     /// The memory is intended for upload to the GPU.
@@ -479,9 +478,9 @@ pub enum MemoryUsage {
     /// whose only purpose in life it is to get data into `device_local` memory or texels into an
     /// optimal image.
     ///
-    /// [`host_visible`]: super::MemoryPropertyFlags::host_visible
-    /// [`host_cached`]: super::MemoryPropertyFlags::host_cached
-    /// [`device_local`]: super::MemoryPropertyFlags::device_local
+    /// [`host_visible`]: MemoryPropertyFlags::host_visible
+    /// [`host_cached`]: MemoryPropertyFlags::host_cached
+    /// [`device_local`]: MemoryPropertyFlags::device_local
     Upload,
 
     /// The memory is intended for download from the GPU.
@@ -493,9 +492,9 @@ pub enum MemoryUsage {
     /// need to get the results back to the CPU. That might be compute shading, or image or video
     /// manipulation, or screenshotting for example.
     ///
-    /// [`host_visible`]: super::MemoryPropertyFlags::host_visible
-    /// [`host_cached`]: super::MemoryPropertyFlags::host_cached
-    /// [`device_local`]: super::MemoryPropertyFlags::device_local
+    /// [`host_visible`]: MemoryPropertyFlags::host_visible
+    /// [`host_cached`]: MemoryPropertyFlags::host_cached
+    /// [`device_local`]: MemoryPropertyFlags::device_local
     Download,
 }
 
@@ -1028,7 +1027,11 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     memory_type_index,
                     create_info.size,
                     None,
-                    self.export_handle_types[memory_type_index as usize],
+                    if !self.export_handle_types.is_empty() {
+                        self.export_handle_types[memory_type_index as usize]
+                    } else {
+                        ExternalMemoryHandleTypes::empty()
+                    },
                 )
             };
         }
@@ -1216,11 +1219,11 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// - Returns an error if allocating a new block is required and failed. This can be one of the
     ///   OOM errors or [`TooManyObjects`].
     /// - Returns [`OutOfPoolMemory`] if `create_info.allocate_preference` is
-    ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is greater
-    ///   than the block size for all heaps of suitable memory types.
-    /// - Returns [`BlockSizeExceeded`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and none of the pools of suitable memory
     ///   types have enough free space.
+    /// - Returns [`BlockSizeExceeded`] if `create_info.allocate_preference` is
+    ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is greater
+    ///   than the block size for all heaps of suitable memory types.
     /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
     ///   `create_info.size` is greater than `BLOCK_SIZE` and a dedicated allocation was not
     ///   created.
@@ -1439,7 +1442,9 @@ pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
     ///
     /// You only need to worry about this if you're using [`PoolAllocator`] as the suballocator, as
     /// all suballocations that the pool allocator makes inherit their allocation type from the
-    /// parent allocation. In all other cases it doesn't matter what this is.
+    /// parent allocation. For the [`FreeListAllocator`] and the [`BuddyAllocator`] this must be
+    /// [`AllocationType::Unknown`] otherwise you will get panics. It does not matter what this is
+    /// for when using the [`BumpAllocator`].
     ///
     /// The default value is [`AllocationType::Unknown`].
     pub allocation_type: AllocationType,
