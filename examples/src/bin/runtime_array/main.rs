@@ -275,7 +275,8 @@ fn main() {
     .unwrap();
 
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let mut uploads = AutoCommandBufferBuilder::primary(
         &command_buffer_allocator,
         queue.queue_family_index(),

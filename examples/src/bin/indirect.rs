@@ -324,7 +324,8 @@ fn main() {
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     event_loop.run(move |event, _, control_flow| {
         match event {

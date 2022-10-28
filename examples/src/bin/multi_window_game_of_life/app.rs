@@ -35,6 +35,7 @@ impl RenderPipeline {
         let memory_allocator = StandardMemoryAllocator::new_default(gfx_queue.device().clone());
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             gfx_queue.device().clone(),
+            Default::default(),
         ));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             gfx_queue.device().clone(),

@@ -280,7 +280,8 @@ fn main() {
         .build(device.clone())
         .unwrap();
 
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     let create_buffer = || {
         CpuAccessibleBuffer::from_iter(

@@ -317,7 +317,8 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device);
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     let buf = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
