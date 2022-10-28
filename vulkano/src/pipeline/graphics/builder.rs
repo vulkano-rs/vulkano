@@ -1852,7 +1852,7 @@ where
                 let has_depth_attachment = match render_pass {
                     PipelineRenderPassType::BeginRenderPass(subpass) => subpass.has_depth(),
                     PipelineRenderPassType::BeginRendering(rendering_info) => {
-                        rendering_info.depth_attachment_format.is_none()
+                        rendering_info.depth_attachment_format.is_some()
                     }
                 };
 
@@ -1990,12 +1990,12 @@ where
                 let has_stencil_attachment = match render_pass {
                     PipelineRenderPassType::BeginRenderPass(subpass) => subpass.has_stencil(),
                     PipelineRenderPassType::BeginRendering(rendering_info) => {
-                        rendering_info.stencil_attachment_format.is_none()
+                        rendering_info.stencil_attachment_format.is_some()
                     }
                 };
 
                 if !has_stencil_attachment {
-                    return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+                    return Err(GraphicsPipelineCreationError::NoStencilAttachment);
                 }
 
                 // VUID?
