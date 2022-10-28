@@ -1687,119 +1687,125 @@ impl RawImage {
         }
     }
 
-    /// Queries the layout of an image in memory. Only valid for images with linear tiling.
+    /// Queries the memory layout of a single subresource of the image.
     ///
-    /// This function is only valid for images with a color format. See the other similar functions
-    /// for the other aspects.
+    /// Only images with linear tiling are supported, if they do not have a format with both a
+    /// depth and a stencil format. Images with optimal tiling have an opaque image layout that is
+    /// not suitable for direct memory accesses, and likewise for combined depth/stencil formats.
+    /// Multi-planar formats are supported, but you must specify one of the planes as the `aspect`,
+    /// not [`ImageAspect::Color`].
     ///
     /// The layout is invariant for each image. However it is not cached, as this would waste
     /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
     /// somewhere in order to avoid calling this semi-expensive function at every single memory
     /// access.
-    ///
-    /// Note that while Vulkan allows querying the array layers other than 0, it is redundant as
-    /// you can easily calculate the position of any layer.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the mipmap level is out of range.
-    ///
-    /// # Safety
-    ///
-    /// - The image must *not* have a depth, stencil or depth-stencil format.
-    /// - The image must have been created with linear tiling.
-    ///
-    #[inline]
-    pub unsafe fn color_linear_layout(&self, mip_level: u32) -> LinearLayout {
-        self.linear_layout_impl(mip_level, ImageAspect::Color)
+    pub fn subresource_layout(
+        &self,
+        aspect: ImageAspect,
+        mip_level: u32,
+        array_layer: u32,
+    ) -> Result<SubresourceLayout, ImageError> {
+        self.validate_subresource_layout(aspect, mip_level, array_layer)?;
+
+        unsafe { Ok(self.subresource_layout_unchecked(aspect, mip_level, array_layer)) }
     }
 
-    /// Same as `color_linear_layout`, except that it retrieves the depth component of the image.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the mipmap level is out of range.
-    ///
-    /// # Safety
-    ///
-    /// - The image must have a depth or depth-stencil format.
-    /// - The image must have been created with linear tiling.
-    ///
-    #[inline]
-    pub unsafe fn depth_linear_layout(&self, mip_level: u32) -> LinearLayout {
-        self.linear_layout_impl(mip_level, ImageAspect::Depth)
-    }
+    fn validate_subresource_layout(
+        &self,
+        aspect: ImageAspect,
+        mip_level: u32,
+        array_layer: u32,
+    ) -> Result<(), ImageError> {
+        // VUID-VkImageSubresource-aspectMask-parameter
+        aspect.validate_device(&self.device)?;
 
-    /// Same as `color_linear_layout`, except that it retrieves the stencil component of the image.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the mipmap level is out of range.
-    ///
-    /// # Safety
-    ///
-    /// - The image must have a stencil or depth-stencil format.
-    /// - The image must have been created with linear tiling.
-    ///
-    #[inline]
-    pub unsafe fn stencil_linear_layout(&self, mip_level: u32) -> LinearLayout {
-        self.linear_layout_impl(mip_level, ImageAspect::Stencil)
-    }
+        // VUID-VkImageSubresource-aspectMask-requiredbitmask
+        // VUID-vkGetImageSubresourceLayout-aspectMask-00997
+        // Ensured by use of enum `ImageAspect`.
 
-    /// Same as `color_linear_layout`, except that it retrieves layout for the requested YCbCr
-    /// component too if the format is a YCbCr format.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if plane aspect is out of range.
-    /// - Panics if the aspect is not a color or planar aspect.
-    /// - Panics if the number of mipmaps is not 1.
-    #[inline]
-    pub unsafe fn multiplane_color_layout(&self, aspect: ImageAspect) -> LinearLayout {
-        // This function only supports color and planar aspects currently.
-        assert!(matches!(
-            aspect,
-            ImageAspect::Color | ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
-        ));
-        assert!(self.mip_levels == 1);
-
-        if matches!(
-            aspect,
-            ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
-        ) {
-            debug_assert!(self.format.unwrap().ycbcr_chroma_sampling().is_some());
+        // VUID-vkGetImageSubresourceLayout-image-02270
+        if !matches!(self.tiling, ImageTiling::Linear) {
+            return Err(ImageError::OptimalTilingNotSupported);
         }
 
-        self.linear_layout_impl(0, aspect)
+        // VUID-vkGetImageSubresourceLayout-mipLevel-01716
+        if mip_level >= self.mip_levels {
+            return Err(ImageError::MipLevelOutOfRange {
+                provided_mip_level: mip_level,
+                image_mip_levels: self.mip_levels,
+            });
+        }
+
+        // VUID-vkGetImageSubresourceLayout-arrayLayer-01717
+        if array_layer >= self.dimensions.array_layers() {
+            return Err(ImageError::ArrayLayerOutOfRange {
+                provided_array_layer: array_layer,
+                image_array_layers: self.dimensions.array_layers(),
+            });
+        }
+
+        let mut allowed_aspects = self.format.unwrap().aspects();
+
+        // Follows from the combination of these three VUIDs. See:
+        // https://github.com/KhronosGroup/Vulkan-Docs/issues/1942
+        // VUID-vkGetImageSubresourceLayout-aspectMask-00997
+        // VUID-vkGetImageSubresourceLayout-format-04462
+        // VUID-vkGetImageSubresourceLayout-format-04463
+        if allowed_aspects.depth && allowed_aspects.stencil {
+            return Err(ImageError::DepthStencilFormatsNotSupported);
+        }
+
+        if allowed_aspects.plane0 || allowed_aspects.plane1 || allowed_aspects.plane2 {
+            allowed_aspects.color = false;
+        }
+
+        // VUID-vkGetImageSubresourceLayout-format-04461
+        // VUID-vkGetImageSubresourceLayout-format-04462
+        // VUID-vkGetImageSubresourceLayout-format-04463
+        // VUID-vkGetImageSubresourceLayout-format-04464
+        // VUID-vkGetImageSubresourceLayout-format-01581
+        // VUID-vkGetImageSubresourceLayout-format-01582
+        if !allowed_aspects.contains(&aspect.into()) {
+            return Err(ImageError::AspectNotAllowed {
+                provided_aspect: aspect,
+                allowed_aspects,
+            });
+        }
+
+        Ok(())
     }
 
-    // Implementation of the `*_layout` functions.
-    unsafe fn linear_layout_impl(&self, mip_level: u32, aspect: ImageAspect) -> LinearLayout {
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn subresource_layout_unchecked(
+        &self,
+        aspect: ImageAspect,
+        mip_level: u32,
+        array_layer: u32,
+    ) -> SubresourceLayout {
         let fns = self.device.fns();
 
-        assert!(mip_level < self.mip_levels);
-
         let subresource = ash::vk::ImageSubresource {
-            aspect_mask: ash::vk::ImageAspectFlags::from(aspect),
+            aspect_mask: aspect.into(),
             mip_level,
-            array_layer: 0,
+            array_layer,
         };
 
-        let mut out = MaybeUninit::uninit();
+        let mut output = MaybeUninit::uninit();
         (fns.v1_0.get_image_subresource_layout)(
             self.device.handle(),
             self.handle,
             &subresource,
-            out.as_mut_ptr(),
+            output.as_mut_ptr(),
         );
+        let output = output.assume_init();
 
-        let out = out.assume_init();
-        LinearLayout {
-            offset: out.offset,
-            size: out.size,
-            row_pitch: out.row_pitch,
-            array_pitch: out.array_pitch,
-            depth_pitch: out.depth_pitch,
+        SubresourceLayout {
+            offset: output.offset,
+            size: output.size,
+            row_pitch: output.row_pitch,
+            array_pitch: (self.dimensions.array_layers() > 1).then_some(output.array_pitch),
+            depth_pitch: matches!(self.dimensions, ImageDimensions::Dim3d { .. })
+                .then_some(output.depth_pitch),
         }
     }
 }
@@ -2152,6 +2158,41 @@ impl Image {
     #[inline]
     pub fn subresource_range(&self) -> ImageSubresourceRange {
         self.inner.subresource_range()
+    }
+
+    /// Queries the memory layout of a single subresource of the image.
+    ///
+    /// Only images with linear tiling are supported, if they do not have a format with both a
+    /// depth and a stencil format. Images with optimal tiling have an opaque image layout that is
+    /// not suitable for direct memory accesses, and likewise for combined depth/stencil formats.
+    /// Multi-planar formats are supported, but you must specify one of the planes as the `aspect`,
+    /// not [`ImageAspect::Color`].
+    ///
+    /// The layout is invariant for each image. However it is not cached, as this would waste
+    /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
+    /// somewhere in order to avoid calling this semi-expensive function at every single memory
+    /// access.
+    #[inline]
+    pub fn subresource_layout(
+        &self,
+        aspect: ImageAspect,
+        mip_level: u32,
+        array_layer: u32,
+    ) -> Result<SubresourceLayout, ImageError> {
+        self.inner
+            .subresource_layout(aspect, mip_level, array_layer)
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn subresource_layout_unchecked(
+        &self,
+        aspect: ImageAspect,
+        mip_level: u32,
+        array_layer: u32,
+    ) -> SubresourceLayout {
+        self.inner
+            .subresource_layout_unchecked(aspect, mip_level, array_layer)
     }
 
     pub(crate) fn range_size(&self) -> DeviceSize {
@@ -2661,28 +2702,30 @@ impl Iterator for SubresourceRangeIterator {
 
 impl FusedIterator for SubresourceRangeIterator {}
 
-/// Describes the memory layout of an image with linear tiling.
-///
-/// Obtained by calling `*_linear_layout` on the image.
+/// Describes the memory layout of a single subresource of an image.
 ///
 /// The address of a texel at `(x, y, z, layer)` is `layer * array_pitch + z * depth_pitch +
 /// y * row_pitch + x * size_of_each_texel + offset`. `size_of_each_texel` must be determined
 /// depending on the format. The same formula applies for compressed formats, except that the
 /// coordinates must be in number of blocks.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct LinearLayout {
-    /// Number of bytes from the start of the memory and the start of the queried subresource.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SubresourceLayout {
+    /// The number of bytes from the start of the memory to the start of the queried subresource.
     pub offset: DeviceSize,
-    /// Total number of bytes for the queried subresource. Can be used for a safety check.
+
+    /// The total number of bytes for the queried subresource.
     pub size: DeviceSize,
-    /// Number of bytes between two texels or two blocks in adjacent rows.
+
+    /// The number of bytes between two texels or two blocks in adjacent rows.
     pub row_pitch: DeviceSize,
-    /// Number of bytes between two texels or two blocks in adjacent array layers. This value is
-    /// undefined for images with only one array layer.
-    pub array_pitch: DeviceSize,
-    /// Number of bytes between two texels or two blocks in adjacent depth layers. This value is
-    /// undefined for images that are not three-dimensional.
-    pub depth_pitch: DeviceSize,
+
+    /// For images with more than one array layer, the number of bytes between two texels or two
+    /// blocks in adjacent array layers.
+    pub array_pitch: Option<DeviceSize>,
+
+    /// For 3D images, the number of bytes between two texels or two blocks in adjacent depth
+    /// layers.
+    pub depth_pitch: Option<DeviceSize>,
 }
 
 /// Error that can happen in image functions.
@@ -2707,6 +2750,18 @@ pub enum ImageError {
     /// The `array_2d_compatible` flag was enabled, but the image type was not 3D.
     Array2dCompatibleNot3d,
 
+    /// The provided array layer is not less than the number of array layers in the image.
+    ArrayLayerOutOfRange {
+        provided_array_layer: u32,
+        image_array_layers: u32,
+    },
+
+    /// The provided aspect is not present in the image, or is not allowed.
+    AspectNotAllowed {
+        provided_aspect: ImageAspect,
+        allowed_aspects: ImageAspects,
+    },
+
     /// The `block_texel_view_compatible` flag was enabled, but the given format was not compressed.
     BlockTexelViewCompatibleNotCompressed,
 
@@ -2724,6 +2779,10 @@ pub enum ImageError {
 
     /// A dedicated allocation is required for this image, but one was not provided.
     DedicatedAllocationRequired,
+
+    /// The image has a format with both a depth and a stencil aspect, which is not supported for
+    /// this operation.
+    DepthStencilFormatsNotSupported,
 
     /// The `disjoint` flag was enabled, but the given format is either not multi-planar, or does
     /// not support disjoint images.
@@ -2818,6 +2877,12 @@ pub enum ImageError {
         allowed_memory_type_bits: u32,
     },
 
+    /// The provided mip level is not less than the number of mip levels in the image.
+    MipLevelOutOfRange {
+        provided_mip_level: u32,
+        image_mip_levels: u32,
+    },
+
     /// Multisampling was enabled, and the `cube_compatible` flag was set.
     MultisampleCubeCompatible,
 
@@ -2829,6 +2894,9 @@ pub enum ImageError {
 
     /// Multisampling was enabled, but the image type was not 2D.
     MultisampleNot2d,
+
+    /// The image has optimal tiling, which is not supported for this operation.
+    OptimalTilingNotSupported,
 
     /// The sample count is not supported by the device for this image configuration.
     SampleCountNotSupported {
@@ -2898,6 +2966,22 @@ impl Display for ImageError {
                 f,
                 "the `array_2d_compatible` flag was enabled, but the image type was not 3D",
             ),
+            Self::ArrayLayerOutOfRange {
+                provided_array_layer,
+                image_array_layers,
+            } => write!(
+                f,
+                "the provided array layer ({}) is not less than the number of array layers in the image ({})",
+                provided_array_layer, image_array_layers,
+            ),
+            Self::AspectNotAllowed {
+                provided_aspect,
+                allowed_aspects,
+            } => write!(
+                f,
+                "the provided aspect ({:?}) is not present in the image, or is not allowed ({:?})",
+                provided_aspect, allowed_aspects,
+            ),
             Self::BlockTexelViewCompatibleNotCompressed => write!(
                 f,
                 "the `block_texel_view_compatible` flag was enabled, but the given format was not \
@@ -2923,6 +3007,11 @@ impl Display for ImageError {
             Self::DedicatedAllocationRequired => write!(
                 f,
                 "a dedicated allocation is required for this image, but one was not provided"
+            ),
+            Self::DepthStencilFormatsNotSupported => write!(
+                f,
+                "the image has a format with both a depth and a stencil aspect, which is not \
+                supported for this operation",
             ),
             Self::DisjointFormatNotSupported => write!(
                 f,
@@ -3038,6 +3127,14 @@ impl Display for ImageError {
                 Ok(())
             })
             .and_then(|_| write!(f, ") that can be bound to this buffer")),
+            Self::MipLevelOutOfRange {
+                provided_mip_level,
+                image_mip_levels,
+            } => write!(
+                f,
+                "the provided mip level ({}) is not less than the number of mip levels in the image ({})",
+                provided_mip_level, image_mip_levels,
+            ),
             Self::MultisampleCubeCompatible => write!(
                 f,
                 "multisampling was enabled, and the `cube_compatible` flag was set",
@@ -3052,6 +3149,10 @@ impl Display for ImageError {
             Self::MultisampleNot2d => write!(
                 f,
                 "multisampling was enabled, but the image type was not 2D",
+            ),
+            Self::OptimalTilingNotSupported => write!(
+                f,
+                "the image has optimal tiling, which is not supported for this operation",
             ),
             Self::SampleCountNotSupported { .. } => write!(
                 f,
