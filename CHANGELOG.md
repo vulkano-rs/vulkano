@@ -94,6 +94,8 @@ Changes to memory allocation:
 - Fixed missing validation when binding memory to a buffer with the `shader_device_address` usage.
 - Queue family count isn't being set in either `ash::vk::BufferCreateInfo` or `ash::vk::ImageCreateInfo`.
 - Validation checks for `khr_portability_subset` devices.
+- Depth and stencil attachments are now properly checked when using dynamic rendering.
+- Proper error (`NoStencilAttachment`) is now being returned if stencil attachment format is missing.
 
 # Version 0.31.1 (2022-10-04)
 
