@@ -9,10 +9,11 @@
 
 use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
 use crate::{
-    buffer::sys::UnsafeBuffer,
+    buffer::sys::Buffer,
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
     device::{Device, DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageLayout},
+    image::{sys::Image, ImageLayout},
+    swapchain::Swapchain,
     sync::{AccessError, AccessFlags, PipelineStages, Semaphore},
     DeviceSize,
 };
@@ -152,11 +153,8 @@ where
                         }
 
                         match self.previous.check_swapchain_image_acquired(
-                            swapchain_info
-                                .swapchain
-                                .raw_image(swapchain_info.image_index)
-                                .unwrap()
-                                .image,
+                            &swapchain_info.swapchain,
+                            swapchain_info.image_index,
                             true,
                         ) {
                             Ok(_) => (),
@@ -208,7 +206,7 @@ where
 
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
@@ -220,7 +218,7 @@ where
 
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,
@@ -234,10 +232,12 @@ where
     #[inline]
     fn check_swapchain_image_acquired(
         &self,
-        image: &UnsafeImage,
+        swapchain: &Swapchain,
+        image_index: u32,
         _before: bool,
     ) -> Result<(), AccessCheckError> {
-        self.previous.check_swapchain_image_acquired(image, false)
+        self.previous
+            .check_swapchain_image_acquired(swapchain, image_index, false)
     }
 }
 

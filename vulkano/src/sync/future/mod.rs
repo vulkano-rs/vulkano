@@ -15,14 +15,14 @@ pub use self::{
 };
 use super::{AccessFlags, Fence, FenceError, PipelineStages, Semaphore};
 use crate::{
-    buffer::sys::UnsafeBuffer,
+    buffer::sys::Buffer,
     command_buffer::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageLayout},
+    image::{sys::Image, ImageLayout},
     memory::BindSparseInfo,
-    swapchain::{self, PresentFuture, PresentInfo, SwapchainPresentInfo},
+    swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
     DeviceSize, OomError, VulkanError,
 };
 use smallvec::SmallVec;
@@ -114,7 +114,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > "don't know". Therefore returning `Err` is never unsafe.
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
@@ -136,7 +136,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > access.
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,
@@ -149,7 +149,8 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > forward the call to the future before.
     fn check_swapchain_image_acquired(
         &self,
-        image: &UnsafeImage,
+        swapchain: &Swapchain,
+        image_index: u32,
         before: bool,
     ) -> Result<(), AccessCheckError>;
 
@@ -351,7 +352,7 @@ where
 
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
@@ -361,7 +362,7 @@ where
 
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,
@@ -373,10 +374,11 @@ where
     #[inline]
     fn check_swapchain_image_acquired(
         &self,
-        image: &UnsafeImage,
+        swapchain: &Swapchain,
+        image_index: u32,
         before: bool,
     ) -> Result<(), AccessCheckError> {
-        (**self).check_swapchain_image_acquired(image, before)
+        (**self).check_swapchain_image_acquired(swapchain, image_index, before)
     }
 }
 

@@ -22,9 +22,8 @@
 //!
 //! # Various kinds of buffers
 //!
-//! The low level implementation of a buffer is [`UnsafeBuffer`](crate::buffer::sys::UnsafeBuffer).
-//! This type makes it possible to use all the features that Vulkan is capable of, but as its name
-//! tells it is unsafe to use.
+//! The low level implementation of a buffer is [`RawBuffer`](crate::buffer::sys::RawBuffer).
+//! This type makes it possible to use all the features that Vulkan is capable of.
 //!
 //! Instead you are encouraged to use one of the high-level wrappers that vulkano provides. Which
 //! wrapper to use depends on the way you are going to use the buffer:
@@ -79,19 +78,20 @@ pub use self::{
     cpu_pool::CpuBufferPool,
     device_local::DeviceLocalBuffer,
     slice::BufferSlice,
-    sys::{BufferCreationError, SparseLevel},
+    sys::BufferError,
     traits::{
         BufferAccess, BufferAccessObject, BufferDeviceAddressError, BufferInner, TypedBufferAccess,
     },
     usage::BufferUsage,
 };
 use crate::{
+    macros::vulkan_bitflags,
     memory::{ExternalMemoryHandleType, ExternalMemoryProperties},
     DeviceSize,
 };
 use bytemuck::{
-    bytes_of, cast_slice, try_cast_slice, try_cast_slice_mut, try_from_bytes, try_from_bytes_mut,
-    Pod, PodCastError,
+    bytes_of, bytes_of_mut, cast_slice, cast_slice_mut, try_cast_slice, try_cast_slice_mut,
+    try_from_bytes, try_from_bytes_mut, Pod, PodCastError,
 };
 use std::mem::size_of;
 
@@ -105,11 +105,66 @@ mod slice;
 mod traits;
 mod usage;
 
+vulkan_bitflags! {
+    /// Flags to be set when creating a buffer.
+    #[non_exhaustive]
+    BufferCreateFlags = BufferCreateFlags(u32);
+
+    /*
+    /// The buffer will be backed by sparse memory binding (through queue commands) instead of
+    /// regular binding (through [`bind_memory`]).
+    ///
+    /// The [`sparse_binding`] feature must be enabled on the device.
+    ///
+    /// [`bind_memory`]: sys::RawBuffer::bind_memory
+    /// [`sparse_binding`]: crate::device::Features::sparse_binding
+    sparse_binding = SPARSE_BINDING,
+
+    /// The buffer can be used without being fully resident in memory at the time of use.
+    ///
+    /// This requires the `sparse_binding` flag as well.
+    ///
+    /// The [`sparse_residency_buffer`] feature must be enabled on the device.
+    ///
+    /// [`sparse_residency_buffer`]: crate::device::Features::sparse_residency_buffer
+    sparse_residency = SPARSE_RESIDENCY,
+
+    /// The buffer's memory can alias with another buffer or a different part of the same buffer.
+    ///
+    /// This requires the `sparse_binding` flag as well.
+    ///
+    /// The [`sparse_residency_aliased`] feature must be enabled on the device.
+    ///
+    /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
+    sparse_aliased = SPARSE_ALIASED,
+
+    /// The buffer is protected, and can only be used in combination with protected memory and other
+    /// protected objects.
+    ///
+    /// The device API version must be at least 1.1.
+    protected = PROTECTED {
+        api_version: V1_1,
+    },
+
+    /// The buffer's device address can be saved and reused on a subsequent run.
+    ///
+    /// The device API version must be at least 1.2, or either the [`khr_buffer_device_address`] or
+    /// [`ext_buffer_device_address`] extension must be enabled on the device.
+    device_address_capture_replay = DEVICE_ADDRESS_CAPTURE_REPLAY {
+        api_version: V1_2,
+        device_extensions: [khr_buffer_device_address, ext_buffer_device_address],
+    },
+     */
+}
+
 /// Trait for types of data that can be put in a buffer. These can be safely transmuted to and from
 /// a slice of bytes.
 pub unsafe trait BufferContents: Send + Sync + 'static {
     /// Converts an immutable reference to `Self` to an immutable byte slice.
     fn as_bytes(&self) -> &[u8];
+
+    /// Converts a mutable reference to `Self` to an mutable byte slice.
+    fn as_bytes_mut(&mut self) -> &mut [u8];
 
     /// Converts an immutable byte slice into an immutable reference to `Self`.
     fn from_bytes(bytes: &[u8]) -> Result<&Self, PodCastError>;
@@ -127,6 +182,10 @@ where
 {
     fn as_bytes(&self) -> &[u8] {
         bytes_of(self)
+    }
+
+    fn as_bytes_mut(&mut self) -> &mut [u8] {
+        bytes_of_mut(self)
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<&T, PodCastError> {
@@ -148,6 +207,10 @@ where
 {
     fn as_bytes(&self) -> &[u8] {
         cast_slice(self)
+    }
+
+    fn as_bytes_mut(&mut self) -> &mut [u8] {
+        cast_slice_mut(self)
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<&[T], PodCastError> {
@@ -174,7 +237,7 @@ pub struct ExternalBufferInfo {
     pub usage: BufferUsage,
 
     /// The sparse binding parameters that will be used.
-    pub sparse: Option<SparseLevel>,
+    pub sparse: Option<BufferCreateFlags>,
 
     pub _ne: crate::NonExhaustive,
 }

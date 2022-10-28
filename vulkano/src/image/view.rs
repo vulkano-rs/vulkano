@@ -14,8 +14,7 @@
 //! to be used in a shader descriptor or as a framebuffer attachment.
 
 use super::{
-    sys::UnsafeImage, ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange,
-    ImageUsage,
+    sys::Image, ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -202,7 +201,7 @@ where
 
         // VUID-VkImageViewCreateInfo-image-01003
         if (view_type == ImageViewType::Cube || view_type == ImageViewType::CubeArray)
-            && !image_inner.cube_compatible()
+            && !image_inner.flags().cube_compatible
         {
             return Err(ImageViewCreationError::ImageNotCubeCompatible);
         }
@@ -230,7 +229,7 @@ where
             && (view_type == ImageViewType::Dim2d || view_type == ImageViewType::Dim2dArray)
         {
             // VUID-VkImageViewCreateInfo-image-01005
-            if !image_inner.array_2d_compatible() {
+            if !image_inner.flags().array_2d_compatible {
                 return Err(ImageViewCreationError::ImageNotArray2dCompatible);
             }
 
@@ -354,7 +353,7 @@ where
 
         if Some(format) != image_inner.format() {
             // VUID-VkImageViewCreateInfo-image-01762
-            if !image_inner.mutable_format()
+            if !image_inner.flags().mutable_format
                 || !image_inner.format().unwrap().planes().is_empty()
                     && subresource_range.aspects.color
             {
@@ -380,7 +379,7 @@ where
                 });
             }
 
-            if image_inner.block_texel_view_compatible() {
+            if image_inner.flags().block_texel_view_compatible {
                 // VUID-VkImageViewCreateInfo-image-01583
                 if !(format.compatibility() == image_inner.format().unwrap().compatibility()
                     || format.block_size() == image_inner.format().unwrap().block_size())
@@ -655,15 +654,12 @@ where
                 device
                     .physical_device()
                     .image_format_properties_unchecked(ImageFormatInfo {
+                        flags: image_inner.flags(),
                         format: image_inner.format(),
                         image_type: image.dimensions().image_type(),
                         tiling: image_inner.tiling(),
                         usage: *image_inner.usage(),
                         image_view_type: Some(view_type),
-                        mutable_format: image_inner.mutable_format(),
-                        cube_compatible: image_inner.cube_compatible(),
-                        array_2d_compatible: image_inner.array_2d_compatible(),
-                        block_texel_view_compatible: image_inner.block_texel_view_compatible(),
                         ..Default::default()
                     })?;
 
@@ -691,7 +687,7 @@ where
     }
 
     // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkImageViewCreateInfo.html#_description
-    fn get_default_usage(aspects: ImageAspects, image: &UnsafeImage) -> ImageUsage {
+    fn get_default_usage(aspects: ImageAspects, image: &Image) -> ImageUsage {
         let has_stencil_aspect = aspects.stencil;
         let has_non_stencil_aspect = !(ImageAspects {
             stencil: false,
@@ -711,7 +707,7 @@ where
     }
 
     // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap12.html#resources-image-view-format-features
-    unsafe fn get_format_features(format: Format, image: &UnsafeImage) -> FormatFeatures {
+    unsafe fn get_format_features(format: Format, image: &Image) -> FormatFeatures {
         let device = image.device();
 
         let format_features = if Some(format) != image.format() {

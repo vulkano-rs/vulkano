@@ -8,9 +8,10 @@
 // according to those terms.
 
 use super::{
-    sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreateFlags, ImageCreationError,
-    ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageSubresourceLayers,
-    ImageUsage, MipmapsCount,
+    sys::{Image, RawImage},
+    traits::ImageContent,
+    ImageAccess, ImageCreateFlags, ImageDescriptorLayouts, ImageDimensions, ImageError, ImageInner,
+    ImageLayout, ImageSubresourceLayers, ImageUsage, MipmapsCount,
 };
 use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
@@ -20,17 +21,17 @@ use crate::{
     },
     device::{Device, DeviceOwned},
     format::Format,
-    image::sys::UnsafeImageCreateInfo,
+    image::sys::ImageCreateInfo,
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            AllocationCreateInfo, AllocationCreationError, AllocationType,
             MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
         },
         DedicatedAllocation,
     },
     sampler::Filter,
     sync::Sharing,
-    DeviceSize, OomError,
+    DeviceSize, VulkanError,
 };
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -45,9 +46,7 @@ use std::{
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
 pub struct ImmutableImage {
-    image: Arc<UnsafeImage>,
-    dimensions: ImageDimensions,
-    _memory: MemoryAlloc,
+    inner: Arc<Image>,
     layout: ImageLayout,
 }
 
@@ -116,10 +115,12 @@ impl ImmutableImage {
     ) -> Result<(Arc<ImmutableImage>, Arc<ImmutableImageInitialization>), ImmutableImageCreationError>
     {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
+        assert!(!flags.disjoint); // TODO: adjust the code below to make this safe
 
-        let image = UnsafeImage::new(
+        let raw_image = RawImage::new(
             allocator.device().clone(),
-            UnsafeImageCreateInfo {
+            ImageCreateInfo {
+                flags,
                 dimensions,
                 format: Some(format),
                 mip_levels: match mip_levels.into() {
@@ -133,20 +134,16 @@ impl ImmutableImage {
                 } else {
                     Sharing::Exclusive
                 },
-                mutable_format: flags.mutable_format,
-                cube_compatible: flags.cube_compatible,
-                array_2d_compatible: flags.array_2d_compatible,
-                block_texel_view_compatible: flags.block_texel_view_compatible,
                 ..Default::default()
             },
         )?;
-        let requirements = image.memory_requirements();
+        let requirements = raw_image.memory_requirements()[0];
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::NonLinear,
             usage: MemoryUsage::GpuOnly,
             allocate_preference: MemoryAllocatePreference::Unknown,
-            dedicated_allocation: Some(DedicatedAllocation::Image(&image)),
+            dedicated_allocation: Some(DedicatedAllocation::Image(&raw_image)),
             ..Default::default()
         };
 
@@ -154,14 +151,13 @@ impl ImmutableImage {
             Ok(alloc) => {
                 debug_assert!(alloc.offset() % requirements.alignment == 0);
                 debug_assert!(alloc.size() == requirements.size);
-                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
-
-                let image = Arc::new(ImmutableImage {
-                    image,
-                    _memory: alloc,
-                    dimensions,
-                    layout,
+                let inner = Arc::new(unsafe {
+                    raw_image
+                        .bind_memory_unchecked([alloc])
+                        .map_err(|(err, _, _)| err)?
                 });
+
+                let image = Arc::new(ImmutableImage { inner, layout });
 
                 let init = Arc::new(ImmutableImageInitialization {
                     image: image.clone(),
@@ -285,7 +281,7 @@ impl ImmutableImage {
             generate_mipmaps(
                 command_buffer_builder,
                 image.clone(),
-                image.dimensions,
+                image.inner.dimensions(),
                 ImageLayout::ShaderReadOnlyOptimal,
             );
         }
@@ -297,7 +293,7 @@ impl ImmutableImage {
 unsafe impl DeviceOwned for ImmutableImage {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.image.device()
+        self.inner.device()
     }
 }
 
@@ -305,11 +301,11 @@ unsafe impl ImageAccess for ImmutableImage {
     #[inline]
     fn inner(&self) -> ImageInner<'_> {
         ImageInner {
-            image: &self.image,
+            image: &self.inner,
             first_layer: 0,
-            num_layers: self.image.dimensions().array_layers(),
+            num_layers: self.inner.dimensions().array_layers(),
             first_mipmap_level: 0,
-            num_mipmap_levels: self.image.mip_levels(),
+            num_mipmap_levels: self.inner.mip_levels(),
         }
     }
 
@@ -412,7 +408,7 @@ impl Hash for ImmutableImageInitialization {
 /// Error that can happen when creating an `ImmutableImage`.
 #[derive(Clone, Debug)]
 pub enum ImmutableImageCreationError {
-    ImageCreationError(ImageCreationError),
+    ImageCreationError(ImageError),
     AllocError(AllocationCreationError),
     CommandBufferBeginError(CommandBufferBeginError),
 
@@ -454,8 +450,8 @@ impl Display for ImmutableImageCreationError {
     }
 }
 
-impl From<ImageCreationError> for ImmutableImageCreationError {
-    fn from(err: ImageCreationError) -> Self {
+impl From<ImageError> for ImmutableImageCreationError {
+    fn from(err: ImageError) -> Self {
         Self::ImageCreationError(err)
     }
 }
@@ -466,8 +462,8 @@ impl From<AllocationCreationError> for ImmutableImageCreationError {
     }
 }
 
-impl From<OomError> for ImmutableImageCreationError {
-    fn from(err: OomError) -> Self {
+impl From<VulkanError> for ImmutableImageCreationError {
+    fn from(err: VulkanError) -> Self {
         Self::AllocError(err.into())
     }
 }

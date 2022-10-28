@@ -8,20 +8,21 @@
 // according to those terms.
 
 use super::{
-    sys::{UnsafeBuffer, UnsafeBufferCreateInfo},
-    BufferAccess, BufferAccessObject, BufferContents, BufferCreationError, BufferInner,
-    BufferUsage, TypedBufferAccess,
+    sys::{Buffer, BufferCreateInfo, RawBuffer},
+    BufferAccess, BufferAccessObject, BufferContents, BufferError, BufferInner, BufferUsage,
+    TypedBufferAccess,
 };
 use crate::{
+    buffer::sys::BufferMemory,
     device::{Device, DeviceOwned},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            AllocationCreateInfo, AllocationCreationError, AllocationType,
             MemoryAllocatePreference, MemoryAllocator, MemoryUsage, StandardMemoryAllocator,
         },
         DedicatedAllocation,
     },
-    DeviceSize,
+    DeviceSize, VulkanError,
 };
 use std::{
     hash::{Hash, Hasher},
@@ -118,11 +119,7 @@ where
 // One buffer of the pool.
 #[derive(Debug)]
 struct ActualBuffer {
-    // Inner content.
-    inner: Arc<UnsafeBuffer>,
-
-    // The memory held by the buffer.
-    memory: MemoryAlloc,
+    inner: Arc<Buffer>,
 
     // List of the chunks that are reserved.
     chunks_in_use: Mutex<Vec<ActualBufferChunk>>,
@@ -426,29 +423,33 @@ where
     ) -> Result<(), AllocationCreationError> {
         let size = match (size_of::<T>() as DeviceSize).checked_mul(capacity) {
             Some(s) => s,
-            None => return Err(AllocationCreationError::OutOfDeviceMemory),
+            None => {
+                return Err(AllocationCreationError::VulkanError(
+                    VulkanError::OutOfDeviceMemory,
+                ))
+            }
         };
 
-        let buffer = UnsafeBuffer::new(
+        let raw_buffer = RawBuffer::new(
             self.device().clone(),
-            UnsafeBufferCreateInfo {
+            BufferCreateInfo {
                 size,
                 usage: self.buffer_usage,
                 ..Default::default()
             },
         )
         .map_err(|err| match err {
-            BufferCreationError::AllocError(err) => err,
+            BufferError::AllocError(err) => err,
             // We don't use sparse-binding, therefore the other errors can't happen.
             _ => unreachable!(),
         })?;
-        let requirements = buffer.memory_requirements();
+        let requirements = *raw_buffer.memory_requirements();
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::Linear,
             usage: self.memory_usage,
             allocate_preference: MemoryAllocatePreference::Unknown,
-            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&raw_buffer)),
             ..Default::default()
         };
 
@@ -457,11 +458,16 @@ where
                 debug_assert!(alloc.offset() % requirements.alignment == 0);
                 debug_assert!(alloc.size() == requirements.size);
                 alloc.shrink(size);
-                unsafe { buffer.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+                let inner = unsafe {
+                    Arc::new(
+                        raw_buffer
+                            .bind_memory_unchecked(alloc)
+                            .map_err(|(err, _, _)| err)?,
+                    )
+                };
 
                 **cur_buf_mutex = Some(Arc::new(ActualBuffer {
-                    inner: buffer,
-                    memory: alloc,
+                    inner,
                     chunks_in_use: Mutex::new(vec![]),
                     next_index: AtomicU64::new(0),
                     capacity,
@@ -588,7 +594,12 @@ where
             let range = (index * size_of::<T>() as DeviceSize + align_offset)
                 ..((index + requested_len) * size_of::<T>() as DeviceSize + align_offset);
 
-            let bytes = current_buffer.memory.write(range.clone()).unwrap();
+            let allocation = match current_buffer.inner.memory() {
+                BufferMemory::Normal(a) => a,
+                BufferMemory::Sparse => unreachable!(),
+            };
+
+            let bytes = allocation.write(range.clone()).unwrap();
             let mapping = <[T]>::from_bytes_mut(bytes).unwrap();
 
             let mut written = 0;
@@ -597,7 +608,7 @@ where
                 written += 1;
             }
 
-            current_buffer.memory.flush_range(range).unwrap();
+            allocation.flush_range(range).unwrap();
 
             assert_eq!(
                 written, requested_len,

@@ -14,8 +14,8 @@ use crate::{
     device::{properties::Properties, DeviceExtensions, Features, FeaturesFfi, PropertiesFfi},
     format::{Format, FormatProperties},
     image::{
-        ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage,
-        SparseImageFormatInfo, SparseImageFormatProperties,
+        ImageFormatInfo, ImageFormatProperties, ImageUsage, SparseImageFormatInfo,
+        SparseImageFormatProperties,
     },
     instance::Instance,
     macros::{vulkan_bitflags, vulkan_enum},
@@ -927,6 +927,7 @@ impl PhysicalDevice {
         image_format_info: &ImageFormatInfo,
     ) -> Result<(), PhysicalDeviceError> {
         let &ImageFormatInfo {
+            flags: _,
             format,
             image_type,
             tiling,
@@ -934,10 +935,6 @@ impl PhysicalDevice {
             mut stencil_usage,
             external_memory_handle_type,
             image_view_type,
-            mutable_format: _,
-            cube_compatible: _,
-            array_2d_compatible: _,
-            block_texel_view_compatible: _,
             _ne: _,
         } = image_format_info;
 
@@ -1052,6 +1049,7 @@ impl PhysicalDevice {
             .get_or_try_insert(image_format_info, |image_format_info| {
                 /* Input */
                 let &ImageFormatInfo {
+                    flags,
                     format,
                     image_type,
                     tiling,
@@ -1059,22 +1057,10 @@ impl PhysicalDevice {
                     stencil_usage,
                     external_memory_handle_type,
                     image_view_type,
-                    mutable_format,
-                    cube_compatible,
-                    array_2d_compatible,
-                    block_texel_view_compatible,
                     _ne: _,
                 } = image_format_info;
 
                 let has_separate_stencil_usage = stencil_usage == usage;
-
-                let flags = ImageCreateFlags {
-                    mutable_format,
-                    cube_compatible,
-                    array_2d_compatible,
-                    block_texel_view_compatible,
-                    ..ImageCreateFlags::empty()
-                };
 
                 let mut info2_vk = ash::vk::PhysicalDeviceImageFormatInfo2 {
                     format: format.unwrap().into(),

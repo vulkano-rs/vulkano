@@ -97,8 +97,8 @@ pub use self::device_memory::{
     MappedDeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryImportInfo, MemoryMapError,
 };
 use crate::{
-    buffer::{sys::UnsafeBuffer, BufferAccess},
-    image::{sys::UnsafeImage, ImageAccess, ImageAspects},
+    buffer::{sys::RawBuffer, BufferAccess},
+    image::{sys::RawImage, ImageAccess, ImageAspects},
     macros::vulkan_bitflags,
     sync::Semaphore,
     DeviceSize,
@@ -293,25 +293,18 @@ pub struct MemoryRequirements {
     pub memory_type_bits: u32,
 
     /// Whether implementation prefers to use dedicated allocations (in other words, allocate
-    /// a whole block of memory dedicated to this resource alone). This will be `false` if the
+    /// a whole block of memory dedicated to this resource alone).
+    /// This will be `false` if the device API version is less than 1.1 and the
     /// [`khr_get_memory_requirements2`](crate::device::DeviceExtensions::khr_get_memory_requirements2)
     /// extension is not enabled on the device.
-    ///
-    /// > **Note**: As its name says, using a dedicated allocation is an optimization and not a
-    /// > requirement.
-    pub prefer_dedicated: bool,
-}
+    pub prefers_dedicated_allocation: bool,
 
-impl From<ash::vk::MemoryRequirements> for MemoryRequirements {
-    #[inline]
-    fn from(val: ash::vk::MemoryRequirements) -> Self {
-        MemoryRequirements {
-            size: val.size,
-            alignment: val.alignment,
-            memory_type_bits: val.memory_type_bits,
-            prefer_dedicated: false,
-        }
-    }
+    /// Whether implementation requires the use of a dedicated allocation (in other words, allocate
+    /// a whole block of memory dedicated to this resource alone).
+    /// This will be `false` if the device API version is less than 1.1 and the
+    /// [`khr_get_memory_requirements2`](crate::device::DeviceExtensions::khr_get_memory_requirements2)
+    /// extension is not enabled on the device.
+    pub requires_dedicated_allocation: bool,
 }
 
 /// Indicates a specific resource to allocate memory for.
@@ -325,9 +318,9 @@ impl From<ash::vk::MemoryRequirements> for MemoryRequirements {
 #[derive(Clone, Copy, Debug)]
 pub enum DedicatedAllocation<'a> {
     /// Allocation dedicated to a buffer.
-    Buffer(&'a UnsafeBuffer),
+    Buffer(&'a RawBuffer),
     /// Allocation dedicated to an image.
-    Image(&'a UnsafeImage),
+    Image(&'a RawImage),
 }
 
 /// The properties for exporting or importing external memory, when a buffer or image is created

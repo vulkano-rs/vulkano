@@ -229,13 +229,13 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError,
+    DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
 use std::{
     error::Error,
-    fmt::{self, Display},
+    fmt::{Display, Error as FmtError, Formatter},
     sync::Arc,
 };
 
@@ -371,8 +371,8 @@ pub struct AllocationCreateInfo<'d> {
     /// Requirements of the resource you want to allocate memory for.
     ///
     /// If you plan to bind this memory directly to a non-sparse resource, then this must
-    /// correspond to the value returned by either [`UnsafeBuffer::memory_requirements`] or
-    /// [`UnsafeImage::memory_requirements`] for the respective buffer or image.
+    /// correspond to the value returned by either [`RawBuffer::memory_requirements`] or
+    /// [`RawImage::memory_requirements`] for the respective buffer or image.
     ///
     /// All of the fields must be non-zero, [`alignment`] must be a power of two, and
     /// [`memory_type_bits`] must be below 2<sup>*n*</sup> where *n* is the number of available
@@ -382,8 +382,8 @@ pub struct AllocationCreateInfo<'d> {
     ///
     /// [`alignment`]: MemoryRequirements::alignment
     /// [`memory_type_bits`]: MemoryRequirements::memory_type_bits
-    /// [`UnsafeBuffer::memory_requirements`]: crate::buffer::sys::UnsafeBuffer::memory_requirements
-    /// [`UnsafeImage::memory_requirements`]: crate::image::sys::UnsafeImage::memory_requirements
+    /// [`RawBuffer::memory_requirements`]: crate::buffer::sys::RawBuffer::memory_requirements
+    /// [`RawImage::memory_requirements`]: crate::image::sys::RawImage::memory_requirements
     pub requirements: MemoryRequirements,
 
     /// What type of resource this allocation will be used for.
@@ -436,7 +436,8 @@ impl Default for AllocationCreateInfo<'_> {
                 size: 0,
                 alignment: 0,
                 memory_type_bits: 0,
-                prefer_dedicated: false,
+                prefers_dedicated_allocation: false,
+                requires_dedicated_allocation: false,
             },
             allocation_type: AllocationType::Unknown,
             usage: MemoryUsage::GpuOnly,
@@ -523,17 +524,7 @@ pub enum MemoryAllocatePreference {
 /// [memory allocator]: MemoryAllocator
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AllocationCreationError {
-    /// There is not enough memory on the host.
-    OutOfHostMemory,
-
-    /// There is not enough memory on the device.
-    OutOfDeviceMemory,
-
-    /// Too many [`DeviceMemory`] allocations exist already.
-    TooManyObjects,
-
-    /// Failed to map memory.
-    MemoryMapFailed,
+    VulkanError(VulkanError),
 
     /// There is not enough memory in the pool.
     ///
@@ -554,35 +545,36 @@ pub enum AllocationCreationError {
     SuballocatorBlockSizeExceeded,
 }
 
-impl Error for AllocationCreationError {}
-
-impl Display for AllocationCreationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::OutOfHostMemory => "out of host memory",
-                Self::OutOfDeviceMemory => "out of device memory",
-                Self::TooManyObjects => "too many `DeviceMemory` allocations exist already",
-                Self::MemoryMapFailed => "failed to map memory",
-                Self::OutOfPoolMemory => "the pool doesn't have enough free space",
-                Self::BlockSizeExceeded =>
-                    "the allocation size was greater than the block size for all heaps of suitable \
-                    memory types and dedicated allocations were explicitly forbidden",
-                Self::SuballocatorBlockSizeExceeded =>
-                    "the allocation size was greater than the suballocator's block size",
-            }
-        )
+impl Error for AllocationCreationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::VulkanError(err) => Some(err),
+            _ => None,
+        }
     }
 }
 
-impl From<OomError> for AllocationCreationError {
-    fn from(err: OomError) -> Self {
-        match err {
-            OomError::OutOfHostMemory => AllocationCreationError::OutOfHostMemory,
-            OomError::OutOfDeviceMemory => AllocationCreationError::OutOfDeviceMemory,
+impl Display for AllocationCreationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+            Self::OutOfPoolMemory => write!(f, "the pool doesn't have enough free space"),
+            Self::BlockSizeExceeded => write!(
+                f,
+                "the allocation size was greater than the block size for all heaps of suitable \
+                memory types and dedicated allocations were explicitly forbidden",
+            ),
+            Self::SuballocatorBlockSizeExceeded => write!(
+                f,
+                "the allocation size was greater than the suballocator's block size",
+            ),
         }
+    }
+}
+
+impl From<VulkanError> for AllocationCreationError {
+    fn from(err: VulkanError) -> Self {
+        AllocationCreationError::VulkanError(err)
     }
 }
 
@@ -944,7 +936,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                     // VUID-VkMemoryDedicatedAllocateInfo-commonparent
                     assert_eq!(&self.device, image.device());
 
-                    let required_size = image.memory_requirements().size;
+                    let required_size = image.memory_requirements()[0].size;
 
                     // VUID-VkMemoryDedicatedAllocateInfo-image-02964
                     assert!(requirements.size != required_size);
@@ -1008,7 +1000,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///
     /// [`protected`]: super::MemoryPropertyFlags::protected
     /// [`protected_memory`]: crate::device::Features::protected_memory
-    /// [`TooManyObjects`]: AllocationCreationError::TooManyObjects
+    /// [`TooManyObjects`]: VulkanError::TooManyObjects
     /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
     fn allocate_from_type(
         &self,
@@ -1164,13 +1156,19 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                         i += 1;
                     }
                     Err(VulkanError::OutOfHostMemory) => {
-                        return Err(AllocationCreationError::OutOfHostMemory);
+                        return Err(AllocationCreationError::VulkanError(
+                            VulkanError::OutOfHostMemory,
+                        ));
                     }
                     Err(VulkanError::OutOfDeviceMemory) => {
-                        return Err(AllocationCreationError::OutOfDeviceMemory);
+                        return Err(AllocationCreationError::VulkanError(
+                            VulkanError::OutOfDeviceMemory,
+                        ));
                     }
                     Err(VulkanError::TooManyObjects) => {
-                        return Err(AllocationCreationError::TooManyObjects);
+                        return Err(AllocationCreationError::VulkanError(
+                            VulkanError::TooManyObjects,
+                        ));
                     }
                     Err(_) => unreachable!(),
                 }
@@ -1184,9 +1182,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             Ok(alloc) => Ok(alloc),
             // This can happen if the block ended up smaller than advertised because there wasn't
             // enough memory.
-            Err(SuballocationCreationError::OutOfRegionMemory) => {
-                Err(AllocationCreationError::OutOfDeviceMemory)
-            }
+            Err(SuballocationCreationError::OutOfRegionMemory) => Err(
+                AllocationCreationError::VulkanError(VulkanError::OutOfDeviceMemory),
+            ),
             // This can not happen as the block is fresher than Febreze and we're still holding an
             // exclusive lock.
             Err(SuballocationCreationError::FragmentedRegion) => unreachable!(),
@@ -1231,7 +1229,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// [`device_local`]: MemoryPropertyFlags::device_local
     /// [`host_visible`]: MemoryPropertyFlags::host_visible
     /// [`NoSuitableMemoryTypes`]: AllocationCreationError::NoSuitableMemoryTypes
-    /// [`TooManyObjects`]: AllocationCreationError::TooManyObjects
+    /// [`TooManyObjects`]: VulkanError::TooManyObjects
     /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     /// [`OutOfPoolMemory`]: AllocationCreationError::OutOfPoolMemory
     /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
@@ -1254,7 +1252,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     size,
                     alignment: _,
                     mut memory_type_bits,
-                    mut prefer_dedicated,
+                    mut prefers_dedicated_allocation,
+                    requires_dedicated_allocation: _,
                 },
             allocation_type: _,
             usage,
@@ -1288,13 +1287,13 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             let res = match allocate_preference {
                 MemoryAllocatePreference::Unknown => {
                     if size > block_size / 2 {
-                        prefer_dedicated = true;
+                        prefers_dedicated_allocation = true;
                     }
                     if self.device.allocation_count() > self.max_allocations && size < block_size {
-                        prefer_dedicated = false;
+                        prefers_dedicated_allocation = false;
                     }
 
-                    if prefer_dedicated {
+                    if prefers_dedicated_allocation {
                         self.allocate_dedicated_unchecked(
                             memory_type_index,
                             size,
@@ -1394,9 +1393,15 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         let device_memory =
             DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None).map_err(
                 |err| match err {
-                    VulkanError::OutOfHostMemory => AllocationCreationError::OutOfHostMemory,
-                    VulkanError::OutOfDeviceMemory => AllocationCreationError::OutOfDeviceMemory,
-                    VulkanError::TooManyObjects => AllocationCreationError::TooManyObjects,
+                    VulkanError::OutOfHostMemory => {
+                        AllocationCreationError::VulkanError(VulkanError::OutOfHostMemory)
+                    }
+                    VulkanError::OutOfDeviceMemory => {
+                        AllocationCreationError::VulkanError(VulkanError::OutOfDeviceMemory)
+                    }
+                    VulkanError::TooManyObjects => {
+                        AllocationCreationError::VulkanError(VulkanError::TooManyObjects)
+                    }
                     _ => unreachable!(),
                 },
             )?;
@@ -1538,7 +1543,7 @@ pub enum GenericMemoryAllocatorCreationError {
 impl Error for GenericMemoryAllocatorCreationError {}
 
 impl Display for GenericMemoryAllocatorCreationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
                 required_for,

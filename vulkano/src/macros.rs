@@ -253,7 +253,7 @@ macro_rules! vulkan_bitflags {
                 $(instance_extensions: [$($instance_extension:ident),+ $(,)?],)?
             })?
             ,
-        )+
+        )*
     } => {
         $(#[doc = $ty_doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -261,7 +261,7 @@ macro_rules! vulkan_bitflags {
             $(
                 $(#[doc = $flag_doc])*
                 pub $flag_name: bool,
-            )+
+            )*
             pub _ne: crate::NonExhaustive,
         }
 
@@ -272,7 +272,7 @@ macro_rules! vulkan_bitflags {
                 Self {
                     $(
                         $flag_name: false,
-                    )+
+                    )*
                     _ne: crate::NonExhaustive(()),
                 }
             }
@@ -288,68 +288,72 @@ macro_rules! vulkan_bitflags {
             #[inline]
             pub const fn is_empty(&self) -> bool {
                 !(
+                    false
                     $(
-                        self.$flag_name
-                    )||+
+                        || self.$flag_name
+                    )*
+
                 )
             }
 
             /// Returns whether any flags are set in both `self` and `other`.
             #[inline]
-            pub const fn intersects(&self, other: &Self) -> bool {
+            pub const fn intersects(&self, #[allow(unused_variables)] other: &Self) -> bool {
+                false
                 $(
-                    (self.$flag_name && other.$flag_name)
-                )||+
+                    || (self.$flag_name && other.$flag_name)
+                )*
             }
 
             /// Returns whether all flags in `other` are set in `self`.
             #[inline]
-            pub const fn contains(&self, other: &Self) -> bool {
+            pub const fn contains(&self, #[allow(unused_variables)] other: &Self) -> bool {
+                true
                 $(
-                    (self.$flag_name || !other.$flag_name)
-                )&&+
+                    && (self.$flag_name || !other.$flag_name)
+                )*
             }
 
             /// Returns the union of `self` and `other`.
             #[inline]
-            pub const fn union(&self, other: &Self) -> Self {
+            pub const fn union(&self, #[allow(unused_variables)] other: &Self) -> Self {
                 Self {
                     $(
                         $flag_name: (self.$flag_name || other.$flag_name),
-                    )+
+                    )*
                     _ne: crate::NonExhaustive(()),
                 }
             }
 
             /// Returns the intersection of `self` and `other`.
             #[inline]
-            pub const fn intersection(&self, other: &Self) -> Self {
+            pub const fn intersection(&self, #[allow(unused_variables)] other: &Self) -> Self {
                 Self {
                     $(
                         $flag_name: (self.$flag_name && other.$flag_name),
-                    )+
+                    )*
                     _ne: crate::NonExhaustive(()),
                 }
             }
 
             /// Returns `self` without the flags set in `other`.
             #[inline]
-            pub const fn difference(&self, other: &Self) -> Self {
+            pub const fn difference(&self, #[allow(unused_variables)] other: &Self) -> Self {
                 Self {
                     $(
                         $flag_name: (self.$flag_name ^ other.$flag_name),
-                    )+
+                    )*
                     _ne: crate::NonExhaustive(()),
                 }
             }
 
             /// Returns the flags set in `self` or `other`, but not both.
             #[inline]
-            pub const fn symmetric_difference(&self, other: &Self) -> Self {
+            pub const fn symmetric_difference(&self, #[allow(unused_variables)] other: &Self) -> Self {
                 Self {
                     $(
                         $flag_name: (self.$flag_name ^ other.$flag_name),
-                    )+
+                    )*
                     _ne: crate::NonExhaustive(()),
                 }
             }
@@ -387,7 +391,7 @@ macro_rules! vulkan_bitflags {
                             });
                         }
                     )?
-                )+
+                )*
 
                 Ok(())
             }
@@ -425,7 +429,7 @@ macro_rules! vulkan_bitflags {
                             });
                         }
                     )?
-                )+
+                )*
 
                 Ok(())
             }
@@ -455,7 +459,7 @@ macro_rules! vulkan_bitflags {
                             });
                         }
                     )?
-                )+
+                )*
 
                 Ok(())
             }
@@ -463,22 +467,23 @@ macro_rules! vulkan_bitflags {
 
         impl From<$ty> for ash::vk::$ty_ffi {
             #[inline]
-            fn from(val: $ty) -> Self {
+            fn from(#[allow(unused_variables)] val: $ty) -> Self {
+                #[allow(unused_mut)]
                 let mut result = ash::vk::$ty_ffi::empty();
                 $(
                     if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
-                )+
+                )*
                 result
             }
         }
 
         impl From<ash::vk::$ty_ffi> for $ty {
             #[inline]
-            fn from(val: ash::vk::$ty_ffi) -> Self {
+            fn from(#[allow(unused_variables)] val: ash::vk::$ty_ffi) -> Self {
                 Self {
                     $(
                         $flag_name: val.intersects(ash::vk::$ty_ffi::$flag_name_ffi),
-                    )+
+                    )*
                     _ne: crate::NonExhaustive(()),
                 }
             }
@@ -490,7 +495,7 @@ macro_rules! vulkan_bitflags {
                 Self {
                     $(
                         $flag_name: false,
-                    )+
+                    )*
                     _ne: crate::NonExhaustive(()),
                 }
             }

@@ -75,9 +75,9 @@ use super::{
     CommandBufferResourcesUsage,
 };
 use crate::{
-    buffer::{sys::UnsafeBuffer, BufferAccess},
+    buffer::{sys::Buffer, BufferAccess},
     device::{Device, DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
+    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
     sync::{AccessCheckError, AccessError, AccessFlags, PipelineMemoryAccess, PipelineStages},
     DeviceSize,
 };
@@ -107,8 +107,8 @@ pub struct SyncCommandBuffer {
 
     // Resources accessed by this command buffer.
     resources_usage: CommandBufferResourcesUsage,
-    buffer_indices: HashMap<Arc<UnsafeBuffer>, usize>,
-    image_indices: HashMap<Arc<UnsafeImage>, usize>,
+    buffer_indices: HashMap<Arc<Buffer>, usize>,
+    image_indices: HashMap<Arc<Image>, usize>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
     buffers: Vec<(
@@ -137,7 +137,7 @@ impl SyncCommandBuffer {
     #[inline]
     pub fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         _queue: &Queue,
@@ -174,7 +174,7 @@ impl SyncCommandBuffer {
     #[inline]
     pub fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,

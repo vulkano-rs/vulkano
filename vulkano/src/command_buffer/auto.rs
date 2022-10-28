@@ -20,11 +20,11 @@ use super::{
     SecondaryCommandBufferAbstract, SubpassContents,
 };
 use crate::{
-    buffer::{sys::UnsafeBuffer, BufferAccess},
+    buffer::{sys::Buffer, BufferAccess},
     command_buffer::CommandBufferInheritanceRenderingInfo,
     device::{Device, DeviceOwned, Queue, QueueFamilyProperties},
     format::Format,
-    image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
+    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
     query::{QueryControlFlags, QueryType},
     render_pass::{Framebuffer, Subpass},
     sync::{AccessCheckError, AccessFlags, PipelineMemoryAccess, PipelineStages},
@@ -751,7 +751,7 @@ where
 
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
@@ -762,7 +762,7 @@ where
 
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,

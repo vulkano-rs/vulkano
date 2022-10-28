@@ -53,7 +53,7 @@ pub use self::{
     layout::{ImageDescriptorLayouts, ImageLayout},
     storage::StorageImage,
     swapchain::SwapchainImage,
-    sys::ImageCreationError,
+    sys::ImageError,
     traits::{ImageAccess, ImageInner},
     usage::ImageUsage,
     view::{ImageViewAbstract, ImageViewType},
@@ -76,6 +76,157 @@ pub mod sys;
 pub mod traits;
 mod usage;
 pub mod view;
+
+vulkan_bitflags! {
+    /// Flags that can be set when creating a new image.
+    #[non_exhaustive]
+    ImageCreateFlags = ImageCreateFlags(u32);
+
+    /*
+    /// The image will be backed by sparse memory binding (through queue commands) instead of
+    /// regular binding (through [`bind_memory`]).
+    ///
+    /// The [`sparse_binding`] feature must be enabled on the device.
+    ///
+    /// [`bind_memory`]: sys::RawImage::bind_memory
+    /// [`sparse_binding`]: crate::device::Features::sparse_binding
+    sparse_binding = SPARSE_BINDING,
+
+    /// The image can be used without being fully resident in memory at the time of use.
+    ///
+    /// This requires the `sparse_binding` flag as well.
+    ///
+    /// Depending on the image dimensions, either the [`sparse_residency_image2_d`] or the
+    /// [`sparse_residency_image3_d`] feature must be enabled on the device.
+    /// For a multisampled image, the one of the features [`sparse_residency2_samples`],
+    /// [`sparse_residency4_samples`], [`sparse_residency8_samples`] or
+    /// [`sparse_residency16_samples`], corresponding to the sample count of the image, must
+    /// be enabled on the device.
+    ///
+    /// [`sparse_binding`]: crate::device::Features::sparse_binding
+    /// [`sparse_residency_image2_d`]: crate::device::Features::sparse_residency_image2_d
+    /// [`sparse_residency_image2_3`]: crate::device::Features::sparse_residency_image3_d
+    /// [`sparse_residency2_samples`]: crate::device::Features::sparse_residency2_samples
+    /// [`sparse_residency4_samples`]: crate::device::Features::sparse_residency4_samples
+    /// [`sparse_residency8_samples`]: crate::device::Features::sparse_residency8_samples
+    /// [`sparse_residency16_samples`]: crate::device::Features::sparse_residency16_samples
+    sparse_residency = SPARSE_RESIDENCY,
+
+    /// The buffer's memory can alias with another image or a different part of the same image.
+    ///
+    /// This requires the `sparse_binding` flag as well.
+    ///
+    /// The [`sparse_residency_aliased`] feature must be enabled on the device.
+    ///
+    /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
+    sparse_aliased = SPARSE_ALIASED,
+     */
+
+    /// For non-multi-planar formats, whether an image view wrapping the image can have a
+    /// different format.
+    ///
+    /// For multi-planar formats, whether an image view wrapping the image can be created from a
+    /// single plane of the image.
+    mutable_format = MUTABLE_FORMAT,
+
+    /// For 2D images, whether an image view of type [`ImageViewType::Cube`] or
+    /// [`ImageViewType::CubeArray`] can be created from the image.
+    ///
+    /// [`ImageViewType::Cube`]: crate::image::view::ImageViewType::Cube
+    /// [`ImageViewType::CubeArray`]: crate::image::view::ImageViewType::CubeArray
+    cube_compatible = CUBE_COMPATIBLE,
+
+    /*
+    // TODO: document
+    alias = ALIAS {
+        api_version: V1_1,
+        device_extensions: [khr_bind_memory2],
+    },
+
+    // TODO: document
+    split_instance_bind_regions = SPLIT_INSTANCE_BIND_REGIONS {
+        api_version: V1_1,
+        device_extensions: [khr_device_group],
+    },
+    */
+
+    /// For 3D images, whether an image view of type [`ImageViewType::Dim2d`] or
+    /// [`ImageViewType::Dim2dArray`] can be created from the image.
+    ///
+    /// On [portability subset] devices, the [`image_view2_d_on3_d_image`] feature must be enabled
+    /// on the device.
+    ///
+    /// [`ImageViewType::Dim2d`]: crate::image::view::ImageViewType::Dim2d
+    /// [`ImageViewType::Dim2dArray`]: crate::image::view::ImageViewType::Dim2dArray
+    /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
+    /// [`image_view2_d_on3_d_image`]: crate::device::Features::image_view2_d_on3_d_image
+    array_2d_compatible = TYPE_2D_ARRAY_COMPATIBLE {
+        api_version: V1_1,
+        device_extensions: [khr_maintenance1],
+    },
+
+    /// For images with a compressed format, whether an image view with an uncompressed
+    /// format can be created from the image, where each texel in the view will correspond to a
+    /// compressed texel block in the image.
+    ///
+    /// Requires `mutable_format`.
+    block_texel_view_compatible = BLOCK_TEXEL_VIEW_COMPATIBLE {
+        api_version: V1_1,
+        device_extensions: [khr_maintenance2],
+    },
+
+    /*
+    // TODO: document
+    extended_usage = EXTENDED_USAGE {
+        api_version: V1_1,
+        device_extensions: [khr_maintenance2],
+    },
+
+    // TODO: document
+    protected = PROTECTED {
+        api_version: V1_1,
+    },
+     */
+
+    /// For images with a multi-planar format, whether each plane will have its memory bound
+    /// separately, rather than having a single memory binding for the whole image.
+    disjoint = DISJOINT {
+        api_version: V1_1,
+        device_extensions: [khr_sampler_ycbcr_conversion],
+    },
+
+    /*
+    // TODO: document
+    corner_sampled = CORNER_SAMPLED_NV {
+        device_extensions: [nv_corner_sampled_image],
+    },
+
+    // TODO: document
+    sample_locations_compatible_depth = SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_EXT {
+        device_extensions: [ext_sample_locations],
+    },
+
+    // TODO: document
+    subsampled = SUBSAMPLED_EXT {
+        device_extensions: [ext_fragment_density_map],
+    },
+
+    // TODO: document
+    multisampled_render_to_single_sampled = MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_EXT {
+        device_extensions: [ext_multisampled_render_to_single_sampled],
+    },
+
+    // TODO: document
+    view_2d_compatible = TYPE_2D_VIEW_COMPATIBLE_EXT {
+        device_extensions: [ext_image_2d_view_of_3d],
+    },
+
+    // TODO: document
+    fragment_density_map_offset = FRAGMENT_DENSITY_MAP_OFFSET_QCOM {
+        device_extensions: [qcom_fragment_density_map_offset],
+    },
+     */
+}
 
 vulkan_enum! {
     // TODO: document
@@ -204,60 +355,6 @@ impl From<u32> for MipmapsCount {
     fn from(num: u32) -> MipmapsCount {
         MipmapsCount::Specific(num)
     }
-}
-
-vulkan_bitflags! {
-    /// Flags that can be set when creating a new image.
-    #[non_exhaustive]
-    ImageCreateFlags = ImageCreateFlags(u32);
-
-    /// The image will be backed by sparsely bound memory.
-    ///
-    /// Requires the [`sparse_binding`](crate::device::Features::sparse_binding) feature to be
-    /// enabled.
-    sparse_binding = SPARSE_BINDING,
-
-    /// The image is allowed to be only partially resident in memory, not all parts of the image
-    /// must be backed by memory.
-    ///
-    /// Requires the `sparse_binding` flag, and depending on the image dimensions, either the
-    /// [`sparse_residency_image2_d`](crate::device::Features::sparse_residency_image2_d) or the
-    /// [`sparse_residency_image3_d`](crate::device::Features::sparse_residency_image3_d) feature to
-    /// be enabled. For a multisampled image, this also requires the appropriate sparse residency
-    /// feature for the number of samples to be enabled.
-    sparse_residency = SPARSE_RESIDENCY,
-
-    /// The image can be backed by memory that is shared (aliased) with other images.
-    ///
-    /// Requires the `sparse_binding` flag and the
-    /// [`sparse_residency_aliased`](crate::device::Features::sparse_residency_aliased) feature to
-    /// be enabled.
-    sparse_aliased = SPARSE_ALIASED,
-
-    /// For non-multi-planar formats, an image view wrapping this image can have a different format.
-    ///
-    /// For multi-planar formats, an image view wrapping this image can be created from a single
-    /// plane of the image.
-    mutable_format = MUTABLE_FORMAT,
-
-    /// For 2D images, allows creation of an image view of type `Cube` or `CubeArray`.
-    cube_compatible = CUBE_COMPATIBLE,
-
-    /// For 3D images, allows creation of an image view of type `Dim2d` or `Dim2dArray`.
-    array_2d_compatible = TYPE_2D_ARRAY_COMPATIBLE {
-        api_version: V1_1,
-        device_extensions: [khr_maintenance1],
-    },
-
-    /// For images with a compressed format, allows creation of an image view with an uncompressed
-    /// format, where each texel in the view will correspond to a compressed texel block in the
-    /// image.
-    ///
-    /// Requires `mutable_format`.
-    block_texel_view_compatible = BLOCK_TEXEL_VIEW_COMPATIBLE {
-        api_version: V1_1,
-        device_extensions: [khr_maintenance1],
-    },
 }
 
 vulkan_enum! {
@@ -650,6 +747,11 @@ pub struct SubresourceLayout {
 /// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageFormatInfo {
+    /// The `flags` that the image will have.
+    ///
+    /// The default value is [`ImageCreateFlags::empty()`].
+    pub flags: ImageCreateFlags,
+
     /// The `format` that the image will have.
     ///
     /// The default value is `None`, which must be overridden.
@@ -705,26 +807,6 @@ pub struct ImageFormatInfo {
     /// The default value is `None`.
     pub image_view_type: Option<ImageViewType>,
 
-    /// The `mutable_format` that the image will have.
-    ///
-    /// The default value is `false`.
-    pub mutable_format: bool,
-
-    /// The `cube_compatible` that the image will have.
-    ///
-    /// The default value is `false`.
-    pub cube_compatible: bool,
-
-    /// The `array_2d_compatible` that the image will have.
-    ///
-    /// The default value is `false`.
-    pub array_2d_compatible: bool,
-
-    /// The `block_texel_view_compatible` that the image will have.
-    ///
-    /// The default value is `false`.
-    pub block_texel_view_compatible: bool,
-
     pub _ne: crate::NonExhaustive,
 }
 
@@ -732,6 +814,7 @@ impl Default for ImageFormatInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: ImageCreateFlags::empty(),
             format: None,
             image_type: ImageType::Dim2d,
             tiling: ImageTiling::Optimal,
@@ -739,10 +822,6 @@ impl Default for ImageFormatInfo {
             stencil_usage: ImageUsage::empty(),
             external_memory_handle_type: None,
             image_view_type: None,
-            mutable_format: false,
-            cube_compatible: false,
-            array_2d_compatible: false,
-            block_texel_view_compatible: false,
             _ne: crate::NonExhaustive(()),
         }
     }

@@ -27,14 +27,14 @@ use crate::{
         SparseImageFormatProperties,
     },
     memory::{
-        allocator::AllocationCreationError, DeviceMemory, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes, MemoryRequirements,
+        allocator::{AllocationCreationError, MemoryAlloc},
+        ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryRequirements,
     },
     range_map::RangeMap,
+    swapchain::Swapchain,
     sync::{AccessError, CurrentAccess, Sharing},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
-use ash::vk::Handle;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -42,29 +42,23 @@ use std::{
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     iter::{FusedIterator, Peekable},
-    mem::MaybeUninit,
+    mem::{size_of_val, MaybeUninit},
     ops::Range,
     ptr,
     sync::Arc,
 };
 
-/// A storage for pixels or arbitrary data.
+/// A raw image, with no memory backing it.
 ///
-/// # Safety
-///
-/// `UnsafeImage` is not unsafe to *create*, but it is unsafe to *use*:
-///
-/// - You must manually bind memory to the image with `bind_memory`. The memory must respect the
-///   requirements returned by `memory_requirements`.
-/// - The memory that you bind to the image must be manually kept alive.
-/// - The queue family ownership must be manually enforced.
-/// - The usage must be manually enforced.
-/// - The image layout must be manually enforced and transitioned.
+/// This is the basic image type, a direct translation of a `VkImage` object, but it is mostly
+/// useless in this form. After creating a raw image, you must call `bind_memory` to make a
+/// complete image object.
 #[derive(Debug)]
-pub struct UnsafeImage {
+pub struct RawImage {
     handle: ash::vk::Image,
     device: Arc<Device>,
 
+    flags: ImageCreateFlags,
     dimensions: ImageDimensions,
     format: Option<Format>,
     format_features: FormatFeatures,
@@ -73,23 +67,16 @@ pub struct UnsafeImage {
     samples: SampleCount,
     tiling: ImageTiling,
     usage: ImageUsage,
+    sharing: Sharing<SmallVec<[u32; 4]>>,
     stencil_usage: ImageUsage,
     external_memory_handle_types: ExternalMemoryHandleTypes,
-    mutable_format: bool,
-    cube_compatible: bool,
-    array_2d_compatible: bool,
-    block_texel_view_compatible: bool,
 
-    aspect_list: SmallVec<[ImageAspect; 4]>,
-    aspect_size: DeviceSize,
-    mip_level_size: DeviceSize,
+    memory_requirements: SmallVec<[MemoryRequirements; 3]>,
     needs_destruction: bool, // `vkDestroyImage` is called only if true.
-    range_size: DeviceSize,
-    state: Mutex<ImageState>,
 }
 
-impl UnsafeImage {
-    /// Creates a new `UnsafeImage`.
+impl RawImage {
+    /// Creates a new `RawImage`.
     ///
     /// # Panics
     ///
@@ -99,7 +86,7 @@ impl UnsafeImage {
     ///   `create_info.mutable_format`.
     /// - Panics if `create_info.mip_levels` is `0`.
     /// - Panics if `create_info.sharing` is [`Sharing::Concurrent`] with less than 2 items.
-    /// - Panics if `create_info.initial)layout` is something other than
+    /// - Panics if `create_info.initial_layout` is something other than
     ///   [`ImageLayout::Undefined`] or [`ImageLayout::Preinitialized`].
     /// - Panics if `create_info.usage` is empty.
     /// - Panics if `create_info.usage` contains `transient_attachment`, but does not also contain
@@ -108,8 +95,8 @@ impl UnsafeImage {
     #[inline]
     pub fn new(
         device: Arc<Device>,
-        mut create_info: UnsafeImageCreateInfo,
-    ) -> Result<Arc<UnsafeImage>, ImageCreationError> {
+        mut create_info: ImageCreateInfo,
+    ) -> Result<RawImage, ImageError> {
         match &mut create_info.sharing {
             Sharing::Exclusive => (),
             Sharing::Concurrent(queue_family_indices) => {
@@ -121,14 +108,15 @@ impl UnsafeImage {
 
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(UnsafeImage::new_unchecked(device, create_info)?) }
+        unsafe { Ok(RawImage::new_unchecked(device, create_info)?) }
     }
 
     fn validate_new(
         device: &Device,
-        create_info: &UnsafeImageCreateInfo,
-    ) -> Result<FormatFeatures, ImageCreationError> {
-        let &UnsafeImageCreateInfo {
+        create_info: &ImageCreateInfo,
+    ) -> Result<FormatFeatures, ImageError> {
+        let &ImageCreateInfo {
+            flags,
             dimensions,
             format,
             mip_levels,
@@ -139,10 +127,6 @@ impl UnsafeImage {
             ref sharing,
             initial_layout,
             external_memory_handle_types,
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
             _ne: _,
         } = create_info;
 
@@ -159,6 +143,9 @@ impl UnsafeImage {
             } else {
                 stencil_usage == usage
             };
+
+        // VUID-VkImageCreateInfo-flags-parameter
+        flags.validate_device(device)?;
 
         // VUID-VkImageCreateInfo-format-parameter
         format.validate_device(device)?;
@@ -179,7 +166,7 @@ impl UnsafeImage {
             if !(device.api_version() >= Version::V1_2
                 || device.enabled_extensions().ext_separate_stencil_usage)
             {
-                return Err(ImageCreationError::RequirementNotMet {
+                return Err(ImageError::RequirementNotMet {
                     required_for: "`create_info.stencil_usage` is `Some` and `create_info.format` has both a depth and a stencil aspect",
                     requires_one_of: RequiresOneOf {
                         api_version: Some(Version::V1_2),
@@ -206,7 +193,7 @@ impl UnsafeImage {
         ));
 
         // VUID-VkImageCreateInfo-flags-01573
-        assert!(!block_texel_view_compatible || mutable_format);
+        assert!(!flags.block_texel_view_compatible || flags.mutable_format);
 
         // Get format features
         let format_features = {
@@ -219,8 +206,8 @@ impl UnsafeImage {
         };
 
         // Format isn't supported at all?
-        if format_features == FormatFeatures::default() {
-            return Err(ImageCreationError::FormatNotSupported);
+        if format_features.is_empty() {
+            return Err(ImageError::FormatNotSupported);
         }
 
         // Decode the dimensions
@@ -263,7 +250,7 @@ impl UnsafeImage {
 
         // VUID-VkImageCreateInfo-mipLevels-00958
         if mip_levels > max_mip_levels {
-            return Err(ImageCreationError::MaxMipLevelsExceeded {
+            return Err(ImageError::MaxMipLevelsExceeded {
                 mip_levels,
                 max: max_mip_levels,
             });
@@ -272,19 +259,19 @@ impl UnsafeImage {
         // VUID-VkImageCreateInfo-samples-02257
         if samples != SampleCount::Sample1 {
             if image_type != ImageType::Dim2d {
-                return Err(ImageCreationError::MultisampleNot2d);
+                return Err(ImageError::MultisampleNot2d);
             }
 
-            if cube_compatible {
-                return Err(ImageCreationError::MultisampleCubeCompatible);
+            if flags.cube_compatible {
+                return Err(ImageError::MultisampleCubeCompatible);
             }
 
             if mip_levels != 1 {
-                return Err(ImageCreationError::MultisampleMultipleMipLevels);
+                return Err(ImageError::MultisampleMultipleMipLevels);
             }
 
             if tiling == ImageTiling::Linear {
-                return Err(ImageCreationError::MultisampleLinearTiling);
+                return Err(ImageError::MultisampleLinearTiling);
             }
 
             // VUID-VkImageCreateInfo-multisampleArrayImage-04460
@@ -292,7 +279,7 @@ impl UnsafeImage {
                 && !device.enabled_features().multisample_array_image
                 && array_layers != 1
             {
-                return Err(ImageCreationError::RequirementNotMet {
+                return Err(ImageError::RequirementNotMet {
                     required_for:
                         "this device is a portability subset device, `create_info.samples` is not \
                         `SampleCount::Sample1` and `create_info.dimensions.array_layers()` is \
@@ -309,22 +296,22 @@ impl UnsafeImage {
         if let Some(chroma_sampling) = format.ycbcr_chroma_sampling() {
             // VUID-VkImageCreateInfo-format-06410
             if mip_levels != 1 {
-                return Err(ImageCreationError::YcbcrFormatMultipleMipLevels);
+                return Err(ImageError::YcbcrFormatMultipleMipLevels);
             }
 
             // VUID-VkImageCreateInfo-format-06411
             if samples != SampleCount::Sample1 {
-                return Err(ImageCreationError::YcbcrFormatMultisampling);
+                return Err(ImageError::YcbcrFormatMultisampling);
             }
 
             // VUID-VkImageCreateInfo-format-06412
             if image_type != ImageType::Dim2d {
-                return Err(ImageCreationError::YcbcrFormatNot2d);
+                return Err(ImageError::YcbcrFormatNot2d);
             }
 
             // VUID-VkImageCreateInfo-format-06413
             if array_layers > 1 && !device.enabled_features().ycbcr_image_arrays {
-                return Err(ImageCreationError::RequirementNotMet {
+                return Err(ImageError::RequirementNotMet {
                     required_for: "`create_info.format.ycbcr_chroma_sampling()` is `Some` and `create_info.dimensions.array_layers()` is greater than `1`",
                     requires_one_of: RequiresOneOf {
                         features: &["ycbcr_image_arrays"],
@@ -338,14 +325,14 @@ impl UnsafeImage {
                 ChromaSampling::Mode422 => {
                     // VUID-VkImageCreateInfo-format-04712
                     if extent[0] % 2 != 0 {
-                        return Err(ImageCreationError::YcbcrFormatInvalidDimensions);
+                        return Err(ImageError::YcbcrFormatInvalidDimensions);
                     }
                 }
                 ChromaSampling::Mode420 => {
                     // VUID-VkImageCreateInfo-format-04712
                     // VUID-VkImageCreateInfo-format-04713
                     if !(extent[0] % 2 == 0 && extent[1] % 2 == 0) {
-                        return Err(ImageCreationError::YcbcrFormatInvalidDimensions);
+                        return Err(ImageError::YcbcrFormatInvalidDimensions);
                     }
                 }
             }
@@ -356,17 +343,17 @@ impl UnsafeImage {
         let combined_usage = usage | stencil_usage;
 
         if combined_usage.sampled && !format_features.sampled_image {
-            return Err(ImageCreationError::FormatUsageNotSupported { usage: "sampled" });
+            return Err(ImageError::FormatUsageNotSupported { usage: "sampled" });
         }
 
         if combined_usage.color_attachment && !format_features.color_attachment {
-            return Err(ImageCreationError::FormatUsageNotSupported {
+            return Err(ImageError::FormatUsageNotSupported {
                 usage: "color_attachment",
             });
         }
 
         if combined_usage.depth_stencil_attachment && !format_features.depth_stencil_attachment {
-            return Err(ImageCreationError::FormatUsageNotSupported {
+            return Err(ImageError::FormatUsageNotSupported {
                 usage: "depth_stencil_attachment",
             });
         }
@@ -374,7 +361,7 @@ impl UnsafeImage {
         if combined_usage.input_attachment
             && !(format_features.color_attachment || format_features.depth_stencil_attachment)
         {
-            return Err(ImageCreationError::FormatUsageNotSupported {
+            return Err(ImageError::FormatUsageNotSupported {
                 usage: "input_attachment",
             });
         }
@@ -391,7 +378,7 @@ impl UnsafeImage {
             if extent[0] > device_properties.max_framebuffer_width
                 || extent[1] > device_properties.max_framebuffer_height
             {
-                return Err(ImageCreationError::MaxFramebufferDimensionsExceeded {
+                return Err(ImageError::MaxFramebufferDimensionsExceeded {
                     extent: [extent[0], extent[1]],
                     max: [
                         device_properties.max_framebuffer_width,
@@ -403,7 +390,7 @@ impl UnsafeImage {
 
         if combined_usage.storage {
             if !format_features.storage_image {
-                return Err(ImageCreationError::FormatUsageNotSupported { usage: "storage" });
+                return Err(ImageError::FormatUsageNotSupported { usage: "storage" });
             }
 
             // VUID-VkImageCreateInfo-usage-00968
@@ -411,7 +398,7 @@ impl UnsafeImage {
             if !device.enabled_features().shader_storage_image_multisample
                 && samples != SampleCount::Sample1
             {
-                return Err(ImageCreationError::RequirementNotMet {
+                return Err(ImageError::RequirementNotMet {
                     required_for: "`create_info.usage.storage` or `create_info.stencil_usage.storage` is set and `create_info.samples` is not `SampleCount::Sample1`",
                     requires_one_of: RequiresOneOf {
                         features: &["shader_storage_image_multisample"],
@@ -424,13 +411,13 @@ impl UnsafeImage {
         // These flags only exist in later versions, ignore them otherwise
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             if combined_usage.transfer_src && !format_features.transfer_src {
-                return Err(ImageCreationError::FormatUsageNotSupported {
+                return Err(ImageError::FormatUsageNotSupported {
                     usage: "transfer_src",
                 });
             }
 
             if combined_usage.transfer_dst && !format_features.transfer_dst {
-                return Err(ImageCreationError::FormatUsageNotSupported {
+                return Err(ImageError::FormatUsageNotSupported {
                     usage: "transfer_dst",
                 });
             }
@@ -457,7 +444,7 @@ impl UnsafeImage {
             // VUID-VkImageCreateInfo-format-02795
             // VUID-VkImageCreateInfo-format-02796
             if usage.depth_stencil_attachment != stencil_usage.depth_stencil_attachment {
-                return Err(ImageCreationError::StencilUsageMismatch {
+                return Err(ImageError::StencilUsageMismatch {
                     usage,
                     stencil_usage,
                 });
@@ -466,7 +453,7 @@ impl UnsafeImage {
             // VUID-VkImageCreateInfo-format-02797
             // VUID-VkImageCreateInfo-format-02798
             if usage.transient_attachment != stencil_usage.transient_attachment {
-                return Err(ImageCreationError::StencilUsageMismatch {
+                return Err(ImageError::StencilUsageMismatch {
                     usage,
                     stencil_usage,
                 });
@@ -486,34 +473,34 @@ impl UnsafeImage {
 
         /* Check flags requirements */
 
-        if cube_compatible {
+        if flags.cube_compatible {
             // VUID-VkImageCreateInfo-flags-00949
             if image_type != ImageType::Dim2d {
-                return Err(ImageCreationError::CubeCompatibleNot2d);
+                return Err(ImageError::CubeCompatibleNot2d);
             }
 
             // VUID-VkImageCreateInfo-imageType-00954
             if extent[0] != extent[1] {
-                return Err(ImageCreationError::CubeCompatibleNotSquare);
+                return Err(ImageError::CubeCompatibleNotSquare);
             }
 
             // VUID-VkImageCreateInfo-imageType-00954
             if array_layers < 6 {
-                return Err(ImageCreationError::CubeCompatibleNotEnoughArrayLayers);
+                return Err(ImageError::CubeCompatibleNotEnoughArrayLayers);
             }
         }
 
-        if array_2d_compatible {
+        if flags.array_2d_compatible {
             // VUID-VkImageCreateInfo-flags-00950
             if image_type != ImageType::Dim3d {
-                return Err(ImageCreationError::Array2dCompatibleNot3d);
+                return Err(ImageError::Array2dCompatibleNot3d);
             }
 
             // VUID-VkImageCreateInfo-imageView2DOn3DImage-04459
             if device.enabled_extensions().khr_portability_subset
                 && !device.enabled_features().image_view2_d_on3_d_image
             {
-                return Err(ImageCreationError::RequirementNotMet {
+                return Err(ImageError::RequirementNotMet {
                     required_for:
                         "this device is a portability subset device, and the `array_2d_compatible`
                         flag is enabled",
@@ -525,10 +512,22 @@ impl UnsafeImage {
             }
         }
 
-        if block_texel_view_compatible {
+        if flags.block_texel_view_compatible {
             // VUID-VkImageCreateInfo-flags-01572
             if format.compression().is_none() {
-                return Err(ImageCreationError::BlockTexelViewCompatibleNotCompressed);
+                return Err(ImageError::BlockTexelViewCompatibleNotCompressed);
+            }
+        }
+
+        if flags.disjoint {
+            // VUID-VkImageCreateInfo-format-01577
+            if format.planes().len() < 2 {
+                return Err(ImageError::DisjointFormatNotSupported);
+            }
+
+            // VUID-VkImageCreateInfo-imageCreateFormatFeatures-02260
+            if !format_features.disjoint {
+                return Err(ImageError::DisjointFormatNotSupported);
             }
         }
 
@@ -545,7 +544,7 @@ impl UnsafeImage {
                     if queue_family_index
                         >= device.physical_device().queue_family_properties().len() as u32
                     {
-                        return Err(ImageCreationError::SharingQueueFamilyIndexOutOfRange {
+                        return Err(ImageError::SharingQueueFamilyIndexOutOfRange {
                             queue_family_index,
                             queue_family_count: device
                                 .physical_device()
@@ -563,7 +562,7 @@ impl UnsafeImage {
             if !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_external_memory)
             {
-                return Err(ImageCreationError::RequirementNotMet {
+                return Err(ImageError::RequirementNotMet {
                     required_for: "`create_info.external_memory_handle_types` is not empty",
                     requires_one_of: RequiresOneOf {
                         api_version: Some(Version::V1_1),
@@ -578,7 +577,7 @@ impl UnsafeImage {
 
             // VUID-VkImageCreateInfo-pNext-01443
             if initial_layout != ImageLayout::Undefined {
-                return Err(ImageCreationError::ExternalMemoryInvalidInitialLayout);
+                return Err(ImageError::ExternalMemoryInvalidInitialLayout);
             }
         }
 
@@ -595,7 +594,7 @@ impl UnsafeImage {
                 let limit = device.physical_device().properties().max_image_dimension1_d;
                 extent[0] > limit
             }
-            ImageType::Dim2d if cube_compatible => {
+            ImageType::Dim2d if flags.cube_compatible => {
                 let limit = device
                     .physical_device()
                     .properties()
@@ -764,14 +763,11 @@ impl UnsafeImage {
                     device
                         .physical_device()
                         .image_format_properties_unchecked(ImageFormatInfo {
+                            flags,
                             format: Some(format),
                             image_type,
                             tiling,
                             usage,
-                            mutable_format,
-                            cube_compatible,
-                            array_2d_compatible,
-                            block_texel_view_compatible,
                             external_memory_handle_type,
                             ..Default::default()
                         })?
@@ -786,7 +782,7 @@ impl UnsafeImage {
                     ..
                 } = match image_format_properties {
                     Some(x) => x,
-                    None => return Err(ImageCreationError::ImageFormatPropertiesNotSupported),
+                    None => return Err(ImageError::ImageFormatPropertiesNotSupported),
                 };
 
                 // VUID-VkImageCreateInfo-extent-02252
@@ -796,7 +792,7 @@ impl UnsafeImage {
                     || extent[1] > max_extent[1]
                     || extent[2] > max_extent[2]
                 {
-                    return Err(ImageCreationError::MaxDimensionsExceeded {
+                    return Err(ImageError::MaxDimensionsExceeded {
                         extent,
                         max: max_extent,
                     });
@@ -804,7 +800,7 @@ impl UnsafeImage {
 
                 // VUID-VkImageCreateInfo-mipLevels-02255
                 if mip_levels > max_mip_levels {
-                    return Err(ImageCreationError::MaxMipLevelsExceeded {
+                    return Err(ImageError::MaxMipLevelsExceeded {
                         mip_levels,
                         max: max_mip_levels,
                     });
@@ -812,7 +808,7 @@ impl UnsafeImage {
 
                 // VUID-VkImageCreateInfo-arrayLayers-02256
                 if array_layers > max_array_layers {
-                    return Err(ImageCreationError::MaxArrayLayersExceeded {
+                    return Err(ImageError::MaxArrayLayersExceeded {
                         array_layers,
                         max: max_array_layers,
                     });
@@ -820,7 +816,7 @@ impl UnsafeImage {
 
                 // VUID-VkImageCreateInfo-samples-02258
                 if !sample_counts.contains_count(samples) {
-                    return Err(ImageCreationError::SampleCountNotSupported {
+                    return Err(ImageError::SampleCountNotSupported {
                         samples,
                         supported: sample_counts,
                     });
@@ -837,9 +833,10 @@ impl UnsafeImage {
     #[inline]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
-        create_info: UnsafeImageCreateInfo,
-    ) -> Result<Arc<Self>, VulkanError> {
-        let &UnsafeImageCreateInfo {
+        create_info: ImageCreateInfo,
+    ) -> Result<Self, VulkanError> {
+        let &ImageCreateInfo {
+            flags,
             dimensions,
             format,
             mip_levels,
@@ -850,10 +847,6 @@ impl UnsafeImage {
             ref sharing,
             initial_layout,
             external_memory_handle_types,
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
             _ne: _,
         } = &create_info;
 
@@ -866,14 +859,6 @@ impl UnsafeImage {
             } else {
                 stencil_usage == usage
             };
-
-        let flags = ImageCreateFlags {
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
-            ..ImageCreateFlags::empty()
-        };
 
         let (image_type, extent, array_layers) = match dimensions {
             ImageDimensions::Dim1d {
@@ -956,19 +941,30 @@ impl UnsafeImage {
         Ok(Self::from_handle(device, handle, create_info))
     }
 
-    /// Creates a new `UnsafeImage` from a raw object handle.
+    /// Creates a new `RawImage` from a raw object handle.
     ///
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `handle` must refer to an image that has not yet had memory bound to it.
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Image,
-        create_info: UnsafeImageCreateInfo,
-    ) -> Arc<Self> {
-        let UnsafeImageCreateInfo {
+        create_info: ImageCreateInfo,
+    ) -> Self {
+        Self::from_handle_with_destruction(device, handle, create_info, true)
+    }
+
+    unsafe fn from_handle_with_destruction(
+        device: Arc<Device>,
+        handle: ash::vk::Image,
+        create_info: ImageCreateInfo,
+        needs_destruction: bool,
+    ) -> Self {
+        let ImageCreateInfo {
+            flags,
             dimensions,
             format,
             mip_levels,
@@ -976,13 +972,9 @@ impl UnsafeImage {
             tiling,
             usage,
             mut stencil_usage,
-            sharing: _,
+            sharing,
             initial_layout,
             external_memory_handle_types,
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
             _ne: _,
         } = create_info;
 
@@ -1004,16 +996,20 @@ impl UnsafeImage {
                 ImageTiling::Optimal => format_properties.optimal_tiling_features,
             }
         };
-        let aspects = format.unwrap().aspects();
-        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
-        let mip_level_size = dimensions.array_layers() as DeviceSize;
-        let aspect_size = mip_level_size * mip_levels as DeviceSize;
-        let range_size = aspect_list.len() as DeviceSize * aspect_size;
 
-        Arc::new(UnsafeImage {
+        let memory_requirements = if flags.disjoint {
+            (0..format.unwrap().planes().len())
+                .map(|plane| Self::get_memory_requirements(&device, handle, Some(plane)))
+                .collect()
+        } else {
+            smallvec![Self::get_memory_requirements(&device, handle, None)]
+        };
+
+        RawImage {
             device,
             handle,
 
+            flags,
             dimensions,
             format,
             format_features,
@@ -1023,156 +1019,107 @@ impl UnsafeImage {
             tiling,
             usage,
             stencil_usage,
+            sharing,
             external_memory_handle_types,
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
 
-            aspect_list,
-            aspect_size,
-            mip_level_size,
-            needs_destruction: true,
-            range_size,
-            state: Mutex::new(ImageState::new(range_size, initial_layout)),
-        })
-    }
-
-    /// Creates an image from a raw handle. The image won't be destroyed.
-    ///
-    /// This function is for example used at the swapchain's initialization.
-    pub(crate) unsafe fn from_raw(
-        device: Arc<Device>,
-        handle: ash::vk::Image,
-        usage: ImageUsage,
-        format: Format,
-        flags: ImageCreateFlags,
-        dimensions: ImageDimensions,
-        samples: SampleCount,
-        mip_levels: u32,
-    ) -> Arc<UnsafeImage> {
-        let tiling = ImageTiling::Optimal;
-
-        // Use unchecked, the parameters are assumed to match the info of the swapchain, and
-        // therefore already valid.
-        let format_features = device
-            .physical_device()
-            .format_properties_unchecked(format)
-            .optimal_tiling_features;
-
-        assert!(ImageCreateFlags {
-            mutable_format: false,
-            cube_compatible: false,
-            array_2d_compatible: false,
-            block_texel_view_compatible: false,
-            ..ImageCreateFlags::empty()
+            memory_requirements,
+            needs_destruction,
         }
-        .is_empty());
-
-        // TODO: check that usage is correct in regard to `output`?
-
-        let aspects = format.aspects();
-        let initial_layout = ImageLayout::Undefined; // TODO: Maybe this should be passed in?
-
-        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
-        let mip_level_size = dimensions.array_layers() as DeviceSize;
-        let aspect_size = mip_level_size * mip_levels as DeviceSize;
-        let range_size = aspect_list.len() as DeviceSize * aspect_size;
-
-        let image = UnsafeImage {
-            handle,
-            device,
-
-            dimensions,
-            format: Some(format),
-            format_features,
-            initial_layout,
-            mip_levels,
-            samples,
-            tiling,
-            usage,
-            stencil_usage: usage,
-            external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
-            mutable_format: flags.mutable_format,
-            cube_compatible: flags.cube_compatible,
-            array_2d_compatible: flags.array_2d_compatible,
-            block_texel_view_compatible: flags.block_texel_view_compatible,
-
-            aspect_list,
-            aspect_size,
-            mip_level_size,
-            needs_destruction: false, // TODO: pass as parameter
-            range_size,
-            state: Mutex::new(ImageState::new(range_size, initial_layout)),
-        };
-
-        Arc::new(image)
     }
 
-    /// Returns the memory requirements for this image.
-    #[inline]
-    pub fn memory_requirements(&self) -> MemoryRequirements {
-        let image_memory_requirements_info2 = ash::vk::ImageMemoryRequirementsInfo2 {
-            image: self.handle,
+    fn get_memory_requirements(
+        device: &Device,
+        handle: ash::vk::Image,
+        plane: Option<usize>,
+    ) -> MemoryRequirements {
+        let mut info_vk = ash::vk::ImageMemoryRequirementsInfo2 {
+            image: handle,
             ..Default::default()
         };
-        let mut memory_requirements2 = ash::vk::MemoryRequirements2::default();
+        let mut plane_info_vk = None;
 
-        let mut memory_dedicated_requirements = if self.device.api_version() >= Version::V1_1
-            || self.device.enabled_extensions().khr_dedicated_allocation
+        if let Some(plane) = plane {
+            debug_assert!(
+                device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_get_memory_requirements2
+                        && device.enabled_extensions().khr_sampler_ycbcr_conversion
+            );
+
+            let next = plane_info_vk.insert(ash::vk::ImagePlaneMemoryRequirementsInfo {
+                plane_aspect: match plane {
+                    0 => ash::vk::ImageAspectFlags::PLANE_0,
+                    1 => ash::vk::ImageAspectFlags::PLANE_1,
+                    2 => ash::vk::ImageAspectFlags::PLANE_2,
+                    _ => unreachable!(),
+                },
+                ..Default::default()
+            });
+
+            next.p_next = info_vk.p_next;
+            info_vk.p_next = next as *mut _ as *mut _;
+        }
+
+        let mut memory_requirements2_vk = ash::vk::MemoryRequirements2::default();
+        let mut memory_dedicated_requirements_vk = None;
+
+        if device.api_version() >= Version::V1_1
+            || device.enabled_extensions().khr_dedicated_allocation
         {
-            Some(ash::vk::MemoryDedicatedRequirements::default())
-        } else {
-            None
-        };
+            debug_assert!(
+                device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_get_memory_requirements2
+            );
 
-        if let Some(next) = memory_dedicated_requirements.as_mut() {
-            next.p_next = memory_requirements2.p_next;
-            memory_requirements2.p_next = next as *mut _ as *mut _;
+            let next = memory_dedicated_requirements_vk
+                .insert(ash::vk::MemoryDedicatedRequirements::default());
+
+            next.p_next = memory_requirements2_vk.p_next;
+            memory_requirements2_vk.p_next = next as *mut _ as *mut _;
         }
 
         unsafe {
-            let fns = self.device.fns();
+            let fns = device.fns();
 
-            if self.device.api_version() >= Version::V1_1
-                || self
-                    .device
-                    .enabled_extensions()
-                    .khr_get_memory_requirements2
+            if device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_get_memory_requirements2
             {
-                if self.device.api_version() >= Version::V1_1 {
+                if device.api_version() >= Version::V1_1 {
                     (fns.v1_1.get_image_memory_requirements2)(
-                        self.device.handle(),
-                        &image_memory_requirements_info2,
-                        &mut memory_requirements2,
+                        device.handle(),
+                        &info_vk,
+                        &mut memory_requirements2_vk,
                     );
                 } else {
                     (fns.khr_get_memory_requirements2
                         .get_image_memory_requirements2_khr)(
-                        self.device.handle(),
-                        &image_memory_requirements_info2,
-                        &mut memory_requirements2,
+                        device.handle(),
+                        &info_vk,
+                        &mut memory_requirements2_vk,
                     );
                 }
             } else {
                 (fns.v1_0.get_image_memory_requirements)(
-                    self.device.handle(),
-                    self.handle,
-                    &mut memory_requirements2.memory_requirements,
+                    device.handle(),
+                    handle,
+                    &mut memory_requirements2_vk.memory_requirements,
                 );
             }
         }
 
         MemoryRequirements {
-            prefer_dedicated: memory_dedicated_requirements
+            size: memory_requirements2_vk.memory_requirements.size,
+            alignment: memory_requirements2_vk.memory_requirements.alignment,
+            memory_type_bits: memory_requirements2_vk.memory_requirements.memory_type_bits,
+            prefers_dedicated_allocation: memory_dedicated_requirements_vk
                 .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
-            ..MemoryRequirements::from(memory_requirements2.memory_requirements)
+            requires_dedicated_allocation: memory_dedicated_requirements_vk
+                .map_or(false, |dreqs| dreqs.requires_dedicated_allocation != 0),
         }
     }
 
-    /// Returns the sparse memory requirements for this image.
     #[inline]
-    pub fn sparse_memory_requirements(&self) -> Vec<SparseImageMemoryRequirements> {
+    #[allow(dead_code)] // Remove when sparse memory is implemented
+    fn get_sparse_memory_requirements(&self) -> Vec<SparseImageMemoryRequirements> {
         let device = &self.device;
 
         unsafe {
@@ -1350,135 +1297,290 @@ impl UnsafeImage {
         }
     }
 
-    #[inline]
+    /// Binds device memory to this image.
+    ///
+    /// - If `self.flags().disjoint` is not set, then `allocations` must contain exactly one
+    ///   element. This element may be a dedicated allocation.
+    /// - If `self.flags().disjoint` is set,  then `allocations` must contain exactly
+    ///   `self.format().unwrap().planes().len()` elements. These elements must not be dedicated
+    ///   allocations.
+    ///
+    /// # Safety
+    ///
+    /// - If the element of `allocations` is a dedicated allocation, it must be dedicated to `self`
+    ///   specifically.
     pub unsafe fn bind_memory(
-        &self,
-        memory: &DeviceMemory,
-        offset: DeviceSize,
-    ) -> Result<(), OomError> {
-        let fns = self.device.fns();
+        self,
+        allocations: impl IntoIterator<Item = MemoryAlloc>,
+    ) -> Result<
+        Image,
+        (
+            ImageError,
+            RawImage,
+            impl ExactSizeIterator<Item = MemoryAlloc>,
+        ),
+    > {
+        let allocations: SmallVec<[_; 3]> = allocations.into_iter().collect();
 
-        // We check for correctness in debug mode.
-        debug_assert!({
-            let mut mem_reqs = MaybeUninit::uninit();
-            (fns.v1_0.get_image_memory_requirements)(
-                self.device.handle(),
-                self.handle,
-                mem_reqs.as_mut_ptr(),
-            );
+        if let Err(err) = self.validate_bind_memory(&allocations) {
+            return Err((err, self, allocations.into_iter()));
+        }
 
-            let mem_reqs = mem_reqs.assume_init();
-            mem_reqs.size <= memory.allocation_size() - offset
-                && offset % mem_reqs.alignment == 0
-                && mem_reqs.memory_type_bits & (1 << memory.memory_type_index()) != 0
-        });
+        self.bind_memory_unchecked(allocations)
+            .map_err(|(err, image, allocations)| {
+                (
+                    err.into(),
+                    image,
+                    allocations
+                        .into_iter()
+                        .collect::<SmallVec<[_; 3]>>()
+                        .into_iter(),
+                )
+            })
+    }
 
-        (fns.v1_0.bind_image_memory)(self.device.handle(), self.handle, memory.handle(), offset)
-            .result()
-            .map_err(VulkanError::from)?;
+    fn validate_bind_memory(&self, allocations: &[MemoryAlloc]) -> Result<(), ImageError> {
+        if self.flags.disjoint {
+            if allocations.len() != self.format.unwrap().planes().len() {
+                return Err(ImageError::AllocationsWrongNumberOfElements {
+                    provided: allocations.len(),
+                    required: self.format.unwrap().planes().len(),
+                });
+            }
+        } else {
+            if allocations.len() != 1 {
+                return Err(ImageError::AllocationsWrongNumberOfElements {
+                    provided: allocations.len(),
+                    required: 1,
+                });
+            }
+        }
+
+        for (allocations_index, (allocation, memory_requirements)) in (allocations.iter())
+            .zip(self.memory_requirements.iter())
+            .enumerate()
+        {
+            let memory = allocation.device_memory();
+            let memory_offset = allocation.offset();
+            let memory_type = &self
+                .device
+                .physical_device()
+                .memory_properties()
+                .memory_types[memory.memory_type_index() as usize];
+
+            // VUID-VkBindImageMemoryInfo-commonparent
+            assert_eq!(self.device(), memory.device());
+
+            // VUID-VkBindImageMemoryInfo-image-07460
+            // Ensured by taking ownership of `RawImage`.
+
+            // VUID-VkBindImageMemoryInfo-image-01045
+            // Currently ensured by not having sparse binding flags, but this needs to be checked once
+            // those are enabled.
+
+            // VUID-VkBindImageMemoryInfo-memoryOffset-01046
+            // Assume that `allocation` was created correctly.
+
+            if allocation.is_dedicated() {
+                // VUID-VkBindImageMemoryInfo-memory-02628
+                // TODO: Check that the allocation is dedicated *to this buffer specifically*.
+                debug_assert!(memory_offset == 0); // This should be ensured by the allocator
+            } else {
+                // VUID-VkBindImageMemoryInfo-image-01445
+                if memory_requirements.requires_dedicated_allocation {
+                    return Err(ImageError::DedicatedAllocationRequired);
+                }
+            }
+
+            // VUID-VkBindImageMemoryInfo-None-01901
+            if memory_type.property_flags.protected {
+                return Err(ImageError::MemoryProtectedMismatch {
+                    allocations_index,
+                    image_protected: false,
+                    memory_protected: true,
+                });
+            }
+
+            // VUID-VkBindImageMemoryInfo-memory-02728
+            if !memory.export_handle_types().is_empty()
+                && !memory
+                    .export_handle_types()
+                    .intersects(&self.external_memory_handle_types)
+            {
+                return Err(ImageError::MemoryExternalHandleTypesDisjoint {
+                    allocations_index,
+                    image_handle_types: self.external_memory_handle_types,
+                    memory_export_handle_types: memory.export_handle_types(),
+                });
+            }
+
+            if let Some(handle_type) = memory.imported_handle_type() {
+                // VUID-VkBindImageMemoryInfo-memory-02989
+                if !ExternalMemoryHandleTypes::from(handle_type)
+                    .intersects(&self.external_memory_handle_types)
+                {
+                    return Err(ImageError::MemoryImportedHandleTypeNotEnabled {
+                        allocations_index,
+                        image_handle_types: self.external_memory_handle_types,
+                        memory_imported_handle_type: handle_type,
+                    });
+                }
+            }
+
+            // VUID-VkBindImageMemoryInfo-pNext-01615
+            // VUID-VkBindImageMemoryInfo-pNext-01619
+            if memory_requirements.memory_type_bits & (1 << memory.memory_type_index()) == 0 {
+                return Err(ImageError::MemoryTypeNotAllowed {
+                    allocations_index,
+                    provided_memory_type_index: memory.memory_type_index(),
+                    allowed_memory_type_bits: memory_requirements.memory_type_bits,
+                });
+            }
+
+            // VUID-VkBindImageMemoryInfo-pNext-01616
+            // VUID-VkBindImageMemoryInfo-pNext-01620
+            if memory_offset % memory_requirements.alignment != 0 {
+                return Err(ImageError::MemoryAllocationNotAligned {
+                    allocations_index,
+                    allocation_offset: memory_offset,
+                    required_alignment: memory_requirements.alignment,
+                });
+            }
+
+            // VUID-VkBindImageMemoryInfo-pNext-01617
+            // VUID-VkBindImageMemoryInfo-pNext-01621
+            if allocation.size() < memory_requirements.size {
+                return Err(ImageError::MemoryAllocationTooSmall {
+                    allocations_index,
+                    allocation_size: allocation.size(),
+                    required_size: memory_requirements.size,
+                });
+            }
+        }
 
         Ok(())
     }
 
-    pub(crate) fn range_size(&self) -> DeviceSize {
-        self.range_size
-    }
-
-    /// Returns an iterator over subresource ranges.
+    /// # Safety
     ///
-    /// In ranges, the subresources are "flattened" to `DeviceSize`, where each index in the range
-    /// is a single array layer. The layers are arranged hierarchically: aspects at the top level,
-    /// with the mip levels in that aspect, and the array layers in that mip level.
-    pub(crate) fn iter_ranges(
-        &self,
-        subresource_range: ImageSubresourceRange,
-    ) -> SubresourceRangeIterator {
-        assert!(self
-            .format()
-            .unwrap()
-            .aspects()
-            .contains(&subresource_range.aspects));
-        assert!(subresource_range.mip_levels.end <= self.mip_levels);
-        assert!(subresource_range.array_layers.end <= self.dimensions.array_layers());
+    /// - If `self.flags().disjoint` is not set, then `allocations` must contain exactly one
+    ///   element.
+    /// - If `self.flags().disjoint` is set,  then `allocations` must contain exactly
+    ///   `self.format().unwrap().planes().len()` elements.
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_memory_unchecked(
+        self,
+        allocations: impl IntoIterator<Item = MemoryAlloc>,
+    ) -> Result<
+        Image,
+        (
+            VulkanError,
+            RawImage,
+            impl ExactSizeIterator<Item = MemoryAlloc>,
+        ),
+    > {
+        let allocations: SmallVec<[_; 3]> = allocations.into_iter().collect();
+        let fns = self.device.fns();
 
-        SubresourceRangeIterator::new(
-            subresource_range,
-            &self.aspect_list,
-            self.aspect_size,
-            self.mip_levels,
-            self.mip_level_size,
-            self.dimensions.array_layers(),
-        )
-    }
+        let result = if self.device.api_version() >= Version::V1_1
+            || self.device.enabled_extensions().khr_bind_memory2
+        {
+            let mut infos_vk: SmallVec<[_; 3]> = SmallVec::with_capacity(3);
+            let mut plane_infos_vk: SmallVec<[_; 3]> = SmallVec::with_capacity(3);
 
-    pub(crate) fn range_to_subresources(
-        &self,
-        mut range: Range<DeviceSize>,
-    ) -> ImageSubresourceRange {
-        debug_assert!(!range.is_empty());
-        debug_assert!(range.end <= self.range_size);
+            if self.flags.disjoint {
+                debug_assert_eq!(allocations.len(), self.format.unwrap().planes().len());
 
-        if range.end - range.start > self.aspect_size {
-            debug_assert!(range.start % self.aspect_size == 0);
-            debug_assert!(range.end % self.aspect_size == 0);
+                for (plane, allocation) in allocations.iter().enumerate() {
+                    let memory = allocation.device_memory();
+                    let memory_offset = allocation.offset();
 
-            let start_aspect_num = (range.start / self.aspect_size) as usize;
-            let end_aspect_num = (range.end / self.aspect_size) as usize;
-
-            ImageSubresourceRange {
-                aspects: self.aspect_list[start_aspect_num..end_aspect_num]
-                    .iter()
-                    .copied()
-                    .collect(),
-                mip_levels: 0..self.mip_levels,
-                array_layers: 0..self.dimensions.array_layers(),
-            }
-        } else {
-            let aspect_num = (range.start / self.aspect_size) as usize;
-            range.start %= self.aspect_size;
-            range.end %= self.aspect_size;
-
-            // Wraparound
-            if range.end == 0 {
-                range.end = self.aspect_size;
-            }
-
-            if range.end - range.start > self.mip_level_size {
-                debug_assert!(range.start % self.mip_level_size == 0);
-                debug_assert!(range.end % self.mip_level_size == 0);
-
-                let start_mip_level = (range.start / self.mip_level_size) as u32;
-                let end_mip_level = (range.end / self.mip_level_size) as u32;
-
-                ImageSubresourceRange {
-                    aspects: self.aspect_list[aspect_num].into(),
-                    mip_levels: start_mip_level..end_mip_level,
-                    array_layers: 0..self.dimensions.array_layers(),
+                    infos_vk.push(ash::vk::BindImageMemoryInfo {
+                        image: self.handle,
+                        memory: memory.handle(),
+                        memory_offset,
+                        ..Default::default()
+                    });
+                    // VUID-VkBindImageMemoryInfo-pNext-01618
+                    plane_infos_vk.push(ash::vk::BindImagePlaneMemoryInfo {
+                        plane_aspect: match plane {
+                            0 => ash::vk::ImageAspectFlags::PLANE_0,
+                            1 => ash::vk::ImageAspectFlags::PLANE_1,
+                            2 => ash::vk::ImageAspectFlags::PLANE_2,
+                            _ => unreachable!(),
+                        },
+                        ..Default::default()
+                    });
                 }
             } else {
-                let mip_level = (range.start / self.mip_level_size) as u32;
-                range.start %= self.mip_level_size;
-                range.end %= self.mip_level_size;
+                debug_assert_eq!(allocations.len(), 1);
 
-                // Wraparound
-                if range.end == 0 {
-                    range.end = self.mip_level_size;
-                }
+                let allocation = &allocations[0];
+                let memory = allocation.device_memory();
+                let memory_offset = allocation.offset();
 
-                let start_array_layer = range.start as u32;
-                let end_array_layer = range.end as u32;
+                infos_vk.push(ash::vk::BindImageMemoryInfo {
+                    image: self.handle,
+                    memory: memory.handle(),
+                    memory_offset,
+                    ..Default::default()
+                });
+            };
 
-                ImageSubresourceRange {
-                    aspects: self.aspect_list[aspect_num].into(),
-                    mip_levels: mip_level..mip_level + 1,
-                    array_layers: start_array_layer..end_array_layer,
-                }
+            for (info_vk, plane_info_vk) in (infos_vk.iter_mut()).zip(plane_infos_vk.iter_mut()) {
+                info_vk.p_next = plane_info_vk as *mut _ as *mut _;
             }
+
+            if self.device.api_version() >= Version::V1_1 {
+                (fns.v1_1.bind_image_memory2)(
+                    self.device.handle(),
+                    infos_vk.len() as u32,
+                    infos_vk.as_ptr(),
+                )
+            } else {
+                (fns.khr_bind_memory2.bind_image_memory2_khr)(
+                    self.device.handle(),
+                    infos_vk.len() as u32,
+                    infos_vk.as_ptr(),
+                )
+            }
+        } else {
+            debug_assert_eq!(allocations.len(), 1);
+
+            let allocation = &allocations[0];
+            let memory = allocation.device_memory();
+            let memory_offset = allocation.offset();
+
+            (fns.v1_0.bind_image_memory)(
+                self.device.handle(),
+                self.handle,
+                memory.handle(),
+                memory_offset,
+            )
         }
+        .result();
+
+        if let Err(err) = result {
+            return Err((VulkanError::from(err), self, allocations.into_iter()));
+        }
+
+        Ok(Image::from_raw(self, ImageMemory::Normal(allocations)))
     }
 
-    pub(crate) fn state(&self) -> MutexGuard<'_, ImageState> {
-        self.state.lock()
+    /// Returns the memory requirements for this image.
+    ///
+    /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
+    /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
+    ///   `self.format().unwrap().planes().len()`.
+    #[inline]
+    pub fn memory_requirements(&self) -> &[MemoryRequirements] {
+        &self.memory_requirements
+    }
+
+    /// Returns the flags the image was created with.
+    #[inline]
+    pub fn flags(&self) -> ImageCreateFlags {
+        self.flags
     }
 
     /// Returns the dimensions of the image.
@@ -1535,34 +1637,16 @@ impl UnsafeImage {
         &self.stencil_usage
     }
 
+    /// Returns the sharing the image was created with.
+    #[inline]
+    pub fn sharing(&self) -> &Sharing<SmallVec<[u32; 4]>> {
+        &self.sharing
+    }
+
     /// Returns the external memory handle types that are supported with this image.
     #[inline]
     pub fn external_memory_handle_types(&self) -> ExternalMemoryHandleTypes {
         self.external_memory_handle_types
-    }
-
-    /// Returns whether `mutable_format` is enabled on the image.
-    #[inline]
-    pub fn mutable_format(&self) -> bool {
-        self.mutable_format
-    }
-
-    /// Returns whether `cube_compatible` is enabled on the image.
-    #[inline]
-    pub fn cube_compatible(&self) -> bool {
-        self.cube_compatible
-    }
-
-    /// Returns whether `array_2d_compatible` is enabled on the image.
-    #[inline]
-    pub fn array_2d_compatible(&self) -> bool {
-        self.array_2d_compatible
-    }
-
-    /// Returns whether `block_texel_view_compatible` is enabled on the image.
-    #[inline]
-    pub fn block_texel_view_compatible(&self) -> bool {
-        self.block_texel_view_compatible
     }
 
     /// Returns an `ImageSubresourceLayers` covering the first mip level of the image. All aspects
@@ -1601,12 +1685,6 @@ impl UnsafeImage {
             mip_levels: 0..self.mip_levels,
             array_layers: 0..self.dimensions.array_layers(),
         }
-    }
-
-    /// Returns a key unique to each `UnsafeImage`. Can be used for the `conflicts_key` method.
-    #[inline]
-    pub fn key(&self) -> u64 {
-        self.handle.as_raw()
     }
 
     /// Queries the layout of an image in memory. Only valid for images with linear tiling.
@@ -1726,7 +1804,7 @@ impl UnsafeImage {
     }
 }
 
-impl Drop for UnsafeImage {
+impl Drop for RawImage {
     #[inline]
     fn drop(&mut self) {
         if !self.needs_destruction {
@@ -1740,7 +1818,7 @@ impl Drop for UnsafeImage {
     }
 }
 
-unsafe impl VulkanObject for UnsafeImage {
+unsafe impl VulkanObject for RawImage {
     type Handle = ash::vk::Image;
 
     #[inline]
@@ -1749,32 +1827,37 @@ unsafe impl VulkanObject for UnsafeImage {
     }
 }
 
-unsafe impl DeviceOwned for UnsafeImage {
+unsafe impl DeviceOwned for RawImage {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl PartialEq for UnsafeImage {
+impl PartialEq for RawImage {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.device() == other.device()
     }
 }
 
-impl Eq for UnsafeImage {}
+impl Eq for RawImage {}
 
-impl Hash for UnsafeImage {
+impl Hash for RawImage {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
     }
 }
 
-/// Parameters to create a new `UnsafeImage`.
+/// Parameters to create a new `Image`.
 #[derive(Clone, Debug)]
-pub struct UnsafeImageCreateInfo {
+pub struct ImageCreateInfo {
+    /// Flags to enable.
+    ///
+    /// The default value is [`ImageCreateFlags::empty()`].
+    pub flags: ImageCreateFlags,
+
     /// The type, extent and number of array layers to create the image with.
     ///
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
@@ -1849,51 +1932,14 @@ pub struct UnsafeImageCreateInfo {
     /// The default value is [`ExternalMemoryHandleTypes::empty()`].
     pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
-    /// For non-multi-planar formats, whether an image view wrapping the image can have a
-    /// different format.
-    ///
-    /// For multi-planar formats, whether an image view wrapping the image can be created from a
-    /// single plane of the image.
-    ///
-    /// The default value is `false`.
-    pub mutable_format: bool,
-
-    /// For 2D images, whether an image view of type
-    /// [`ImageViewType::Cube`](crate::image::view::ImageViewType::Cube) or
-    /// [`ImageViewType::CubeArray`](crate::image::view::ImageViewType::CubeArray) can be created
-    /// from the image.
-    ///
-    /// The default value is `false`.
-    pub cube_compatible: bool,
-
-    /// For 3D images, whether an image view of type
-    /// [`ImageViewType::Dim2d`](crate::image::view::ImageViewType::Dim2d) or
-    /// [`ImageViewType::Dim2dArray`](crate::image::view::ImageViewType::Dim2dArray) can be created
-    /// from the image.
-    ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
-    /// devices, the [`image_view2_d_on3_d_image`](crate::device::Features::image_view2_d_on3_d_image)
-    /// feature must be enabled on the device.
-    ///
-    /// The default value is `false`.
-    pub array_2d_compatible: bool,
-
-    /// For images with a compressed format, whether an image view with an uncompressed
-    /// format can be created from the image, where each texel in the view will correspond to a
-    /// compressed texel block in the image.
-    ///
-    /// Requires `mutable_format`.
-    ///
-    /// The default value is `false`.
-    pub block_texel_view_compatible: bool,
-
     pub _ne: crate::NonExhaustive,
 }
 
-impl Default for UnsafeImageCreateInfo {
+impl Default for ImageCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: ImageCreateFlags::empty(),
             dimensions: ImageDimensions::Dim2d {
                 width: 0,
                 height: 0,
@@ -1908,327 +1954,337 @@ impl Default for UnsafeImageCreateInfo {
             sharing: Sharing::Exclusive,
             initial_layout: ImageLayout::Undefined,
             external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
-            mutable_format: false,
-            cube_compatible: false,
-            array_2d_compatible: false,
-            block_texel_view_compatible: false,
             _ne: crate::NonExhaustive(()),
         }
     }
 }
 
-/// Error that can happen when creating an image.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ImageCreationError {
-    /// Allocating memory failed.
-    AllocError(AllocationCreationError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// The array_2d_compatible flag was enabled, but the image type was not 3D.
-    Array2dCompatibleNot3d,
-
-    /// The block_texel_view_compatible flag was enabled, but the given format was not compressed.
-    BlockTexelViewCompatibleNotCompressed,
-
-    /// The cube_compatible flag was enabled, but the image type was not 2D.
-    CubeCompatibleNot2d,
-
-    /// The cube_compatible flag was enabled, but the number of array layers was less than 6.
-    CubeCompatibleNotEnoughArrayLayers,
-
-    /// The cube_compatible flag was enabled, but the image dimensions were not square.
-    CubeCompatibleNotSquare,
-
-    /// The cube_compatible flag was enabled together with multisampling.
-    CubeCompatibleMultisampling,
-
-    /// One or more external memory handle types were provided, but the initial layout was not
-    /// `Undefined`.
-    ExternalMemoryInvalidInitialLayout,
-
-    /// The given format was not supported by the device.
-    FormatNotSupported,
-
-    /// A requested usage flag was not supported by the given format.
-    FormatUsageNotSupported {
-        usage: &'static str,
-    },
-
-    /// The image configuration as queried through the `image_format_properties` function was not
-    /// supported by the device.
-    ImageFormatPropertiesNotSupported,
-
-    /// The number of array layers exceeds the maximum supported by the device for this image
-    /// configuration.
-    MaxArrayLayersExceeded {
-        array_layers: u32,
-        max: u32,
-    },
-
-    /// The specified dimensions exceed the maximum supported by the device for this image
-    /// configuration.
-    MaxDimensionsExceeded {
-        extent: [u32; 3],
-        max: [u32; 3],
-    },
-
-    /// The usage included one of the attachment types, and the specified width and height exceeded
-    /// the `max_framebuffer_width` or `max_framebuffer_height` limits.
-    MaxFramebufferDimensionsExceeded {
-        extent: [u32; 2],
-        max: [u32; 2],
-    },
-
-    /// The maximum number of mip levels for the given dimensions has been exceeded.
-    MaxMipLevelsExceeded {
-        mip_levels: u32,
-        max: u32,
-    },
-
-    /// Multisampling was enabled, and the `cube_compatible` flag was set.
-    MultisampleCubeCompatible,
-
-    /// Multisampling was enabled, and tiling was `Linear`.
-    MultisampleLinearTiling,
-
-    /// Multisampling was enabled, and multiple mip levels were specified.
-    MultisampleMultipleMipLevels,
-
-    /// Multisampling was enabled, but the image type was not 2D.
-    MultisampleNot2d,
-
-    /// The sample count is not supported by the device for this image configuration.
-    SampleCountNotSupported {
-        samples: SampleCount,
-        supported: SampleCounts,
-    },
-
-    /// The sharing mode was set to `Concurrent`, but one of the specified queue family indices was
-    /// out of range.
-    SharingQueueFamilyIndexOutOfRange {
-        queue_family_index: u32,
-        queue_family_count: u32,
-    },
-
-    /// The provided `usage` and `stencil_usage` have different values for
-    /// `depth_stencil_attachment` or `transient_attachment`.
-    StencilUsageMismatch {
-        usage: ImageUsage,
-        stencil_usage: ImageUsage,
-    },
-
-    /// A YCbCr format was given, but the specified width and/or height was not a multiple of 2
-    /// as required by the format's chroma subsampling.
-    YcbcrFormatInvalidDimensions,
-
-    /// A YCbCr format was given, and multiple mip levels were specified.
-    YcbcrFormatMultipleMipLevels,
-
-    /// A YCbCr format was given, and multisampling was enabled.
-    YcbcrFormatMultisampling,
-
-    /// A YCbCr format was given, but the image type was not 2D.
-    YcbcrFormatNot2d,
-
-    DirectImageViewCreationFailed(ImageViewCreationError),
-}
-
-impl Error for ImageCreationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            ImageCreationError::AllocError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for ImageCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::AllocError(_) => write!(f, "allocating memory failed"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::Array2dCompatibleNot3d => write!(
-                f,
-                "the array_2d_compatible flag was enabled, but the image type was not 3D",
-            ),
-            Self::BlockTexelViewCompatibleNotCompressed => write!(
-                f,
-                "the block_texel_view_compatible flag was enabled, but the given format was not \
-                compressed",
-            ),
-            Self::CubeCompatibleNot2d => write!(
-                f,
-                "the cube_compatible flag was enabled, but the image type was not 2D",
-            ),
-            Self::CubeCompatibleNotEnoughArrayLayers => write!(
-                f,
-                "the cube_compatible flag was enabled, but the number of array layers was less \
-                than 6",
-            ),
-            Self::CubeCompatibleNotSquare => write!(
-                f,
-                "the cube_compatible flag was enabled, but the image dimensions were not square",
-            ),
-            Self::CubeCompatibleMultisampling => write!(
-                f,
-                "the cube_compatible flag was enabled together with multisampling",
-            ),
-            Self::ExternalMemoryInvalidInitialLayout => write!(
-                f,
-                "one or more external memory handle types were provided, but the initial layout \
-                was not `Undefined`",
-            ),
-            Self::FormatNotSupported => {
-                write!(f, "the given format was not supported by the device")
-            }
-            Self::FormatUsageNotSupported { .. } => write!(
-                f,
-                "a requested usage flag was not supported by the given format",
-            ),
-            Self::ImageFormatPropertiesNotSupported => write!(
-                f,
-                "the image configuration as queried through the `image_format_properties` function \
-                was not supported by the device",
-            ),
-            Self::MaxArrayLayersExceeded { .. } => write!(
-                f,
-                "the number of array layers exceeds the maximum supported by the device for this \
-                image configuration",
-            ),
-            Self::MaxDimensionsExceeded { .. } => write!(
-                f,
-                "the specified dimensions exceed the maximum supported by the device for this \
-                image configuration",
-            ),
-            Self::MaxFramebufferDimensionsExceeded { .. } => write!(
-                f,
-                "the usage included one of the attachment types, and the specified width and \
-                height exceeded the `max_framebuffer_width` or `max_framebuffer_height` limits",
-            ),
-            Self::MaxMipLevelsExceeded { .. } => write!(
-                f,
-                "the maximum number of mip levels for the given dimensions has been exceeded",
-            ),
-            Self::MultisampleCubeCompatible => write!(
-                f,
-                "multisampling was enabled, and the `cube_compatible` flag was set",
-            ),
-            Self::MultisampleLinearTiling => {
-                write!(f, "multisampling was enabled, and tiling was `Linear`")
-            }
-            Self::MultisampleMultipleMipLevels => write!(
-                f,
-                "multisampling was enabled, and multiple mip levels were specified",
-            ),
-            Self::MultisampleNot2d => write!(
-                f,
-                "multisampling was enabled, but the image type was not 2D",
-            ),
-            Self::SampleCountNotSupported { .. } => write!(
-                f,
-                "the sample count is not supported by the device for this image configuration",
-            ),
-            Self::SharingQueueFamilyIndexOutOfRange { .. } => write!(
-                f,
-                "the sharing mode was set to `Concurrent`, but one of the specified queue family \
-                indices was out of range",
-            ),
-            Self::StencilUsageMismatch {
-                usage: _,
-                stencil_usage: _,
-            } => write!(
-                f,
-                "the provided `usage` and `stencil_usage` have different values for \
-                `depth_stencil_attachment` or `transient_attachment`",
-            ),
-            Self::YcbcrFormatInvalidDimensions => write!(
-                f,
-                "a YCbCr format was given, but the specified width and/or height was not a \
-                multiple of 2 as required by the format's chroma subsampling",
-            ),
-            Self::YcbcrFormatMultipleMipLevels => write!(
-                f,
-                "a YCbCr format was given, and multiple mip levels were specified",
-            ),
-            Self::YcbcrFormatMultisampling => {
-                write!(f, "a YCbCr format was given, and multisampling was enabled")
-            }
-            Self::YcbcrFormatNot2d => {
-                write!(f, "a YCbCr format was given, but the image type was not 2D")
-            }
-            Self::DirectImageViewCreationFailed(e) => write!(f, "Image view creation failed {}", e),
-        }
-    }
-}
-
-impl From<OomError> for ImageCreationError {
-    fn from(err: OomError) -> Self {
-        Self::AllocError(err.into())
-    }
-}
-
-impl From<AllocationCreationError> for ImageCreationError {
-    fn from(err: AllocationCreationError) -> Self {
-        Self::AllocError(err)
-    }
-}
-
-impl From<VulkanError> for ImageCreationError {
-    fn from(err: VulkanError) -> Self {
-        match err {
-            VulkanError::OutOfHostMemory => {
-                Self::AllocError(AllocationCreationError::OutOfHostMemory)
-            }
-            VulkanError::OutOfDeviceMemory => {
-                Self::AllocError(AllocationCreationError::OutOfDeviceMemory)
-            }
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<RequirementNotMet> for ImageCreationError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
-/// Describes the memory layout of an image with linear tiling.
+/// A multi-dimensioned storage for texel data.
 ///
-/// Obtained by calling `*_linear_layout` on the image.
-///
-/// The address of a texel at `(x, y, z, layer)` is `layer * array_pitch + z * depth_pitch +
-/// y * row_pitch + x * size_of_each_texel + offset`. `size_of_each_texel` must be determined
-/// depending on the format. The same formula applies for compressed formats, except that the
-/// coordinates must be in number of blocks.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct LinearLayout {
-    /// Number of bytes from the start of the memory and the start of the queried subresource.
-    pub offset: DeviceSize,
-    /// Total number of bytes for the queried subresource. Can be used for a safety check.
-    pub size: DeviceSize,
-    /// Number of bytes between two texels or two blocks in adjacent rows.
-    pub row_pitch: DeviceSize,
-    /// Number of bytes between two texels or two blocks in adjacent array layers. This value is
-    /// undefined for images with only one array layer.
-    pub array_pitch: DeviceSize,
-    /// Number of bytes between two texels or two blocks in adjacent depth layers. This value is
-    /// undefined for images that are not three-dimensional.
-    pub depth_pitch: DeviceSize,
+/// Unlike [`RawImage`], an `Image` has memory backing it, and can be used normally.
+#[derive(Debug)]
+pub struct Image {
+    inner: RawImage,
+    memory: ImageMemory,
+
+    aspect_list: SmallVec<[ImageAspect; 4]>,
+    aspect_size: DeviceSize,
+    mip_level_size: DeviceSize,
+    range_size: DeviceSize,
+    state: Mutex<ImageState>,
+}
+
+/// The type of backing memory that an image can have.
+#[derive(Debug)]
+pub enum ImageMemory {
+    /// The image is backed by normal memory, bound with [`bind_memory`].
+    ///
+    /// [`bind_memory`]: RawImage::bind_memory
+    Normal(SmallVec<[MemoryAlloc; 3]>),
+
+    /// The image is backed by sparse memory, bound with [`bind_sparse`].
+    ///
+    /// [`bind_sparse`]: crate::device::QueueGuard::bind_sparse
+    Sparse,
+
+    /// The image is backed by memory owned by a [`Swapchain`].
+    Swapchain {
+        swapchain: Arc<Swapchain>,
+        image_index: u32,
+    },
+}
+
+impl Image {
+    fn from_raw(inner: RawImage, memory: ImageMemory) -> Self {
+        let aspects = inner.format.unwrap().aspects();
+        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
+        let mip_level_size = inner.dimensions.array_layers() as DeviceSize;
+        let aspect_size = mip_level_size * inner.mip_levels as DeviceSize;
+        let range_size = aspect_list.len() as DeviceSize * aspect_size;
+        let state = Mutex::new(ImageState::new(range_size, inner.initial_layout));
+
+        Image {
+            inner,
+            memory,
+
+            aspect_list,
+            aspect_size,
+            mip_level_size,
+            range_size,
+            state,
+        }
+    }
+
+    pub(crate) unsafe fn from_swapchain(
+        handle: ash::vk::Image,
+        swapchain: Arc<Swapchain>,
+        image_index: u32,
+    ) -> Self {
+        let create_info = ImageCreateInfo {
+            flags: ImageCreateFlags::empty(),
+            dimensions: ImageDimensions::Dim2d {
+                width: swapchain.image_extent()[0],
+                height: swapchain.image_extent()[1],
+                array_layers: swapchain.image_array_layers(),
+            },
+            format: Some(swapchain.image_format()),
+            initial_layout: ImageLayout::Undefined,
+            mip_levels: 1,
+            samples: SampleCount::Sample1,
+            tiling: ImageTiling::Optimal,
+            usage: swapchain.image_usage(),
+            stencil_usage: swapchain.image_usage(),
+            sharing: swapchain.image_sharing().clone(),
+            ..Default::default()
+        };
+
+        Self::from_raw(
+            RawImage::from_handle_with_destruction(
+                swapchain.device().clone(),
+                handle,
+                create_info,
+                false,
+            ),
+            ImageMemory::Swapchain {
+                swapchain,
+                image_index,
+            },
+        )
+    }
+
+    /// Returns the type of memory that is backing this image.
+    #[inline]
+    pub fn memory(&self) -> &ImageMemory {
+        &self.memory
+    }
+
+    /// Returns the memory requirements for this image.
+    ///
+    /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
+    /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
+    ///   `self.format().unwrap().planes().len()`.
+    #[inline]
+    pub fn memory_requirements(&self) -> &[MemoryRequirements] {
+        &self.inner.memory_requirements
+    }
+
+    /// Returns the flags the image was created with.
+    #[inline]
+    pub fn flags(&self) -> ImageCreateFlags {
+        self.inner.flags
+    }
+
+    /// Returns the dimensions of the image.
+    #[inline]
+    pub fn dimensions(&self) -> ImageDimensions {
+        self.inner.dimensions
+    }
+
+    /// Returns the image's format.
+    #[inline]
+    pub fn format(&self) -> Option<Format> {
+        self.inner.format
+    }
+
+    /// Returns the features supported by the image's format.
+    #[inline]
+    pub fn format_features(&self) -> &FormatFeatures {
+        &self.inner.format_features
+    }
+
+    /// Returns the number of mipmap levels in the image.
+    #[inline]
+    pub fn mip_levels(&self) -> u32 {
+        self.inner.mip_levels
+    }
+
+    /// Returns the initial layout of the image.
+    #[inline]
+    pub fn initial_layout(&self) -> ImageLayout {
+        self.inner.initial_layout
+    }
+
+    /// Returns the number of samples for the image.
+    #[inline]
+    pub fn samples(&self) -> SampleCount {
+        self.inner.samples
+    }
+
+    /// Returns the tiling of the image.
+    #[inline]
+    pub fn tiling(&self) -> ImageTiling {
+        self.inner.tiling
+    }
+
+    /// Returns the usage the image was created with.
+    #[inline]
+    pub fn usage(&self) -> &ImageUsage {
+        &self.inner.usage
+    }
+
+    /// Returns the stencil usage the image was created with.
+    #[inline]
+    pub fn stencil_usage(&self) -> &ImageUsage {
+        &self.inner.stencil_usage
+    }
+
+    /// Returns the sharing the image was created with.
+    #[inline]
+    pub fn sharing(&self) -> &Sharing<SmallVec<[u32; 4]>> {
+        &self.inner.sharing
+    }
+
+    /// Returns the external memory handle types that are supported with this image.
+    #[inline]
+    pub fn external_memory_handle_types(&self) -> ExternalMemoryHandleTypes {
+        self.inner.external_memory_handle_types
+    }
+
+    /// Returns an `ImageSubresourceLayers` covering the first mip level of the image. All aspects
+    /// of the image are selected, or `plane0` if the image is multi-planar.
+    #[inline]
+    pub fn subresource_layers(&self) -> ImageSubresourceLayers {
+        self.inner.subresource_layers()
+    }
+
+    /// Returns an `ImageSubresourceRange` covering the whole image. If the image is multi-planar,
+    /// only the `color` aspect is selected.
+    #[inline]
+    pub fn subresource_range(&self) -> ImageSubresourceRange {
+        self.inner.subresource_range()
+    }
+
+    pub(crate) fn range_size(&self) -> DeviceSize {
+        self.range_size
+    }
+
+    /// Returns an iterator over subresource ranges.
+    ///
+    /// In ranges, the subresources are "flattened" to `DeviceSize`, where each index in the range
+    /// is a single array layer. The layers are arranged hierarchically: aspects at the top level,
+    /// with the mip levels in that aspect, and the array layers in that mip level.
+    pub(crate) fn iter_ranges(
+        &self,
+        subresource_range: ImageSubresourceRange,
+    ) -> SubresourceRangeIterator {
+        assert!(self
+            .format()
+            .unwrap()
+            .aspects()
+            .contains(&subresource_range.aspects));
+        assert!(subresource_range.mip_levels.end <= self.inner.mip_levels);
+        assert!(subresource_range.array_layers.end <= self.inner.dimensions.array_layers());
+
+        SubresourceRangeIterator::new(
+            subresource_range,
+            &self.aspect_list,
+            self.aspect_size,
+            self.inner.mip_levels,
+            self.mip_level_size,
+            self.inner.dimensions.array_layers(),
+        )
+    }
+
+    pub(crate) fn range_to_subresources(
+        &self,
+        mut range: Range<DeviceSize>,
+    ) -> ImageSubresourceRange {
+        debug_assert!(!range.is_empty());
+        debug_assert!(range.end <= self.range_size);
+
+        if range.end - range.start > self.aspect_size {
+            debug_assert!(range.start % self.aspect_size == 0);
+            debug_assert!(range.end % self.aspect_size == 0);
+
+            let start_aspect_num = (range.start / self.aspect_size) as usize;
+            let end_aspect_num = (range.end / self.aspect_size) as usize;
+
+            ImageSubresourceRange {
+                aspects: self.aspect_list[start_aspect_num..end_aspect_num]
+                    .iter()
+                    .copied()
+                    .collect(),
+                mip_levels: 0..self.inner.mip_levels,
+                array_layers: 0..self.inner.dimensions.array_layers(),
+            }
+        } else {
+            let aspect_num = (range.start / self.aspect_size) as usize;
+            range.start %= self.aspect_size;
+            range.end %= self.aspect_size;
+
+            // Wraparound
+            if range.end == 0 {
+                range.end = self.aspect_size;
+            }
+
+            if range.end - range.start > self.mip_level_size {
+                debug_assert!(range.start % self.mip_level_size == 0);
+                debug_assert!(range.end % self.mip_level_size == 0);
+
+                let start_mip_level = (range.start / self.mip_level_size) as u32;
+                let end_mip_level = (range.end / self.mip_level_size) as u32;
+
+                ImageSubresourceRange {
+                    aspects: self.aspect_list[aspect_num].into(),
+                    mip_levels: start_mip_level..end_mip_level,
+                    array_layers: 0..self.inner.dimensions.array_layers(),
+                }
+            } else {
+                let mip_level = (range.start / self.mip_level_size) as u32;
+                range.start %= self.mip_level_size;
+                range.end %= self.mip_level_size;
+
+                // Wraparound
+                if range.end == 0 {
+                    range.end = self.mip_level_size;
+                }
+
+                let start_array_layer = range.start as u32;
+                let end_array_layer = range.end as u32;
+
+                ImageSubresourceRange {
+                    aspects: self.aspect_list[aspect_num].into(),
+                    mip_levels: mip_level..mip_level + 1,
+                    array_layers: start_array_layer..end_array_layer,
+                }
+            }
+        }
+    }
+
+    pub(crate) fn state(&self) -> MutexGuard<'_, ImageState> {
+        self.state.lock()
+    }
+}
+
+unsafe impl VulkanObject for Image {
+    type Handle = ash::vk::Image;
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        self.inner.handle
+    }
+}
+
+unsafe impl DeviceOwned for Image {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.inner.device
+    }
+}
+
+impl PartialEq for Image {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl Eq for Image {}
+
+impl Hash for Image {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+    }
 }
 
 /// The current state of an image.
@@ -2605,14 +2661,464 @@ impl Iterator for SubresourceRangeIterator {
 
 impl FusedIterator for SubresourceRangeIterator {}
 
+/// Describes the memory layout of an image with linear tiling.
+///
+/// Obtained by calling `*_linear_layout` on the image.
+///
+/// The address of a texel at `(x, y, z, layer)` is `layer * array_pitch + z * depth_pitch +
+/// y * row_pitch + x * size_of_each_texel + offset`. `size_of_each_texel` must be determined
+/// depending on the format. The same formula applies for compressed formats, except that the
+/// coordinates must be in number of blocks.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct LinearLayout {
+    /// Number of bytes from the start of the memory and the start of the queried subresource.
+    pub offset: DeviceSize,
+    /// Total number of bytes for the queried subresource. Can be used for a safety check.
+    pub size: DeviceSize,
+    /// Number of bytes between two texels or two blocks in adjacent rows.
+    pub row_pitch: DeviceSize,
+    /// Number of bytes between two texels or two blocks in adjacent array layers. This value is
+    /// undefined for images with only one array layer.
+    pub array_pitch: DeviceSize,
+    /// Number of bytes between two texels or two blocks in adjacent depth layers. This value is
+    /// undefined for images that are not three-dimensional.
+    pub depth_pitch: DeviceSize,
+}
+
+/// Error that can happen in image functions.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImageError {
+    VulkanError(VulkanError),
+
+    /// Allocating memory failed.
+    AllocError(AllocationCreationError),
+
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
+    /// The provided number of elements in `allocations` is not what is required for `image`.
+    AllocationsWrongNumberOfElements {
+        provided: usize,
+        required: usize,
+    },
+
+    /// The `array_2d_compatible` flag was enabled, but the image type was not 3D.
+    Array2dCompatibleNot3d,
+
+    /// The `block_texel_view_compatible` flag was enabled, but the given format was not compressed.
+    BlockTexelViewCompatibleNotCompressed,
+
+    /// The `cube_compatible` flag was enabled, but the image type was not 2D.
+    CubeCompatibleNot2d,
+
+    /// The `cube_compatible` flag was enabled, but the number of array layers was less than 6.
+    CubeCompatibleNotEnoughArrayLayers,
+
+    /// The `cube_compatible` flag was enabled, but the image dimensions were not square.
+    CubeCompatibleNotSquare,
+
+    /// The `cube_compatible` flag was enabled together with multisampling.
+    CubeCompatibleMultisampling,
+
+    /// A dedicated allocation is required for this image, but one was not provided.
+    DedicatedAllocationRequired,
+
+    /// The `disjoint` flag was enabled, but the given format is either not multi-planar, or does
+    /// not support disjoint images.
+    DisjointFormatNotSupported,
+
+    /// One or more external memory handle types were provided, but the initial layout was not
+    /// `Undefined`.
+    ExternalMemoryInvalidInitialLayout,
+
+    /// The given format was not supported by the device.
+    FormatNotSupported,
+
+    /// A requested usage flag was not supported by the given format.
+    FormatUsageNotSupported {
+        usage: &'static str,
+    },
+
+    /// The image configuration as queried through the `image_format_properties` function was not
+    /// supported by the device.
+    ImageFormatPropertiesNotSupported,
+
+    /// The number of array layers exceeds the maximum supported by the device for this image
+    /// configuration.
+    MaxArrayLayersExceeded {
+        array_layers: u32,
+        max: u32,
+    },
+
+    /// The specified dimensions exceed the maximum supported by the device for this image
+    /// configuration.
+    MaxDimensionsExceeded {
+        extent: [u32; 3],
+        max: [u32; 3],
+    },
+
+    /// The usage included one of the attachment types, and the specified width and height exceeded
+    /// the `max_framebuffer_width` or `max_framebuffer_height` limits.
+    MaxFramebufferDimensionsExceeded {
+        extent: [u32; 2],
+        max: [u32; 2],
+    },
+
+    /// The maximum number of mip levels for the given dimensions has been exceeded.
+    MaxMipLevelsExceeded {
+        mip_levels: u32,
+        max: u32,
+    },
+
+    /// In an `allocations` element, the offset of the allocation does not have the required
+    /// alignment.
+    MemoryAllocationNotAligned {
+        allocations_index: usize,
+        allocation_offset: DeviceSize,
+        required_alignment: DeviceSize,
+    },
+
+    /// In an `allocations` element, the size of the allocation is smaller than what is required.
+    MemoryAllocationTooSmall {
+        allocations_index: usize,
+        allocation_size: DeviceSize,
+        required_size: DeviceSize,
+    },
+
+    /// In an `allocations` element, the memory was created with export handle types, but none of
+    /// these handle types were enabled on the image.
+    MemoryExternalHandleTypesDisjoint {
+        allocations_index: usize,
+        image_handle_types: ExternalMemoryHandleTypes,
+        memory_export_handle_types: ExternalMemoryHandleTypes,
+    },
+
+    /// In an `allocations` element, the memory was created with an import, but the import's handle
+    /// type was not enabled on the image.
+    MemoryImportedHandleTypeNotEnabled {
+        allocations_index: usize,
+        image_handle_types: ExternalMemoryHandleTypes,
+        memory_imported_handle_type: ExternalMemoryHandleType,
+    },
+
+    /// In an `allocations` element, the protection of image and memory are not equal.
+    MemoryProtectedMismatch {
+        allocations_index: usize,
+        image_protected: bool,
+        memory_protected: bool,
+    },
+
+    /// In an `allocations` element, the provided memory type is not one of the allowed memory
+    /// types that can be bound to this image or image plane.
+    MemoryTypeNotAllowed {
+        allocations_index: usize,
+        provided_memory_type_index: u32,
+        allowed_memory_type_bits: u32,
+    },
+
+    /// Multisampling was enabled, and the `cube_compatible` flag was set.
+    MultisampleCubeCompatible,
+
+    /// Multisampling was enabled, and tiling was `Linear`.
+    MultisampleLinearTiling,
+
+    /// Multisampling was enabled, and multiple mip levels were specified.
+    MultisampleMultipleMipLevels,
+
+    /// Multisampling was enabled, but the image type was not 2D.
+    MultisampleNot2d,
+
+    /// The sample count is not supported by the device for this image configuration.
+    SampleCountNotSupported {
+        samples: SampleCount,
+        supported: SampleCounts,
+    },
+
+    /// The sharing mode was set to `Concurrent`, but one of the specified queue family indices was
+    /// out of range.
+    SharingQueueFamilyIndexOutOfRange {
+        queue_family_index: u32,
+        queue_family_count: u32,
+    },
+
+    /// The provided `usage` and `stencil_usage` have different values for
+    /// `depth_stencil_attachment` or `transient_attachment`.
+    StencilUsageMismatch {
+        usage: ImageUsage,
+        stencil_usage: ImageUsage,
+    },
+
+    /// A YCbCr format was given, but the specified width and/or height was not a multiple of 2
+    /// as required by the format's chroma subsampling.
+    YcbcrFormatInvalidDimensions,
+
+    /// A YCbCr format was given, and multiple mip levels were specified.
+    YcbcrFormatMultipleMipLevels,
+
+    /// A YCbCr format was given, and multisampling was enabled.
+    YcbcrFormatMultisampling,
+
+    /// A YCbCr format was given, but the image type was not 2D.
+    YcbcrFormatNot2d,
+
+    DirectImageViewCreationFailed(ImageViewCreationError),
+}
+
+impl Error for ImageError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ImageError::AllocError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl Display for ImageError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+            Self::AllocError(_) => write!(f, "allocating memory failed"),
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+            Self::AllocationsWrongNumberOfElements { provided, required } => write!(
+                f,
+                "the provided number of elements in `allocations` ({}) is not what is required for \
+                `image` ({})",
+                provided, required,
+            ),
+            Self::Array2dCompatibleNot3d => write!(
+                f,
+                "the `array_2d_compatible` flag was enabled, but the image type was not 3D",
+            ),
+            Self::BlockTexelViewCompatibleNotCompressed => write!(
+                f,
+                "the `block_texel_view_compatible` flag was enabled, but the given format was not \
+                compressed",
+            ),
+            Self::CubeCompatibleNot2d => write!(
+                f,
+                "the `cube_compatible` flag was enabled, but the image type was not 2D",
+            ),
+            Self::CubeCompatibleNotEnoughArrayLayers => write!(
+                f,
+                "the `cube_compatible` flag was enabled, but the number of array layers was less \
+                than 6",
+            ),
+            Self::CubeCompatibleNotSquare => write!(
+                f,
+                "the `cube_compatible` flag was enabled, but the image dimensions were not square",
+            ),
+            Self::CubeCompatibleMultisampling => write!(
+                f,
+                "the `cube_compatible` flag was enabled together with multisampling",
+            ),
+            Self::DedicatedAllocationRequired => write!(
+                f,
+                "a dedicated allocation is required for this image, but one was not provided"
+            ),
+            Self::DisjointFormatNotSupported => write!(
+                f,
+                "the `disjoint` flag was enabled, but the given format is either not multi-planar, \
+                or does not support disjoint images",
+            ),
+            Self::ExternalMemoryInvalidInitialLayout => write!(
+                f,
+                "one or more external memory handle types were provided, but the initial layout \
+                was not `Undefined`",
+            ),
+            Self::FormatNotSupported => {
+                write!(f, "the given format was not supported by the device")
+            }
+            Self::FormatUsageNotSupported { .. } => write!(
+                f,
+                "a requested usage flag was not supported by the given format",
+            ),
+            Self::ImageFormatPropertiesNotSupported => write!(
+                f,
+                "the image configuration as queried through the `image_format_properties` function \
+                was not supported by the device",
+            ),
+            Self::MaxArrayLayersExceeded { .. } => write!(
+                f,
+                "the number of array layers exceeds the maximum supported by the device for this \
+                image configuration",
+            ),
+            Self::MaxDimensionsExceeded { .. } => write!(
+                f,
+                "the specified dimensions exceed the maximum supported by the device for this \
+                image configuration",
+            ),
+            Self::MaxFramebufferDimensionsExceeded { .. } => write!(
+                f,
+                "the usage included one of the attachment types, and the specified width and \
+                height exceeded the `max_framebuffer_width` or `max_framebuffer_height` limits",
+            ),
+            Self::MaxMipLevelsExceeded { .. } => write!(
+                f,
+                "the maximum number of mip levels for the given dimensions has been exceeded",
+            ),
+            Self::MemoryAllocationNotAligned {
+                allocations_index,
+                allocation_offset,
+                required_alignment,
+            } => write!(
+                f,
+                "in `allocations` element {}, the offset of the allocation ({}) does not have the \
+                required alignment ({})",
+                allocations_index, allocation_offset, required_alignment,
+            ),
+            Self::MemoryAllocationTooSmall {
+                allocations_index,
+                allocation_size,
+                required_size,
+            } => write!(
+                f,
+                "in `allocations` element {}, the size of the allocation ({}) is smaller than what \
+                is required ({})",
+                allocations_index, allocation_size, required_size,
+            ),
+            Self::MemoryExternalHandleTypesDisjoint {
+                allocations_index, ..
+            } => write!(
+                f,
+                "in `allocations` element {}, the memory was created with export handle types, but \
+                none of these handle types were enabled on the image",
+                allocations_index,
+            ),
+            Self::MemoryImportedHandleTypeNotEnabled {
+                allocations_index, ..
+            } => write!(
+                f,
+                "in `allocations` element {}, the memory was created with an import, but the \
+                import's handle type was not enabled on the image",
+                allocations_index,
+            ),
+            Self::MemoryProtectedMismatch {
+                allocations_index,
+                image_protected,
+                memory_protected,
+            } => write!(
+                f,
+                "in `allocations` element {}, the protection of image ({}) and memory ({}) are not \
+                equal",
+                allocations_index, image_protected, memory_protected,
+            ),
+            Self::MemoryTypeNotAllowed {
+                allocations_index,
+                provided_memory_type_index,
+                allowed_memory_type_bits,
+            } => write!(
+                f,
+                "in `allocations` element {}, the provided memory type ({}) is not one of the \
+                allowed memory types (",
+                allocations_index, provided_memory_type_index,
+            )
+            .and_then(|_| {
+                let mut first = true;
+
+                for i in (0..size_of_val(allowed_memory_type_bits))
+                    .filter(|i| allowed_memory_type_bits & (1 << i) != 0)
+                {
+                    if first {
+                        write!(f, "{}", i)?;
+                        first = false;
+                    } else {
+                        write!(f, ", {}", i)?;
+                    }
+                }
+
+                Ok(())
+            })
+            .and_then(|_| write!(f, ") that can be bound to this buffer")),
+            Self::MultisampleCubeCompatible => write!(
+                f,
+                "multisampling was enabled, and the `cube_compatible` flag was set",
+            ),
+            Self::MultisampleLinearTiling => {
+                write!(f, "multisampling was enabled, and tiling was `Linear`")
+            }
+            Self::MultisampleMultipleMipLevels => write!(
+                f,
+                "multisampling was enabled, and multiple mip levels were specified",
+            ),
+            Self::MultisampleNot2d => write!(
+                f,
+                "multisampling was enabled, but the image type was not 2D",
+            ),
+            Self::SampleCountNotSupported { .. } => write!(
+                f,
+                "the sample count is not supported by the device for this image configuration",
+            ),
+            Self::SharingQueueFamilyIndexOutOfRange { .. } => write!(
+                f,
+                "the sharing mode was set to `Concurrent`, but one of the specified queue family \
+                indices was out of range",
+            ),
+            Self::StencilUsageMismatch {
+                usage: _,
+                stencil_usage: _,
+            } => write!(
+                f,
+                "the provided `usage` and `stencil_usage` have different values for \
+                `depth_stencil_attachment` or `transient_attachment`",
+            ),
+            Self::YcbcrFormatInvalidDimensions => write!(
+                f,
+                "a YCbCr format was given, but the specified width and/or height was not a \
+                multiple of 2 as required by the format's chroma subsampling",
+            ),
+            Self::YcbcrFormatMultipleMipLevels => write!(
+                f,
+                "a YCbCr format was given, and multiple mip levels were specified",
+            ),
+            Self::YcbcrFormatMultisampling => {
+                write!(f, "a YCbCr format was given, and multisampling was enabled")
+            }
+            Self::YcbcrFormatNot2d => {
+                write!(f, "a YCbCr format was given, but the image type was not 2D")
+            }
+            Self::DirectImageViewCreationFailed(e) => write!(f, "Image view creation failed {}", e),
+        }
+    }
+}
+
+impl From<VulkanError> for ImageError {
+    fn from(err: VulkanError) -> Self {
+        Self::VulkanError(err)
+    }
+}
+
+impl From<AllocationCreationError> for ImageError {
+    fn from(err: AllocationCreationError) -> Self {
+        Self::AllocError(err)
+    }
+}
+
+impl From<RequirementNotMet> for ImageError {
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ImageCreationError, ImageUsage, UnsafeImage, UnsafeImageCreateInfo};
+    use super::{ImageCreateInfo, ImageError, ImageUsage, RawImage};
     use crate::{
         format::Format,
         image::{
-            sys::SubresourceRangeIterator, ImageAspect, ImageAspects, ImageDimensions,
-            ImageSubresourceRange, SampleCount,
+            sys::SubresourceRangeIterator, ImageAspect, ImageAspects, ImageCreateFlags,
+            ImageDimensions, ImageSubresourceRange, SampleCount,
         },
         DeviceSize, RequiresOneOf,
     };
@@ -2622,9 +3128,9 @@ mod tests {
     fn create_sampled() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let _ = UnsafeImage::new(
+        let _ = RawImage::new(
             device,
-            UnsafeImageCreateInfo {
+            ImageCreateInfo {
                 dimensions: ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
@@ -2645,9 +3151,9 @@ mod tests {
     fn create_transient() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let _ = UnsafeImage::new(
+        let _ = RawImage::new(
             device,
-            UnsafeImageCreateInfo {
+            ImageCreateInfo {
                 dimensions: ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
@@ -2670,9 +3176,9 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         assert_should_panic!({
-            let _ = UnsafeImage::new(
+            let _ = RawImage::new(
                 device,
-                UnsafeImageCreateInfo {
+                ImageCreateInfo {
                     dimensions: ImageDimensions::Dim2d {
                         width: 32,
                         height: 32,
@@ -2694,9 +3200,9 @@ mod tests {
     fn mipmaps_too_high() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = UnsafeImage::new(
+        let res = RawImage::new(
             device,
-            UnsafeImageCreateInfo {
+            ImageCreateInfo {
                 dimensions: ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
@@ -2713,7 +3219,7 @@ mod tests {
         );
 
         match res {
-            Err(ImageCreationError::MaxMipLevelsExceeded { .. }) => (),
+            Err(ImageError::MaxMipLevelsExceeded { .. }) => (),
             _ => panic!(),
         };
     }
@@ -2722,9 +3228,9 @@ mod tests {
     fn shader_storage_image_multisample() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = UnsafeImage::new(
+        let res = RawImage::new(
             device,
-            UnsafeImageCreateInfo {
+            ImageCreateInfo {
                 dimensions: ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
@@ -2741,11 +3247,11 @@ mod tests {
         );
 
         match res {
-            Err(ImageCreationError::RequirementNotMet {
+            Err(ImageError::RequirementNotMet {
                 requires_one_of: RequiresOneOf { features, .. },
                 ..
             }) if features.contains(&"shader_storage_image_multisample") => (),
-            Err(ImageCreationError::SampleCountNotSupported { .. }) => (), // unlikely but possible
+            Err(ImageError::SampleCountNotSupported { .. }) => (), // unlikely but possible
             _ => panic!(),
         };
     }
@@ -2754,9 +3260,9 @@ mod tests {
     fn compressed_not_color_attachment() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = UnsafeImage::new(
+        let res = RawImage::new(
             device,
-            UnsafeImageCreateInfo {
+            ImageCreateInfo {
                 dimensions: ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
@@ -2772,8 +3278,8 @@ mod tests {
         );
 
         match res {
-            Err(ImageCreationError::FormatNotSupported) => (),
-            Err(ImageCreationError::FormatUsageNotSupported {
+            Err(ImageError::FormatNotSupported) => (),
+            Err(ImageError::FormatUsageNotSupported {
                 usage: "color_attachment",
             }) => (),
             _ => panic!(),
@@ -2785,9 +3291,9 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         assert_should_panic!({
-            let _ = UnsafeImage::new(
+            let _ = RawImage::new(
                 device,
-                UnsafeImageCreateInfo {
+                ImageCreateInfo {
                     dimensions: ImageDimensions::Dim2d {
                         width: 32,
                         height: 32,
@@ -2809,9 +3315,13 @@ mod tests {
     fn cubecompatible_dims_mismatch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = UnsafeImage::new(
+        let res = RawImage::new(
             device,
-            UnsafeImageCreateInfo {
+            ImageCreateInfo {
+                flags: ImageCreateFlags {
+                    cube_compatible: true,
+                    ..ImageCreateFlags::empty()
+                },
                 dimensions: ImageDimensions::Dim2d {
                     width: 32,
                     height: 64,
@@ -2822,14 +3332,13 @@ mod tests {
                     sampled: true,
                     ..ImageUsage::empty()
                 },
-                cube_compatible: true,
                 ..Default::default()
             },
         );
 
         match res {
-            Err(ImageCreationError::CubeCompatibleNotEnoughArrayLayers) => (),
-            Err(ImageCreationError::CubeCompatibleNotSquare) => (),
+            Err(ImageError::CubeCompatibleNotEnoughArrayLayers) => (),
+            Err(ImageError::CubeCompatibleNotSquare) => (),
             _ => panic!(),
         };
     }

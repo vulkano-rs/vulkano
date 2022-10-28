@@ -8,17 +8,19 @@
 // according to those terms.
 
 use super::{
-    sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreateFlags, ImageCreationError,
-    ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage,
+    sys::{Image, ImageMemory, RawImage},
+    traits::ImageContent,
+    ImageAccess, ImageCreateFlags, ImageDescriptorLayouts, ImageDimensions, ImageError, ImageInner,
+    ImageLayout, ImageUsage,
 };
 use crate::{
     device::{Device, DeviceOwned, Queue},
     format::Format,
-    image::{sys::UnsafeImageCreateInfo, view::ImageView, ImageFormatInfo},
+    image::{sys::ImageCreateInfo, view::ImageView, ImageFormatInfo},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationType, MemoryAlloc, MemoryAllocatePreference,
-            MemoryAllocator, MemoryUsage,
+            AllocationCreateInfo, AllocationType, MemoryAllocatePreference, MemoryAllocator,
+            MemoryUsage,
         },
         DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes,
@@ -37,14 +39,7 @@ use std::{
 /// specialized image.
 #[derive(Debug)]
 pub struct StorageImage {
-    // Inner implementation.
-    image: Arc<UnsafeImage>,
-
-    // Memory used to back the image.
-    memory: MemoryAlloc,
-
-    // Dimensions of the image.
-    dimensions: ImageDimensions,
+    inner: Arc<Image>,
 }
 
 impl StorageImage {
@@ -54,7 +49,7 @@ impl StorageImage {
         dimensions: ImageDimensions,
         format: Format,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<StorageImage>, ImageCreationError> {
+    ) -> Result<Arc<StorageImage>, ImageError> {
         let aspects = format.aspects();
         let is_depth = aspects.depth || aspects.stencil;
 
@@ -92,12 +87,14 @@ impl StorageImage {
         usage: ImageUsage,
         flags: ImageCreateFlags,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<StorageImage>, ImageCreationError> {
+    ) -> Result<Arc<StorageImage>, ImageError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
+        assert!(!flags.disjoint); // TODO: adjust the code below to make this safe
 
-        let image = UnsafeImage::new(
+        let raw_image = RawImage::new(
             allocator.device().clone(),
-            UnsafeImageCreateInfo {
+            ImageCreateInfo {
+                flags,
                 dimensions,
                 format: Some(format),
                 usage,
@@ -106,20 +103,16 @@ impl StorageImage {
                 } else {
                     Sharing::Exclusive
                 },
-                mutable_format: flags.mutable_format,
-                cube_compatible: flags.cube_compatible,
-                array_2d_compatible: flags.array_2d_compatible,
-                block_texel_view_compatible: flags.block_texel_view_compatible,
                 ..Default::default()
             },
         )?;
-        let requirements = image.memory_requirements();
+        let requirements = raw_image.memory_requirements()[0];
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::NonLinear,
             usage: MemoryUsage::GpuOnly,
             allocate_preference: MemoryAllocatePreference::Unknown,
-            dedicated_allocation: Some(DedicatedAllocation::Image(&image)),
+            dedicated_allocation: Some(DedicatedAllocation::Image(&raw_image)),
             ..Default::default()
         };
 
@@ -127,13 +120,13 @@ impl StorageImage {
             Ok(alloc) => {
                 debug_assert!(alloc.offset() % requirements.alignment == 0);
                 debug_assert!(alloc.size() == requirements.size);
-                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+                let inner = Arc::new(unsafe {
+                    raw_image
+                        .bind_memory_unchecked([alloc])
+                        .map_err(|(err, _, _)| err)?
+                });
 
-                Ok(Arc::new(StorageImage {
-                    image,
-                    memory: alloc,
-                    dimensions,
-                }))
+                Ok(Arc::new(StorageImage { inner }))
             }
             Err(err) => Err(err.into()),
         }
@@ -146,21 +139,19 @@ impl StorageImage {
         usage: ImageUsage,
         flags: ImageCreateFlags,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<StorageImage>, ImageCreationError> {
+    ) -> Result<Arc<StorageImage>, ImageError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
+        assert!(!flags.disjoint); // TODO: adjust the code below to make this safe
 
         let external_memory_properties = allocator
             .device()
             .physical_device()
             .image_format_properties(ImageFormatInfo {
+                flags,
                 format: Some(format),
                 image_type: dimensions.image_type(),
                 usage,
                 external_memory_handle_type: Some(ExternalMemoryHandleType::OpaqueFd),
-                mutable_format: flags.mutable_format,
-                cube_compatible: flags.cube_compatible,
-                array_2d_compatible: flags.array_2d_compatible,
-                block_texel_view_compatible: flags.block_texel_view_compatible,
                 ..Default::default()
             })
             .unwrap()
@@ -176,9 +167,10 @@ impl StorageImage {
             opaque_fd: true,
             ..ExternalMemoryHandleTypes::empty()
         };
-        let image = UnsafeImage::new(
+        let raw_image = RawImage::new(
             allocator.device().clone(),
-            UnsafeImageCreateInfo {
+            ImageCreateInfo {
+                flags,
                 dimensions,
                 format: Some(format),
                 usage,
@@ -188,14 +180,10 @@ impl StorageImage {
                     Sharing::Exclusive
                 },
                 external_memory_handle_types,
-                mutable_format: flags.mutable_format,
-                cube_compatible: flags.cube_compatible,
-                array_2d_compatible: flags.array_2d_compatible,
-                block_texel_view_compatible: flags.block_texel_view_compatible,
                 ..Default::default()
             },
         )?;
-        let requirements = image.memory_requirements();
+        let requirements = raw_image.memory_requirements()[0];
         let memory_type_index = allocator
             .find_memory_type_index(requirements.memory_type_bits, MemoryUsage::GpuOnly.into())
             .expect("failed to find a suitable memory type");
@@ -204,20 +192,20 @@ impl StorageImage {
             allocator.allocate_dedicated_unchecked(
                 memory_type_index,
                 requirements.size,
-                Some(DedicatedAllocation::Image(&image)),
+                Some(DedicatedAllocation::Image(&raw_image)),
                 external_memory_handle_types,
             )
         } {
             Ok(alloc) => {
                 debug_assert!(alloc.offset() % requirements.alignment == 0);
                 debug_assert!(alloc.size() == requirements.size);
-                unsafe { image.bind_memory(alloc.device_memory(), alloc.offset()) }?;
+                let inner = Arc::new(unsafe {
+                    raw_image
+                        .bind_memory_unchecked([alloc])
+                        .map_err(|(err, _, _)| err)?
+                });
 
-                Ok(Arc::new(StorageImage {
-                    image,
-                    memory: alloc,
-                    dimensions,
-                }))
+                Ok(Arc::new(StorageImage { inner }))
             }
             Err(err) => Err(err.into()),
         }
@@ -231,7 +219,7 @@ impl StorageImage {
         size: [u32; 2],
         format: Format,
         usage: ImageUsage,
-    ) -> Result<Arc<ImageView<StorageImage>>, ImageCreationError> {
+    ) -> Result<Arc<ImageView<StorageImage>>, ImageError> {
         let dims = ImageDimensions::Dim2d {
             width: size[0],
             height: size[1],
@@ -252,7 +240,7 @@ impl StorageImage {
                 let image_view = ImageView::new_default(image);
                 match image_view {
                     Ok(view) => Ok(view),
-                    Err(e) => Err(ImageCreationError::DirectImageViewCreationFailed(e)),
+                    Err(e) => Err(ImageError::DirectImageViewCreationFailed(e)),
                 }
             }
             Err(e) => Err(e),
@@ -263,7 +251,12 @@ impl StorageImage {
     /// Requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
     #[inline]
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
-        self.memory
+        let allocation = match self.inner.memory() {
+            ImageMemory::Normal(a) => &a[0],
+            _ => unreachable!(),
+        };
+
+        allocation
             .device_memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
     }
@@ -271,14 +264,19 @@ impl StorageImage {
     /// Return the size of the allocated memory (used e.g. with cuda).
     #[inline]
     pub fn mem_size(&self) -> DeviceSize {
-        self.memory.device_memory().allocation_size()
+        let allocation = match self.inner.memory() {
+            ImageMemory::Normal(a) => &a[0],
+            _ => unreachable!(),
+        };
+
+        allocation.device_memory().allocation_size()
     }
 }
 
 unsafe impl DeviceOwned for StorageImage {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.image.device()
+        self.inner.device()
     }
 }
 
@@ -286,9 +284,9 @@ unsafe impl ImageAccess for StorageImage {
     #[inline]
     fn inner(&self) -> ImageInner<'_> {
         ImageInner {
-            image: &self.image,
+            image: &self.inner,
             first_layer: 0,
-            num_layers: self.dimensions.array_layers(),
+            num_layers: self.inner.dimensions().array_layers(),
             first_mipmap_level: 0,
             num_mipmap_levels: 1,
         }
@@ -397,7 +395,7 @@ mod tests {
         );
         assert_eq!(
             img_result,
-            Err(ImageCreationError::DirectImageViewCreationFailed(
+            Err(ImageError::DirectImageViewCreationFailed(
                 ImageViewCreationError::ImageMissingUsage
             ))
         );
