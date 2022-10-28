@@ -18,6 +18,9 @@ use crate::{
 };
 use parking_lot::{Mutex, MutexGuard};
 use std::{mem::replace, ops::Range, sync::Arc, time::Duration};
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 /// Builds a new fence signal future.
 pub fn then_signal_fence<F>(future: F, behavior: FenceSignalFutureBehavior) -> FenceSignalFuture<F>
@@ -53,6 +56,11 @@ pub enum FenceSignalFutureBehavior {
 ///
 /// Contrary to most other future types, it is possible to block the current thread until the event
 /// happens. This is done by calling the `wait()` function.
+///
+/// This can also be done through Rust's Async system by simply `.await`ing this object. Note though
+/// that (due to the Vulkan API fence design) this will spin to check the fence, rather than
+/// blocking in the driver. Therefore if you have a long-running task, blocking may be less
+/// CPU intense (depending on the driver's implementation).
 ///
 /// Also note that the `GpuFuture` trait is implemented on `Arc<FenceSignalFuture<_>>`.
 /// This means that you can put this future in an `Arc` and keep a copy of it somewhere in order
@@ -356,6 +364,32 @@ where
                 }
             }
         }
+    }
+}
+
+impl<F> Future for FenceSignalFuture<F>
+    where
+        F: GpuFuture,
+{
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Vulkan only allows polling of the fence status, so we have to use a spin future.
+        // This is still better than blocking in async applications, since a smart-enough async engine
+        // can choose to run some other tasks between probing this one.
+
+        // Check if we are done without blocking (much)
+        // A minimal non-zero wait time indicates to the driver that it can do some non-zero
+        // amount of work, hence potentially reducing the CPU load of a spin lock as well as reducing
+        // the time taken for the future to resolve.
+        // TODO: Test this hypothesis
+        if let Ok(()) = self.wait(Some(Duration::from_micros(1))) {
+            return Poll::Ready(())
+        };
+
+        // Otherwise spin
+        cx.waker().wake_by_ref();
+        return Poll::Pending;
     }
 }
 
