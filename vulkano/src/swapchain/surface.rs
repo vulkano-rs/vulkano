@@ -1562,7 +1562,7 @@ vulkan_enum! {
     /// Only `Fifo` is guaranteed to be supported on every device. For the others, you must call
     /// [`surface_present_modes`] to see if they are supported.
     ///
-    /// [`surface_present_modes`]: crate::device::physical_device::PhysicalDevice::surface_present_modes
+    /// [`surface_present_modes`]: crate::device::physical::PhysicalDevice::surface_present_modes
     #[non_exhaustive]
     PresentMode = PresentModeKHR(i32);
 
