@@ -371,25 +371,19 @@ impl<F> Future for FenceSignalFuture<F>
     where
         F: GpuFuture,
 {
-    type Output = ();
+    type Output = Result<(), OomError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // Vulkan only allows polling of the fence status, so we have to use a spin future.
-        // This is still better than blocking in async applications, since a smart-enough async engine
-        // can choose to run some other tasks between probing this one.
+        // Implement through fence
+        let state = self.state.lock();
 
-        // Check if we are done without blocking (much)
-        // A minimal non-zero wait time indicates to the driver that it can do some non-zero
-        // amount of work, hence potentially reducing the CPU load of a spin lock as well as reducing
-        // the time taken for the future to resolve.
-        // TODO: Test this hypothesis
-        if let Ok(()) = self.wait(Some(Duration::from_micros(1))) {
-            return Poll::Ready(())
-        };
-
-        // Otherwise spin
-        cx.waker().wake_by_ref();
-        return Poll::Pending;
+        match &*state {
+            FenceSignalFutureState::Pending(_, fence)
+            | FenceSignalFutureState::PartiallyFlushed(_, fence)
+            | FenceSignalFutureState::Flushed(_, fence) => fence.poll_impl(cx),
+            FenceSignalFutureState::Cleaned => Poll::Ready(Ok(())),
+            FenceSignalFutureState::Poisoned => unreachable!(),
+        }
     }
 }
 
