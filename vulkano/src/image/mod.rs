@@ -1101,7 +1101,7 @@ mod tests {
     fn mipmap_working_immutable_image() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
         let mut cbb = AutoCommandBufferBuilder::primary(
             &cb_allocator,
             queue.queue_family_index(),

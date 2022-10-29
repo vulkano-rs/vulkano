@@ -278,7 +278,8 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     window_surfaces.insert(
         window_id,

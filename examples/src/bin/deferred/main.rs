@@ -166,7 +166,10 @@ fn main() {
     };
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(device.clone()));
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     // Here is the basic initialization for the deferred system.
     let mut frame_system = FrameSystem::new(

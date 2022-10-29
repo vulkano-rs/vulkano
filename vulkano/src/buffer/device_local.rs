@@ -557,7 +557,8 @@ mod tests {
     fn from_data_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let command_buffer_allocator =
+            StandardCommandBufferAllocator::new(device.clone(), Default::default());
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             &command_buffer_allocator,
             queue.queue_family_index(),
@@ -607,7 +608,8 @@ mod tests {
     fn from_iter_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let command_buffer_allocator =
+            StandardCommandBufferAllocator::new(device.clone(), Default::default());
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             &command_buffer_allocator,
             queue.queue_family_index(),
@@ -660,7 +662,8 @@ mod tests {
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let command_buffer_allocator =
+            StandardCommandBufferAllocator::new(device.clone(), Default::default());
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             &command_buffer_allocator,
             queue.queue_family_index(),

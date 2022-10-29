@@ -389,7 +389,7 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let allocator = StandardCommandBufferAllocator::new(device);
+            let allocator = StandardCommandBufferAllocator::new(device, Default::default());
 
             let builder_alloc = allocator
                 .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
@@ -413,7 +413,8 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+            let cb_allocator =
+                StandardCommandBufferAllocator::new(device.clone(), Default::default());
             let mut cbb = AutoCommandBufferBuilder::primary(
                 &cb_allocator,
                 queue.queue_family_index(),
@@ -522,7 +523,8 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+            let cb_allocator =
+                StandardCommandBufferAllocator::new(device.clone(), Default::default());
             let builder_alloc = cb_allocator
                 .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
                 .unwrap()
@@ -563,7 +565,8 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+            let cb_allocator =
+                StandardCommandBufferAllocator::new(device.clone(), Default::default());
             let builder_alloc = cb_allocator
                 .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
                 .unwrap()

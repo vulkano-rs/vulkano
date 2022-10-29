@@ -233,7 +233,8 @@ fn main() {
     let rotation_start = Instant::now();
 
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     event_loop.run(move |event, _, control_flow| {
         match event {

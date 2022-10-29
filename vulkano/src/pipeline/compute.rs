@@ -508,7 +508,7 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let cb_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
         let mut cbb = AutoCommandBufferBuilder::primary(
             &cb_allocator,
             queue.queue_family_index(),

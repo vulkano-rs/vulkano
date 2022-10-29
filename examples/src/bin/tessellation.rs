@@ -368,7 +368,8 @@ fn main() {
     };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {

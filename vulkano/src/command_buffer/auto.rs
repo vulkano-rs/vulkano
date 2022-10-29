@@ -968,7 +968,7 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device);
+        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
         let mut cbb = AutoCommandBufferBuilder::primary(
             &cb_allocator,
             queue.queue_family_index(),
@@ -1006,7 +1006,7 @@ mod tests {
     fn secondary_nonconcurrent_conflict() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device);
+        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
 
         // Make a secondary CB that doesn't support simultaneous use.
         let builder = AutoCommandBufferBuilder::secondary(
@@ -1093,7 +1093,7 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device);
+        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
         let mut builder = AutoCommandBufferBuilder::primary(
             &cb_allocator,
             queue.queue_family_index(),
@@ -1145,7 +1145,7 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device);
+        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
         let mut builder = AutoCommandBufferBuilder::primary(
             &cb_allocator,
             queue.queue_family_index(),

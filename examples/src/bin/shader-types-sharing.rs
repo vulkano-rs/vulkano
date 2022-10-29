@@ -239,7 +239,8 @@ fn main() {
     }
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
-    let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
     // Preparing test data array `[0, 1, 2, 3....]`
