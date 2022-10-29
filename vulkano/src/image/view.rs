@@ -29,6 +29,7 @@ use std::{
     fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -41,6 +42,7 @@ where
 {
     handle: ash::vk::ImageView,
     image: Arc<I>,
+    id: NonZeroU64,
 
     component_mapping: ComponentMapping,
     format: Option<Format>,
@@ -672,7 +674,7 @@ where
         Ok(Arc::new(ImageView {
             handle,
             image,
-
+            id: Self::next_id(),
             view_type,
             format,
             format_features,
@@ -680,7 +682,6 @@ where
             subresource_range,
             usage,
             sampler_ycbcr_conversion,
-
             filter_cubic,
             filter_cubic_minmax,
         }))
@@ -782,26 +783,7 @@ where
     }
 }
 
-impl<I> PartialEq for ImageView<I>
-where
-    I: ImageAccess + ?Sized,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl<I> Eq for ImageView<I> where I: ImageAccess + ?Sized {}
-
-impl<I> Hash for ImageView<I>
-where
-    I: ImageAccess + ?Sized,
-{
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(ImageView<I: ImageAccess + ?Sized>);
 
 /// Parameters to create a new `ImageView`.
 #[derive(Debug)]

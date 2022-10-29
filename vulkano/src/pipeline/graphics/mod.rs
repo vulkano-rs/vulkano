@@ -73,7 +73,7 @@ use crate::{
 use ahash::HashMap;
 use std::{
     fmt::{Debug, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -100,6 +100,7 @@ pub mod viewport;
 pub struct GraphicsPipeline {
     handle: ash::vk::Pipeline,
     device: Arc<Device>,
+    id: NonZeroU64,
     layout: Arc<PipelineLayout>,
     render_pass: PipelineRenderPassType,
 
@@ -293,18 +294,4 @@ impl Drop for GraphicsPipeline {
     }
 }
 
-impl PartialEq for GraphicsPipeline {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.device == other.device && self.handle == other.handle
-    }
-}
-
-impl Eq for GraphicsPipeline {}
-
-impl Hash for GraphicsPipeline {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device.hash(state);
-    }
-}
+crate::impl_id_counter!(GraphicsPipeline);

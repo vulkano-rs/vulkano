@@ -22,8 +22,8 @@ use std::{
     error::Error,
     ffi::c_void,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::{size_of_val, MaybeUninit},
+    num::NonZeroU64,
     ops::Range,
     ptr,
     sync::Arc,
@@ -34,6 +34,7 @@ use std::{
 pub struct QueryPool {
     handle: ash::vk::QueryPool,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     query_type: QueryType,
     query_count: u32,
@@ -98,7 +99,7 @@ impl QueryPool {
         Ok(Arc::new(QueryPool {
             handle,
             device,
-
+            id: Self::next_id(),
             query_type,
             query_count,
         }))
@@ -125,6 +126,7 @@ impl QueryPool {
         Arc::new(QueryPool {
             handle,
             device,
+            id: Self::next_id(),
             query_type,
             query_count,
         })
@@ -195,21 +197,7 @@ unsafe impl DeviceOwned for QueryPool {
     }
 }
 
-impl PartialEq for QueryPool {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for QueryPool {}
-
-impl Hash for QueryPool {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(QueryPool);
 
 /// Parameters to create a new `QueryPool`.
 #[derive(Clone, Debug)]

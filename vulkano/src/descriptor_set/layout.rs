@@ -23,8 +23,8 @@ use std::{
     collections::BTreeMap,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -34,6 +34,7 @@ use std::{
 pub struct DescriptorSetLayout {
     handle: ash::vk::DescriptorSetLayout,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     bindings: BTreeMap<u32, DescriptorSetLayoutBinding>,
     push_descriptor: bool,
@@ -60,10 +61,9 @@ impl DescriptorSetLayout {
         Ok(Arc::new(DescriptorSetLayout {
             handle,
             device,
-
+            id: Self::next_id(),
             bindings,
             push_descriptor,
-
             descriptor_counts,
         }))
     }
@@ -98,10 +98,9 @@ impl DescriptorSetLayout {
         Arc::new(DescriptorSetLayout {
             handle,
             device,
-
+            id: Self::next_id(),
             bindings,
             push_descriptor,
-
             descriptor_counts,
         })
     }
@@ -453,21 +452,7 @@ unsafe impl DeviceOwned for DescriptorSetLayout {
     }
 }
 
-impl PartialEq for DescriptorSetLayout {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for DescriptorSetLayout {}
-
-impl Hash for DescriptorSetLayout {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(DescriptorSetLayout);
 
 /// Error related to descriptor set layout.
 #[derive(Debug, Clone, PartialEq, Eq)]

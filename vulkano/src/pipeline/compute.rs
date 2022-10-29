@@ -42,6 +42,7 @@ use std::{
     fmt::{Debug, Display, Error as FmtError, Formatter},
     mem,
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -57,6 +58,7 @@ use std::{
 pub struct ComputePipeline {
     handle: ash::vk::Pipeline,
     device: Arc<Device>,
+    id: NonZeroU64,
     layout: Arc<PipelineLayout>,
     descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements>,
     num_used_descriptor_sets: u32,
@@ -232,6 +234,7 @@ impl ComputePipeline {
         Ok(Arc::new(ComputePipeline {
             handle,
             device: device.clone(),
+            id: Self::next_id(),
             layout,
             descriptor_requirements,
             num_used_descriptor_sets,
@@ -278,14 +281,7 @@ impl Debug for ComputePipeline {
     }
 }
 
-impl PartialEq for ComputePipeline {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle() == other.handle()
-    }
-}
-
-impl Eq for ComputePipeline {}
+crate::impl_id_counter!(ComputePipeline);
 
 unsafe impl VulkanObject for ComputePipeline {
     type Handle = ash::vk::Pipeline;

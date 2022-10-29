@@ -18,8 +18,8 @@ use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ops::Range,
     ptr,
     sync::Arc,
@@ -53,6 +53,7 @@ use std::{
 pub struct Framebuffer {
     handle: ash::vk::Framebuffer,
     render_pass: Arc<RenderPass>,
+    id: NonZeroU64,
 
     attachments: Vec<Arc<dyn ImageViewAbstract>>,
     extent: [u32; 2],
@@ -323,7 +324,7 @@ impl Framebuffer {
         Ok(Arc::new(Framebuffer {
             handle,
             render_pass,
-
+            id: Self::next_id(),
             attachments,
             extent,
             layers,
@@ -352,7 +353,7 @@ impl Framebuffer {
         Arc::new(Framebuffer {
             handle,
             render_pass,
-
+            id: Self::next_id(),
             attachments,
             extent,
             layers,
@@ -418,21 +419,7 @@ unsafe impl DeviceOwned for Framebuffer {
     }
 }
 
-impl PartialEq for Framebuffer {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for Framebuffer {}
-
-impl Hash for Framebuffer {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(Framebuffer);
 
 /// Parameters to create a new `Framebuffer`.
 #[derive(Clone, Debug)]

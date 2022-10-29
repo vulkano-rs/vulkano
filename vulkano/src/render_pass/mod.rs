@@ -38,13 +38,7 @@ use crate::{
     sync::{AccessFlags, PipelineStages},
     Version, VulkanObject,
 };
-use std::{
-    cmp::max,
-    hash::{Hash, Hasher},
-    mem::MaybeUninit,
-    ptr,
-    sync::Arc,
-};
+use std::{cmp::max, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 #[macro_use]
 mod macros;
@@ -108,6 +102,7 @@ mod framebuffer;
 pub struct RenderPass {
     handle: ash::vk::RenderPass,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     attachments: Vec<AttachmentDescription>,
     subpasses: Vec<SubpassDescription>,
@@ -154,12 +149,11 @@ impl RenderPass {
         Ok(Arc::new(RenderPass {
             handle,
             device,
-
+            id: Self::next_id(),
             attachments,
             subpasses,
             dependencies,
             correlated_view_masks,
-
             granularity,
             views_used,
         }))
@@ -223,12 +217,11 @@ impl RenderPass {
         Ok(Arc::new(RenderPass {
             handle,
             device,
-
+            id: Self::next_id(),
             attachments,
             subpasses,
             dependencies,
             correlated_view_masks,
-
             granularity,
             views_used,
         }))
@@ -294,6 +287,7 @@ impl RenderPass {
         let Self {
             handle: _,
             device: _,
+            id: _,
             attachments: attachments1,
             subpasses: subpasses1,
             dependencies: dependencies1,
@@ -304,6 +298,7 @@ impl RenderPass {
         let Self {
             handle: _,
             device: _,
+            id: _,
             attachments: attachments2,
             subpasses: subpasses2,
             dependencies: dependencies2,
@@ -537,21 +532,7 @@ unsafe impl DeviceOwned for RenderPass {
     }
 }
 
-impl PartialEq for RenderPass {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for RenderPass {}
-
-impl Hash for RenderPass {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device.hash(state);
-    }
-}
+crate::impl_id_counter!(RenderPass);
 
 /// Represents a subpass within a `RenderPass` object.
 ///

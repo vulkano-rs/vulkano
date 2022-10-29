@@ -19,7 +19,7 @@
 
 use crate::{
     descriptor_set::layout::DescriptorType,
-    device::Device,
+    device::{Device, DeviceOwned},
     format::{Format, NumericType},
     image::view::ImageViewType,
     macros::{vulkan_bitflags, vulkan_enum},
@@ -36,6 +36,7 @@ use std::{
     fmt::{Display, Error as FmtError, Formatter},
     mem,
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -53,6 +54,7 @@ include!(concat!(env!("OUT_DIR"), "/spirv_reqs.rs"));
 pub struct ShaderModule {
     handle: ash::vk::ShaderModule,
     device: Arc<Device>,
+    id: NonZeroU64,
     entry_points: HashMap<String, HashMap<ExecutionModel, EntryPointInfo>>,
 }
 
@@ -189,6 +191,7 @@ impl ShaderModule {
         Ok(Arc::new(ShaderModule {
             handle,
             device,
+            id: Self::next_id(),
             entry_points,
         }))
     }
@@ -257,15 +260,6 @@ impl ShaderModule {
     }
 }
 
-unsafe impl VulkanObject for ShaderModule {
-    type Handle = ash::vk::ShaderModule;
-
-    #[inline]
-    fn handle(&self) -> Self::Handle {
-        self.handle
-    }
-}
-
 impl Drop for ShaderModule {
     #[inline]
     fn drop(&mut self) {
@@ -275,6 +269,24 @@ impl Drop for ShaderModule {
         }
     }
 }
+
+unsafe impl VulkanObject for ShaderModule {
+    type Handle = ash::vk::ShaderModule;
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        self.handle
+    }
+}
+
+unsafe impl DeviceOwned for ShaderModule {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+crate::impl_id_counter!(ShaderModule);
 
 /// Error that can happen when creating a new shader module.
 #[derive(Clone, Debug)]

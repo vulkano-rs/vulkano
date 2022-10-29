@@ -133,7 +133,7 @@ where
     P: DescriptorSetAlloc,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.inner().handle() == other.inner().handle() && self.device() == other.device()
+        self.inner() == other.inner()
     }
 }
 
@@ -144,7 +144,6 @@ where
     P: DescriptorSetAlloc,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().handle().hash(state);
-        self.device().hash(state);
+        self.inner().hash(state);
     }
 }

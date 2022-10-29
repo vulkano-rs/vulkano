@@ -73,8 +73,8 @@ use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -84,6 +84,7 @@ use std::{
 pub struct PipelineLayout {
     handle: ash::vk::PipelineLayout,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     set_layouts: Vec<Arc<DescriptorSetLayout>>,
     push_constant_ranges: Vec<PushConstantRange>,
@@ -129,6 +130,7 @@ impl PipelineLayout {
         Ok(Arc::new(PipelineLayout {
             handle,
             device,
+            id: Self::next_id(),
             set_layouts,
             push_constant_ranges,
             push_constant_ranges_disjoint,
@@ -548,6 +550,7 @@ impl PipelineLayout {
         Arc::new(PipelineLayout {
             handle,
             device,
+            id: Self::next_id(),
             set_layouts,
             push_constant_ranges,
             push_constant_ranges_disjoint,
@@ -690,21 +693,7 @@ unsafe impl DeviceOwned for PipelineLayout {
     }
 }
 
-impl PartialEq for PipelineLayout {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for PipelineLayout {}
-
-impl Hash for PipelineLayout {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(PipelineLayout);
 
 /// Error that can happen when creating a pipeline layout.
 #[derive(Clone, Debug, PartialEq, Eq)]

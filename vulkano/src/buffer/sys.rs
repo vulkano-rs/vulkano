@@ -34,6 +34,7 @@ use std::{
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::{size_of_val, MaybeUninit},
+    num::NonZeroU64,
     ops::{Deref, DerefMut, Range},
     ptr,
     sync::Arc,
@@ -48,6 +49,7 @@ use std::{
 pub struct RawBuffer {
     handle: ash::vk::Buffer,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     flags: BufferCreateFlags,
     size: DeviceSize,
@@ -324,13 +326,12 @@ impl RawBuffer {
         RawBuffer {
             handle,
             device,
-
+            id: Self::next_id(),
             flags,
             size,
             usage,
             sharing,
             external_memory_handle_types,
-
             memory_requirements,
         }
     }
@@ -629,21 +630,7 @@ unsafe impl DeviceOwned for RawBuffer {
     }
 }
 
-impl PartialEq for RawBuffer {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device == other.device
-    }
-}
-
-impl Eq for RawBuffer {}
-
-impl Hash for RawBuffer {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device.hash(state);
-    }
-}
+crate::impl_id_counter!(RawBuffer);
 
 /// Parameters to create a new `Buffer`.
 #[derive(Clone, Debug)]

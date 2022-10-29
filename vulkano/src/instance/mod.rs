@@ -97,8 +97,8 @@ use std::{
     error::Error,
     ffi::{c_void, CString},
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     panic::{RefUnwindSafe, UnwindSafe},
     ptr,
     sync::Arc,
@@ -260,6 +260,7 @@ mod layers;
 pub struct Instance {
     handle: ash::vk::Instance,
     fns: InstanceFunctions,
+    id: NonZeroU64,
 
     api_version: Version,
     enabled_extensions: InstanceExtensions,
@@ -531,7 +532,7 @@ impl Instance {
         Ok(Arc::new(Instance {
             handle,
             fns,
-
+            id: Self::next_id(),
             api_version,
             enabled_extensions,
             enabled_layers,
@@ -656,26 +657,14 @@ unsafe impl VulkanObject for Instance {
     }
 }
 
-impl PartialEq for Instance {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle
-    }
-}
-
-impl Eq for Instance {}
-
-impl Hash for Instance {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-    }
-}
+crate::impl_id_counter!(Instance);
 
 impl Debug for Instance {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             fns,
+            id: _,
             api_version,
             enabled_extensions,
             enabled_layers,

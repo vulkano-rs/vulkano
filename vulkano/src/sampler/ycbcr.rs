@@ -99,8 +99,8 @@ use crate::{
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -110,6 +110,7 @@ use std::{
 pub struct SamplerYcbcrConversion {
     handle: ash::vk::SamplerYcbcrConversion,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     format: Option<Format>,
     ycbcr_model: SamplerYcbcrModelConversion,
@@ -350,6 +351,7 @@ impl SamplerYcbcrConversion {
         Ok(Arc::new(SamplerYcbcrConversion {
             handle,
             device,
+            id: Self::next_id(),
             format: Some(format),
             ycbcr_model,
             ycbcr_range,
@@ -387,6 +389,7 @@ impl SamplerYcbcrConversion {
         Arc::new(SamplerYcbcrConversion {
             handle,
             device,
+            id: Self::next_id(),
             format,
             ycbcr_model,
             ycbcr_range,
@@ -446,6 +449,7 @@ impl SamplerYcbcrConversion {
             let &Self {
                 handle: _,
                 device: _,
+                id: _,
                 format,
                 ycbcr_model,
                 ycbcr_range,
@@ -499,21 +503,7 @@ unsafe impl DeviceOwned for SamplerYcbcrConversion {
     }
 }
 
-impl PartialEq for SamplerYcbcrConversion {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for SamplerYcbcrConversion {}
-
-impl Hash for SamplerYcbcrConversion {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(SamplerYcbcrConversion);
 
 /// Error that can happen when creating a `SamplerYcbcrConversion`.
 #[derive(Clone, Debug, PartialEq, Eq)]

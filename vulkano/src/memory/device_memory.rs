@@ -18,8 +18,8 @@ use std::{
     ffi::c_void,
     fmt::{Display, Error as FmtError, Formatter},
     fs::File,
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ops::Range,
     ptr, slice,
     sync::{atomic::Ordering, Arc},
@@ -52,6 +52,7 @@ use std::{
 pub struct DeviceMemory {
     handle: ash::vk::DeviceMemory,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     allocation_size: DeviceSize,
     memory_type_index: u32,
@@ -105,6 +106,7 @@ impl DeviceMemory {
         DeviceMemory {
             handle,
             device,
+            id: Self::next_id(),
             allocation_size,
             memory_type_index,
             export_handle_types,
@@ -532,6 +534,7 @@ impl DeviceMemory {
         Ok(DeviceMemory {
             handle,
             device,
+            id: Self::next_id(),
             allocation_size,
             memory_type_index,
             export_handle_types,
@@ -701,21 +704,7 @@ unsafe impl DeviceOwned for DeviceMemory {
     }
 }
 
-impl PartialEq for DeviceMemory {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for DeviceMemory {}
-
-impl Hash for DeviceMemory {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device.hash(state);
-    }
-}
+crate::impl_id_counter!(DeviceMemory);
 
 /// Parameters to allocate a new `DeviceMemory`.
 #[derive(Clone, Debug)]

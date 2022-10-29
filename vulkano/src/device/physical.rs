@@ -34,8 +34,8 @@ use bytemuck::cast_slice;
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -65,6 +65,7 @@ use std::{
 pub struct PhysicalDevice {
     handle: ash::vk::PhysicalDevice,
     instance: Arc<Instance>,
+    id: NonZeroU64,
 
     // Data queried at `PhysicalDevice` creation.
     api_version: Version,
@@ -131,7 +132,7 @@ impl PhysicalDevice {
         Ok(Arc::new(PhysicalDevice {
             handle,
             instance,
-
+            id: Self::next_id(),
             api_version,
             supported_extensions,
             supported_features,
@@ -139,7 +140,6 @@ impl PhysicalDevice {
             extension_properties,
             memory_properties,
             queue_family_properties,
-
             external_buffer_properties: OnceCache::new(),
             external_fence_properties: OnceCache::new(),
             external_semaphore_properties: OnceCache::new(),
@@ -2415,21 +2415,7 @@ unsafe impl VulkanObject for PhysicalDevice {
     }
 }
 
-impl PartialEq for PhysicalDevice {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.instance == other.instance
-    }
-}
-
-impl Eq for PhysicalDevice {}
-
-impl Hash for PhysicalDevice {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.instance.hash(state);
-    }
-}
+crate::impl_id_counter!(PhysicalDevice);
 
 vulkan_enum! {
     /// Type of a physical device.
