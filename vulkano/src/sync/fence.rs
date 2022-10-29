@@ -18,8 +18,8 @@ use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     fs::File,
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::{Arc, Weak},
     time::Duration,
@@ -52,6 +52,7 @@ use std::{
 pub struct Fence {
     handle: ash::vk::Fence,
     device: Arc<Device>,
+    id: NonZeroU64,
     must_put_in_pool: bool,
 
     export_handle_types: ExternalFenceHandleTypes,
@@ -172,10 +173,9 @@ impl Fence {
         Ok(Fence {
             handle,
             device,
+            id: Self::next_id(),
             must_put_in_pool: false,
-
             export_handle_types,
-
             state: Mutex::new(FenceState {
                 is_signaled: signaled,
                 ..Default::default()
@@ -205,10 +205,9 @@ impl Fence {
                 Fence {
                     handle,
                     device,
+                    id: Self::next_id(),
                     must_put_in_pool: true,
-
                     export_handle_types: ExternalFenceHandleTypes::empty(),
-
                     state: Mutex::new(Default::default()),
                 }
             }
@@ -244,10 +243,9 @@ impl Fence {
         Fence {
             handle,
             device,
+            id: Self::next_id(),
             must_put_in_pool: false,
-
             export_handle_types,
-
             state: Mutex::new(FenceState {
                 is_signaled: signaled,
                 ..Default::default()
@@ -1089,21 +1087,7 @@ unsafe impl DeviceOwned for Fence {
     }
 }
 
-impl PartialEq for Fence {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for Fence {}
-
-impl Hash for Fence {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(Fence);
 
 #[derive(Debug, Default)]
 pub(crate) struct FenceState {

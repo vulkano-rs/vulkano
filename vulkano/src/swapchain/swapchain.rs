@@ -32,7 +32,6 @@ use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
     num::NonZeroU64,
     ops::Range,
@@ -49,6 +48,7 @@ pub struct Swapchain {
     handle: ash::vk::SwapchainKHR,
     device: Arc<Device>,
     surface: Arc<Surface>,
+    id: NonZeroU64,
 
     min_image_count: u32,
     image_format: Format,
@@ -135,7 +135,7 @@ impl Swapchain {
             handle,
             device,
             surface,
-
+            id: Self::next_id(),
             min_image_count,
             image_format: image_format.unwrap(),
             image_color_space,
@@ -150,7 +150,6 @@ impl Swapchain {
             full_screen_exclusive,
             win32_monitor,
             prev_present_id: Default::default(),
-
             full_screen_exclusive_held: AtomicBool::new(false),
             images: image_handles
                 .iter()
@@ -235,7 +234,7 @@ impl Swapchain {
             handle,
             device: self.device.clone(),
             surface: self.surface.clone(),
-
+            id: Self::next_id(),
             min_image_count,
             image_format: image_format.unwrap(),
             image_color_space,
@@ -250,7 +249,6 @@ impl Swapchain {
             full_screen_exclusive,
             win32_monitor,
             prev_present_id: Default::default(),
-
             full_screen_exclusive_held: AtomicBool::new(full_screen_exclusive_held),
             images: image_handles
                 .iter()
@@ -814,6 +812,7 @@ impl Swapchain {
     /// and must not already hold full-screen exclusivity. Full-screen exclusivity is held until
     /// either the `release_full_screen_exclusive` is called, or if any of the the other `Swapchain`
     /// functions return `FullScreenExclusiveLost`.
+    #[inline]
     pub fn acquire_full_screen_exclusive(&self) -> Result<(), FullScreenExclusiveError> {
         if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
             return Err(FullScreenExclusiveError::NotApplicationControlled);
@@ -840,6 +839,7 @@ impl Swapchain {
     ///
     /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
     /// and must currently hold full-screen exclusivity.
+    #[inline]
     pub fn release_full_screen_exclusive(&self) -> Result<(), FullScreenExclusiveError> {
         if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
             return Err(FullScreenExclusiveError::NotApplicationControlled);
@@ -869,6 +869,7 @@ impl Swapchain {
     /// then this function will always return false. If true is returned the swapchain
     /// is in `FullScreenExclusive::AppControlled` full-screen exclusivity mode and exclusivity
     /// is currently acquired.
+    #[inline]
     pub fn is_full_screen_exclusive(&self) -> bool {
         if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
             false
@@ -901,6 +902,7 @@ impl Swapchain {
 }
 
 impl Drop for Swapchain {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
@@ -917,31 +919,20 @@ impl Drop for Swapchain {
 unsafe impl VulkanObject for Swapchain {
     type Handle = ash::vk::SwapchainKHR;
 
+    #[inline]
     fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
 
 unsafe impl DeviceOwned for Swapchain {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl PartialEq for Swapchain {
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for Swapchain {}
-
-impl Hash for Swapchain {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(Swapchain);
 
 impl Debug for Swapchain {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
@@ -949,6 +940,7 @@ impl Debug for Swapchain {
             handle,
             device,
             surface,
+            id: _,
             min_image_count,
             image_format,
             image_color_space,

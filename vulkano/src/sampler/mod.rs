@@ -58,8 +58,8 @@ use crate::{
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ops::RangeInclusive,
     ptr,
     sync::Arc,
@@ -98,6 +98,7 @@ use std::{
 pub struct Sampler {
     handle: ash::vk::Sampler,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     address_mode: [SamplerAddressMode; 3],
     anisotropy: Option<f32>,
@@ -438,7 +439,7 @@ impl Sampler {
         Ok(Arc::new(Sampler {
             handle,
             device,
-
+            id: Self::next_id(),
             address_mode,
             anisotropy,
             border_color: address_mode
@@ -488,7 +489,7 @@ impl Sampler {
         Arc::new(Sampler {
             handle,
             device,
-
+            id: Self::next_id(),
             address_mode,
             anisotropy,
             border_color: address_mode
@@ -758,21 +759,7 @@ unsafe impl DeviceOwned for Sampler {
     }
 }
 
-impl PartialEq for Sampler {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for Sampler {}
-
-impl Hash for Sampler {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(Sampler);
 
 /// Error that can happen when creating an instance.
 #[derive(Clone, Debug, PartialEq)]

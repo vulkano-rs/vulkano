@@ -394,12 +394,12 @@ where
         Ok(Arc::new(GraphicsPipeline {
             handle,
             device,
+            id: GraphicsPipeline::next_id(),
             layout: pipeline_layout,
             render_pass: render_pass.take().expect("Missing render pass"),
             shaders,
             descriptor_requirements,
             num_used_descriptor_sets,
-
             vertex_input_state, // Can be None if there's a mesh shader, but we don't support that yet
             input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet
             tessellation_state: has.tessellation_state.then_some(tessellation_state),

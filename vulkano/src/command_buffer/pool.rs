@@ -17,9 +17,9 @@ use std::{
     cell::Cell,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     marker::PhantomData,
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -35,6 +35,7 @@ use std::{
 pub struct CommandPool {
     handle: ash::vk::CommandPool,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     queue_family_index: u32,
     _transient: bool,
@@ -62,6 +63,7 @@ impl CommandPool {
         Ok(CommandPool {
             handle,
             device,
+            id: Self::next_id(),
             queue_family_index,
             _transient: transient,
             _reset_command_buffer: reset_command_buffer,
@@ -91,6 +93,7 @@ impl CommandPool {
         CommandPool {
             handle,
             device,
+            id: Self::next_id(),
             queue_family_index,
             _transient: transient,
             _reset_command_buffer: reset_command_buffer,
@@ -231,7 +234,7 @@ impl CommandPool {
         Ok(out.into_iter().map(move |command_buffer| CommandPoolAlloc {
             handle: command_buffer,
             device: device.clone(),
-
+            id: CommandPoolAlloc::next_id(),
             level,
         }))
     }
@@ -336,21 +339,7 @@ unsafe impl DeviceOwned for CommandPool {
     }
 }
 
-impl PartialEq for CommandPool {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for CommandPool {}
-
-impl Hash for CommandPool {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(CommandPool);
 
 /// Error that can happen when creating a `CommandPool`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -468,6 +457,7 @@ impl Default for CommandBufferAllocateInfo {
 pub struct CommandPoolAlloc {
     handle: ash::vk::CommandBuffer,
     device: Arc<Device>,
+    id: NonZeroU64,
     level: CommandBufferLevel,
 }
 
@@ -495,21 +485,7 @@ unsafe impl DeviceOwned for CommandPoolAlloc {
     }
 }
 
-impl PartialEq for CommandPoolAlloc {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for CommandPoolAlloc {}
-
-impl Hash for CommandPoolAlloc {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(CommandPoolAlloc);
 
 /// Error that can happen when trimming command pools.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

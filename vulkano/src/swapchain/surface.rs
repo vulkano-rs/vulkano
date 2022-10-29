@@ -28,8 +28,8 @@ use std::{
     any::Any,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::{atomic::AtomicBool, Arc},
 };
@@ -40,6 +40,7 @@ use std::{
 pub struct Surface {
     handle: ash::vk::SurfaceKHR,
     instance: Arc<Instance>,
+    id: NonZeroU64,
     api: SurfaceApi,
     object: Option<Arc<dyn Any + Send + Sync>>,
     // If true, a swapchain has been associated to this surface, and that any new swapchain
@@ -75,13 +76,12 @@ impl Surface {
         Surface {
             handle,
             instance,
+            id: Self::next_id(),
             api,
             object,
-
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
             surface_formats: OnceCache::new(),
             surface_present_modes: OnceCache::new(),
             surface_support: OnceCache::new(),
@@ -139,20 +139,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Headless,
+            handle,
+            SurfaceApi::Headless,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from a `DisplayPlane`.
@@ -236,20 +228,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
+        Ok(Arc::new(Self::from_handle(
+            instance.clone(),
             handle,
-            instance: instance.clone(),
-            api: SurfaceApi::DisplayPlane,
-            object: None,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+            SurfaceApi::DisplayPlane,
+            None,
+        )))
     }
 
     /// Creates a `Surface` from an Android window.
@@ -315,20 +299,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Android,
+            handle,
+            SurfaceApi::Android,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from a DirectFB surface.
@@ -404,20 +380,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::DirectFB,
+            handle,
+            SurfaceApi::DirectFB,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from an Fuchsia ImagePipe.
@@ -488,20 +456,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::FuchsiaImagePipe,
+            handle,
+            SurfaceApi::FuchsiaImagePipe,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from a Google Games Platform stream descriptor.
@@ -572,20 +532,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::GgpStreamDescriptor,
+            handle,
+            SurfaceApi::GgpStreamDescriptor,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from an iOS `UIView`.
@@ -658,19 +610,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Ios,
+            handle,
+            SurfaceApi::Ios,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            metal_layer,
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from a MacOS `NSView`.
@@ -743,20 +688,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::MacOs,
+            handle,
+            SurfaceApi::MacOs,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from a Metal `CAMetalLayer`.
@@ -819,20 +756,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Metal,
+            handle,
+            SurfaceApi::Metal,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from a QNX Screen window.
@@ -908,20 +837,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Qnx,
+            handle,
+            SurfaceApi::Qnx,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from a `code:nn::code:vi::code:Layer`.
@@ -987,20 +908,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Vi,
+            handle,
+            SurfaceApi::Vi,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from a Wayland window.
@@ -1078,20 +991,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Wayland,
+            handle,
+            SurfaceApi::Wayland,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from a Win32 window.
@@ -1169,20 +1074,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Win32,
+            handle,
+            SurfaceApi::Win32,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from an XCB window.
@@ -1260,20 +1157,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Xcb,
+            handle,
+            SurfaceApi::Xcb,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Creates a `Surface` from an Xlib window.
@@ -1351,20 +1240,12 @@ impl Surface {
             output.assume_init()
         };
 
-        Ok(Arc::new(Surface {
-            handle,
+        Ok(Arc::new(Self::from_handle(
             instance,
-            api: SurfaceApi::Xlib,
+            handle,
+            SurfaceApi::Xlib,
             object,
-
-            has_swapchain: AtomicBool::new(false),
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
-
-            surface_formats: OnceCache::new(),
-            surface_present_modes: OnceCache::new(),
-            surface_support: OnceCache::new(),
-        }))
+        )))
     }
 
     /// Returns the instance this surface was created with.
@@ -1394,6 +1275,7 @@ impl Surface {
     /// its sublayers are not automatically resized, and we must resize
     /// it here.
     #[cfg(target_os = "ios")]
+    #[inline]
     pub unsafe fn update_ios_sublayer_on_resize(&self) {
         use core_graphics_types::geometry::CGRect;
         let class = class!(CAMetalLayer);
@@ -1405,6 +1287,7 @@ impl Surface {
 }
 
 impl Drop for Surface {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
             let fns = self.instance.fns();
@@ -1416,10 +1299,13 @@ impl Drop for Surface {
 unsafe impl VulkanObject for Surface {
     type Handle = ash::vk::SurfaceKHR;
 
+    #[inline]
     fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
+
+crate::impl_id_counter!(Surface);
 
 impl Debug for Surface {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
@@ -1442,22 +1328,8 @@ impl Debug for Surface {
     }
 }
 
-impl PartialEq for Surface {
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.instance() == other.instance()
-    }
-}
-
-impl Eq for Surface {}
-
-impl Hash for Surface {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.instance().hash(state);
-    }
-}
-
 unsafe impl SurfaceSwapchainLock for Surface {
+    #[inline]
     fn flag(&self) -> &AtomicBool {
         &self.has_swapchain
     }

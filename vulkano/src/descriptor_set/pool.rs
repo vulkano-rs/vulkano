@@ -21,9 +21,9 @@ use std::{
     cell::Cell,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     marker::PhantomData,
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -36,6 +36,7 @@ use std::{
 pub struct DescriptorPool {
     handle: ash::vk::DescriptorPool,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     max_sets: u32,
     pool_sizes: HashMap<DescriptorType, u32>,
@@ -115,6 +116,7 @@ impl DescriptorPool {
         Ok(DescriptorPool {
             handle,
             device,
+            id: Self::next_id(),
             max_sets,
             pool_sizes,
             can_free_descriptor_sets,
@@ -144,6 +146,7 @@ impl DescriptorPool {
         DescriptorPool {
             handle,
             device,
+            id: Self::next_id(),
             max_sets,
             pool_sizes,
             can_free_descriptor_sets,
@@ -343,21 +346,7 @@ unsafe impl DeviceOwned for DescriptorPool {
     }
 }
 
-impl PartialEq for DescriptorPool {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for DescriptorPool {}
-
-impl Hash for DescriptorPool {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(DescriptorPool);
 
 /// Parameters to create a new `UnsafeDescriptorPool`.
 #[derive(Clone, Debug)]

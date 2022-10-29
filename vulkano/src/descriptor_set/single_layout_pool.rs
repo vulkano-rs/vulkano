@@ -254,7 +254,7 @@ unsafe impl DeviceOwned for SingleLayoutDescSet {
 impl PartialEq for SingleLayoutDescSet {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner().handle() == other.inner().handle() && self.device() == other.device()
+        self.inner() == other.inner()
     }
 }
 
@@ -262,8 +262,7 @@ impl Eq for SingleLayoutDescSet {}
 
 impl Hash for SingleLayoutDescSet {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().handle().hash(state);
-        self.device().hash(state);
+        self.inner().hash(state);
     }
 }
 
@@ -500,7 +499,7 @@ unsafe impl DeviceOwned for SingleLayoutVariableDescSet {
 impl PartialEq for SingleLayoutVariableDescSet {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner().handle() == other.inner().handle() && self.device() == other.device()
+        self.inner() == other.inner()
     }
 }
 
@@ -508,7 +507,6 @@ impl Eq for SingleLayoutVariableDescSet {}
 
 impl Hash for SingleLayoutVariableDescSet {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().handle().hash(state);
-        self.device().hash(state);
+        self.inner().hash(state);
     }
 }

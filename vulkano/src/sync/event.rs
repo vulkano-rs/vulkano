@@ -14,8 +14,8 @@ use crate::{
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::Arc,
 };
@@ -30,6 +30,7 @@ use std::{
 pub struct Event {
     handle: ash::vk::Event,
     device: Arc<Device>,
+    id: NonZeroU64,
     must_put_in_pool: bool,
 }
 
@@ -74,8 +75,9 @@ impl Event {
         };
 
         Ok(Event {
-            device,
             handle,
+            device,
+            id: Self::next_id(),
             must_put_in_pool: false,
         })
     }
@@ -101,6 +103,7 @@ impl Event {
                 Event {
                     handle,
                     device,
+                    id: Self::next_id(),
                     must_put_in_pool: true,
                 }
             }
@@ -128,8 +131,9 @@ impl Event {
         _create_info: EventCreateInfo,
     ) -> Event {
         Event {
-            device,
             handle,
+            device,
+            id: Self::next_id(),
             must_put_in_pool: false,
         }
     }
@@ -226,21 +230,7 @@ unsafe impl DeviceOwned for Event {
     }
 }
 
-impl PartialEq for Event {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for Event {}
-
-impl Hash for Event {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(Event);
 
 /// Parameters to create a new `Event`.
 #[derive(Clone, Debug)]

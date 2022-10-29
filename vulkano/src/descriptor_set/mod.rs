@@ -141,7 +141,7 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
 impl PartialEq for dyn DescriptorSet {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner().handle() == other.inner().handle() && self.device() == other.device()
+        self.inner() == other.inner()
     }
 }
 
@@ -149,8 +149,7 @@ impl Eq for dyn DescriptorSet {}
 
 impl Hash for dyn DescriptorSet {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().handle().hash(state);
-        self.device().hash(state);
+        self.inner().hash(state);
     }
 }
 

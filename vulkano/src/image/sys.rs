@@ -44,6 +44,7 @@ use std::{
     hash::{Hash, Hasher},
     iter::{FusedIterator, Peekable},
     mem::{size_of_val, MaybeUninit},
+    num::NonZeroU64,
     ops::Range,
     ptr,
     sync::Arc,
@@ -58,6 +59,7 @@ use std::{
 pub struct RawImage {
     handle: ash::vk::Image,
     device: Arc<Device>,
+    id: NonZeroU64,
 
     flags: ImageCreateFlags,
     dimensions: ImageDimensions,
@@ -1008,9 +1010,9 @@ impl RawImage {
         };
 
         RawImage {
-            device,
             handle,
-
+            device,
+            id: Self::next_id(),
             flags,
             dimensions,
             format,
@@ -1023,7 +1025,6 @@ impl RawImage {
             stencil_usage,
             sharing,
             external_memory_handle_types,
-
             memory_requirements,
             needs_destruction,
             subresource_layout: OnceCache::new(),
@@ -1846,21 +1847,7 @@ unsafe impl DeviceOwned for RawImage {
     }
 }
 
-impl PartialEq for RawImage {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for RawImage {}
-
-impl Hash for RawImage {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(RawImage);
 
 /// Parameters to create a new `Image`.
 #[derive(Clone, Debug)]

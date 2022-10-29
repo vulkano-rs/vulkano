@@ -20,6 +20,7 @@ use crate::{
 use smallvec::SmallVec;
 use std::{
     fmt::{Debug, Error as FmtError, Formatter},
+    num::NonZeroU64,
     ptr,
 };
 
@@ -27,14 +28,20 @@ use std::{
 ///
 /// Contrary to most other objects in this library, this one doesn't free itself automatically and
 /// doesn't hold the pool or the device it is associated to.
-/// Instead it is an object meant to be used with the `UnsafeDescriptorPool`.
+/// Instead it is an object meant to be used with the [`DescriptorPool`].
+///
+/// [`DescriptorPool`]: super::pool::DescriptorPool
 pub struct UnsafeDescriptorSet {
     handle: ash::vk::DescriptorSet,
+    id: NonZeroU64,
 }
 
 impl UnsafeDescriptorSet {
     pub(crate) fn new(handle: ash::vk::DescriptorSet) -> Self {
-        Self { handle }
+        Self {
+            handle,
+            id: Self::next_id(),
+        }
     }
 
     /// Modifies a descriptor set. Doesn't check that the writes or copies are correct, and
@@ -121,3 +128,5 @@ impl Debug for UnsafeDescriptorSet {
         write!(f, "<Vulkan descriptor set {:?}>", self.handle)
     }
 }
+
+crate::impl_id_counter!(UnsafeDescriptorSet);

@@ -125,8 +125,8 @@ use std::{
     ffi::CString,
     fmt::{Display, Error as FmtError, Formatter},
     fs::File,
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ops::Deref,
     ptr,
     sync::{
@@ -146,6 +146,7 @@ mod queue;
 pub struct Device {
     handle: ash::vk::Device,
     physical_device: Arc<PhysicalDevice>,
+    id: NonZeroU64,
 
     // The highest version that is supported for this device.
     // This is the minimum of Instance::max_api_version and PhysicalDevice::api_version.
@@ -406,6 +407,7 @@ impl Device {
         let device = Arc::new(Device {
             handle,
             physical_device,
+            id: Self::next_id(),
             api_version,
             fns,
             enabled_extensions,
@@ -643,21 +645,7 @@ unsafe impl VulkanObject for Device {
     }
 }
 
-impl PartialEq for Device {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.physical_device == other.physical_device
-    }
-}
-
-impl Eq for Device {}
-
-impl Hash for Device {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.physical_device.hash(state);
-    }
-}
+crate::impl_id_counter!(Device);
 
 /// Error that can be returned when creating a device.
 #[derive(Copy, Clone, Debug)]

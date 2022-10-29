@@ -59,6 +59,7 @@ use std::{
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ops::Range,
     ptr,
     sync::Arc,
@@ -73,6 +74,7 @@ where
 {
     handle: ash::vk::BufferView,
     buffer: Arc<B>,
+    id: NonZeroU64,
 
     format: Option<Format>,
     format_features: FormatFeatures,
@@ -233,7 +235,7 @@ where
         Ok(Arc::new(BufferView {
             handle,
             buffer,
-
+            id: Self::next_id(),
             format: Some(format),
             format_features,
             range: 0..size,
@@ -282,26 +284,7 @@ where
     }
 }
 
-impl<B> PartialEq for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl<B> Eq for BufferView<B> where B: BufferAccess + ?Sized {}
-
-impl<B> Hash for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(BufferView<B: BufferAccess + ?Sized>);
 
 /// Parameters to create a new `BufferView`.
 #[derive(Clone, Debug)]

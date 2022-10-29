@@ -17,8 +17,8 @@ use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     fs::File,
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ptr,
     sync::{Arc, Weak},
 };
@@ -31,6 +31,7 @@ use std::{
 pub struct Semaphore {
     handle: ash::vk::Semaphore,
     device: Arc<Device>,
+    id: NonZeroU64,
     must_put_in_pool: bool,
 
     export_handle_types: ExternalSemaphoreHandleTypes,
@@ -146,12 +147,11 @@ impl Semaphore {
         };
 
         Ok(Semaphore {
-            device,
             handle,
+            device,
+            id: Self::next_id(),
             must_put_in_pool: false,
-
             export_handle_types,
-
             state: Mutex::new(Default::default()),
         })
     }
@@ -167,12 +167,11 @@ impl Semaphore {
         let handle = device.semaphore_pool().lock().pop();
         let semaphore = match handle {
             Some(handle) => Semaphore {
-                device,
                 handle,
+                device,
+                id: Self::next_id(),
                 must_put_in_pool: true,
-
                 export_handle_types: ExternalSemaphoreHandleTypes::empty(),
-
                 state: Mutex::new(Default::default()),
             },
             None => {
@@ -204,12 +203,11 @@ impl Semaphore {
         } = create_info;
 
         Semaphore {
-            device,
             handle,
+            device,
+            id: Self::next_id(),
             must_put_in_pool: false,
-
             export_handle_types,
-
             state: Mutex::new(Default::default()),
         }
     }
@@ -1005,21 +1003,7 @@ unsafe impl DeviceOwned for Semaphore {
     }
 }
 
-impl PartialEq for Semaphore {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl Eq for Semaphore {}
-
-impl Hash for Semaphore {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
+crate::impl_id_counter!(Semaphore);
 
 #[derive(Debug, Default)]
 pub(crate) struct SemaphoreState {
