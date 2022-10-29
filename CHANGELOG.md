@@ -96,6 +96,8 @@ Changes to memory allocation:
 - Added `MemoryAlloc`, `AllocationCreateInfo`, `AllocationCreationError`, `MemoryUsage`, `MemoryAllocatePreference`, `MemoryTypeFilter`, `SuballocationCreateInfo` and `SuballocationCreationError`.
 - Added a `flags` field to `BufferCreateInfo`. This contains no flags yet, but will in the future.
 - Added the `disjoint` flag to `ImageCreateFlags`. This flag is used in combination with multi-planar images, to bind separate memory to each plane of the image. It is not yet supported for the higher-level image types.
+- Added `StandardCommandBufferAllocatorCreateInfo`.
+- Added `StandardCommandBufferAllocator::{try_reset_pool, clear}`.
 
 ### Bugs fixed
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
