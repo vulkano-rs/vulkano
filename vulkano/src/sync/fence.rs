@@ -24,6 +24,9 @@ use std::{
     sync::{Arc, Weak},
     time::Duration,
 };
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 /// A two-state synchronization primitive that is signalled by the device and waited on by the host.
 ///
@@ -32,17 +35,17 @@ use std::{
 /// The primary use of a fence is to know when execution of a queue has reached a particular point.
 /// When adding a command to a queue, a fence can be provided with the command, to be signaled
 /// when the operation finishes. You can check for a fence's current status by calling
-/// `is_signaled` or `wait` on it. If the fence is found to be signaled, that means that the queue
-/// has completed the operation that is associated with the fence, and all operations that were
-/// submitted before it have been completed as well.
+/// `is_signaled`, `wait` or `await` on it. If the fence is found to be signaled, that means that
+/// the queue has completed the operation that is associated with the fence, and all operations that
+/// were submitted before it have been completed as well.
 ///
 /// When a queue command accesses a resource, it must be kept alive until the queue command has
 /// finished executing, and you may not be allowed to perform certain other operations (or even any)
-/// while the resource is in use. By calling `is_signaled` or `wait`, the queue will be notified
-/// when the fence is signaled, so that all resources of the associated queue operation and
+/// while the resource is in use. By calling `is_signaled`, `wait` or `await`, the queue will be
+/// notified when the fence is signaled, so that all resources of the associated queue operation and
 /// preceding operations can be released.
 ///
-/// Because of this, it is highly recommended to call `is_signaled` or `wait` on your fences.
+/// Because of this, it is highly recommended to call `is_signaled`, `wait` or `await` on your fences.
 /// Otherwise, the queue will hold onto resources indefinitely (using up memory)
 /// and resource locks will not be released, which may cause errors when submitting future
 /// queue operations. It is not strictly necessary to wait for *every* fence, as a fence
@@ -1054,6 +1057,25 @@ impl Fence {
     pub(crate) fn state(&self) -> MutexGuard<'_, FenceState> {
         self.state.lock()
     }
+
+    // Shared by Fence and FenceSignalFuture
+    pub(crate) fn poll_impl(&self, cx: &mut Context<'_>) -> Poll<Result<(), OomError>> {
+        // Vulkan only allows polling of the fence status, so we have to use a spin future.
+        // This is still better than blocking in async applications, since a smart-enough async engine
+        // can choose to run some other tasks between probing this one.
+
+        // Check if we are done without blocking
+        match self.is_signaled() {
+            Err(e) => return Poll::Ready(Err(e)),
+            Ok(signalled) => if signalled {
+                return Poll::Ready(Ok(()))
+            }
+        }
+
+        // Otherwise spin
+        cx.waker().wake_by_ref();
+        return Poll::Pending;
+    }
 }
 
 impl Drop for Fence {
@@ -1068,6 +1090,15 @@ impl Drop for Fence {
                 (fns.v1_0.destroy_fence)(self.device.handle(), self.handle, ptr::null());
             }
         }
+    }
+}
+
+impl Future for Fence
+{
+    type Output = Result<(), OomError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.poll_impl(cx)
     }
 }
 

@@ -19,6 +19,9 @@ use crate::{
 };
 use parking_lot::{Mutex, MutexGuard};
 use std::{mem::replace, ops::Range, sync::Arc, time::Duration};
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 /// Builds a new fence signal future.
 pub fn then_signal_fence<F>(future: F, behavior: FenceSignalFutureBehavior) -> FenceSignalFuture<F>
@@ -54,6 +57,11 @@ pub enum FenceSignalFutureBehavior {
 ///
 /// Contrary to most other future types, it is possible to block the current thread until the event
 /// happens. This is done by calling the `wait()` function.
+///
+/// This can also be done through Rust's Async system by simply `.await`ing this object. Note though
+/// that (due to the Vulkan API fence design) this will spin to check the fence, rather than
+/// blocking in the driver. Therefore if you have a long-running task, blocking may be less
+/// CPU intense (depending on the driver's implementation).
 ///
 /// Also note that the `GpuFuture` trait is implemented on `Arc<FenceSignalFuture<_>>`.
 /// This means that you can put this future in an `Arc` and keep a copy of it somewhere in order
@@ -353,6 +361,26 @@ where
                     Err(err)
                 }
             }
+        }
+    }
+}
+
+impl<F> Future for FenceSignalFuture<F>
+    where
+        F: GpuFuture,
+{
+    type Output = Result<(), OomError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Implement through fence
+        let state = self.state.lock();
+
+        match &*state {
+            FenceSignalFutureState::Pending(_, fence)
+            | FenceSignalFutureState::PartiallyFlushed(_, fence)
+            | FenceSignalFutureState::Flushed(_, fence) => fence.poll_impl(cx),
+            FenceSignalFutureState::Cleaned => Poll::Ready(Ok(())),
+            FenceSignalFutureState::Poisoned => unreachable!(),
         }
     }
 }
