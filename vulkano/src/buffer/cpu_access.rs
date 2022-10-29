@@ -17,15 +17,15 @@
 //! or write and write simultaneously will block.
 
 use super::{
-    sys::UnsafeBuffer, BufferAccess, BufferAccessObject, BufferContents, BufferCreationError,
-    BufferInner, BufferUsage,
+    sys::{Buffer, BufferMemory, RawBuffer},
+    BufferAccess, BufferAccessObject, BufferContents, BufferError, BufferInner, BufferUsage,
 };
 use crate::{
-    buffer::{sys::UnsafeBufferCreateInfo, TypedBufferAccess},
+    buffer::{sys::BufferCreateInfo, TypedBufferAccess},
     device::{Device, DeviceOwned},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            AllocationCreateInfo, AllocationCreationError, AllocationType,
             MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
         },
         DedicatedAllocation,
@@ -56,16 +56,7 @@ pub struct CpuAccessibleBuffer<T>
 where
     T: BufferContents + ?Sized,
 {
-    // Inner content.
-    inner: Arc<UnsafeBuffer>,
-
-    // The memory held by the buffer.
-    memory: MemoryAlloc,
-
-    // Queue families allowed to access this buffer.
-    queue_family_indices: SmallVec<[u32; 4]>,
-
-    // Necessary to make it compile.
+    inner: Arc<Buffer>,
     marker: PhantomData<Box<T>>,
 }
 
@@ -217,11 +208,11 @@ where
     ) -> Result<Arc<CpuAccessibleBuffer<T>>, AllocationCreationError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        let buffer = UnsafeBuffer::new(
+        let raw_buffer = RawBuffer::new(
             allocator.device().clone(),
-            UnsafeBufferCreateInfo {
+            BufferCreateInfo {
                 sharing: if queue_family_indices.len() >= 2 {
-                    Sharing::Concurrent(queue_family_indices.clone())
+                    Sharing::Concurrent(queue_family_indices)
                 } else {
                     Sharing::Exclusive
                 },
@@ -231,11 +222,11 @@ where
             },
         )
         .map_err(|err| match err {
-            BufferCreationError::AllocError(err) => err,
+            BufferError::AllocError(err) => err,
             // We don't use sparse-binding, therefore the other errors can't happen.
             _ => unreachable!(),
         })?;
-        let requirements = buffer.memory_requirements();
+        let requirements = *raw_buffer.memory_requirements();
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::Linear,
@@ -245,7 +236,7 @@ where
                 MemoryUsage::Upload
             },
             allocate_preference: MemoryAllocatePreference::Unknown,
-            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&raw_buffer)),
             ..Default::default()
         };
 
@@ -257,27 +248,19 @@ where
                 // easier to invalidate and flush the whole buffer. It does not affect the
                 // allocation in any way.
                 alloc.shrink(size);
-                buffer.bind_memory(alloc.device_memory(), alloc.offset())?;
+                let inner = Arc::new(
+                    raw_buffer
+                        .bind_memory_unchecked(alloc)
+                        .map_err(|(err, _, _)| err)?,
+                );
 
                 Ok(Arc::new(CpuAccessibleBuffer {
-                    inner: buffer,
-                    memory: alloc,
-                    queue_family_indices,
+                    inner,
                     marker: PhantomData,
                 }))
             }
             Err(err) => Err(err),
         }
-    }
-}
-
-impl<T> CpuAccessibleBuffer<T>
-where
-    T: BufferContents + ?Sized,
-{
-    /// Returns the queue families this buffer can be used on.
-    pub fn queue_family_indices(&self) -> &[u32] {
-        &self.queue_family_indices
     }
 }
 
@@ -295,12 +278,17 @@ where
     /// that uses it in exclusive mode will fail. You can still submit this buffer for non-exclusive
     /// accesses (ie. reads).
     pub fn read(&self) -> Result<ReadLock<'_, T>, ReadLockError> {
+        let allocation = match self.inner.memory() {
+            BufferMemory::Normal(a) => a,
+            BufferMemory::Sparse => unreachable!(),
+        };
+
+        let range = self.inner().offset..self.inner().offset + self.size();
         let mut state = self.inner.state();
-        let buffer_range = self.inner().offset..self.inner().offset + self.size();
 
         unsafe {
-            state.check_cpu_read(buffer_range.clone())?;
-            state.cpu_read_lock(buffer_range.clone());
+            state.check_cpu_read(range.clone())?;
+            state.cpu_read_lock(range.clone());
         }
 
         let bytes = unsafe {
@@ -309,13 +297,13 @@ where
             // lock, so there will no new data and this call will do nothing.
             // TODO: probably still more efficient to call it only if we're the first to acquire a
             // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            self.memory.invalidate_range(0..self.size()).unwrap();
-            self.memory.mapped_slice().unwrap()
+            allocation.invalidate_range(0..self.size()).unwrap();
+            allocation.mapped_slice().unwrap()
         };
 
         Ok(ReadLock {
-            inner: self,
-            buffer_range,
+            buffer: self,
+            range,
             data: T::from_bytes(bytes).unwrap(),
         })
     }
@@ -329,22 +317,27 @@ where
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it and any attempt to call `read()` will return an error.
     pub fn write(&self) -> Result<WriteLock<'_, T>, WriteLockError> {
+        let allocation = match self.inner.memory() {
+            BufferMemory::Normal(a) => a,
+            BufferMemory::Sparse => unreachable!(),
+        };
+
+        let range = self.inner().offset..self.inner().offset + self.size();
         let mut state = self.inner.state();
-        let buffer_range = self.inner().offset..self.inner().offset + self.size();
 
         unsafe {
-            state.check_cpu_write(buffer_range.clone())?;
-            state.cpu_write_lock(buffer_range.clone());
+            state.check_cpu_write(range.clone())?;
+            state.cpu_write_lock(range.clone());
         }
 
         let bytes = unsafe {
-            self.memory.invalidate_range(0..self.size()).unwrap();
-            self.memory.write(0..self.size()).unwrap()
+            allocation.invalidate_range(0..self.size()).unwrap();
+            allocation.write(0..self.size()).unwrap()
         };
 
         Ok(WriteLock {
-            inner: self,
-            buffer_range,
+            buffer: self,
+            range,
             data: T::from_bytes_mut(bytes).unwrap(),
         })
     }
@@ -421,8 +414,8 @@ pub struct ReadLock<'a, T>
 where
     T: BufferContents + ?Sized,
 {
-    inner: &'a CpuAccessibleBuffer<T>,
-    buffer_range: Range<DeviceSize>,
+    buffer: &'a CpuAccessibleBuffer<T>,
+    range: Range<DeviceSize>,
     data: &'a T,
 }
 
@@ -432,8 +425,8 @@ where
 {
     fn drop(&mut self) {
         unsafe {
-            let mut state = self.inner.inner.state();
-            state.cpu_read_unlock(self.buffer_range.clone());
+            let mut state = self.buffer.inner.state();
+            state.cpu_read_unlock(self.range.clone());
         }
     }
 }
@@ -458,8 +451,8 @@ pub struct WriteLock<'a, T>
 where
     T: BufferContents + ?Sized,
 {
-    inner: &'a CpuAccessibleBuffer<T>,
-    buffer_range: Range<DeviceSize>,
+    buffer: &'a CpuAccessibleBuffer<T>,
+    range: Range<DeviceSize>,
     data: &'a mut T,
 }
 
@@ -468,11 +461,16 @@ where
     T: BufferContents + ?Sized + 'a,
 {
     fn drop(&mut self) {
-        unsafe {
-            self.inner.memory.flush_range(0..self.inner.size()).unwrap();
+        let allocation = match self.buffer.inner.memory() {
+            BufferMemory::Normal(a) => a,
+            BufferMemory::Sparse => unreachable!(),
+        };
 
-            let mut state = self.inner.inner.state();
-            state.cpu_write_unlock(self.buffer_range.clone());
+        unsafe {
+            allocation.flush_range(0..self.buffer.size()).unwrap();
+
+            let mut state = self.buffer.inner.state();
+            state.cpu_write_unlock(self.range.clone());
         }
     }
 }

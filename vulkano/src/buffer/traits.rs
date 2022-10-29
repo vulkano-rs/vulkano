@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{sys::UnsafeBuffer, BufferContents, BufferSlice, BufferUsage};
+use super::{sys::Buffer, BufferContents, BufferSlice, BufferUsage};
 use crate::{device::DeviceOwned, DeviceSize, RequiresOneOf, SafeDeref, Version, VulkanObject};
 use std::{
     error::Error,
@@ -133,7 +133,7 @@ impl BufferAccessObject for Arc<dyn BufferAccess> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BufferInner<'a> {
     /// The underlying buffer object.
-    pub buffer: &'a Arc<UnsafeBuffer>,
+    pub buffer: &'a Arc<Buffer>,
     /// The offset in bytes from the start of the underlying buffer object to the start of the
     /// buffer we're describing.
     pub offset: DeviceSize,

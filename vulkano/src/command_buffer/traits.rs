@@ -12,9 +12,10 @@ use super::{
     CommandBufferUsage, SemaphoreSubmitInfo, SubmitInfo,
 };
 use crate::{
-    buffer::{sys::UnsafeBuffer, BufferAccess},
+    buffer::{sys::Buffer, BufferAccess},
     device::{Device, DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
+    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
+    swapchain::Swapchain,
     sync::{
         now, AccessCheckError, AccessError, AccessFlags, FlushError, GpuFuture, NowFuture,
         PipelineMemoryAccess, PipelineStages, SubmitAnyBuilder,
@@ -117,7 +118,7 @@ pub unsafe trait PrimaryCommandBufferAbstract:
 
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
@@ -125,7 +126,7 @@ pub unsafe trait PrimaryCommandBufferAbstract:
 
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,
@@ -156,7 +157,7 @@ where
 
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
@@ -166,7 +167,7 @@ where
 
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,
@@ -421,7 +422,7 @@ where
 
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
@@ -440,7 +441,7 @@ where
 
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,
@@ -465,10 +466,12 @@ where
     #[inline]
     fn check_swapchain_image_acquired(
         &self,
-        image: &UnsafeImage,
+        swapchain: &Swapchain,
+        image_index: u32,
         _before: bool,
     ) -> Result<(), AccessCheckError> {
-        self.previous.check_swapchain_image_acquired(image, false)
+        self.previous
+            .check_swapchain_image_acquired(swapchain, image_index, false)
     }
 }
 

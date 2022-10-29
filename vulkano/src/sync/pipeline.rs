@@ -8,8 +8,8 @@
 // according to those terms.
 
 use crate::{
-    buffer::sys::UnsafeBuffer,
-    image::{sys::UnsafeImage, ImageAspects, ImageLayout, ImageSubresourceRange},
+    buffer::sys::Buffer,
+    image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     macros::{vulkan_bitflags, vulkan_enum},
     DeviceSize,
 };
@@ -1333,7 +1333,7 @@ pub struct BufferMemoryBarrier {
     pub queue_family_transfer: Option<QueueFamilyTransfer>,
 
     /// The buffer to apply the barrier to.
-    pub buffer: Arc<UnsafeBuffer>,
+    pub buffer: Arc<Buffer>,
 
     /// The byte range of `buffer` to apply the barrier to.
     pub range: Range<DeviceSize>,
@@ -1343,7 +1343,7 @@ pub struct BufferMemoryBarrier {
 
 impl BufferMemoryBarrier {
     #[inline]
-    pub fn buffer(buffer: Arc<UnsafeBuffer>) -> Self {
+    pub fn buffer(buffer: Arc<Buffer>) -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
@@ -1392,7 +1392,7 @@ pub struct ImageMemoryBarrier {
     pub queue_family_transfer: Option<QueueFamilyTransfer>,
 
     /// The image to apply the barrier to.
-    pub image: Arc<UnsafeImage>,
+    pub image: Arc<Image>,
 
     /// The subresource range of `image` to apply the barrier to.
     pub subresource_range: ImageSubresourceRange,
@@ -1402,7 +1402,7 @@ pub struct ImageMemoryBarrier {
 
 impl ImageMemoryBarrier {
     #[inline]
-    pub fn image(image: Arc<UnsafeImage>) -> Self {
+    pub fn image(image: Arc<Image>) -> Self {
         Self {
             src_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),

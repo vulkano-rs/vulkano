@@ -7,7 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{traits::ImageContent, ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout};
+use super::{
+    sys::{Image, ImageMemory},
+    traits::ImageContent,
+    ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout,
+};
 use crate::{
     device::{Device, DeviceOwned},
     swapchain::Swapchain,
@@ -33,51 +37,47 @@ use std::{
 /// again.
 #[derive(Debug)]
 pub struct SwapchainImage {
-    swapchain: Arc<Swapchain>,
-    image_index: u32,
+    inner: Arc<Image>,
 }
 
 impl SwapchainImage {
-    /// Builds a `SwapchainImage` from raw components.
-    ///
-    /// This is an internal method that you shouldn't call.
-    pub unsafe fn from_raw(
+    pub(crate) unsafe fn from_handle(
+        handle: ash::vk::Image,
         swapchain: Arc<Swapchain>,
         image_index: u32,
     ) -> Result<Arc<SwapchainImage>, OomError> {
         Ok(Arc::new(SwapchainImage {
-            swapchain,
-            image_index,
+            inner: Arc::new(Image::from_swapchain(handle, swapchain, image_index)),
         }))
     }
 
     /// Returns the swapchain this image belongs to.
     pub fn swapchain(&self) -> &Arc<Swapchain> {
-        &self.swapchain
-    }
-
-    fn my_image(&self) -> ImageInner<'_> {
-        self.swapchain.raw_image(self.image_index).unwrap()
-    }
-
-    fn layout_initialized(&self) {
-        self.swapchain.image_layout_initialized(self.image_index);
-    }
-
-    fn is_layout_initialized(&self) -> bool {
-        self.swapchain.is_image_layout_initialized(self.image_index)
+        match self.inner.memory() {
+            ImageMemory::Swapchain {
+                swapchain,
+                image_index: _,
+            } => swapchain,
+            _ => unreachable!(),
+        }
     }
 }
 
 unsafe impl DeviceOwned for SwapchainImage {
     fn device(&self) -> &Arc<Device> {
-        self.swapchain.device()
+        self.inner.device()
     }
 }
 
 unsafe impl ImageAccess for SwapchainImage {
     fn inner(&self) -> ImageInner<'_> {
-        self.my_image()
+        ImageInner {
+            image: &self.inner,
+            first_layer: 0,
+            num_layers: self.inner.dimensions().array_layers(),
+            first_mipmap_level: 0,
+            num_mipmap_levels: 1,
+        }
     }
 
     fn initial_layout_requirement(&self) -> ImageLayout {
@@ -98,11 +98,23 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     unsafe fn layout_initialized(&self) {
-        self.layout_initialized();
+        match self.inner.memory() {
+            &ImageMemory::Swapchain {
+                ref swapchain,
+                image_index,
+            } => swapchain.image_layout_initialized(image_index),
+            _ => unreachable!(),
+        }
     }
 
     fn is_layout_initialized(&self) -> bool {
-        self.is_layout_initialized()
+        match self.inner.memory() {
+            &ImageMemory::Swapchain {
+                ref swapchain,
+                image_index,
+            } => swapchain.is_image_layout_initialized(image_index),
+            _ => unreachable!(),
+        }
     }
 }
 

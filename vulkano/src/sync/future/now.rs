@@ -9,9 +9,10 @@
 
 use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
 use crate::{
-    buffer::sys::UnsafeBuffer,
+    buffer::sys::Buffer,
     device::{Device, DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageLayout},
+    image::{sys::Image, ImageLayout},
+    swapchain::Swapchain,
     sync::{AccessFlags, PipelineStages},
     DeviceSize,
 };
@@ -58,7 +59,7 @@ unsafe impl GpuFuture for NowFuture {
     #[inline]
     fn check_buffer_access(
         &self,
-        _buffer: &UnsafeBuffer,
+        _buffer: &Buffer,
         _range: Range<DeviceSize>,
         _exclusive: bool,
         _queue: &Queue,
@@ -69,7 +70,7 @@ unsafe impl GpuFuture for NowFuture {
     #[inline]
     fn check_image_access(
         &self,
-        _image: &UnsafeImage,
+        _image: &Image,
         _range: Range<DeviceSize>,
         _exclusive: bool,
         _expected_layout: ImageLayout,
@@ -81,7 +82,8 @@ unsafe impl GpuFuture for NowFuture {
     #[inline]
     fn check_swapchain_image_acquired(
         &self,
-        _image: &UnsafeImage,
+        _swapchain: &Swapchain,
+        _image_index: u32,
         _before: bool,
     ) -> Result<(), AccessCheckError> {
         Err(AccessCheckError::Unknown)

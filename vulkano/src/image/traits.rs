@@ -8,7 +8,7 @@
 // according to those terms.
 
 use super::{
-    sys::UnsafeImage, ImageAspects, ImageDescriptorLayouts, ImageDimensions, ImageLayout,
+    sys::Image, ImageAspects, ImageDescriptorLayouts, ImageDimensions, ImageLayout,
     ImageSubresourceLayers, ImageSubresourceRange, ImageUsage, SampleCount,
 };
 use crate::{
@@ -199,7 +199,7 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageInner<'a> {
     /// The underlying image object.
-    pub image: &'a Arc<UnsafeImage>,
+    pub image: &'a Arc<Image>,
 
     /// The first layer of `image` to consider.
     pub first_layer: u32,

@@ -15,17 +15,17 @@
 //!
 
 use super::{
-    sys::{UnsafeBuffer, UnsafeBufferCreateInfo},
+    sys::{Buffer, BufferCreateInfo, BufferMemory, RawBuffer},
     BufferAccess, BufferAccessObject, BufferContents, BufferInner, BufferUsage,
     CpuAccessibleBuffer, TypedBufferAccess,
 };
 use crate::{
-    buffer::{BufferCreationError, ExternalBufferInfo},
+    buffer::{BufferError, ExternalBufferInfo},
     command_buffer::{allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CopyBufferInfo},
     device::{Device, DeviceOwned},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationCreationError, AllocationType, MemoryAlloc,
+            AllocationCreateInfo, AllocationCreationError, AllocationType,
             MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
         },
         DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
@@ -129,16 +129,7 @@ pub struct DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
 {
-    // Inner content.
-    inner: Arc<UnsafeBuffer>,
-
-    // The memory held by the buffer.
-    memory: MemoryAlloc,
-
-    // Queue families allowed to access this buffer.
-    queue_family_indices: SmallVec<[u32; 4]>,
-
-    // Necessary to make it compile.
+    inner: Arc<Buffer>,
     marker: PhantomData<Box<T>>,
 }
 
@@ -337,11 +328,11 @@ where
     ) -> Result<Arc<DeviceLocalBuffer<T>>, AllocationCreationError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        let buffer = UnsafeBuffer::new(
+        let raw_buffer = RawBuffer::new(
             allocator.device().clone(),
-            UnsafeBufferCreateInfo {
+            BufferCreateInfo {
                 sharing: if queue_family_indices.len() >= 2 {
-                    Sharing::Concurrent(queue_family_indices.clone())
+                    Sharing::Concurrent(queue_family_indices)
                 } else {
                     Sharing::Exclusive
                 },
@@ -351,17 +342,17 @@ where
             },
         )
         .map_err(|err| match err {
-            BufferCreationError::AllocError(err) => err,
+            BufferError::AllocError(err) => err,
             // We don't use sparse-binding, therefore the other errors can't happen.
             _ => unreachable!(),
         })?;
-        let requirements = buffer.memory_requirements();
+        let requirements = *raw_buffer.memory_requirements();
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::Linear,
             usage: MemoryUsage::GpuOnly,
             allocate_preference: MemoryAllocatePreference::Unknown,
-            dedicated_allocation: Some(DedicatedAllocation::Buffer(&buffer)),
+            dedicated_allocation: Some(DedicatedAllocation::Buffer(&raw_buffer)),
             ..Default::default()
         };
 
@@ -369,12 +360,14 @@ where
             Ok(alloc) => {
                 debug_assert!(alloc.offset() % requirements.alignment == 0);
                 debug_assert!(alloc.size() == requirements.size);
-                buffer.bind_memory(alloc.device_memory(), alloc.offset())?;
+                let inner = Arc::new(
+                    raw_buffer
+                        .bind_memory_unchecked(alloc)
+                        .map_err(|(err, _, _)| err)?,
+                );
 
                 Ok(Arc::new(DeviceLocalBuffer {
-                    inner: buffer,
-                    memory: alloc,
-                    queue_family_indices,
+                    inner,
                     marker: PhantomData,
                 }))
             }
@@ -418,11 +411,11 @@ where
             opaque_fd: true,
             ..ExternalMemoryHandleTypes::empty()
         };
-        let buffer = UnsafeBuffer::new(
+        let raw_buffer = RawBuffer::new(
             allocator.device().clone(),
-            UnsafeBufferCreateInfo {
+            BufferCreateInfo {
                 sharing: if queue_family_indices.len() >= 2 {
-                    Sharing::Concurrent(queue_family_indices.clone())
+                    Sharing::Concurrent(queue_family_indices)
                 } else {
                     Sharing::Exclusive
                 },
@@ -433,11 +426,11 @@ where
             },
         )
         .map_err(|err| match err {
-            BufferCreationError::AllocError(err) => err,
+            BufferError::AllocError(err) => err,
             // We don't use sparse-binding, therefore the other errors can't happen.
             _ => unreachable!(),
         })?;
-        let requirements = buffer.memory_requirements();
+        let requirements = raw_buffer.memory_requirements();
         let memory_type_index = allocator
             .find_memory_type_index(requirements.memory_type_bits, MemoryUsage::GpuOnly.into())
             .expect("failed to find a suitable memory type");
@@ -450,18 +443,20 @@ where
         match allocator.allocate_dedicated_unchecked(
             memory_type_index,
             requirements.size,
-            Some(DedicatedAllocation::Buffer(&buffer)),
+            Some(DedicatedAllocation::Buffer(&raw_buffer)),
             external_memory_handle_types,
         ) {
             Ok(alloc) => {
                 debug_assert!(alloc.offset() % requirements.alignment == 0);
                 debug_assert!(alloc.size() == requirements.size);
-                buffer.bind_memory(alloc.device_memory(), alloc.offset())?;
+                let inner = Arc::new(
+                    raw_buffer
+                        .bind_memory_unchecked(alloc)
+                        .map_err(|(err, _, _)| err)?,
+                );
 
                 Ok(Arc::new(DeviceLocalBuffer {
-                    inner: buffer,
-                    memory: alloc,
-                    queue_family_indices,
+                    inner,
                     marker: PhantomData,
                 }))
             }
@@ -473,19 +468,14 @@ where
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
     /// Only works on Linux/BSD.
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
-        self.memory
+        let allocation = match self.inner.memory() {
+            BufferMemory::Normal(a) => a,
+            BufferMemory::Sparse => unreachable!(),
+        };
+
+        allocation
             .device_memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
-    }
-}
-
-impl<T> DeviceLocalBuffer<T>
-where
-    T: BufferContents + ?Sized,
-{
-    /// Returns the queue families this buffer can be used on.
-    pub fn queue_family_indices(&self) -> &[u32] {
-        &self.queue_family_indices
     }
 }
 

@@ -9,9 +9,10 @@
 
 use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
 use crate::{
-    buffer::sys::UnsafeBuffer,
+    buffer::sys::Buffer,
     device::{Device, DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageLayout},
+    image::{sys::Image, ImageLayout},
+    swapchain::Swapchain,
     sync::{AccessFlags, PipelineStages},
     DeviceSize, VulkanObject,
 };
@@ -199,7 +200,7 @@ where
 
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
@@ -233,7 +234,7 @@ where
 
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,
@@ -268,11 +269,16 @@ where
     #[inline]
     fn check_swapchain_image_acquired(
         &self,
-        image: &UnsafeImage,
+        swapchain: &Swapchain,
+        image_index: u32,
         _before: bool,
     ) -> Result<(), AccessCheckError> {
-        let first = self.first.check_swapchain_image_acquired(image, false);
-        let second = self.second.check_swapchain_image_acquired(image, false);
+        let first = self
+            .first
+            .check_swapchain_image_acquired(swapchain, image_index, false);
+        let second = self
+            .second
+            .check_swapchain_image_acquired(swapchain, image_index, false);
 
         match (first, second) {
             (v, Err(AccessCheckError::Unknown)) => v,

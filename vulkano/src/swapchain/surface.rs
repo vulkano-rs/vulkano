@@ -1544,28 +1544,75 @@ pub enum SurfaceApi {
 }
 
 vulkan_enum! {
-    /// The way presenting a swapchain is accomplished.
+    /// The mode of action when a swapchain image is presented.
+    ///
+    /// Swapchain images can be in one of three possible states:
+    /// - Exactly one image is currently displayed on the screen.
+    /// - Zero or more are acquired by the application, or available to be acquired.
+    /// - Some may be held inside the presentation engine waiting to be displayed. The present mode
+    ///   concerns the behaviour of this category, and by extension, which images are left over for
+    ///   acquiring.
+    ///
+    /// The present mode affects what is commonly known as "vertical sync" or "vsync" for short.
+    /// The `Immediate` mode is equivalent to disabling vertical sync, while the others enable
+    /// vertical sync in various forms. An important aspect of the present modes is their potential
+    /// *latency*: the time between when an image is presented, and when it actually appears on
+    /// the display.
+    ///
+    /// Only `Fifo` is guaranteed to be supported on every device. For the others, you must call
+    /// [`surface_present_modes`] to see if they are supported.
+    ///
+    /// [`surface_present_modes`]: crate::device::physical::PhysicalDevice::surface_present_modes
     #[non_exhaustive]
     PresentMode = PresentModeKHR(i32);
 
-    /// Immediately shows the image to the user. May result in visible tearing.
+    /// The presentation engine holds only the currently displayed image. When presenting an image,
+    /// the currently displayed image is immediately replaced with the presented image. The old
+    /// image will be available for future acquire operations.
+    ///
+    /// This mode has the lowest latency of all present modes, but if the display is not in a
+    /// vertical blanking period when the image is replaced, a tear will be visible.
     Immediate = IMMEDIATE,
 
-    /// The action of presenting an image puts it in wait. When the next vertical blanking period
-    /// happens, the waiting image is effectively shown to the user. If an image is presented while
-    /// another one is waiting, it is replaced.
+    /// The presentation engine holds the currently displayed image, and optionally another in a
+    /// waiting slot. The presentation engine waits until the next vertical blanking period, then
+    /// removes any image from the waiting slot and displays it. Tearing will never be visible.
+    /// When presenting an image, it is stored in the waiting slot. Any previous entry
+    /// in the slot is discarded, and will be available for future acquire operations.
+    ///
+    /// Latency is relatively low with this mode, and will never be longer than the time between
+    /// vertical blanking periods. However, if a previous image in the waiting slot is discarded,
+    /// the work that went into producing that image was wasted.
+    ///
+    /// With two swapchain images, this mode behaves essentially identical to `Fifo`: once both
+    /// images are held in the presentation engine, no images can be acquired until one is finished
+    /// displaying. But with three or more swapchain images, any images beyond those two are always
+    /// available to acquire.
     Mailbox = MAILBOX,
 
-    /// The action of presenting an image adds it to a queue of images. At each vertical blanking
-    /// period, the queue is popped and an image is presented.
+    /// The presentation engine holds the currently displayed image, and a queue of waiting images.
+    /// When presenting an image, it is added to the tail of the queue, after previously presented
+    /// images. The presentation engine waits until the next vertical blanking period, then removes
+    /// an image from the head of the queue and displays it. Tearing will never be visible. Images
+    /// become available for future acquire operations only after they have been displayed.
     ///
-    /// Guaranteed to be always supported.
+    /// This mode is guaranteed to be always supported. It is possible for all swapchain images to
+    /// end up being held by the presentation engine, either being displayed or in the queue. When
+    /// that happens, no images can be acquired until one is finished displaying. This can be used
+    /// to limit the presentation rate to the display frame rate. Latency is bounded only by the
+    /// number of images in the swapchain.
     ///
     /// This is the equivalent of OpenGL's `SwapInterval` with a value of 1.
     Fifo = FIFO,
 
-    /// Same as `Fifo`, except that if the queue was empty during the previous vertical blanking
-    /// period then it is equivalent to `Immediate`.
+    /// Similar to `Fifo`, but with the ability for images to "skip the queue" if presentation is
+    /// lagging behind the display frame rate. If the queue is empty and a vertical blanking period
+    /// has already passed since the previous image was displayed, then the currently displayed
+    /// image is immediately replaced with the presented image, as in `Immediate`.
+    ///
+    /// This mode has high latency if images are presented faster than the display frame rate,
+    /// as they will accumulate in the queue. But the latency is low if images are presented slower
+    /// than the display frame rate. However, slower presentation can result in visible tearing.
     ///
     /// This is the equivalent of OpenGL's `SwapInterval` with a value of -1.
     FifoRelaxed = FIFO_RELAXED,

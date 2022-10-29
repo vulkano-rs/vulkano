@@ -15,7 +15,7 @@ pub use crate::command_buffer::commands::{
     secondary::SyncCommandBufferBuilderExecuteCommands,
 };
 use crate::{
-    buffer::{sys::UnsafeBuffer, BufferAccess},
+    buffer::{sys::Buffer, BufferAccess},
     command_buffer::{
         pool::CommandPoolAlloc,
         synced::{BufferUse, ImageUse},
@@ -26,7 +26,7 @@ use crate::{
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned},
-    image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
+    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
     pipeline::{
         graphics::{
             color_blend::LogicOp,
@@ -93,8 +93,8 @@ pub struct SyncCommandBufferBuilder {
     pub(in crate::command_buffer) latest_render_pass_enter: Option<usize>,
 
     // Stores the current state of buffers and images that are in use by the command buffer.
-    buffers2: HashMap<Arc<UnsafeBuffer>, RangeMap<DeviceSize, BufferState>>,
-    images2: HashMap<Arc<UnsafeImage>, RangeMap<DeviceSize, ImageState>>,
+    buffers2: HashMap<Arc<Buffer>, RangeMap<DeviceSize, BufferState>>,
+    images2: HashMap<Arc<Image>, RangeMap<DeviceSize, ImageState>>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
     buffers: Vec<(

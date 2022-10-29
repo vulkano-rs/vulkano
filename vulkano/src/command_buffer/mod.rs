@@ -41,8 +41,8 @@
 //! When you are done adding commands, build it to obtain either a `PrimaryAutoCommandBuffer` or
 //! `SecondAutoCommandBuffer`.
 //!
-//! Once built, use [the `PrimaryCommandBuffer` trait](crate::command_buffer::PrimaryCommandBuffer) to submit the
-//! command buffer. Submitting a command buffer returns an object that implements the `GpuFuture` trait
+//! Once built, use the [`PrimaryCommandBufferAbstract`] trait to submit the command buffer.
+//! Submitting a command buffer returns an object that implements the `GpuFuture` trait
 //! and that represents the moment when the execution will end on the GPU.
 //!
 //! ```
@@ -120,9 +120,9 @@ pub use self::{
     },
 };
 use crate::{
-    buffer::sys::UnsafeBuffer,
+    buffer::sys::Buffer,
     format::Format,
-    image::{sys::UnsafeImage, ImageLayout, SampleCount},
+    image::{sys::Image, ImageLayout, SampleCount},
     macros::vulkan_enum,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     range_map::RangeMap,
@@ -507,7 +507,7 @@ pub struct CommandBufferResourcesUsage {
 
 #[derive(Debug)]
 pub(crate) struct CommandBufferBufferUsage {
-    pub(crate) buffer: Arc<UnsafeBuffer>,
+    pub(crate) buffer: Arc<Buffer>,
     pub(crate) ranges: RangeMap<DeviceSize, CommandBufferBufferRangeUsage>,
 }
 
@@ -521,7 +521,7 @@ pub(crate) struct CommandBufferBufferRangeUsage {
 
 #[derive(Debug)]
 pub(crate) struct CommandBufferImageUsage {
-    pub(crate) image: Arc<UnsafeImage>,
+    pub(crate) image: Arc<Image>,
     pub(crate) ranges: RangeMap<DeviceSize, CommandBufferImageRangeUsage>,
 }
 

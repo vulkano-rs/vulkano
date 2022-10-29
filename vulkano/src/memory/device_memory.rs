@@ -56,6 +56,7 @@ pub struct DeviceMemory {
     allocation_size: DeviceSize,
     memory_type_index: u32,
     export_handle_types: ExternalMemoryHandleTypes,
+    imported_handle_type: Option<ExternalMemoryHandleType>,
     flags: MemoryAllocateFlags,
 }
 
@@ -107,6 +108,7 @@ impl DeviceMemory {
             allocation_size,
             memory_type_index,
             export_handle_types,
+            imported_handle_type: None,
             flags,
         }
     }
@@ -209,7 +211,7 @@ impl DeviceMemory {
                     // VUID-VkMemoryDedicatedAllocateInfo-commonparent
                     assert_eq!(device, image.device().as_ref());
 
-                    let required_size = image.memory_requirements().size;
+                    let required_size = image.memory_requirements()[0].size;
 
                     // VUID-VkMemoryDedicatedAllocateInfo-image-02964
                     if allocation_size != required_size {
@@ -446,6 +448,11 @@ impl DeviceMemory {
             allocate_info = allocate_info.push_next(info);
         }
 
+        let imported_handle_type = import_info.as_ref().map(|import_info| match import_info {
+            MemoryImportInfo::Fd { handle_type, .. } => *handle_type,
+            MemoryImportInfo::Win32 { handle_type, .. } => *handle_type,
+        });
+
         #[cfg(unix)]
         let mut import_fd_info = match import_info {
             Some(MemoryImportInfo::Fd { handle_type, file }) => {
@@ -528,6 +535,7 @@ impl DeviceMemory {
             allocation_size,
             memory_type_index,
             export_handle_types,
+            imported_handle_type,
             flags,
         })
     }
@@ -548,6 +556,12 @@ impl DeviceMemory {
     #[inline]
     pub fn export_handle_types(&self) -> ExternalMemoryHandleTypes {
         self.export_handle_types
+    }
+
+    /// Returns the handle type that the memory allocation was imported from, if any.
+    #[inline]
+    pub fn imported_handle_type(&self) -> Option<ExternalMemoryHandleType> {
+        self.imported_handle_type
     }
 
     /// Returns the flags the memory was allocated with.
@@ -938,6 +952,35 @@ vulkan_bitflags! {
     rdma_address = RDMA_ADDRESS_NV {
         device_extensions: [nv_external_memory_rdma],
     },
+}
+
+impl From<ExternalMemoryHandleType> for ExternalMemoryHandleTypes {
+    #[inline]
+    fn from(val: ExternalMemoryHandleType) -> Self {
+        let mut result = Self::empty();
+
+        match val {
+            ExternalMemoryHandleType::OpaqueFd => result.opaque_fd = true,
+            ExternalMemoryHandleType::OpaqueWin32 => result.opaque_win32 = true,
+            ExternalMemoryHandleType::OpaqueWin32Kmt => result.opaque_win32_kmt = true,
+            ExternalMemoryHandleType::D3D11Texture => result.d3d11_texture = true,
+            ExternalMemoryHandleType::D3D11TextureKmt => result.d3d11_texture_kmt = true,
+            ExternalMemoryHandleType::D3D12Heap => result.d3d12_heap = true,
+            ExternalMemoryHandleType::D3D12Resource => result.d3d12_resource = true,
+            ExternalMemoryHandleType::DmaBuf => result.dma_buf = true,
+            ExternalMemoryHandleType::AndroidHardwareBuffer => {
+                result.android_hardware_buffer = true
+            }
+            ExternalMemoryHandleType::HostAllocation => result.host_allocation = true,
+            ExternalMemoryHandleType::HostMappedForeignMemory => {
+                result.host_mapped_foreign_memory = true
+            }
+            ExternalMemoryHandleType::ZirconVmo => result.zircon_vmo = true,
+            ExternalMemoryHandleType::RdmaAddress => result.rdma_address = true,
+        }
+
+        result
+    }
 }
 
 impl ExternalMemoryHandleTypes {

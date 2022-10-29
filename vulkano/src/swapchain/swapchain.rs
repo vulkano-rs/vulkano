@@ -12,12 +12,12 @@ use super::{
     Surface, SurfaceTransform, SwapchainPresentInfo,
 };
 use crate::{
-    buffer::sys::UnsafeBuffer,
+    buffer::sys::Buffer,
     device::{Device, DeviceOwned, Queue},
     format::Format,
     image::{
-        sys::UnsafeImage, ImageCreateFlags, ImageDimensions, ImageFormatInfo, ImageInner,
-        ImageLayout, ImageTiling, ImageType, ImageUsage, SampleCount, SwapchainImage,
+        sys::Image, ImageFormatInfo, ImageLayout, ImageTiling, ImageType, ImageUsage,
+        SwapchainImage,
     },
     macros::vulkan_enum,
     swapchain::{PresentInfo, SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
@@ -82,10 +82,8 @@ pub struct Swapchain {
 
 #[derive(Debug)]
 struct ImageEntry {
-    // The actual image.
-    image: Arc<UnsafeImage>,
-    // If true, then the image is still in the undefined layout and must be transitioned.
-    undefined_layout: AtomicBool,
+    handle: ash::vk::Image,
+    layout_initialized: AtomicBool,
 }
 
 impl Swapchain {
@@ -113,11 +111,8 @@ impl Swapchain {
             return Err(SwapchainCreationError::SurfaceInUse);
         }
 
-        let (handle, images) = unsafe {
-            let (handle, image_handles) = Self::create(&device, &surface, &create_info, None)?;
-            let images = Self::wrap_images(&device, image_handles, &create_info);
-            (handle, images)
-        };
+        let (handle, image_handles) =
+            unsafe { Self::create(&device, &surface, &create_info, None)? };
 
         let SwapchainCreateInfo {
             min_image_count,
@@ -157,12 +152,22 @@ impl Swapchain {
             prev_present_id: Default::default(),
 
             full_screen_exclusive_held: AtomicBool::new(false),
-            images,
+            images: image_handles
+                .iter()
+                .map(|&handle| ImageEntry {
+                    handle,
+                    layout_initialized: AtomicBool::new(false),
+                })
+                .collect(),
             retired: Mutex::new(false),
         });
 
-        let swapchain_images = (0..swapchain.images.len())
-            .map(|n| unsafe { SwapchainImage::from_raw(swapchain.clone(), n as u32) })
+        let swapchain_images = image_handles
+            .into_iter()
+            .enumerate()
+            .map(|(image_index, handle)| unsafe {
+                SwapchainImage::from_handle(handle, swapchain.clone(), image_index as u32)
+            })
             .collect::<Result<_, _>>()?;
 
         Ok((swapchain, swapchain_images))
@@ -199,12 +204,8 @@ impl Swapchain {
             }
         }
 
-        let (handle, images) = unsafe {
-            let (handle, image_handles) =
-                Self::create(&self.device, &self.surface, &create_info, Some(self))?;
-            let images = Self::wrap_images(&self.device, image_handles, &create_info);
-            (handle, images)
-        };
+        let (handle, image_handles) =
+            unsafe { Self::create(&self.device, &self.surface, &create_info, Some(self))? };
 
         let full_screen_exclusive_held =
             if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
@@ -251,12 +252,22 @@ impl Swapchain {
             prev_present_id: Default::default(),
 
             full_screen_exclusive_held: AtomicBool::new(full_screen_exclusive_held),
-            images,
+            images: image_handles
+                .iter()
+                .map(|&handle| ImageEntry {
+                    handle,
+                    layout_initialized: AtomicBool::new(false),
+                })
+                .collect(),
             retired: Mutex::new(false),
         });
 
-        let swapchain_images = (0..swapchain.images.len())
-            .map(|n| unsafe { SwapchainImage::from_raw(swapchain.clone(), n as u32) })
+        let swapchain_images = image_handles
+            .into_iter()
+            .enumerate()
+            .map(|(image_index, handle)| unsafe {
+                SwapchainImage::from_handle(handle, swapchain.clone(), image_index as u32)
+            })
             .collect::<Result<_, _>>()?;
 
         Ok((swapchain, swapchain_images))
@@ -678,51 +689,8 @@ impl Swapchain {
         Ok((handle, image_handles))
     }
 
-    unsafe fn wrap_images(
-        device: &Arc<Device>,
-        image_handles: Vec<ash::vk::Image>,
-        create_info: &SwapchainCreateInfo,
-    ) -> Vec<ImageEntry> {
-        let &SwapchainCreateInfo {
-            image_format,
-            image_extent,
-            image_array_layers,
-            image_usage,
-            image_sharing: _, // TODO: put this in the image too
-            ..
-        } = create_info;
-
-        image_handles
-            .into_iter()
-            .map(|handle| {
-                let dims = ImageDimensions::Dim2d {
-                    width: image_extent[0],
-                    height: image_extent[1],
-                    array_layers: image_array_layers,
-                };
-
-                let img = {
-                    UnsafeImage::from_raw(
-                        device.clone(),
-                        handle,
-                        image_usage,
-                        image_format.unwrap(),
-                        ImageCreateFlags::empty(),
-                        dims,
-                        SampleCount::Sample1,
-                        1,
-                    )
-                };
-
-                ImageEntry {
-                    image: img,
-                    undefined_layout: AtomicBool::new(true),
-                }
-            })
-            .collect()
-    }
-
     /// Returns the creation parameters of the swapchain.
+    #[inline]
     pub fn create_info(&self) -> SwapchainCreateInfo {
         SwapchainCreateInfo {
             min_image_count: self.min_image_count,
@@ -743,20 +711,18 @@ impl Swapchain {
     }
 
     /// Returns the saved Surface, from the Swapchain creation.
+    #[inline]
     pub fn surface(&self) -> &Arc<Surface> {
         &self.surface
     }
 
-    /// Returns one of the images that belongs to this swapchain.
+    /// If `image` is one of the images of this swapchain, returns its index within the swapchain.
     #[inline]
-    pub fn raw_image(&self, image_index: u32) -> Option<ImageInner<'_>> {
-        self.images.get(image_index as usize).map(|i| ImageInner {
-            image: &i.image,
-            first_layer: 0,
-            num_layers: self.image_array_layers,
-            first_mipmap_level: 0,
-            num_mipmap_levels: 1,
-        })
+    pub fn index_of_image(&self, image: &Image) -> Option<u32> {
+        self.images
+            .iter()
+            .position(|entry| entry.handle == image.handle())
+            .map(|i| i as u32)
     }
 
     /// Returns the number of images of the swapchain.
@@ -789,6 +755,18 @@ impl Swapchain {
         self.image_array_layers
     }
 
+    /// Returns the usage of the images of the swapchain.
+    #[inline]
+    pub fn image_usage(&self) -> ImageUsage {
+        self.image_usage
+    }
+
+    /// Returns the sharing of the images of the swapchain.
+    #[inline]
+    pub fn image_sharing(&self) -> &Sharing<SmallVec<[u32; 4]>> {
+        &self.image_sharing
+    }
+
     #[inline]
     pub(crate) unsafe fn full_screen_exclusive_held(&self) -> &AtomicBool {
         &self.full_screen_exclusive_held
@@ -801,26 +779,31 @@ impl Swapchain {
     }
 
     /// Returns the pre-transform that was passed when creating the swapchain.
+    #[inline]
     pub fn pre_transform(&self) -> SurfaceTransform {
         self.pre_transform
     }
 
     /// Returns the alpha mode that was passed when creating the swapchain.
+    #[inline]
     pub fn composite_alpha(&self) -> CompositeAlpha {
         self.composite_alpha
     }
 
     /// Returns the present mode that was passed when creating the swapchain.
+    #[inline]
     pub fn present_mode(&self) -> PresentMode {
         self.present_mode
     }
 
     /// Returns the value of `clipped` that was passed when creating the swapchain.
+    #[inline]
     pub fn clipped(&self) -> bool {
         self.clipped
     }
 
     /// Returns the value of 'full_screen_exclusive` that was passed when creating the swapchain.
+    #[inline]
     pub fn full_screen_exclusive(&self) -> FullScreenExclusive {
         self.full_screen_exclusive
     }
@@ -901,14 +884,16 @@ impl Swapchain {
     pub(crate) fn image_layout_initialized(&self, image_index: u32) {
         let image_entry = self.images.get(image_index as usize);
         if let Some(image_entry) = image_entry {
-            image_entry.undefined_layout.store(false, Ordering::SeqCst);
+            image_entry
+                .layout_initialized
+                .store(true, Ordering::Relaxed);
         }
     }
 
     pub(crate) fn is_image_layout_initialized(&self, image_index: u32) -> bool {
         let image_entry = self.images.get(image_index as usize);
         if let Some(image_entry) = image_entry {
-            !image_entry.undefined_layout.load(Ordering::SeqCst)
+            image_entry.layout_initialized.load(Ordering::Relaxed)
         } else {
             false
         }
@@ -1688,7 +1673,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
 
     fn check_buffer_access(
         &self,
-        _buffer: &UnsafeBuffer,
+        _buffer: &Buffer,
         _range: Range<DeviceSize>,
         _exclusive: bool,
         _queue: &Queue,
@@ -1698,19 +1683,18 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
 
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         _range: Range<DeviceSize>,
         _exclusive: bool,
         expected_layout: ImageLayout,
         _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let swapchain_image = self.swapchain.raw_image(self.image_index).unwrap();
-        if swapchain_image.image.handle() != image.handle() {
+        if self.swapchain.index_of_image(image) != Some(self.image_index) {
             return Err(AccessCheckError::Unknown);
         }
 
-        if self.swapchain.images[self.image_index as usize]
-            .undefined_layout
+        if !self.swapchain.images[self.image_index as usize]
+            .layout_initialized
             .load(Ordering::Relaxed)
             && expected_layout != ImageLayout::Undefined
         {
@@ -1734,15 +1718,14 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     #[inline]
     fn check_swapchain_image_acquired(
         &self,
-        image: &UnsafeImage,
+        swapchain: &Swapchain,
+        image_index: u32,
         before: bool,
     ) -> Result<(), AccessCheckError> {
         if before {
             Ok(())
         } else {
-            let swapchain_image = self.swapchain.raw_image(self.image_index).unwrap();
-
-            if **swapchain_image.image == *image {
+            if swapchain == self.swapchain.as_ref() && image_index == self.image_index {
                 Ok(())
             } else {
                 Err(AccessCheckError::Unknown)
@@ -2085,11 +2068,8 @@ where
                     }
 
                     match self.previous.check_swapchain_image_acquired(
-                        self.swapchain_info
-                            .swapchain
-                            .raw_image(self.swapchain_info.image_index)
-                            .unwrap()
-                            .image,
+                        &self.swapchain_info.swapchain,
+                        self.swapchain_info.image_index,
                         true,
                     ) {
                         Ok(_) => (),
@@ -2131,7 +2111,7 @@ where
 
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
+        buffer: &Buffer,
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
@@ -2142,19 +2122,15 @@ where
 
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
+        image: &Image,
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let swapchain_image = self
-            .swapchain_info
-            .swapchain
-            .raw_image(self.swapchain_info.image_index)
-            .unwrap();
-
-        if swapchain_image.image.handle() == image.handle() {
+        if self.swapchain_info.swapchain.index_of_image(image)
+            == Some(self.swapchain_info.image_index)
+        {
             // This future presents the swapchain image, which "unlocks" it. Therefore any attempt
             // to use this swapchain image afterwards shouldn't get granted automatic access.
             // Instead any attempt to access the image afterwards should get an authorization from
@@ -2169,21 +2145,20 @@ where
     #[inline]
     fn check_swapchain_image_acquired(
         &self,
-        image: &UnsafeImage,
+        swapchain: &Swapchain,
+        image_index: u32,
         before: bool,
     ) -> Result<(), AccessCheckError> {
-        let swapchain_image = self
-            .swapchain_info
-            .swapchain
-            .raw_image(self.swapchain_info.image_index)
-            .unwrap();
-
         if before {
-            self.previous.check_swapchain_image_acquired(image, false)
-        } else if **swapchain_image.image == *image {
+            self.previous
+                .check_swapchain_image_acquired(swapchain, image_index, false)
+        } else if swapchain == self.swapchain_info.swapchain.as_ref()
+            && image_index == self.swapchain_info.image_index
+        {
             Err(AccessError::SwapchainImageNotAcquired.into())
         } else {
-            self.previous.check_swapchain_image_acquired(image, false)
+            self.previous
+                .check_swapchain_image_acquired(swapchain, image_index, false)
         }
     }
 }
