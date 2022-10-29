@@ -29,7 +29,7 @@ use crate::{
     },
     memory::{
         allocator::{AllocationCreationError, MemoryAlloc},
-        ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryRequirements,
+        DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryRequirements,
     },
     range_map::RangeMap,
     swapchain::Swapchain,
@@ -1301,19 +1301,18 @@ impl RawImage {
         }
     }
 
+    pub(crate) fn id(&self) -> NonZeroU64 {
+        self.id
+    }
+
     /// Binds device memory to this image.
     ///
     /// - If `self.flags().disjoint` is not set, then `allocations` must contain exactly one
     ///   element. This element may be a dedicated allocation.
-    /// - If `self.flags().disjoint` is set,  then `allocations` must contain exactly
+    /// - If `self.flags().disjoint` is set, then `allocations` must contain exactly
     ///   `self.format().unwrap().planes().len()` elements. These elements must not be dedicated
     ///   allocations.
-    ///
-    /// # Safety
-    ///
-    /// - If the element of `allocations` is a dedicated allocation, it must be dedicated to `self`
-    ///   specifically.
-    pub unsafe fn bind_memory(
+    pub fn bind_memory(
         self,
         allocations: impl IntoIterator<Item = MemoryAlloc>,
     ) -> Result<
@@ -1330,17 +1329,16 @@ impl RawImage {
             return Err((err, self, allocations.into_iter()));
         }
 
-        self.bind_memory_unchecked(allocations)
-            .map_err(|(err, image, allocations)| {
-                (
-                    err.into(),
-                    image,
-                    allocations
-                        .into_iter()
-                        .collect::<SmallVec<[_; 3]>>()
-                        .into_iter(),
-                )
-            })
+        unsafe { self.bind_memory_unchecked(allocations) }.map_err(|(err, image, allocations)| {
+            (
+                err.into(),
+                image,
+                allocations
+                    .into_iter()
+                    .collect::<SmallVec<[_; 3]>>()
+                    .into_iter(),
+            )
+        })
     }
 
     fn validate_bind_memory(&self, allocations: &[MemoryAlloc]) -> Result<(), ImageError> {
@@ -1379,15 +1377,18 @@ impl RawImage {
             // Ensured by taking ownership of `RawImage`.
 
             // VUID-VkBindImageMemoryInfo-image-01045
-            // Currently ensured by not having sparse binding flags, but this needs to be checked once
-            // those are enabled.
+            // Currently ensured by not having sparse binding flags, but this needs to be checked
+            // once those are enabled.
 
             // VUID-VkBindImageMemoryInfo-memoryOffset-01046
             // Assume that `allocation` was created correctly.
 
-            if allocation.is_dedicated() {
+            if let Some(dedicated_to) = memory.dedicated_to() {
                 // VUID-VkBindImageMemoryInfo-memory-02628
-                // TODO: Check that the allocation is dedicated *to this buffer specifically*.
+                match dedicated_to {
+                    DedicatedTo::Image(id) if id == self.id => {}
+                    _ => return Err(ImageError::DedicatedAllocationMismatch),
+                }
                 debug_assert!(memory_offset == 0); // This should be ensured by the allocator
             } else {
                 // VUID-VkBindImageMemoryInfo-image-01445
@@ -1469,7 +1470,7 @@ impl RawImage {
     ///
     /// - If `self.flags().disjoint` is not set, then `allocations` must contain exactly one
     ///   element.
-    /// - If `self.flags().disjoint` is set,  then `allocations` must contain exactly
+    /// - If `self.flags().disjoint` is set, then `allocations` must contain exactly
     ///   `self.format().unwrap().planes().len()` elements.
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn bind_memory_unchecked(
@@ -2770,6 +2771,9 @@ pub enum ImageError {
     /// The `cube_compatible` flag was enabled together with multisampling.
     CubeCompatibleMultisampling,
 
+    /// The memory was created dedicated to a resource, but not to this image.
+    DedicatedAllocationMismatch,
+
     /// A dedicated allocation is required for this image, but one was not provided.
     DedicatedAllocationRequired,
 
@@ -2996,6 +3000,10 @@ impl Display for ImageError {
             Self::CubeCompatibleMultisampling => write!(
                 f,
                 "the `cube_compatible` flag was enabled together with multisampling",
+            ),
+            Self::DedicatedAllocationMismatch => write!(
+                f,
+                "the memory was created dedicated to a resource, but not to this image",
             ),
             Self::DedicatedAllocationRequired => write!(
                 f,

@@ -103,7 +103,7 @@ use crate::{
     sync::Semaphore,
     DeviceSize,
 };
-use std::sync::Arc;
+use std::{num::NonZeroU64, sync::Arc};
 
 pub mod allocator;
 mod device_memory;
@@ -321,6 +321,21 @@ pub enum DedicatedAllocation<'a> {
     Buffer(&'a RawBuffer),
     /// Allocation dedicated to an image.
     Image(&'a RawImage),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DedicatedTo {
+    Buffer(NonZeroU64),
+    Image(NonZeroU64),
+}
+
+impl From<DedicatedAllocation<'_>> for DedicatedTo {
+    fn from(dedicated_allocation: DedicatedAllocation<'_>) -> Self {
+        match dedicated_allocation {
+            DedicatedAllocation::Buffer(buffer) => Self::Buffer(buffer.id()),
+            DedicatedAllocation::Image(image) => Self::Image(image.id()),
+        }
+    }
 }
 
 /// The properties for exporting or importing external memory, when a buffer or image is created
