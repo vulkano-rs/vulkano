@@ -45,6 +45,13 @@ Changes to descriptor sets and descriptor pools:
 Changes to buffers and images:
 - `DeviceLocalBuffer::{from_buffer, from_data, from_iter}` and `ImmutableImage::{from_iter, from_buffer}` now take a mutable reference to an `AutoCommandBufferBuilder` instead of a queue, and no longer return a future. The upload command will be recorded into the provided command buffer, which should be executed later.
 - When binding memory to a buffer with the `shader_device_address` usage, and the `ext_buffer_device_address` extension isn't enabled, the memory must now have been allocated with the `MemoryAllocateFlags::device_address` flag set.
+- `UnsafeBuffer` and `UnsafeImage` are renamed to `RawBuffer` and `RawImage`.
+- `UnsafeBufferCreateInfo` and `UnsafeImageCreateInfo` are renamed to `BufferCreateInfo` and `ImageCreateInfo`.
+- `ImageCreateInfo` now takes a `flags` instead of separate booleans.
+- Replaced the various unsafe `*_linear_layout` methods of `UnsafeImage` with a safe `subresource_layout` method. The `LinearLayout` struct is renamed to `SubresourceLayout` to match.
+- Added mostly-safe `bind_memory` methods to these two types. These take `self` by value, and return `Buffer` and `Image` on success.
+- Added `Buffer` and `Image` types, which represent buffers and images that have had memory bound to them. This memory can be retrieved using the `memory()` method.
+- Most previous uses of `UnsafeBuffer` and `UnsafeImage` now use `Buffer` and `Image` instead.
 
 Changes to the `VulkanObject` trait:
 - The method `internal_object` is renamed to `handle`, and the associated type `Object` is renamed to `Handle`.
@@ -87,6 +94,8 @@ Changes to memory allocation:
 - Added the `Suballocator` trait and 4 of its implementors: `FreeListAllocator`, `BuddyAllocator`, `PoolAllocator` and `BumpAllocator`.
 - Added `GenericMemoryAllocator` and its configuration `GenericMemoryAllocatorCreateInfo`.
 - Added `MemoryAlloc`, `AllocationCreateInfo`, `AllocationCreationError`, `MemoryUsage`, `MemoryAllocatePreference`, `MemoryTypeFilter`, `SuballocationCreateInfo` and `SuballocationCreationError`.
+- Added a `flags` field to `BufferCreateInfo`. This contains no flags yet, but will in the future.
+- Added the `disjoint` flag to `ImageCreateFlags`. This flag is used in combination with multi-planar images, to bind separate memory to each plane of the image. It is not yet supported for the higher-level image types.
 
 ### Bugs fixed
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
