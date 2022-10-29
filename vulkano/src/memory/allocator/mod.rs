@@ -878,22 +878,22 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         let memory_type = &self.pools[memory_type_index as usize].memory_type;
         // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
         assert!(
-            !memory_type
+            memory_type
                 .property_flags
                 .contains(ash::vk::MemoryPropertyFlags::PROTECTED)
-                || self.device.enabled_features().protected_memory,
+                && !self.device.enabled_features().protected_memory,
             "attempted to allocate from a protected memory type without the `protected_memory` \
             feature being enabled on the device",
         );
 
         // VUID-vkAllocateMemory-deviceCoherentMemory-02790
         assert!(
-            !memory_type.property_flags.intersects(
-                ash::vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD
-                    | ash::vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD
-            ) || self.device.enabled_features().device_coherent_memory,
-            "attempted to allocate memory from a device-coherent/device-uncached memory type \
-            without the `device_coherent_memory` feature being enabled on the device",
+            memory_type
+                .property_flags
+                .contains(ash::vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD)
+                && !self.device.enabled_features().device_coherent_memory,
+            "attempted to allocate memory from a device-coherent memory type without the \
+            `device_coherent_memory` feature being enabled on the device",
         );
 
         let block_size = self.block_sizes[memory_type.heap_index as usize];
