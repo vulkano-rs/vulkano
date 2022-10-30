@@ -1014,10 +1014,10 @@ pub struct SwapchainCreateInfo {
 
     /// The extent of the created images.
     ///
-    /// If set to `None`, the value of
+    /// If any of the values is 0, the value of
     /// [`SurfaceCapabilities::current_extent`](crate::swapchain::SurfaceCapabilities) will be used.
     ///
-    /// The default value is `None`.
+    /// The default value is `[0, 0]`.
     pub image_extent: [u32; 2],
 
     /// The number of array layers of the created images.
