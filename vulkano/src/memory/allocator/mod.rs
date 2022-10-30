@@ -246,12 +246,12 @@ const G: DeviceSize = 1024 * M;
 
 /// General-purpose memory allocators which allocate from any memory type dynamically as needed.
 pub unsafe trait MemoryAllocator: DeviceOwned {
-    /// Finds the most suitable memory type index based on a filter. Returns [`None`] if the
-    /// requirements are too strict and no memory type is able to satisfy them.
+    /// Finds the most suitable memory type index in `memory_type_bits` using on a filter. Returns
+    /// [`None`] if the requirements are too strict and no memory type is able to satisfy them.
     fn find_memory_type_index(
         &self,
         memory_type_bits: u32,
-        requirements: MemoryTypeFilter,
+        filter: MemoryTypeFilter,
     ) -> Option<u32>;
 
     /// Allocates memory from a specific memory type.
@@ -265,9 +265,20 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     ///
     /// # Safety
     ///
+    /// - If `memory_type_index` refers to a memory type with the [`protected`] flag set, then the
+    ///   [`protected_memory`] feature must be enabled on the device.
+    /// - If `memory_type_index` refers to a memory type with the [`device_coherent`] flag set,
+    ///   then the [`device_coherent_memory`] feature must be enabled on the device.
     /// - `create_info.size` must not be zero.
+    /// - `create_info.size` must not exceed the size of the heap that the memory type
+    ///   corresponding to `memory_type_index` resides in.
     /// - `create_info.alignment` must not be zero.
     /// - `create_info.alignment` must be a power of two.
+    ///
+    /// [`protected`]: MemoryPropertyFlags::protected
+    /// [`protected_memory`]: crate::device::Features::protected_memory
+    /// [`device_coherent`]: MemoryPropertyFlags::device_coherent
+    /// [`device_coherent_memory`]: crate::device::Features::device_coherent_memory
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     unsafe fn allocate_from_type_unchecked(
         &self,
@@ -289,8 +300,6 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     /// - `create_info.requirements.size` must not be zero.
     /// - `create_info.requirements.alignment` must not be zero.
     /// - `create_info.requirements.alignment` must be a power of two.
-    /// - If you are going to bind this allocation to a resource, then `create_info.requirements`
-    ///   must match the memory requirements of the resource.
     /// - If `create_info.dedicated_allocation` is `Some` then `create_info.requirements.size` must
     ///   match the memory requirements of the resource.
     /// - If `create_info.dedicated_allocation` is `Some` then the device the resource was created
@@ -340,25 +349,25 @@ pub struct MemoryTypeFilter {
 impl From<MemoryUsage> for MemoryTypeFilter {
     #[inline]
     fn from(usage: MemoryUsage) -> Self {
-        let mut requirements = Self::default();
+        let mut filter = Self::default();
 
         match usage {
             MemoryUsage::GpuOnly => {
-                requirements.preferred_flags.device_local = true;
-                requirements.not_preferred_flags.host_visible = true;
+                filter.preferred_flags.device_local = true;
+                filter.not_preferred_flags.host_visible = true;
             }
             MemoryUsage::Upload => {
-                requirements.required_flags.host_visible = true;
-                requirements.preferred_flags.device_local = true;
-                requirements.not_preferred_flags.host_cached = true;
+                filter.required_flags.host_visible = true;
+                filter.preferred_flags.device_local = true;
+                filter.not_preferred_flags.host_cached = true;
             }
             MemoryUsage::Download => {
-                requirements.required_flags.host_visible = true;
-                requirements.preferred_flags.host_cached = true;
+                filter.required_flags.host_visible = true;
+                filter.preferred_flags.host_cached = true;
             }
         }
 
-        requirements
+        filter
     }
 }
 
@@ -421,7 +430,6 @@ pub struct AllocationCreateInfo<'d> {
     ///
     /// The default value is [`None`].
     ///
-    /// [`requirements.prefer_dedicated`]: MemoryRequirements::prefer_dedicated
     /// [`khr_dedicated_allocation`]: crate::device::DeviceExtensions::khr_dedicated_allocation
     pub dedicated_allocation: Option<DedicatedAllocation<'d>>,
 
@@ -954,11 +962,11 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     fn find_memory_type_index(
         &self,
         memory_type_bits: u32,
-        requirements: MemoryTypeFilter,
+        filter: MemoryTypeFilter,
     ) -> Option<u32> {
-        let required_flags = requirements.required_flags.into();
-        let preferred_flags = requirements.preferred_flags.into();
-        let not_preferred_flags = requirements.not_preferred_flags.into();
+        let required_flags = filter.required_flags.into();
+        let preferred_flags = filter.preferred_flags.into();
+        let not_preferred_flags = filter.not_preferred_flags.into();
 
         self.pools
             .iter()
@@ -985,6 +993,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// - Panics if `memory_type_index` is not less than the number of available memory types.
     /// - Panics if `memory_type_index` refers to a memory type which has the [`protected`] flag set
     ///   and the [`protected_memory`] feature is not enabled on the device.
+    /// - Panics if `memory_type_index` refers to a memory type which has the [`device_coherent`]
+    ///   flag set and the [`device_coherent_memory`] feature is not enabled on the device.
     /// - Panics if `create_info.size` is greater than the block size corresponding to the heap that
     ///   the memory type corresponding to `memory_type_index` resides in.
     /// - Panics if `create_info.size` is zero.
@@ -995,13 +1005,15 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///
     /// - Returns an error if allocating a new block is required and failed. This can be one of the
     ///   OOM errors or [`TooManyObjects`].
-    /// - Returns [`BlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and `create_info.size`
-    ///   is greater than `BLOCK_SIZE`.
+    /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
+    ///   `create_info.size` is greater than `BLOCK_SIZE`.
     ///
-    /// [`protected`]: super::MemoryPropertyFlags::protected
+    /// [`protected`]: MemoryPropertyFlags::protected
     /// [`protected_memory`]: crate::device::Features::protected_memory
+    /// [`device_coherent`]: MemoryPropertyFlags::device_coherent
+    /// [`device_coherent_memory`]: crate::device::Features::device_coherent_memory
     /// [`TooManyObjects`]: VulkanError::TooManyObjects
-    /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
+    /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     fn allocate_from_type(
         &self,
         memory_type_index: u32,
@@ -1251,10 +1263,10 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
         memory_type_bits &= self.memory_type_bits;
 
-        let requirements = usage.into();
+        let filter = usage.into();
 
         let mut memory_type_index = self
-            .find_memory_type_index(memory_type_bits, requirements)
+            .find_memory_type_index(memory_type_bits, filter)
             .expect("couldn't find a suitable memory type");
         if !self.dedicated_allocation {
             dedicated_allocation = None;
@@ -1345,7 +1357,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                 Err(err) => {
                     memory_type_bits &= !(1 << memory_type_index);
                     memory_type_index = self
-                        .find_memory_type_index(memory_type_bits, requirements)
+                        .find_memory_type_index(memory_type_bits, filter)
                         .ok_or(err)?;
                 }
             }
