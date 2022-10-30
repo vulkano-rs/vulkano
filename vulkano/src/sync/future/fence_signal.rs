@@ -18,10 +18,15 @@ use crate::{
     DeviceSize, OomError,
 };
 use parking_lot::{Mutex, MutexGuard};
-use std::{mem::replace, ops::Range, sync::Arc, time::Duration};
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::{
+    future::Future,
+    mem::replace,
+    ops::Range,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+    time::Duration,
+};
 
 /// Builds a new fence signal future.
 pub fn then_signal_fence<F>(future: F, behavior: FenceSignalFutureBehavior) -> FenceSignalFuture<F>
@@ -366,8 +371,8 @@ where
 }
 
 impl<F> Future for FenceSignalFuture<F>
-    where
-        F: GpuFuture,
+where
+    F: GpuFuture,
 {
     type Output = Result<(), OomError>;
 

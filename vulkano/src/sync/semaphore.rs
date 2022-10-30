@@ -13,10 +13,11 @@ use crate::{
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
+#[cfg(unix)]
+use std::fs::File;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    fs::File,
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,

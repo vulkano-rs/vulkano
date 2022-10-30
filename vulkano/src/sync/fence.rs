@@ -14,19 +14,20 @@ use crate::{
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
+#[cfg(unix)]
+use std::fs::File;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    fs::File,
+    future::Future,
     mem::MaybeUninit,
     num::NonZeroU64,
+    pin::Pin,
     ptr,
     sync::{Arc, Weak},
+    task::{Context, Pool},
     time::Duration,
 };
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 /// A two-state synchronization primitive that is signalled by the device and waited on by the host.
 ///
@@ -1067,8 +1068,10 @@ impl Fence {
         // Check if we are done without blocking
         match self.is_signaled() {
             Err(e) => return Poll::Ready(Err(e)),
-            Ok(signalled) => if signalled {
-                return Poll::Ready(Ok(()))
+            Ok(signalled) => {
+                if signalled {
+                    return Poll::Ready(Ok(()));
+                }
             }
         }
 
@@ -1093,8 +1096,7 @@ impl Drop for Fence {
     }
 }
 
-impl Future for Fence
-{
+impl Future for Fence {
     type Output = Result<(), OomError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
