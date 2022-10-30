@@ -540,6 +540,12 @@ pub enum AllocationCreationError {
     /// enough memory in the pool.
     OutOfPoolMemory,
 
+    /// A dedicated allocation is required but was explicitly forbidden.
+    ///
+    /// This is returned when using [`MemoryAllocatePreference::NeverAllocate`] and the
+    /// implementation requires a dedicated allocation.
+    DedicatedAllocationRequired,
+
     /// The block size for the allocator was exceeded.
     ///
     /// This is returned when using [`MemoryAllocatePreference::NeverAllocate`] and the allocation
@@ -567,6 +573,10 @@ impl Display for AllocationCreationError {
         match self {
             Self::VulkanError(_) => write!(f, "a runtime error occurred"),
             Self::OutOfPoolMemory => write!(f, "the pool doesn't have enough free space"),
+            Self::DedicatedAllocationRequired => write!(
+                f,
+                "a dedicated allocation is required but was explicitly forbidden",
+            ),
             Self::BlockSizeExceeded => write!(
                 f,
                 "the allocation size was greater than the block size for all heaps of suitable \
@@ -653,11 +663,11 @@ impl FastMemoryAllocator {
 ///
 /// If an allocation is created with the [`MemoryAllocatePreference::Unknown`] option, and the
 /// allocator deems the allocation too big for suballocation (larger than half the block size), or
-/// the implementation prefers a dedicated allocation, then that allocation is made a dedicated
-/// allocation. Using [`MemoryAllocatePreference::NeverAllocate`], a dedicated allocation is never
-/// created, even if the allocation is larger than the block size. In such a case an error is
-/// returned instead. Using [`MemoryAllocatePreference::AlwaysAllocate`], a dedicated allocation is
-/// always created.
+/// the implementation prefers or requires a dedicated allocation, then that allocation is made a
+/// dedicated allocation. Using [`MemoryAllocatePreference::NeverAllocate`], a dedicated allocation
+/// is never created, even if the allocation is larger than the block size or a dedicated
+/// allocation is required. In such a case an error is returned instead. Using
+/// [`MemoryAllocatePreference::AlwaysAllocate`], a dedicated allocation is always created.
 ///
 /// In all other cases, `DeviceMemory` is only allocated if a pool runs out of memory and needs
 /// another block. No `DeviceMemory` is allocated when the allocator is created, the blocks are
@@ -680,8 +690,8 @@ pub struct GenericMemoryAllocator<S: Suballocator> {
     // Each memory heap has its own block size.
     block_sizes: ArrayVec<DeviceSize, MAX_MEMORY_HEAPS>,
     allocation_type: AllocationType,
-    export_handle_types: ArrayVec<ExternalMemoryHandleTypes, MAX_MEMORY_TYPES>,
     dedicated_allocation: bool,
+    export_handle_types: ArrayVec<ExternalMemoryHandleTypes, MAX_MEMORY_TYPES>,
     flags: MemoryAllocateFlags,
     // Global mask of memory types.
     memory_type_bits: u32,
@@ -867,8 +877,8 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             pools,
             block_sizes,
             allocation_type,
-            export_handle_types,
             dedicated_allocation,
+            export_handle_types,
             flags: MemoryAllocateFlags {
                 device_address,
                 ..Default::default()
@@ -1216,6 +1226,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// - Returns [`OutOfPoolMemory`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and none of the pools of suitable memory
     ///   types have enough free space.
+    /// - Returns [`RequiresDedicatedAllocation`] if `create_info.allocate_preference` is
+    ///   [`MemoryAllocatePreference::NeverAllocate`] and
+    ///   `create_info.requirements.requires_dedicated_allocation` is `true`.
     /// - Returns [`BlockSizeExceeded`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is greater
     ///   than the block size for all heaps of suitable memory types.
@@ -1229,6 +1242,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// [`TooManyObjects`]: VulkanError::TooManyObjects
     /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     /// [`OutOfPoolMemory`]: AllocationCreationError::OutOfPoolMemory
+    /// [`RequiresDedicatedAllocation`]: AllocationCreationError::RequiresDedicatedAllocation
     /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
     fn allocate(
         &self,
@@ -1250,7 +1264,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     alignment: _,
                     mut memory_type_bits,
                     mut prefers_dedicated_allocation,
-                    requires_dedicated_allocation: _,
+                    requires_dedicated_allocation,
                 },
             allocation_type: _,
             usage,
@@ -1283,58 +1297,66 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
             let res = match allocate_preference {
                 MemoryAllocatePreference::Unknown => {
-                    if size > block_size / 2 {
-                        prefers_dedicated_allocation = true;
-                    }
-                    if self.device.allocation_count() > self.max_allocations && size < block_size {
-                        prefers_dedicated_allocation = false;
-                    }
-
-                    if prefers_dedicated_allocation {
+                    if requires_dedicated_allocation {
                         self.allocate_dedicated_unchecked(
                             memory_type_index,
                             size,
                             dedicated_allocation,
                             export_handle_types,
                         )
-                        // Fall back to suballocation.
-                        .or_else(|err| {
-                            if size < block_size {
-                                self.allocate_from_type_unchecked(
-                                    memory_type_index,
-                                    create_info.clone(),
-                                    true, // A dedicated allocation already failed.
-                                )
-                                .map_err(|_| err)
-                            } else {
-                                Err(err)
-                            }
-                        })
                     } else {
-                        self.allocate_from_type_unchecked(
-                            memory_type_index,
-                            create_info.clone(),
-                            false,
-                        )
-                        // Fall back to dedicated allocation. It is possible that the 1/8 block size
-                        // that was tried was greater than the allocation size, so there's hope.
-                        .or_else(|_| {
+                        if size > block_size / 2 {
+                            prefers_dedicated_allocation = true;
+                        }
+                        if self.device.allocation_count() > self.max_allocations
+                            && size <= block_size
+                        {
+                            prefers_dedicated_allocation = false;
+                        }
+
+                        if prefers_dedicated_allocation {
                             self.allocate_dedicated_unchecked(
                                 memory_type_index,
                                 size,
                                 dedicated_allocation,
                                 export_handle_types,
                             )
-                        })
+                            // Fall back to suballocation.
+                            .or_else(|err| {
+                                if size <= block_size {
+                                    self.allocate_from_type_unchecked(
+                                        memory_type_index,
+                                        create_info.clone(),
+                                        true, // A dedicated allocation already failed.
+                                    )
+                                    .map_err(|_| err)
+                                } else {
+                                    Err(err)
+                                }
+                            })
+                        } else {
+                            self.allocate_from_type_unchecked(
+                                memory_type_index,
+                                create_info.clone(),
+                                false,
+                            )
+                            // Fall back to dedicated allocation. It is possible that the 1/8 block
+                            // size tried was greater than the allocation size, so there's hope.
+                            .or_else(|_| {
+                                self.allocate_dedicated_unchecked(
+                                    memory_type_index,
+                                    size,
+                                    dedicated_allocation,
+                                    export_handle_types,
+                                )
+                            })
+                        }
                     }
                 }
-                MemoryAllocatePreference::AlwaysAllocate => self.allocate_dedicated_unchecked(
-                    memory_type_index,
-                    size,
-                    dedicated_allocation,
-                    export_handle_types,
-                ),
                 MemoryAllocatePreference::NeverAllocate => {
+                    if requires_dedicated_allocation {
+                        return Err(AllocationCreationError::DedicatedAllocationRequired);
+                    }
                     if size <= block_size {
                         self.allocate_from_type_unchecked(
                             memory_type_index,
@@ -1345,6 +1367,12 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                         Err(AllocationCreationError::BlockSizeExceeded)
                     }
                 }
+                MemoryAllocatePreference::AlwaysAllocate => self.allocate_dedicated_unchecked(
+                    memory_type_index,
+                    size,
+                    dedicated_allocation,
+                    export_handle_types,
+                ),
             };
 
             match res {
