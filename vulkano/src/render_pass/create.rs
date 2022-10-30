@@ -920,127 +920,30 @@ impl RenderPass {
                 }
 
                 if src_subpass == dst_subpass {
-                    let src_stages_non_framebuffer = PipelineStages {
-                        early_fragment_tests: false,
-                        fragment_shader: false,
-                        late_fragment_tests: false,
-                        color_attachment_output: false,
-                        ..src_stages
-                    };
-                    let dst_stages_non_framebuffer = PipelineStages {
-                        early_fragment_tests: false,
-                        fragment_shader: false,
-                        late_fragment_tests: false,
-                        color_attachment_output: false,
-                        ..dst_stages
+                    let framebuffer_stages = PipelineStages {
+                        early_fragment_tests: true,
+                        fragment_shader: true,
+                        late_fragment_tests: true,
+                        color_attachment_output: true,
+                        ..PipelineStages::empty()
                     };
 
-                    if !src_stages_non_framebuffer.is_empty()
-                        || !dst_stages_non_framebuffer.is_empty()
+                    // VUID-VkSubpassDependency2-srcSubpass-06810
+                    if src_stages.intersects(&framebuffer_stages)
+                        && !(dst_stages - framebuffer_stages).is_empty()
                     {
-                        let src_latest_stage = if src_stages.all_graphics {
-                            13
-                        } else {
-                            let PipelineStages {
-                                draw_indirect,
-                                //index_input,
-                                //vertex_attribute_input,
-                                vertex_shader,
-                                tessellation_control_shader,
-                                tessellation_evaluation_shader,
-                                geometry_shader,
-                                //transform_feedback,
-                                //fragment_shading_rate_attachment,
-                                early_fragment_tests,
-                                fragment_shader,
-                                late_fragment_tests,
-                                color_attachment_output,
-                                ..
-                            } = src_stages;
-
-                            #[allow(clippy::identity_op)]
-                            [
-                                draw_indirect as u8 * 1,
-                                // index_input as u8 * 2,
-                                // vertex_attribute_input as u8 * 3,
-                                vertex_shader as u8 * 4,
-                                tessellation_control_shader as u8 * 5,
-                                tessellation_evaluation_shader as u8 * 6,
-                                geometry_shader as u8 * 7,
-                                // transform_feedback as u8 * 8,
-                                // fragment_shading_rate_attachment as u8 * 9,
-                                early_fragment_tests as u8 * 10,
-                                fragment_shader as u8 * 11,
-                                late_fragment_tests as u8 * 12,
-                                color_attachment_output as u8 * 13,
-                            ]
-                            .into_iter()
-                            .max()
-                            .unwrap()
-                        };
-
-                        let dst_earliest_stage = if dst_stages.all_graphics {
-                            1
-                        } else {
-                            let PipelineStages {
-                                draw_indirect,
-                                //index_input,
-                                //vertex_attribute_input,
-                                vertex_shader,
-                                tessellation_control_shader,
-                                tessellation_evaluation_shader,
-                                geometry_shader,
-                                //transform_feedback,
-                                //fragment_shading_rate_attachment,
-                                early_fragment_tests,
-                                fragment_shader,
-                                late_fragment_tests,
-                                color_attachment_output,
-                                ..
-                            } = dst_stages;
-
-                            #[allow(clippy::identity_op)]
-                            [
-                                draw_indirect as u8 * 1,
-                                // index_input as u8 * 2,
-                                // vertex_attribute_input as u8 * 3,
-                                vertex_shader as u8 * 4,
-                                tessellation_control_shader as u8 * 5,
-                                tessellation_evaluation_shader as u8 * 6,
-                                geometry_shader as u8 * 7,
-                                // transform_feedback as u8 * 8,
-                                // fragment_shading_rate_attachment as u8 * 9,
-                                early_fragment_tests as u8 * 10,
-                                fragment_shader as u8 * 11,
-                                late_fragment_tests as u8 * 12,
-                                color_attachment_output as u8 * 13,
-                            ]
-                            .into_iter()
-                            .min()
-                            .unwrap()
-                        };
-
-                        // VUID-VkSubpassDependency2-srcSubpass-03087
-                        if src_latest_stage > dst_earliest_stage {
-                            return Err(
-                                RenderPassCreationError::DependencySelfDependencySourceStageAfterDestinationStage {
-                                    dependency: dependency_num,
-                                },
-                            );
-                        }
+                        return Err(
+                            RenderPassCreationError::DependencySelfDependencySourceStageAfterDestinationStage {
+                                dependency: dependency_num,
+                            },
+                        );
                     }
 
-                    let src_has_framebuffer_stage = src_stages.fragment_shader
-                        || src_stages.early_fragment_tests
-                        || src_stages.late_fragment_tests
-                        || src_stages.color_attachment_output;
-                    let dst_has_framebuffer_stage = dst_stages.fragment_shader
-                        || dst_stages.early_fragment_tests
-                        || dst_stages.late_fragment_tests
-                        || dst_stages.color_attachment_output;
-
                     // VUID-VkSubpassDependency2-srcSubpass-02245
-                    if src_has_framebuffer_stage && dst_has_framebuffer_stage && !by_region {
+                    if src_stages.intersects(&framebuffer_stages)
+                        && dst_stages.intersects(&framebuffer_stages)
+                        && !by_region
+                    {
                         return Err(
                             RenderPassCreationError::DependencySelfDependencyFramebufferStagesWithoutByRegion {
                                 dependency: dependency_num,
