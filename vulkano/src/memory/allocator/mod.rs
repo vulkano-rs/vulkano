@@ -535,7 +535,7 @@ pub enum AllocationCreationError {
     /// A dedicated allocation is required but was explicitly forbidden.
     ///
     /// This is returned when using [`MemoryAllocatePreference::NeverAllocate`] and the
-    /// imlementation requires a dedicated allocation.
+    /// implementation requires a dedicated allocation.
     DedicatedAllocationRequired,
 
     /// The block size for the allocator was exceeded.
