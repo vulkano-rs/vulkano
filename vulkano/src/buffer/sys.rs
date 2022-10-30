@@ -21,7 +21,7 @@ use crate::{
     device::{Device, DeviceOwned},
     memory::{
         allocator::{AllocationCreationError, MemoryAlloc},
-        ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryRequirements,
+        DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryRequirements,
     },
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
@@ -400,12 +400,12 @@ impl RawBuffer {
         }
     }
 
+    pub(crate) fn id(&self) -> NonZeroU64 {
+        self.id
+    }
+
     /// Binds device memory to this buffer.
-    ///
-    /// # Safety
-    ///
-    /// - If `allocation` is a dedicated allocation, it must be dedicated to `self` specifically.
-    pub unsafe fn bind_memory(
+    pub fn bind_memory(
         self,
         allocation: MemoryAlloc,
     ) -> Result<Buffer, (BufferError, RawBuffer, MemoryAlloc)> {
@@ -413,7 +413,7 @@ impl RawBuffer {
             return Err((err, self, allocation));
         }
 
-        self.bind_memory_unchecked(allocation)
+        unsafe { self.bind_memory_unchecked(allocation) }
             .map_err(|(err, buffer, allocation)| (err.into(), buffer, allocation))
     }
 
@@ -464,9 +464,12 @@ impl RawBuffer {
             });
         }
 
-        if allocation.is_dedicated() {
+        if let Some(dedicated_to) = memory.dedicated_to() {
             // VUID-VkBindBufferMemoryInfo-memory-01508
-            // TODO: Check that the allocation is dedicated *to this buffer specifically*.
+            match dedicated_to {
+                DedicatedTo::Buffer(id) if id == self.id => {}
+                _ => return Err(BufferError::DedicatedAllocationMismatch),
+            }
             debug_assert!(memory_offset == 0); // This should be ensured by the allocator
         } else {
             // VUID-VkBindBufferMemoryInfo-buffer-01444
@@ -1164,7 +1167,7 @@ impl<'a> DerefMut for BufferWriteGuard<'a> {
     }
 }
 
-/// Error that can happen when creating a buffer.
+/// Error that can happen in buffer functions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BufferError {
     VulkanError(VulkanError),
@@ -1176,6 +1179,9 @@ pub enum BufferError {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
     },
+
+    /// The memory was created dedicated to a resource, but not to this buffer.
+    DedicatedAllocationMismatch,
 
     /// A dedicated allocation is required for this buffer, but one was not provided.
     DedicatedAllocationRequired,
@@ -1270,6 +1276,10 @@ impl Display for BufferError {
                 f,
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
+            ),
+            Self::DedicatedAllocationMismatch => write!(
+                f,
+                "the memory was created dedicated to a resource, but not to this buffer",
             ),
             Self::DedicatedAllocationRequired => write!(
                 f,

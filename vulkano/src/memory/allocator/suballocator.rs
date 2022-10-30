@@ -43,10 +43,11 @@ use std::{
 ///
 /// There's a few ways you can obtain a `MemoryAlloc` in Vulkano. Most commonly you will probably
 /// want to use a [memory allocator]. If you already have a [`DeviceMemory`] block on hand that you
-/// would like to turn into an allocation, you can use one of the constructors. Lastly, you can use
-/// a [suballocator] if you want to create multiple smaller allocations out of a bigger one.
+/// would like to turn into an allocation, you can use [the constructor]. Lastly, you can use a
+/// [suballocator] if you want to create multiple smaller allocations out of a bigger one.
 ///
 /// [memory allocator]: super::MemoryAllocator
+/// [the constructor]: Self::new
 /// [suballocator]: Suballocator
 #[derive(Debug)]
 pub struct MemoryAlloc {
@@ -89,26 +90,11 @@ unsafe impl Send for MemoryAlloc {}
 unsafe impl Sync for MemoryAlloc {}
 
 impl MemoryAlloc {
-    /// Creates a new root allocation.
+    /// Creates a new `MemoryAlloc`.
     ///
     /// The memory is mapped automatically if it's host-visible.
     #[inline]
-    pub fn new_root(device_memory: DeviceMemory) -> Result<Self, AllocationCreationError> {
-        Self::new_inner(device_memory, false)
-    }
-
-    /// Creates a new dedicated allocation.
-    ///
-    /// The memory is mapped automatically if it's host-visible.
-    #[inline]
-    pub fn new_dedicated(device_memory: DeviceMemory) -> Result<Self, AllocationCreationError> {
-        Self::new_inner(device_memory, true)
-    }
-
-    pub(super) fn new_inner(
-        device_memory: DeviceMemory,
-        dedicated: bool,
-    ) -> Result<Self, AllocationCreationError> {
+    pub fn new(device_memory: DeviceMemory) -> Result<Self, AllocationCreationError> {
         let device = device_memory.device();
         let physical_device = device.physical_device();
         let memory_type_index = device_memory.memory_type_index();
@@ -159,7 +145,7 @@ impl MemoryAlloc {
             allocation_type: AllocationType::Unknown,
             mapped_ptr,
             atom_size,
-            parent: if dedicated {
+            parent: if device_memory.is_dedicated() {
                 AllocParent::Dedicated(device_memory)
             } else {
                 AllocParent::Root(Arc::new(device_memory))
@@ -649,7 +635,7 @@ unsafe impl DeviceOwned for MemoryAlloc {
 ///     })
 ///     .unwrap() as u32;
 ///
-/// let region = MemoryAlloc::new_root(
+/// let region = MemoryAlloc::new(
 ///     DeviceMemory::allocate(
 ///         device.clone(),
 ///         MemoryAllocateInfo {
@@ -659,7 +645,8 @@ unsafe impl DeviceOwned for MemoryAlloc {
 ///         },
 ///     )
 ///     .unwrap(),
-/// );
+/// )
+/// .unwrap();
 ///
 /// // You can now feed `region` into any suballocator.
 /// ```
@@ -712,7 +699,6 @@ pub unsafe trait Suballocator: DeviceOwned {
     /// - `create_info.alignment` must be a power of two.
     ///
     /// [region]: Self#regions
-    /// [`allocate`]: Self::allocate
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     unsafe fn allocate_unchecked(
         &self,
@@ -2746,7 +2732,7 @@ mod tests {
             )
             .unwrap();
 
-            PoolAllocator::new(MemoryAlloc::new_root(device_memory).unwrap(), 1)
+            PoolAllocator::new(MemoryAlloc::new(device_memory).unwrap(), 1)
         }
 
         let (device, _) = gfx_dev_and_queue!();
@@ -2804,7 +2790,7 @@ mod tests {
             )
             .unwrap();
 
-            PoolAllocator::<BLOCK_SIZE>::new(MemoryAlloc::new_root(device_memory).unwrap(), 1)
+            PoolAllocator::<BLOCK_SIZE>::new(MemoryAlloc::new(device_memory).unwrap(), 1)
         };
 
         // This uses the fact that block indices are inserted into the free-list in order, so
@@ -2837,7 +2823,7 @@ mod tests {
                 },
             )
             .unwrap();
-            let mut region = MemoryAlloc::new_root(device_memory).unwrap();
+            let mut region = MemoryAlloc::new(device_memory).unwrap();
             unsafe { region.set_allocation_type(allocation_type) };
 
             PoolAllocator::new(region, 256)
@@ -3096,7 +3082,7 @@ mod tests {
                 },
             )
             .unwrap();
-            let mut allocator = <$type>::new(MemoryAlloc::new_root(device_memory).unwrap());
+            let mut allocator = <$type>::new(MemoryAlloc::new(device_memory).unwrap());
             Arc::get_mut(&mut allocator)
                 .unwrap()
                 .buffer_image_granularity = $granularity;
