@@ -1636,13 +1636,14 @@ impl From<RequirementNotMet> for SemaphoreError {
 
 #[cfg(test)]
 mod tests {
-    use super::ExternalSemaphoreHandleType;
+    #[cfg(unix)]
     use crate::{
         device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo},
         instance::{Instance, InstanceCreateInfo, InstanceExtensions},
-        sync::{ExternalSemaphoreHandleTypes, Semaphore, SemaphoreCreateInfo},
-        VulkanLibrary, VulkanObject,
+        sync::{ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, SemaphoreCreateInfo},
+        VulkanLibrary,
     };
+    use crate::{sync::Semaphore, VulkanObject};
 
     #[test]
     fn semaphore_create() {

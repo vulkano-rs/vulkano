@@ -25,7 +25,7 @@ use std::{
     pin::Pin,
     ptr,
     sync::{Arc, Weak},
-    task::{Context, Pool},
+    task::{Context, Poll},
     time::Duration,
 };
 
