@@ -173,7 +173,8 @@ impl DeviceMemory {
         // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
         if memory_type.property_flags.protected && !device.enabled_features().protected_memory {
             return Err(DeviceMemoryError::RequirementNotMet {
-                required_for: "`allocate_info.memory_type_index` refers to a memory type where `property_flags.protected` is set",
+                required_for: "`allocate_info.memory_type_index` refers to a memory type where \
+                    `property_flags.protected` is set",
                 requires_one_of: RequiresOneOf {
                     features: &["protected_memory"],
                     ..Default::default()
@@ -190,6 +191,20 @@ impl DeviceMemory {
             return Err(DeviceMemoryError::MemoryTypeHeapSizeExceeded {
                 allocation_size,
                 heap_size,
+            });
+        }
+
+        // VUID-vkAllocateMemory-deviceCoherentMemory-02790
+        if memory_type.property_flags.device_coherent
+            && !device.enabled_features().device_coherent_memory
+        {
+            return Err(DeviceMemoryError::RequirementNotMet {
+                required_for: "`allocate_info.memory_type_index` refers to a memory type where \
+                    `property_flags.device_coherent` is set",
+                requires_one_of: RequiresOneOf {
+                    features: &["device_coherent_memory"],
+                    ..Default::default()
+                },
             });
         }
 
