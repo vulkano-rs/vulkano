@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::DedicatedAllocation;
+use super::{DedicatedAllocation, DedicatedTo};
 use crate::{
     device::{Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
@@ -56,6 +56,7 @@ pub struct DeviceMemory {
 
     allocation_size: DeviceSize,
     memory_type_index: u32,
+    dedicated_to: Option<DedicatedTo>,
     export_handle_types: ExternalMemoryHandleTypes,
     imported_handle_type: Option<ExternalMemoryHandleType>,
     flags: MemoryAllocateFlags,
@@ -97,7 +98,7 @@ impl DeviceMemory {
         let MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
-            dedicated_allocation: _,
+            dedicated_allocation,
             export_handle_types,
             flags,
             _ne: _,
@@ -109,6 +110,7 @@ impl DeviceMemory {
             id: Self::next_id(),
             allocation_size,
             memory_type_index,
+            dedicated_to: dedicated_allocation.map(Into::into),
             export_handle_types,
             imported_handle_type: None,
             flags,
@@ -552,6 +554,7 @@ impl DeviceMemory {
             id: Self::next_id(),
             allocation_size,
             memory_type_index,
+            dedicated_to: dedicated_allocation.map(Into::into),
             export_handle_types,
             imported_handle_type,
             flags,
@@ -568,6 +571,18 @@ impl DeviceMemory {
     #[inline]
     pub fn allocation_size(&self) -> DeviceSize {
         self.allocation_size
+    }
+
+    /// Returns `true` if the memory is a [dedicated] to a resource.
+    ///
+    /// [dedicated]: MemoryAllocateInfo#structfield.dedicated_allocation
+    #[inline]
+    pub fn is_dedicated(&self) -> bool {
+        self.dedicated_to.is_some()
+    }
+
+    pub(crate) fn dedicated_to(&self) -> Option<DedicatedTo> {
+        self.dedicated_to
     }
 
     /// Returns the handle types that can be exported from the memory allocation.

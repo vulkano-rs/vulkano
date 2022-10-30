@@ -1149,28 +1149,13 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                 };
                 match DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None) {
                     Ok(device_memory) => {
-                        break S::new(MemoryAlloc::new_root(device_memory)?);
+                        break S::new(MemoryAlloc::new(device_memory)?);
                     }
                     // Retry up to 3 times, halving the allocation size each time.
                     Err(VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory) if i < 3 => {
                         i += 1;
                     }
-                    Err(VulkanError::OutOfHostMemory) => {
-                        return Err(AllocationCreationError::VulkanError(
-                            VulkanError::OutOfHostMemory,
-                        ));
-                    }
-                    Err(VulkanError::OutOfDeviceMemory) => {
-                        return Err(AllocationCreationError::VulkanError(
-                            VulkanError::OutOfDeviceMemory,
-                        ));
-                    }
-                    Err(VulkanError::TooManyObjects) => {
-                        return Err(AllocationCreationError::VulkanError(
-                            VulkanError::TooManyObjects,
-                        ));
-                    }
-                    Err(_) => unreachable!(),
+                    Err(err) => return Err(err.into()),
                 }
             }
         };
@@ -1381,7 +1366,6 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             dedicated_allocation = None;
         }
 
-        let is_dedicated = dedicated_allocation.is_some();
         let allocate_info = MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
@@ -1390,26 +1374,13 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             flags: self.flags,
             ..Default::default()
         };
-        let device_memory =
-            DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None).map_err(
-                |err| match err {
-                    VulkanError::OutOfHostMemory => {
-                        AllocationCreationError::VulkanError(VulkanError::OutOfHostMemory)
-                    }
-                    VulkanError::OutOfDeviceMemory => {
-                        AllocationCreationError::VulkanError(VulkanError::OutOfDeviceMemory)
-                    }
-                    VulkanError::TooManyObjects => {
-                        AllocationCreationError::VulkanError(VulkanError::TooManyObjects)
-                    }
-                    _ => unreachable!(),
-                },
-            )?;
+        let mut alloc = MemoryAlloc::new(
+            DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None)
+                .map_err(AllocationCreationError::from)?,
+        )?;
+        alloc.set_allocation_type(self.allocation_type);
 
-        MemoryAlloc::new_inner(device_memory, is_dedicated).map(|mut alloc| {
-            alloc.set_allocation_type(self.allocation_type);
-            alloc
-        })
+        Ok(alloc)
     }
 }
 
@@ -1449,7 +1420,7 @@ pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
     /// all suballocations that the pool allocator makes inherit their allocation type from the
     /// parent allocation. For the [`FreeListAllocator`] and the [`BuddyAllocator`] this must be
     /// [`AllocationType::Unknown`] otherwise you will get panics. It does not matter what this is
-    /// for when using the [`BumpAllocator`].
+    /// when using the [`BumpAllocator`].
     ///
     /// The default value is [`AllocationType::Unknown`].
     pub allocation_type: AllocationType,
