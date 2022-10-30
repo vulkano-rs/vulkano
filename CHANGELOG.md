@@ -49,7 +49,7 @@ Changes to buffers and images:
 - `UnsafeBufferCreateInfo` and `UnsafeImageCreateInfo` are renamed to `BufferCreateInfo` and `ImageCreateInfo`.
 - `ImageCreateInfo` now takes a `flags` instead of separate booleans.
 - Replaced the various unsafe `*_linear_layout` methods of `UnsafeImage` with a safe `subresource_layout` method. The `LinearLayout` struct is renamed to `SubresourceLayout` to match.
-- Added mostly-safe `bind_memory` methods to these two types. These take `self` by value, and return `Buffer` and `Image` on success.
+- Added `bind_memory` methods to these two types. These take `self` by value, and return `Buffer` and `Image` on success.
 - Added `Buffer` and `Image` types, which represent buffers and images that have had memory bound to them. This memory can be retrieved using the `memory()` method.
 - Most previous uses of `UnsafeBuffer` and `UnsafeImage` now use `Buffer` and `Image` instead.
 
