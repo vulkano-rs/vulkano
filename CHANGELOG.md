@@ -108,6 +108,7 @@ Changes to memory allocation:
 - Validation checks for `khr_portability_subset` devices.
 - Depth and stencil attachments are now properly checked when using dynamic rendering.
 - Proper error (`NoStencilAttachment`) is now being returned if stencil attachment format is missing.
+- Fixed an issue with missing synchronization between a command buffer and any that were previously submitted on the same queue.
 
 # Version 0.31.1 (2022-10-04)
 
