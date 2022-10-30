@@ -13,10 +13,11 @@ use crate::{
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
+#[cfg(unix)]
+use std::fs::File;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    fs::File,
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -1635,13 +1636,14 @@ impl From<RequirementNotMet> for SemaphoreError {
 
 #[cfg(test)]
 mod tests {
-    use super::ExternalSemaphoreHandleType;
+    #[cfg(unix)]
     use crate::{
         device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo},
         instance::{Instance, InstanceCreateInfo, InstanceExtensions},
-        sync::{ExternalSemaphoreHandleTypes, Semaphore, SemaphoreCreateInfo},
-        VulkanLibrary, VulkanObject,
+        sync::{ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, SemaphoreCreateInfo},
+        VulkanLibrary,
     };
+    use crate::{sync::Semaphore, VulkanObject};
 
     #[test]
     fn semaphore_create() {
