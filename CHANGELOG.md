@@ -110,6 +110,7 @@ Changes to memory allocation:
 - Proper error (`NoStencilAttachment`) is now being returned if stencil attachment format is missing.
 - Fixed an issue with missing synchronization between a command buffer and any that were previously submitted on the same queue.
 - `SwapchainCreateInfo` documentation correction.
+- Fixed an issue with `CpuAccessibleBuffer<T>`, where the alignment of `T` was not being considered when allocating.
 
 # Version 0.31.1 (2022-10-04)
 
