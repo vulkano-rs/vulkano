@@ -39,7 +39,7 @@ use std::{
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
-    mem::size_of,
+    mem::{align_of, size_of},
     ops::{Deref, DerefMut, Range},
     ptr,
     sync::Arc,
@@ -69,6 +69,7 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
+    /// - Panics if `T` has an alignment greater than `64`.
     pub fn from_data(
         allocator: &(impl MemoryAllocator + ?Sized),
         usage: BufferUsage,
@@ -79,6 +80,7 @@ where
             let uninitialized = CpuAccessibleBuffer::raw(
                 allocator,
                 size_of::<T>() as DeviceSize,
+                align_of::<T>() as DeviceSize,
                 usage,
                 host_cached,
                 [],
@@ -102,6 +104,7 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
+    /// - Panics if `T` has an alignment greater than `64`.
     pub unsafe fn uninitialized(
         allocator: &(impl MemoryAllocator + ?Sized),
         usage: BufferUsage,
@@ -110,6 +113,7 @@ where
         CpuAccessibleBuffer::raw(
             allocator,
             size_of::<T>() as DeviceSize,
+            align_of::<T>() as DeviceSize,
             usage,
             host_cached,
             [],
@@ -127,6 +131,7 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
+    /// - Panics if `T` has an alignment greater than `64`.
     /// - Panics if `data` is empty.
     pub fn from_iter<I>(
         allocator: &(impl MemoryAllocator + ?Sized),
@@ -169,6 +174,7 @@ where
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
+    /// - Panics if `T` has an alignment greater than `64`.
     /// - Panics if `len` is zero.
     pub unsafe fn uninitialized_array(
         allocator: &(impl MemoryAllocator + ?Sized),
@@ -179,6 +185,7 @@ where
         CpuAccessibleBuffer::raw(
             allocator,
             len * size_of::<T>() as DeviceSize,
+            align_of::<T>() as DeviceSize,
             usage,
             host_cached,
             [],
@@ -199,13 +206,21 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
+    /// - Panics if `alignment` is zero.
+    /// - Panics if `alignment` is not a power of two.
+    /// - Panics if `alignment` exceeds `64`.
     pub unsafe fn raw(
         allocator: &(impl MemoryAllocator + ?Sized),
         size: DeviceSize,
+        alignment: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
         queue_family_indices: impl IntoIterator<Item = u32>,
     ) -> Result<Arc<CpuAccessibleBuffer<T>>, AllocationCreationError> {
+        assert!(alignment != 0);
+        assert!(alignment.is_power_of_two());
+        assert!(alignment <= 64);
+
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let raw_buffer = RawBuffer::new(
@@ -226,7 +241,8 @@ where
             // We don't use sparse-binding, therefore the other errors can't happen.
             _ => unreachable!(),
         })?;
-        let requirements = *raw_buffer.memory_requirements();
+        let mut requirements = *raw_buffer.memory_requirements();
+        requirements.alignment = DeviceSize::max(requirements.alignment, alignment);
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::Linear,
