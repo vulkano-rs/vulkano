@@ -246,7 +246,7 @@ const G: DeviceSize = 1024 * M;
 
 /// General-purpose memory allocators which allocate from any memory type dynamically as needed.
 pub unsafe trait MemoryAllocator: DeviceOwned {
-    /// Finds the most suitable memory type index in `memory_type_bits` using on a filter. Returns
+    /// Finds the most suitable memory type index in `memory_type_bits` using a filter. Returns
     /// [`None`] if the requirements are too strict and no memory type is able to satisfy them.
     fn find_memory_type_index(
         &self,
@@ -914,13 +914,6 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             `device_coherent_memory` feature being enabled on the device",
         );
 
-        let block_size = self.block_sizes[memory_type.heap_index as usize];
-        // VUID-vkAllocateMemory-pAllocateInfo-01713
-        assert!(
-            create_info.size <= block_size,
-            "attempted to create an allocation larger than the block size for the memory heap",
-        );
-
         create_info.validate();
     }
 
@@ -1005,8 +998,6 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///   and the [`protected_memory`] feature is not enabled on the device.
     /// - Panics if `memory_type_index` refers to a memory type which has the [`device_coherent`]
     ///   flag set and the [`device_coherent_memory`] feature is not enabled on the device.
-    /// - Panics if `create_info.size` is greater than the block size corresponding to the heap that
-    ///   the memory type corresponding to `memory_type_index` resides in.
     /// - Panics if `create_info.size` is zero.
     /// - Panics if `create_info.alignment` is zero.
     /// - Panics if `create_info.alignment` is not a power of two.
@@ -1015,6 +1006,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///
     /// - Returns an error if allocating a new block is required and failed. This can be one of the
     ///   OOM errors or [`TooManyObjects`].
+    /// - Returns [`BlockSizeExceeded`] if `create_info.size` is greater than the block size
+    ///   corresponding to the heap that the memory type corresponding to `memory_type_index`
+    ///   resides in.
     /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
     ///   `create_info.size` is greater than `BLOCK_SIZE`.
     ///
@@ -1023,6 +1017,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// [`device_coherent`]: MemoryPropertyFlags::device_coherent
     /// [`device_coherent_memory`]: crate::device::Features::device_coherent_memory
     /// [`TooManyObjects`]: VulkanError::TooManyObjects
+    /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
     /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     fn allocate_from_type(
         &self,
@@ -1067,6 +1062,11 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         } = create_info;
 
         let pool = &self.pools[memory_type_index as usize];
+        let block_size = self.block_sizes[pool.memory_type.heap_index as usize];
+
+        if size > block_size {
+            return Err(AllocationCreationError::BlockSizeExceeded);
+        }
 
         let mut blocks = if S::IS_BLOCKING {
             // If the allocation algorithm needs to block, then there's no point in trying to avoid
@@ -1152,7 +1152,6 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
         // The pool doesn't have enough real estate, so we need a new block.
         let block = {
-            let block_size = self.block_sizes[pool.memory_type.heap_index as usize];
             let export_handle_types = if !self.export_handle_types.is_empty() {
                 self.export_handle_types[memory_type_index as usize]
             } else {
@@ -1357,15 +1356,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     if requires_dedicated_allocation {
                         return Err(AllocationCreationError::DedicatedAllocationRequired);
                     }
-                    if size <= block_size {
-                        self.allocate_from_type_unchecked(
-                            memory_type_index,
-                            create_info.clone(),
-                            true,
-                        )
-                    } else {
-                        Err(AllocationCreationError::BlockSizeExceeded)
-                    }
+
+                    self.allocate_from_type_unchecked(memory_type_index, create_info.clone(), true)
                 }
                 MemoryAllocatePreference::AlwaysAllocate => self.allocate_dedicated_unchecked(
                     memory_type_index,
