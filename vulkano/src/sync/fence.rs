@@ -1074,7 +1074,7 @@ impl Fence {
 
         // Otherwise spin
         cx.waker().wake_by_ref();
-        return Poll::Pending;
+        Poll::Pending
     }
 }
 
