@@ -443,6 +443,42 @@ impl SyncCommandBufferBuilder {
                     exclusive: memory.exclusive,
                 };
                 state.exclusive_any = memory.exclusive;
+
+                match self.level {
+                    CommandBufferLevel::Primary => {
+                        // To be safe, we insert a barrier for all stages and accesses before
+                        // the first use, so that there are no hazards with any command buffer
+                        // that was previously submitted to the same queue.
+                        // This is rather overkill, but since command buffers don't know what
+                        // will come before them, it's the only thing that works for now.
+                        // TODO: come up with something better
+                        let barrier = BufferMemoryBarrier {
+                            src_stages: PipelineStages {
+                                all_commands: true,
+                                ..PipelineStages::empty()
+                            },
+                            src_access: AccessFlags {
+                                memory_read: true,
+                                memory_write: true,
+                                ..AccessFlags::empty()
+                            },
+                            dst_stages: PipelineStages {
+                                all_commands: true,
+                                ..PipelineStages::empty()
+                            },
+                            dst_access: AccessFlags {
+                                memory_read: true,
+                                memory_write: true,
+                                ..AccessFlags::empty()
+                            },
+                            range: range.clone(),
+                            ..BufferMemoryBarrier::buffer(inner.buffer.clone())
+                        };
+
+                        self.pending_barrier.buffer_memory_barriers.push(barrier);
+                    }
+                    CommandBufferLevel::Secondary => (),
+                }
             } else {
                 // This resource range was used before in this command buffer.
 
@@ -601,6 +637,37 @@ impl SyncCommandBufferBuilder {
 
                     match self.level {
                         CommandBufferLevel::Primary => {
+                            // To be safe, we insert a barrier for all stages and accesses before
+                            // the first use, so that there are no hazards with any command buffer
+                            // that was previously submitted to the same queue.
+                            // This is rather overkill, but since command buffers don't know what
+                            // will come before them, it's the only thing that works for now.
+                            // TODO: come up with something better
+                            let mut barrier = ImageMemoryBarrier {
+                                src_stages: PipelineStages {
+                                    all_commands: true,
+                                    ..PipelineStages::empty()
+                                },
+                                src_access: AccessFlags {
+                                    memory_read: true,
+                                    memory_write: true,
+                                    ..AccessFlags::empty()
+                                },
+                                dst_stages: PipelineStages {
+                                    all_commands: true,
+                                    ..PipelineStages::empty()
+                                },
+                                dst_access: AccessFlags {
+                                    memory_read: true,
+                                    memory_write: true,
+                                    ..AccessFlags::empty()
+                                },
+                                old_layout: state.initial_layout,
+                                new_layout: state.initial_layout,
+                                subresource_range: inner.image.range_to_subresources(range.clone()),
+                                ..ImageMemoryBarrier::image(inner.image.clone())
+                            };
+
                             if state.initial_layout != start_layout {
                                 match start_layout {
                                     ImageLayout::Undefined => {
@@ -624,38 +691,12 @@ impl SyncCommandBufferBuilder {
                                         // need exclusive access.
                                         state.memory.exclusive = true; // TODO: is this correct?
                                         state.exclusive_any = true;
-
-                                        // Note that we transition from `bottom_of_pipe`, which
-                                        // means that we wait for all the previous commands to be
-                                        // entirely finished. This is suboptimal, but:
-                                        //
-                                        // - If we're at the start of the command buffer we have no
-                                        //   choice anyway, because we have no knowledge about what
-                                        //   comes before.
-                                        // - If we're in the middle of the command buffer, this
-                                        //   pipeline is going to be merged with an existing
-                                        //   barrier. While it may still be suboptimal in some
-                                        //   cases, in the general situation it will be ok.
-                                        self.pending_barrier.image_memory_barriers.push(
-                                            ImageMemoryBarrier {
-                                                src_stages: PipelineStages {
-                                                    bottom_of_pipe: true,
-                                                    ..PipelineStages::empty()
-                                                },
-                                                src_access: AccessFlags::empty(),
-                                                dst_stages: memory.stages,
-                                                dst_access: memory.access,
-                                                old_layout: state.initial_layout,
-                                                new_layout: start_layout,
-                                                subresource_range: inner
-                                                    .image
-                                                    .range_to_subresources(range.clone()),
-                                                ..ImageMemoryBarrier::image(inner.image.clone())
-                                            },
-                                        );
+                                        barrier.new_layout = start_layout;
                                     }
                                 }
                             }
+
+                            self.pending_barrier.image_memory_barriers.push(barrier);
                         }
                         CommandBufferLevel::Secondary => {
                             state.initial_layout = start_layout;

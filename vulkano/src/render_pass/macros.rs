@@ -163,33 +163,11 @@ macro_rules! ordered_passes_renderpass {
                         ..$crate::sync::PipelineStages::empty()
                     };
                     let src_access = $crate::sync::AccessFlags {
-                        indirect_command_read: true,
-                        index_read: true,
-                        vertex_attribute_read: true,
-                        uniform_read: true,
-                        input_attachment_read: true,
-                        shader_read: true,
-                        shader_write: true,
-                        color_attachment_read: true,
-                        color_attachment_write: true,
-                        depth_stencil_attachment_read: true,
-                        depth_stencil_attachment_write: true,
                         memory_read: true,
                         memory_write: true,
                         ..$crate::sync::AccessFlags::empty()
                     };
                     let dst_access = $crate::sync::AccessFlags {
-                        indirect_command_read: true,
-                        index_read: true,
-                        vertex_attribute_read: true,
-                        uniform_read: true,
-                        input_attachment_read: true,
-                        shader_read: true,
-                        shader_write: true,
-                        color_attachment_read: true,
-                        color_attachment_write: true,
-                        depth_stencil_attachment_read: true,
-                        depth_stencil_attachment_write: true,
                         memory_read: true,
                         memory_write: true,
                         ..$crate::sync::AccessFlags::empty()
