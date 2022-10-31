@@ -321,9 +321,9 @@ struct PoolInner {
     // The Vulkan pool specific to a device's queue family.
     inner: CommandPool,
     // List of existing primary command buffers that are available for reuse.
-    primary_pool: ArrayQueue<CommandPoolAlloc>,
+    primary_pool: Option<ArrayQueue<CommandPoolAlloc>>,
     // List of existing secondary command buffers that are available for reuse.
-    secondary_pool: ArrayQueue<CommandPoolAlloc>,
+    secondary_pool: Option<ArrayQueue<CommandPoolAlloc>>,
     // How many command buffers have been allocated from `self.primary_pool`.
     primary_allocations: Cell<usize>,
     // How many command buffers have been allocated from `self.secondary_pool`.
@@ -351,38 +351,46 @@ impl Pool {
             CommandPoolCreationError::QueueFamilyIndexOutOfRange { .. } => unreachable!(),
         })?;
 
-        let inner = PoolInner {
-            inner,
-            primary_pool: ArrayQueue::new(create_info.primary_buffer_count),
-            secondary_pool: ArrayQueue::new(create_info.secondary_buffer_count),
-            primary_allocations: Cell::new(0),
-            secondary_allocations: Cell::new(0),
-        };
+        let primary_pool = if create_info.primary_buffer_count > 0 {
+            let pool = ArrayQueue::new(create_info.primary_buffer_count);
 
-        for alloc in inner
-            .inner
-            .allocate_command_buffers(CommandBufferAllocateInfo {
+            for alloc in inner.allocate_command_buffers(CommandBufferAllocateInfo {
                 level: CommandBufferLevel::Primary,
                 command_buffer_count: create_info.primary_buffer_count as u32,
                 ..Default::default()
-            })?
-        {
-            let _ = inner.primary_pool.push(alloc);
-        }
+            })? {
+                let _ = pool.push(alloc);
+            }
 
-        for alloc in inner
-            .inner
-            .allocate_command_buffers(CommandBufferAllocateInfo {
+            Some(pool)
+        } else {
+            None
+        };
+
+        let secondary_pool = if create_info.secondary_buffer_count > 0 {
+            let pool = ArrayQueue::new(create_info.secondary_buffer_count);
+
+            for alloc in inner.allocate_command_buffers(CommandBufferAllocateInfo {
                 level: CommandBufferLevel::Secondary,
                 command_buffer_count: create_info.secondary_buffer_count as u32,
                 ..Default::default()
-            })?
-        {
-            let _ = inner.secondary_pool.push(alloc);
-        }
+            })? {
+                let _ = pool.push(alloc);
+            }
+
+            Some(pool)
+        } else {
+            None
+        };
 
         Ok(Arc::new(Pool {
-            inner: ManuallyDrop::new(inner),
+            inner: ManuallyDrop::new(PoolInner {
+                inner,
+                primary_pool,
+                secondary_pool,
+                primary_allocations: Cell::new(0),
+                secondary_allocations: Cell::new(0),
+            }),
             reserve,
         }))
     }
@@ -396,53 +404,76 @@ impl Pool {
 
         match level {
             CommandBufferLevel::Primary => {
-                let count = self.inner.primary_allocations.get();
-                if count + command_buffer_count <= self.inner.primary_pool.capacity() {
-                    let mut output = Vec::with_capacity(command_buffer_count);
-                    for _ in 0..command_buffer_count {
-                        output.push(StandardCommandBufferBuilderAlloc {
-                            inner: StandardCommandBufferAlloc {
-                                inner: ManuallyDrop::new(self.inner.primary_pool.pop().unwrap()),
-                                pool: self.clone(),
-                            },
-                            _marker: PhantomData,
-                        });
+                if let Some(pool) = &self.inner.primary_pool {
+                    let count = self.inner.primary_allocations.get();
+                    if count + command_buffer_count <= pool.capacity() {
+                        let mut output = Vec::with_capacity(command_buffer_count);
+                        for _ in 0..command_buffer_count {
+                            output.push(StandardCommandBufferBuilderAlloc {
+                                inner: StandardCommandBufferAlloc {
+                                    inner: ManuallyDrop::new(pool.pop().unwrap()),
+                                    pool: self.clone(),
+                                },
+                                _marker: PhantomData,
+                            });
+                        }
+
+                        self.inner
+                            .primary_allocations
+                            .set(count + command_buffer_count);
+
+                        Some(output.into_iter())
+                    } else if command_buffer_count > pool.capacity() {
+                        panic!(
+                            "command buffer count ({}) exceeds the capacity of the primary command \
+                            buffer pool ({})",
+                            command_buffer_count, pool.capacity(),
+                        );
+                    } else {
+                        None
                     }
-
-                    self.inner
-                        .primary_allocations
-                        .set(count + command_buffer_count);
-
-                    Some(output.into_iter())
-                } else if command_buffer_count > self.inner.primary_pool.capacity() {
-                    panic!("command buffer count exceeds the capacity of the pool");
                 } else {
-                    None
+                    panic!(
+                        "attempted to allocate a primary command buffer when the primary command \
+                        buffer pool was configured to be empty",
+                    );
                 }
             }
             CommandBufferLevel::Secondary => {
-                let count = self.inner.secondary_allocations.get();
-                if count + command_buffer_count <= self.inner.secondary_pool.capacity() {
-                    let mut output = Vec::with_capacity(command_buffer_count);
-                    for _ in 0..command_buffer_count {
-                        output.push(StandardCommandBufferBuilderAlloc {
-                            inner: StandardCommandBufferAlloc {
-                                inner: ManuallyDrop::new(self.inner.secondary_pool.pop().unwrap()),
-                                pool: self.clone(),
-                            },
-                            _marker: PhantomData,
-                        });
+                if let Some(pool) = &self.inner.secondary_pool {
+                    let count = self.inner.secondary_allocations.get();
+                    if count + command_buffer_count <= pool.capacity() {
+                        let mut output = Vec::with_capacity(command_buffer_count);
+                        for _ in 0..command_buffer_count {
+                            output.push(StandardCommandBufferBuilderAlloc {
+                                inner: StandardCommandBufferAlloc {
+                                    inner: ManuallyDrop::new(pool.pop().unwrap()),
+                                    pool: self.clone(),
+                                },
+                                _marker: PhantomData,
+                            });
+                        }
+
+                        self.inner
+                            .secondary_allocations
+                            .set(count + command_buffer_count);
+
+                        Some(output.into_iter())
+                    } else if command_buffer_count > pool.capacity() {
+                        panic!(
+                            "command buffer count ({}) exceeds the capacity of the secondary \
+                            command buffer pool ({})",
+                            command_buffer_count,
+                            pool.capacity(),
+                        );
+                    } else {
+                        None
                     }
-
-                    self.inner
-                        .secondary_allocations
-                        .set(count + command_buffer_count);
-
-                    Some(output.into_iter())
-                } else if command_buffer_count > self.inner.secondary_pool.capacity() {
-                    panic!("command buffer count exceeds the capacity of the pool");
                 } else {
-                    None
+                    panic!(
+                        "attempted to allocate a secondary command buffer when the secondary \
+                        command buffer pool was configured to be empty",
+                    );
                 }
             }
         }
@@ -577,7 +608,7 @@ impl Drop for StandardCommandBufferAlloc {
             CommandBufferLevel::Primary => &self.pool.inner.primary_pool,
             CommandBufferLevel::Secondary => &self.pool.inner.secondary_pool,
         };
-        pool.push(inner).unwrap();
+        let _ = pool.as_ref().unwrap().push(inner);
     }
 }
 
