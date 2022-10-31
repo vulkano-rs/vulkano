@@ -113,6 +113,7 @@ pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync + 'static {
 ///
 /// The intended way to use this allocator is to have one that is used globally for the duration of
 /// the program, in order to avoid creating and destroying [`CommandPool`]s, as that is expensive.
+/// Alternatively, you can have one locally on a thread for the duration of the thread.
 ///
 /// Internally, this allocator keeps one or more `CommandPool`s per queue family index per thread,
 /// using Thread-Local Storage. When a thread first allocates, an entry is reserved for the thread
