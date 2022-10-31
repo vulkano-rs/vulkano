@@ -77,7 +77,7 @@ pub trait DescriptorSetAlloc: Send + Sync {
 ///
 /// The intended way to use this allocator is to have one that is used globally for the duration of
 /// the program, in order to avoid creating and destroying [`DescriptorPool`]s, as that is
-/// expensive.
+/// expensive. Alternatively, you can have one locally on a thread for the duration of the thread.
 ///
 /// Internally, this allocator uses one or more `DescriptorPool`s per descriptor set layout per
 /// thread, using Thread-Local Storage. When a thread first allocates, an entry is reserved for the
