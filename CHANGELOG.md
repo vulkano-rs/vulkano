@@ -7,6 +7,16 @@
     Pull Request merge. 
 -->
 
+### Public dependency updates
+
+### Breaking changes
+
+### Additions
+
+### Bugs fixed
+
+# Version 0.32.0 (2022-10-31)
+
 ### Breaking changes
 
 Changes to queue operations:
