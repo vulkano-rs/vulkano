@@ -1269,7 +1269,7 @@ impl From<RequirementNotMet> for DeviceMemoryError {
 /// # Examples
 ///
 /// ```
-/// use vulkano::memory::{DeviceMemory, MappedDeviceMemory, MemoryAllocateInfo};
+/// use vulkano::memory::{DeviceMemory, MappedDeviceMemory, MemoryAllocateInfo, MemoryPropertyFlags};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// // The memory type must be mappable.
@@ -1278,7 +1278,7 @@ impl From<RequirementNotMet> for DeviceMemoryError {
 ///     .memory_properties()
 ///     .memory_types
 ///     .iter()
-///     .position(|t| t.property_flags.host_visible)
+///     .position(|t| t.property_flags.intersects(MemoryPropertyFlags::HOST_VISIBLE))
 ///     .map(|i| i as u32)
 ///     .unwrap(); // Vk specs guarantee that this can't fail
 ///

@@ -83,7 +83,8 @@ use std::{
 /// // Create a CPU accessible buffer initialized with the data.
 /// let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
 ///     &memory_allocator,
-///     BufferUsage { transfer_src: true, ..BufferUsage::empty() }, // Specify this buffer will be used as a transfer source.
+///     // Specify this buffer will be used as a transfer source.
+///     BufferUsage::TRANSFER_SRC,
 ///     false,
 ///     data,
 /// )
@@ -93,11 +94,8 @@ use std::{
 /// let device_local_buffer = DeviceLocalBuffer::<[f32]>::array(
 ///     &memory_allocator,
 ///     10_000 as vulkano::DeviceSize,
-///     BufferUsage {
-///         storage_buffer: true,
-///         transfer_dst: true,
-///         ..BufferUsage::empty()
-///     }, // Specify use as a storage buffer and transfer destination.
+///     // Specify use as a storage buffer and transfer destination.
+///     BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
 ///     device.active_queue_family_indices().iter().copied(),
 /// )
 /// .unwrap();

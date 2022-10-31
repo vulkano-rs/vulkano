@@ -40,8 +40,7 @@
 //! # let physical_device: vulkano::device::physical::PhysicalDevice = return;
 //! for ty in physical_device.memory_properties().memory_types.iter() {
 //!     println!("Memory type belongs to heap #{:?}", ty.heap_index);
-//!     println!("Host-accessible: {:?}", ty.property_flags.host_visible);
-//!     println!("Device-local: {:?}", ty.property_flags.device_local);
+//!     println!("Property flags: {:?}", ty.property_flags);
 //! }
 //! ```
 //!

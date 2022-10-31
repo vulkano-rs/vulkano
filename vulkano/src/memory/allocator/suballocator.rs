@@ -617,7 +617,7 @@ unsafe impl DeviceOwned for MemoryAlloc {
 /// Allocating a region to suballocatate:
 ///
 /// ```
-/// use vulkano::memory::{DeviceMemory, MemoryAllocateInfo, MemoryType};
+/// use vulkano::memory::{DeviceMemory, MemoryAllocateInfo, MemoryPropertyFlags, MemoryType};
 /// use vulkano::memory::allocator::MemoryAlloc;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 ///
@@ -632,7 +632,7 @@ unsafe impl DeviceOwned for MemoryAlloc {
 ///     // requirements, instead of picking the first one that satisfies them. Also, you have to
 ///     // take the requirements of the resources you want to allocate memory for into consideration.
 ///     .find_map(|(index, MemoryType { property_flags, .. })| {
-///         property_flags.device_local.then_some(index)
+///         property_flags.intersects(MemoryPropertyFlags::DEVICE_LOCAL).then_some(index)
 ///     })
 ///     .unwrap() as u32;
 ///

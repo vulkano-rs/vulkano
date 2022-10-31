@@ -26,15 +26,10 @@
 //!
 //! # let queue: Arc<vulkano::device::Queue> = return;
 //! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
-//! let usage = BufferUsage {
-//!     storage_texel_buffer: true,
-//!     ..BufferUsage::empty()
-//! };
-//!
 //! let buffer = DeviceLocalBuffer::<[u32]>::array(
 //!     &memory_allocator,
 //!     128,
-//!     usage,
+//!     BufferUsage::STORAGE_TEXEL_BUFFER,
 //!     [queue.queue_family_index()],
 //! )
 //! .unwrap();
