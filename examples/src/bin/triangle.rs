@@ -420,9 +420,6 @@ fn main() {
     // Before we can start creating and recording command buffers, we need a way of allocating
     // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
     // underneath and provides a safe interface for them.
-    //
-    // A Vulkan command pool only works for one queue family, and vulkano's command buffer allocator
-    // reflects that, therefore we need to pass the queue family during creation.
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
