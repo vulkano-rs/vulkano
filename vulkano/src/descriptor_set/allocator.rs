@@ -188,6 +188,19 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
     }
 }
 
+unsafe impl DescriptorSetAllocator for Arc<StandardDescriptorSetAllocator> {
+    type Alloc = StandardDescriptorSetAlloc;
+
+    #[inline]
+    fn allocate(
+        &self,
+        layout: &Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+    ) -> Result<Self::Alloc, OomError> {
+        (**self).allocate(layout, variable_descriptor_count)
+    }
+}
+
 unsafe impl DeviceOwned for StandardDescriptorSetAllocator {
     #[inline]
     fn device(&self) -> &Arc<Device> {

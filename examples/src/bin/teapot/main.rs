@@ -161,7 +161,7 @@ fn main() {
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        &*memory_allocator,
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -171,7 +171,7 @@ fn main() {
     )
     .unwrap();
     let normals_buffer = CpuAccessibleBuffer::from_iter(
-        &*memory_allocator,
+        &memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()
@@ -181,7 +181,7 @@ fn main() {
     )
     .unwrap();
     let index_buffer = CpuAccessibleBuffer::from_iter(
-        &*memory_allocator,
+        &memory_allocator,
         BufferUsage {
             index_buffer: true,
             ..BufferUsage::empty()

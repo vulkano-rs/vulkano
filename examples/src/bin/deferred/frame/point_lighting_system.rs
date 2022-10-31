@@ -161,7 +161,7 @@ impl PointLightingSystem {
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
         let descriptor_set = PersistentDescriptorSet::new(
-            &*self.descriptor_set_allocator,
+            &self.descriptor_set_allocator,
             layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, color_input),
@@ -178,7 +178,7 @@ impl PointLightingSystem {
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &*self.command_buffer_allocator,
+            &self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {

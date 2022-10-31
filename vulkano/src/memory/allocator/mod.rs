@@ -1416,6 +1416,62 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     }
 }
 
+unsafe impl<S: Suballocator> MemoryAllocator for Arc<GenericMemoryAllocator<S>> {
+    fn find_memory_type_index(
+        &self,
+        memory_type_bits: u32,
+        filter: MemoryTypeFilter,
+    ) -> Option<u32> {
+        (**self).find_memory_type_index(memory_type_bits, filter)
+    }
+
+    fn allocate_from_type(
+        &self,
+        memory_type_index: u32,
+        create_info: SuballocationCreateInfo,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        (**self).allocate_from_type(memory_type_index, create_info)
+    }
+
+    unsafe fn allocate_from_type_unchecked(
+        &self,
+        memory_type_index: u32,
+        create_info: SuballocationCreateInfo,
+        never_allocate: bool,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        (**self).allocate_from_type_unchecked(memory_type_index, create_info, never_allocate)
+    }
+
+    fn allocate(
+        &self,
+        create_info: AllocationCreateInfo<'_>,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        (**self).allocate(create_info)
+    }
+
+    unsafe fn allocate_unchecked(
+        &self,
+        create_info: AllocationCreateInfo<'_>,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        (**self).allocate_unchecked(create_info)
+    }
+
+    unsafe fn allocate_dedicated_unchecked(
+        &self,
+        memory_type_index: u32,
+        allocation_size: DeviceSize,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
+        export_handle_types: ExternalMemoryHandleTypes,
+    ) -> Result<MemoryAlloc, AllocationCreationError> {
+        (**self).allocate_dedicated_unchecked(
+            memory_type_index,
+            allocation_size,
+            dedicated_allocation,
+            export_handle_types,
+        )
+    }
+}
+
 unsafe impl<S: Suballocator> DeviceOwned for GenericMemoryAllocator<S> {
     fn device(&self) -> &Arc<Device> {
         &self.device

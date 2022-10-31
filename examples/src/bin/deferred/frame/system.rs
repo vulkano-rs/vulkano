@@ -155,7 +155,7 @@ impl FrameSystem {
         // These images will be replaced the first time we call `frame()`.
         let diffuse_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
-                &*memory_allocator,
+                &memory_allocator,
                 [1, 1],
                 Format::A2B10G10R10_UNORM_PACK32,
                 ImageUsage {
@@ -169,7 +169,7 @@ impl FrameSystem {
         .unwrap();
         let normals_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
-                &*memory_allocator,
+                &memory_allocator,
                 [1, 1],
                 Format::R16G16B16A16_SFLOAT,
                 ImageUsage {
@@ -183,7 +183,7 @@ impl FrameSystem {
         .unwrap();
         let depth_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
-                &*memory_allocator,
+                &memory_allocator,
                 [1, 1],
                 Format::D16_UNORM,
                 ImageUsage {
@@ -206,21 +206,21 @@ impl FrameSystem {
         let ambient_lighting_system = AmbientLightingSystem::new(
             gfx_queue.clone(),
             lighting_subpass.clone(),
-            &*memory_allocator,
+            &memory_allocator,
             command_buffer_allocator.clone(),
             descriptor_set_allocator.clone(),
         );
         let directional_lighting_system = DirectionalLightingSystem::new(
             gfx_queue.clone(),
             lighting_subpass.clone(),
-            &*memory_allocator,
+            &memory_allocator,
             command_buffer_allocator.clone(),
             descriptor_set_allocator.clone(),
         );
         let point_lighting_system = PointLightingSystem::new(
             gfx_queue.clone(),
             lighting_subpass,
-            &*memory_allocator,
+            &memory_allocator,
             command_buffer_allocator.clone(),
             descriptor_set_allocator,
         );
@@ -277,7 +277,7 @@ impl FrameSystem {
             // render pass their content becomes undefined.
             self.diffuse_buffer = ImageView::new_default(
                 AttachmentImage::with_usage(
-                    &*self.memory_allocator,
+                    &self.memory_allocator,
                     img_dims,
                     Format::A2B10G10R10_UNORM_PACK32,
                     ImageUsage {
@@ -291,7 +291,7 @@ impl FrameSystem {
             .unwrap();
             self.normals_buffer = ImageView::new_default(
                 AttachmentImage::with_usage(
-                    &*self.memory_allocator,
+                    &self.memory_allocator,
                     img_dims,
                     Format::R16G16B16A16_SFLOAT,
                     ImageUsage {
@@ -305,7 +305,7 @@ impl FrameSystem {
             .unwrap();
             self.depth_buffer = ImageView::new_default(
                 AttachmentImage::with_usage(
-                    &*self.memory_allocator,
+                    &self.memory_allocator,
                     img_dims,
                     Format::D16_UNORM,
                     ImageUsage {
@@ -337,7 +337,7 @@ impl FrameSystem {
 
         // Start the command buffer builder that will be filled throughout the frame handling.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            &*self.command_buffer_allocator,
+            &self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -389,7 +389,9 @@ pub struct Frame<'a> {
     // Framebuffer that was used when starting the render pass.
     framebuffer: Arc<Framebuffer>,
     // The command buffer builder that will be built during the lifetime of this object.
-    command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
+    command_buffer_builder: Option<
+        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, Arc<StandardCommandBufferAllocator>>,
+    >,
     // Matrix that was passed to `frame()`.
     world_to_framebuffer: Matrix4<f32>,
 }
