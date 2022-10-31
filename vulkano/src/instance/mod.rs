@@ -414,7 +414,8 @@ impl Instance {
         if !enabled_validation_features.is_empty() || !disabled_validation_features.is_empty() {
             if !enabled_extensions.ext_validation_features {
                 return Err(InstanceCreationError::RequirementNotMet {
-                    required_for: "`enabled_validation_features` or `disabled_validation_features` are not empty",
+                    required_for: "`create_info.enabled_validation_features` or \
+                        `create_info.disabled_validation_features` are not empty",
                     requires_one_of: RequiresOneOf {
                         instance_extensions: &["ext_validation_features"],
                         ..Default::default()
@@ -464,7 +465,7 @@ impl Instance {
             // VUID-VkInstanceCreateInfo-pNext-04926
             if !enabled_extensions.ext_debug_utils {
                 return Err(InstanceCreationError::RequirementNotMet {
-                    required_for: "`debug_utils_messengers` is not empty",
+                    required_for: "`create_info.debug_utils_messengers` is not empty",
                     requires_one_of: RequiresOneOf {
                         instance_extensions: &["ext_debug_utils"],
                         ..Default::default()

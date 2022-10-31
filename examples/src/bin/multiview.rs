@@ -23,7 +23,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
-        QueueCreateInfo,
+        QueueCreateInfo, QueueFlags,
     },
     format::Format,
     image::{
@@ -93,7 +93,7 @@ fn main() {
         .filter_map(|p| {
             p.queue_family_properties()
                 .iter()
-                .position(|q| q.queue_flags.graphics)
+                .position(|q| q.queue_flags.intersects(QueueFlags::GRAPHICS))
                 .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
@@ -140,11 +140,7 @@ fn main() {
             array_layers: 2,
         },
         Format::B8G8R8A8_SRGB,
-        ImageUsage {
-            transfer_src: true,
-            color_attachment: true,
-            ..ImageUsage::empty()
-        },
+        ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
         ImageCreateFlags::empty(),
         Some(queue.queue_family_index()),
     )
@@ -172,10 +168,7 @@ fn main() {
     ];
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
-        BufferUsage {
-            vertex_buffer: true,
-            ..BufferUsage::empty()
-        },
+        BufferUsage::VERTEX_BUFFER,
         false,
         vertices,
     )
@@ -286,10 +279,7 @@ fn main() {
     let create_buffer = || {
         CpuAccessibleBuffer::from_iter(
             &memory_allocator,
-            BufferUsage {
-                transfer_dst: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_DST,
             false,
             (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),
         )

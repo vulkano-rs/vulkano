@@ -68,79 +68,75 @@ vulkan_bitflags! {
     ImageAspects = ImageAspectFlags(u32);
 
     // TODO: document
-    color = COLOR,
+    COLOR = COLOR,
 
     // TODO: document
-    depth = DEPTH,
+    DEPTH = DEPTH,
 
     // TODO: document
-    stencil = STENCIL,
+    STENCIL = STENCIL,
 
     // TODO: document
-    metadata = METADATA,
+    METADATA = METADATA,
 
     // TODO: document
-    plane0 = PLANE_0 {
+    PLANE_0 = PLANE_0 {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     // TODO: document
-    plane1 = PLANE_1 {
+    PLANE_1 = PLANE_1 {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     // TODO: document
-    plane2 = PLANE_2 {
+    PLANE_2 = PLANE_2 {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     // TODO: document
-    memory_plane0 = MEMORY_PLANE_0_EXT {
+    MEMORY_PLANE_0 = MEMORY_PLANE_0_EXT {
         device_extensions: [ext_image_drm_format_modifier],
     },
 
     // TODO: document
-    memory_plane1 = MEMORY_PLANE_1_EXT {
+    MEMORY_PLANE_1 = MEMORY_PLANE_1_EXT {
         device_extensions: [ext_image_drm_format_modifier],
     },
 
     // TODO: document
-    memory_plane2 = MEMORY_PLANE_2_EXT {
+    MEMORY_PLANE_2 = MEMORY_PLANE_2_EXT {
         device_extensions: [ext_image_drm_format_modifier],
     },
 }
 
 impl ImageAspects {
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = ImageAspect> {
-        let Self {
-            color,
-            depth,
-            stencil,
-            metadata,
-            plane0,
-            plane1,
-            plane2,
-            memory_plane0,
-            memory_plane1,
-            memory_plane2,
-            _ne: _,
-        } = *self;
-
+    pub fn iter(self) -> impl Iterator<Item = ImageAspect> {
         [
-            color.then_some(ImageAspect::Color),
-            depth.then_some(ImageAspect::Depth),
-            stencil.then_some(ImageAspect::Stencil),
-            metadata.then_some(ImageAspect::Metadata),
-            plane0.then_some(ImageAspect::Plane0),
-            plane1.then_some(ImageAspect::Plane1),
-            plane2.then_some(ImageAspect::Plane2),
-            memory_plane0.then_some(ImageAspect::MemoryPlane0),
-            memory_plane1.then_some(ImageAspect::MemoryPlane1),
-            memory_plane2.then_some(ImageAspect::MemoryPlane2),
+            self.intersects(ImageAspects::COLOR)
+                .then_some(ImageAspect::Color),
+            self.intersects(ImageAspects::DEPTH)
+                .then_some(ImageAspect::Depth),
+            self.intersects(ImageAspects::STENCIL)
+                .then_some(ImageAspect::Stencil),
+            self.intersects(ImageAspects::METADATA)
+                .then_some(ImageAspect::Metadata),
+            self.intersects(ImageAspects::PLANE_0)
+                .then_some(ImageAspect::Plane0),
+            self.intersects(ImageAspects::PLANE_1)
+                .then_some(ImageAspect::Plane1),
+            self.intersects(ImageAspects::PLANE_2)
+                .then_some(ImageAspect::Plane2),
+            self.intersects(ImageAspects::MEMORY_PLANE_0)
+                .then_some(ImageAspect::MemoryPlane0),
+            self.intersects(ImageAspects::MEMORY_PLANE_1)
+                .then_some(ImageAspect::MemoryPlane1),
+            self.intersects(ImageAspects::MEMORY_PLANE_2)
+                .then_some(ImageAspect::MemoryPlane2),
         ]
         .into_iter()
         .flatten()
@@ -153,16 +149,16 @@ impl From<ImageAspect> for ImageAspects {
         let mut result = Self::empty();
 
         match aspect {
-            ImageAspect::Color => result.color = true,
-            ImageAspect::Depth => result.depth = true,
-            ImageAspect::Stencil => result.stencil = true,
-            ImageAspect::Metadata => result.metadata = true,
-            ImageAspect::Plane0 => result.plane0 = true,
-            ImageAspect::Plane1 => result.plane1 = true,
-            ImageAspect::Plane2 => result.plane2 = true,
-            ImageAspect::MemoryPlane0 => result.memory_plane0 = true,
-            ImageAspect::MemoryPlane1 => result.memory_plane1 = true,
-            ImageAspect::MemoryPlane2 => result.memory_plane2 = true,
+            ImageAspect::Color => result |= ImageAspects::COLOR,
+            ImageAspect::Depth => result |= ImageAspects::DEPTH,
+            ImageAspect::Stencil => result |= ImageAspects::STENCIL,
+            ImageAspect::Metadata => result |= ImageAspects::METADATA,
+            ImageAspect::Plane0 => result |= ImageAspects::PLANE_0,
+            ImageAspect::Plane1 => result |= ImageAspects::PLANE_1,
+            ImageAspect::Plane2 => result |= ImageAspects::PLANE_2,
+            ImageAspect::MemoryPlane0 => result |= ImageAspects::MEMORY_PLANE_0,
+            ImageAspect::MemoryPlane1 => result |= ImageAspects::MEMORY_PLANE_1,
+            ImageAspect::MemoryPlane2 => result |= ImageAspects::MEMORY_PLANE_2,
         }
 
         result
@@ -175,16 +171,16 @@ impl FromIterator<ImageAspect> for ImageAspects {
 
         for aspect in iter {
             match aspect {
-                ImageAspect::Color => result.color = true,
-                ImageAspect::Depth => result.depth = true,
-                ImageAspect::Stencil => result.stencil = true,
-                ImageAspect::Metadata => result.metadata = true,
-                ImageAspect::Plane0 => result.plane0 = true,
-                ImageAspect::Plane1 => result.plane1 = true,
-                ImageAspect::Plane2 => result.plane2 = true,
-                ImageAspect::MemoryPlane0 => result.memory_plane0 = true,
-                ImageAspect::MemoryPlane1 => result.memory_plane1 = true,
-                ImageAspect::MemoryPlane2 => result.memory_plane2 = true,
+                ImageAspect::Color => result |= ImageAspects::COLOR,
+                ImageAspect::Depth => result |= ImageAspects::DEPTH,
+                ImageAspect::Stencil => result |= ImageAspects::STENCIL,
+                ImageAspect::Metadata => result |= ImageAspects::METADATA,
+                ImageAspect::Plane0 => result |= ImageAspects::PLANE_0,
+                ImageAspect::Plane1 => result |= ImageAspects::PLANE_1,
+                ImageAspect::Plane2 => result |= ImageAspects::PLANE_2,
+                ImageAspect::MemoryPlane0 => result |= ImageAspects::MEMORY_PLANE_0,
+                ImageAspect::MemoryPlane1 => result |= ImageAspects::MEMORY_PLANE_1,
+                ImageAspect::MemoryPlane2 => result |= ImageAspects::MEMORY_PLANE_2,
             }
         }
 

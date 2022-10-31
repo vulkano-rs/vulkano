@@ -205,7 +205,7 @@ impl SyncCommandBufferBuilder {
                 ref range,
                 ref memory,
             } => {
-                debug_assert!(memory.stages.supported_access().contains(&memory.access));
+                debug_assert!(memory.stages.supported_access().contains(memory.access));
 
                 if let Some(conflicting_use) =
                     self.find_buffer_conflict(buffer, range.clone(), memory)
@@ -226,7 +226,7 @@ impl SyncCommandBufferBuilder {
                 end_layout,
             } => {
                 debug_assert!(memory.exclusive || start_layout == end_layout);
-                debug_assert!(memory.stages.supported_access().contains(&memory.access));
+                debug_assert!(memory.stages.supported_access().contains(memory.access));
                 debug_assert!(end_layout != ImageLayout::Undefined);
                 debug_assert!(end_layout != ImageLayout::Preinitialized);
 
@@ -453,24 +453,10 @@ impl SyncCommandBufferBuilder {
                         // will come before them, it's the only thing that works for now.
                         // TODO: come up with something better
                         let barrier = BufferMemoryBarrier {
-                            src_stages: PipelineStages {
-                                all_commands: true,
-                                ..PipelineStages::empty()
-                            },
-                            src_access: AccessFlags {
-                                memory_read: true,
-                                memory_write: true,
-                                ..AccessFlags::empty()
-                            },
-                            dst_stages: PipelineStages {
-                                all_commands: true,
-                                ..PipelineStages::empty()
-                            },
-                            dst_access: AccessFlags {
-                                memory_read: true,
-                                memory_write: true,
-                                ..AccessFlags::empty()
-                            },
+                            src_stages: PipelineStages::ALL_COMMANDS,
+                            src_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
+                            dst_stages: PipelineStages::ALL_COMMANDS,
+                            dst_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
                             range: range.clone(),
                             ..BufferMemoryBarrier::buffer(inner.buffer.clone())
                         };
@@ -644,24 +630,10 @@ impl SyncCommandBufferBuilder {
                             // will come before them, it's the only thing that works for now.
                             // TODO: come up with something better
                             let mut barrier = ImageMemoryBarrier {
-                                src_stages: PipelineStages {
-                                    all_commands: true,
-                                    ..PipelineStages::empty()
-                                },
-                                src_access: AccessFlags {
-                                    memory_read: true,
-                                    memory_write: true,
-                                    ..AccessFlags::empty()
-                                },
-                                dst_stages: PipelineStages {
-                                    all_commands: true,
-                                    ..PipelineStages::empty()
-                                },
-                                dst_access: AccessFlags {
-                                    memory_read: true,
-                                    memory_write: true,
-                                    ..AccessFlags::empty()
-                                },
+                                src_stages: PipelineStages::ALL_COMMANDS,
+                                src_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
+                                dst_stages: PipelineStages::ALL_COMMANDS,
+                                dst_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
                                 old_layout: state.initial_layout,
                                 new_layout: state.initial_layout,
                                 subresource_range: inner.image.range_to_subresources(range.clone()),
@@ -813,10 +785,7 @@ impl SyncCommandBufferBuilder {
                             .push(ImageMemoryBarrier {
                                 src_stages: state.memory.stages,
                                 src_access: state.memory.access,
-                                dst_stages: PipelineStages {
-                                    top_of_pipe: true,
-                                    ..PipelineStages::empty()
-                                },
+                                dst_stages: PipelineStages::TOP_OF_PIPE,
                                 dst_access: AccessFlags::empty(),
                                 old_layout: state.current_layout,
                                 new_layout: state.final_layout,

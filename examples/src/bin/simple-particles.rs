@@ -26,6 +26,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFlags,
     },
     image::{view::ImageView, ImageUsage},
     impl_vertex,
@@ -93,7 +94,8 @@ fn main() {
                 .iter()
                 .enumerate()
                 .position(|(i, q)| {
-                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                        && p.surface_support(i as u32, &surface).unwrap_or(false)
                 })
                 .map(|i| (p, i as u32))
         })
@@ -147,10 +149,7 @@ fn main() {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent: [WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32],
-                image_usage: ImageUsage {
-                    color_attachment: true,
-                    ..ImageUsage::empty()
-                },
+                image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()
@@ -345,10 +344,7 @@ fn main() {
         // Create a CPU accessible buffer initialized with the vertex data.
         let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
             &memory_allocator,
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            }, // Specify this buffer will be used as a transfer source.
+            BufferUsage::TRANSFER_SRC, // Specify this buffer will be used as a transfer source.
             false,
             vertices,
         )
@@ -358,14 +354,7 @@ fn main() {
         let device_local_buffer = DeviceLocalBuffer::<[Vertex]>::array(
             &memory_allocator,
             PARTICLE_COUNT as vulkano::DeviceSize,
-            BufferUsage {
-                storage_buffer: true,
-                ..BufferUsage::empty()
-            } | BufferUsage {
-                transfer_dst: true,
-                vertex_buffer: true,
-                ..BufferUsage::empty()
-            }, // Specify use as a storage buffer, vertex buffer, and transfer destination.
+            BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST | BufferUsage::VERTEX_BUFFER, // Specify use as a storage buffer, vertex buffer, and transfer destination.
             device.active_queue_family_indices().iter().copied(),
         )
         .unwrap();

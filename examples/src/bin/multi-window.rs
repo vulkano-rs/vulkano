@@ -26,6 +26,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFlags,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
@@ -105,7 +106,7 @@ fn main() {
                     .iter()
                     .enumerate()
                     .position(|(i, q)| {
-                        q.queue_flags.graphics
+                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
                             && p.surface_support(i as u32, &surface).unwrap_or(false)
                     })
                     .map(|i| (p, i as u32))
@@ -166,10 +167,7 @@ fn main() {
                 min_image_count: surface_caps.min_image_count,
                 image_format,
                 image_extent: window.inner_size().into(),
-                image_usage: ImageUsage {
-                    color_attachment: true,
-                    ..ImageUsage::empty()
-                },
+                image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_caps
                     .supported_composite_alpha
                     .iter()
@@ -203,10 +201,7 @@ fn main() {
     ];
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
-        BufferUsage {
-            vertex_buffer: true,
-            ..BufferUsage::empty()
-        },
+        BufferUsage::VERTEX_BUFFER,
         false,
         vertices,
     )
@@ -347,10 +342,7 @@ fn main() {
                         min_image_count: surface_caps.min_image_count,
                         image_format,
                         image_extent: window.inner_size().into(),
-                        image_usage: ImageUsage {
-                            color_attachment: true,
-                            ..ImageUsage::empty()
-                        },
+                        image_usage: ImageUsage::COLOR_ATTACHMENT,
                         composite_alpha,
                         ..Default::default()
                     },

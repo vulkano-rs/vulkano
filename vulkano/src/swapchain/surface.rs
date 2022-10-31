@@ -104,7 +104,7 @@ impl Surface {
     fn validate_headless(instance: &Instance) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().ext_headless_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`headless`",
+                required_for: "`Surface::headless`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_headless_surface"],
                     ..Default::default()
@@ -174,7 +174,7 @@ impl Surface {
             .khr_display
         {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_display_plane`",
+                required_for: "`Surface::from_display_plane`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_display"],
                     ..Default::default()
@@ -259,7 +259,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_android_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_android`",
+                required_for: "`Surface::from_android`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_android_surface"],
                     ..Default::default()
@@ -335,7 +335,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().ext_directfb_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_directfb`",
+                required_for: "`Surface::from_directfb`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_directfb_surface"],
                     ..Default::default()
@@ -415,7 +415,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().fuchsia_imagepipe_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_fuchsia_image_pipe`",
+                required_for: "`Surface::from_fuchsia_image_pipe`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["fuchsia_imagepipe_surface"],
                     ..Default::default()
@@ -491,7 +491,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().ggp_stream_descriptor_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_ggp_stream_descriptor`",
+                required_for: "`Surface::from_ggp_stream_descriptor`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ggp_stream_descriptor_surface"],
                     ..Default::default()
@@ -566,7 +566,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().mvk_ios_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_ios`",
+                required_for: "`Surface::from_ios`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["mvk_ios_surface"],
                     ..Default::default()
@@ -644,7 +644,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().mvk_macos_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_mac_os`",
+                required_for: "`Surface::from_mac_os`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["mvk_macos_surface"],
                     ..Default::default()
@@ -719,7 +719,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().ext_metal_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_metal`",
+                required_for: "`Surface::from_metal`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_metal_surface"],
                     ..Default::default()
@@ -792,7 +792,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().qnx_screen_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_qnx_screen`",
+                required_for: "`Surface::from_qnx_screen`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["qnx_screen_surface"],
                     ..Default::default()
@@ -868,7 +868,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().nn_vi_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_vi`",
+                required_for: "`Surface::from_vi`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["nn_vi_surface"],
                     ..Default::default()
@@ -946,7 +946,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_wayland_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_wayland`",
+                required_for: "`Surface::from_wayland`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_wayland_surface"],
                     ..Default::default()
@@ -1029,7 +1029,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_win32_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_win32`",
+                required_for: "`Surface::from_win32`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_win32_surface"],
                     ..Default::default()
@@ -1112,7 +1112,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_xcb_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_xcb`",
+                required_for: "`Surface::from_xcb`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_xcb_surface"],
                     ..Default::default()
@@ -1195,7 +1195,7 @@ impl Surface {
     ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_xlib_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`from_xlib`",
+                required_for: "`Surface::from_xlib`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_xlib_surface"],
                     ..Default::default()
@@ -1541,54 +1541,61 @@ vulkan_bitflags! {
     SupportedSurfaceTransforms = SurfaceTransformFlagsKHR(u32);
 
     // TODO: document
-    identity = IDENTITY,
+    IDENTITY = IDENTITY,
 
     // TODO: document
-    rotate90 = ROTATE_90,
+    ROTATE_90 = ROTATE_90,
 
     // TODO: document
-    rotate180 = ROTATE_180,
+    ROTATE_180 = ROTATE_180,
 
     // TODO: document
-    rotate270 = ROTATE_270,
+    ROTATE_270 = ROTATE_270,
 
     // TODO: document
-    horizontal_mirror = HORIZONTAL_MIRROR,
+    HORIZONTAL_MIRROR = HORIZONTAL_MIRROR,
 
     // TODO: document
-    horizontal_mirror_rotate90 = HORIZONTAL_MIRROR_ROTATE_90,
+    HORIZONTAL_MIRROR_ROTATE_90 = HORIZONTAL_MIRROR_ROTATE_90,
 
     // TODO: document
-    horizontal_mirror_rotate180 = HORIZONTAL_MIRROR_ROTATE_180,
+    HORIZONTAL_MIRROR_ROTATE_180 = HORIZONTAL_MIRROR_ROTATE_180,
 
     // TODO: document
-    horizontal_mirror_rotate270 = HORIZONTAL_MIRROR_ROTATE_270,
+    HORIZONTAL_MIRROR_ROTATE_270 = HORIZONTAL_MIRROR_ROTATE_270,
 
     // TODO: document
-    inherit = INHERIT,
+    INHERIT = INHERIT,
 }
 
 impl SupportedSurfaceTransforms {
     /// Returns true if the given `SurfaceTransform` is in this list.
     #[inline]
-    pub fn supports(&self, value: SurfaceTransform) -> bool {
+    pub fn supports(self, value: SurfaceTransform) -> bool {
         match value {
-            SurfaceTransform::Identity => self.identity,
-            SurfaceTransform::Rotate90 => self.rotate90,
-            SurfaceTransform::Rotate180 => self.rotate180,
-            SurfaceTransform::Rotate270 => self.rotate270,
-            SurfaceTransform::HorizontalMirror => self.horizontal_mirror,
-            SurfaceTransform::HorizontalMirrorRotate90 => self.horizontal_mirror_rotate90,
-            SurfaceTransform::HorizontalMirrorRotate180 => self.horizontal_mirror_rotate180,
-            SurfaceTransform::HorizontalMirrorRotate270 => self.horizontal_mirror_rotate270,
-            SurfaceTransform::Inherit => self.inherit,
+            SurfaceTransform::Identity => self.intersects(SupportedSurfaceTransforms::IDENTITY),
+            SurfaceTransform::Rotate90 => self.intersects(SupportedSurfaceTransforms::ROTATE_90),
+            SurfaceTransform::Rotate180 => self.intersects(SupportedSurfaceTransforms::ROTATE_180),
+            SurfaceTransform::Rotate270 => self.intersects(SupportedSurfaceTransforms::ROTATE_270),
+            SurfaceTransform::HorizontalMirror => {
+                self.intersects(SupportedSurfaceTransforms::HORIZONTAL_MIRROR)
+            }
+            SurfaceTransform::HorizontalMirrorRotate90 => {
+                self.intersects(SupportedSurfaceTransforms::HORIZONTAL_MIRROR_ROTATE_90)
+            }
+            SurfaceTransform::HorizontalMirrorRotate180 => {
+                self.intersects(SupportedSurfaceTransforms::HORIZONTAL_MIRROR_ROTATE_180)
+            }
+            SurfaceTransform::HorizontalMirrorRotate270 => {
+                self.intersects(SupportedSurfaceTransforms::HORIZONTAL_MIRROR_ROTATE_270)
+            }
+            SurfaceTransform::Inherit => self.intersects(SupportedSurfaceTransforms::INHERIT),
         }
     }
 
     /// Returns an iterator to the list of supported composite alpha.
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = SurfaceTransform> {
-        let moved = *self;
+    pub fn iter(self) -> impl Iterator<Item = SurfaceTransform> {
         [
             SurfaceTransform::Identity,
             SurfaceTransform::Rotate90,
@@ -1601,7 +1608,7 @@ impl SupportedSurfaceTransforms {
             SurfaceTransform::Inherit,
         ]
         .into_iter()
-        .filter(move |&mode| moved.supports(mode))
+        .filter(move |&mode| self.supports(mode))
     }
 }
 
@@ -1641,34 +1648,37 @@ vulkan_bitflags! {
     SupportedCompositeAlpha = CompositeAlphaFlagsKHR(u32);
 
     // TODO: document
-    opaque = OPAQUE,
+    OPAQUE = OPAQUE,
 
     // TODO: document
-    pre_multiplied = PRE_MULTIPLIED,
+    PRE_MULTIPLIED = PRE_MULTIPLIED,
 
     // TODO: document
-    post_multiplied = POST_MULTIPLIED,
+    POST_MULTIPLIED = POST_MULTIPLIED,
 
     // TODO: document
-    inherit = INHERIT,
+    INHERIT = INHERIT,
 }
 
 impl SupportedCompositeAlpha {
     /// Returns true if the given `CompositeAlpha` is in this list.
     #[inline]
-    pub fn supports(&self, value: CompositeAlpha) -> bool {
+    pub fn supports(self, value: CompositeAlpha) -> bool {
         match value {
-            CompositeAlpha::Opaque => self.opaque,
-            CompositeAlpha::PreMultiplied => self.pre_multiplied,
-            CompositeAlpha::PostMultiplied => self.post_multiplied,
-            CompositeAlpha::Inherit => self.inherit,
+            CompositeAlpha::Opaque => self.intersects(SupportedCompositeAlpha::OPAQUE),
+            CompositeAlpha::PreMultiplied => {
+                self.intersects(SupportedCompositeAlpha::PRE_MULTIPLIED)
+            }
+            CompositeAlpha::PostMultiplied => {
+                self.intersects(SupportedCompositeAlpha::POST_MULTIPLIED)
+            }
+            CompositeAlpha::Inherit => self.intersects(SupportedCompositeAlpha::INHERIT),
         }
     }
 
     /// Returns an iterator to the list of supported composite alpha.
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = CompositeAlpha> {
-        let moved = *self;
+    pub fn iter(self) -> impl Iterator<Item = CompositeAlpha> {
         [
             CompositeAlpha::Opaque,
             CompositeAlpha::PreMultiplied,
@@ -1676,7 +1686,7 @@ impl SupportedCompositeAlpha {
             CompositeAlpha::Inherit,
         ]
         .into_iter()
-        .filter(move |&mode| moved.supports(mode))
+        .filter(move |&mode| self.supports(mode))
     }
 }
 

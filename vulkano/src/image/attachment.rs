@@ -10,8 +10,8 @@
 use super::{
     sys::{Image, ImageMemory, RawImage},
     traits::ImageContent,
-    ImageAccess, ImageDescriptorLayouts, ImageError, ImageInner, ImageLayout, ImageUsage,
-    SampleCount,
+    ImageAccess, ImageAspects, ImageDescriptorLayouts, ImageError, ImageInner, ImageLayout,
+    ImageUsage, SampleCount,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -108,10 +108,7 @@ impl AttachmentImage {
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            input_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::INPUT_ATTACHMENT;
 
         AttachmentImage::new_impl(
             allocator,
@@ -154,10 +151,7 @@ impl AttachmentImage {
         samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            input_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::INPUT_ATTACHMENT;
 
         AttachmentImage::new_impl(allocator, dimensions, 1, format, base_usage, samples)
     }
@@ -224,10 +218,7 @@ impl AttachmentImage {
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            sampled: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::SAMPLED;
 
         AttachmentImage::new_impl(
             allocator,
@@ -248,11 +239,7 @@ impl AttachmentImage {
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            sampled: true,
-            input_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT;
 
         AttachmentImage::new_impl(
             allocator,
@@ -277,10 +264,7 @@ impl AttachmentImage {
         samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            sampled: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::SAMPLED;
 
         AttachmentImage::new_impl(allocator, dimensions, 1, format, base_usage, samples)
     }
@@ -296,11 +280,7 @@ impl AttachmentImage {
         samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            sampled: true,
-            input_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT;
 
         AttachmentImage::new_impl(allocator, dimensions, 1, format, base_usage, samples)
     }
@@ -317,10 +297,7 @@ impl AttachmentImage {
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            transient_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::TRANSIENT_ATTACHMENT;
 
         AttachmentImage::new_impl(
             allocator,
@@ -341,11 +318,7 @@ impl AttachmentImage {
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            transient_attachment: true,
-            input_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT;
 
         AttachmentImage::new_impl(
             allocator,
@@ -370,10 +343,7 @@ impl AttachmentImage {
         samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            transient_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::TRANSIENT_ATTACHMENT;
 
         AttachmentImage::new_impl(allocator, dimensions, 1, format, base_usage, samples)
     }
@@ -389,11 +359,7 @@ impl AttachmentImage {
         samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
-        let base_usage = ImageUsage {
-            transient_attachment: true,
-            input_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let base_usage = ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT;
 
         AttachmentImage::new_impl(allocator, dimensions, 1, format, base_usage, samples)
     }
@@ -404,7 +370,7 @@ impl AttachmentImage {
         dimensions: [u32; 2],
         array_layers: u32,
         format: Format,
-        base_usage: ImageUsage,
+        mut usage: ImageUsage,
         samples: SampleCount,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
         let physical_device = allocator.device().physical_device();
@@ -421,7 +387,15 @@ impl AttachmentImage {
         }
 
         let aspects = format.aspects();
-        let is_depth = aspects.depth || aspects.stencil;
+        let is_depth_stencil = aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL);
+
+        if is_depth_stencil {
+            usage -= ImageUsage::COLOR_ATTACHMENT;
+            usage |= ImageUsage::DEPTH_STENCIL_ATTACHMENT;
+        } else {
+            usage |= ImageUsage::COLOR_ATTACHMENT;
+            usage -= ImageUsage::DEPTH_STENCIL_ATTACHMENT;
+        }
 
         if format.compression().is_some() {
             panic!() // TODO: message?
@@ -437,11 +411,7 @@ impl AttachmentImage {
                 },
                 format: Some(format),
                 samples,
-                usage: ImageUsage {
-                    color_attachment: !is_depth,
-                    depth_stencil_attachment: is_depth,
-                    ..base_usage
-                },
+                usage,
                 ..Default::default()
             },
         )?;
@@ -467,7 +437,7 @@ impl AttachmentImage {
 
                 Ok(Arc::new(AttachmentImage {
                     inner,
-                    attachment_layout: if is_depth {
+                    attachment_layout: if is_depth_stencil {
                         ImageLayout::DepthStencilAttachmentOptimal
                     } else {
                         ImageLayout::ColorAttachmentOptimal
@@ -484,7 +454,7 @@ impl AttachmentImage {
         dimensions: [u32; 2],
         array_layers: u32,
         format: Format,
-        base_usage: ImageUsage,
+        mut usage: ImageUsage,
         samples: SampleCount,
     ) -> Result<Arc<AttachmentImage>, ImageError> {
         let physical_device = allocator.device().physical_device();
@@ -501,21 +471,21 @@ impl AttachmentImage {
         }
 
         let aspects = format.aspects();
-        let is_depth = aspects.depth || aspects.stencil;
-        let usage = ImageUsage {
-            color_attachment: !is_depth,
-            depth_stencil_attachment: is_depth,
-            ..base_usage
-        };
+        let is_depth_stencil = aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL);
+
+        if is_depth_stencil {
+            usage -= ImageUsage::COLOR_ATTACHMENT;
+            usage |= ImageUsage::DEPTH_STENCIL_ATTACHMENT;
+        } else {
+            usage |= ImageUsage::COLOR_ATTACHMENT;
+            usage -= ImageUsage::DEPTH_STENCIL_ATTACHMENT;
+        }
 
         let external_memory_properties = allocator
             .device()
             .physical_device()
             .image_format_properties(ImageFormatInfo {
-                flags: ImageCreateFlags {
-                    mutable_format: true,
-                    ..ImageCreateFlags::empty()
-                },
+                flags: ImageCreateFlags::MUTABLE_FORMAT,
                 format: Some(format),
                 usage,
                 external_memory_handle_type: Some(ExternalMemoryHandleType::OpaqueFd),
@@ -530,17 +500,11 @@ impl AttachmentImage {
         // VUID-VkMemoryAllocateInfo-pNext-00639
         // Guaranteed because we always create a dedicated allocation
 
-        let external_memory_handle_types = ExternalMemoryHandleTypes {
-            opaque_fd: true,
-            ..ExternalMemoryHandleTypes::empty()
-        };
+        let external_memory_handle_types = ExternalMemoryHandleTypes::OPAQUE_FD;
         let raw_image = RawImage::new(
             allocator.device().clone(),
             ImageCreateInfo {
-                flags: ImageCreateFlags {
-                    mutable_format: true,
-                    ..ImageCreateFlags::empty()
-                },
+                flags: ImageCreateFlags::MUTABLE_FORMAT,
                 dimensions: ImageDimensions::Dim2d {
                     width: dimensions[0],
                     height: dimensions[1],
@@ -577,7 +541,7 @@ impl AttachmentImage {
 
                 Ok(Arc::new(AttachmentImage {
                     inner,
-                    attachment_layout: if is_depth {
+                    attachment_layout: if is_depth_stencil {
                         ImageLayout::DepthStencilAttachmentOptimal
                     } else {
                         ImageLayout::ColorAttachmentOptimal

@@ -34,7 +34,8 @@ use super::{
 use crate::{
     descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutCreateInfo},
     device::{Device, DeviceOwned},
-    format::NumericType,
+    format::{FormatFeatures, NumericType},
+    image::ImageAspects,
     pipeline::{
         cache::PipelineCache,
         graphics::{
@@ -484,7 +485,8 @@ where
                 // VUID-VkGraphicsPipelineCreateInfo-multiview-06577
                 if view_mask != 0 && !device.enabled_features().multiview {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                        required_for: "`render_pass` is `PipelineRenderPassType::BeginRendering` where `view_mask` is not `0`",
+                        required_for: "`render_pass` is `PipelineRenderPassType::BeginRendering` \
+                            where `view_mask` is not `0`",
                         requires_one_of: RequiresOneOf {
                             features: &["multiview"],
                             ..Default::default()
@@ -519,7 +521,7 @@ where
                         // Use unchecked, because all validation has been done above.
                         if !unsafe { physical_device.format_properties_unchecked(format) }
                             .potential_format_features()
-                            .color_attachment
+                            .intersects(FormatFeatures::COLOR_ATTACHMENT)
                         {
                             return Err(
                                 GraphicsPipelineCreationError::ColorAttachmentFormatUsageNotSupported {
@@ -537,7 +539,7 @@ where
                         // Use unchecked, because all validation has been done above.
                         if !unsafe { physical_device.format_properties_unchecked(format) }
                             .potential_format_features()
-                            .depth_stencil_attachment
+                            .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
                         {
                             return Err(
                                 GraphicsPipelineCreationError::DepthAttachmentFormatUsageNotSupported,
@@ -545,7 +547,7 @@ where
                         }
 
                         // VUID-VkGraphicsPipelineCreateInfo-renderPass-06587
-                        if !format.aspects().depth {
+                        if !format.aspects().intersects(ImageAspects::DEPTH) {
                             return Err(
                                 GraphicsPipelineCreationError::DepthAttachmentFormatUsageNotSupported,
                             );
@@ -560,7 +562,7 @@ where
                         // Use unchecked, because all validation has been done above.
                         if !unsafe { physical_device.format_properties_unchecked(format) }
                             .potential_format_features()
-                            .depth_stencil_attachment
+                            .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
                         {
                             return Err(
                                 GraphicsPipelineCreationError::StencilAttachmentFormatUsageNotSupported,
@@ -568,7 +570,7 @@ where
                         }
 
                         // VUID-VkGraphicsPipelineCreateInfo-renderPass-06588
-                        if !format.aspects().stencil {
+                        if !format.aspects().intersects(ImageAspects::STENCIL) {
                             return Err(
                                 GraphicsPipelineCreationError::StencilAttachmentFormatUsageNotSupported,
                             );
@@ -663,7 +665,9 @@ where
                                 .vertex_attribute_instance_rate_divisor
                             {
                                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                    required_for: "`vertex_input_state.bindings` has an element where `input_rate` is `VertexInputRate::Instance`, where `divisor` is not `1`",
+                                    required_for: "`vertex_input_state.bindings` has an element \
+                                        where `input_rate` is `VertexInputRate::Instance`, where \
+                                        `divisor` is not `1`",
                                     requires_one_of: RequiresOneOf {
                                         features: &["vertex_attribute_instance_rate_divisor"],
                                         ..Default::default()
@@ -678,7 +682,9 @@ where
                                     .vertex_attribute_instance_rate_zero_divisor
                             {
                                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                    required_for: "`vertex_input_state.bindings` has an element where `input_rate` is `VertexInputRate::Instance`, where `divisor` is `0`",
+                                    required_for: "`vertex_input_state.bindings` has an element \
+                                        where `input_rate` is `VertexInputRate::Instance`, where \
+                                        `divisor` is `0`",
                                     requires_one_of: RequiresOneOf {
                                         features: &["vertex_attribute_instance_rate_zero_divisor"],
                                         ..Default::default()
@@ -754,7 +760,7 @@ where
                     };
 
                     // VUID-VkVertexInputAttributeDescription-format-00623
-                    if !format_features.vertex_buffer {
+                    if !format_features.intersects(FormatFeatures::VERTEX_BUFFER) {
                         return Err(
                             GraphicsPipelineCreationError::VertexInputAttributeUnsupportedFormat {
                                 location,
@@ -805,9 +811,8 @@ where
                                     && !device.enabled_features().triangle_fans
                                 {
                                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                        required_for:
-                                            "this device is a portability subset device, and \
-                                            `input_assembly_state.topology` is \
+                                        required_for: "this device is a portability subset \
+                                            device, and `input_assembly_state.topology` is \
                                             `StateMode::Fixed(PrimitiveTopology::TriangleFan)`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["triangle_fans"],
@@ -823,7 +828,8 @@ where
                                 // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429
                                 if !device.enabled_features().geometry_shader {
                                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                        required_for: "`input_assembly_state.topology` is `StateMode::Fixed(PrimitiveTopology::*WithAdjacency)`",
+                                        required_for: "`input_assembly_state.topology` is \
+                                            `StateMode::Fixed(PrimitiveTopology::*WithAdjacency)`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["geometry_shader"],
                                             ..Default::default()
@@ -835,7 +841,8 @@ where
                                 // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430
                                 if !device.enabled_features().tessellation_shader {
                                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                        required_for: "`input_assembly_state.topology` is `StateMode::Fixed(PrimitiveTopology::PatchList)`",
+                                        required_for: "`input_assembly_state.topology` is \
+                                            `StateMode::Fixed(PrimitiveTopology::PatchList)`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["tessellation_shader"],
                                             ..Default::default()
@@ -858,8 +865,8 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for:
-                                    "`input_assembly_state.topology` is `PartialStateMode::Dynamic`",
+                                required_for: "`input_assembly_state.topology` is \
+                                    `PartialStateMode::Dynamic`",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -884,7 +891,10 @@ where
                                     // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06252
                                     if !device.enabled_features().primitive_topology_list_restart {
                                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                            required_for: "`input_assembly_state.primitive_restart_enable` is `StateMode::Fixed(true)` and `input_assembly_state.topology` is `StateMode::Fixed(PrimitiveTopology::*List)`",
+                                            required_for: "`input_assembly_state.primitive_restart_enable` \
+                                                is `StateMode::Fixed(true)` and \
+                                                `input_assembly_state.topology` is \
+                                                `StateMode::Fixed(PrimitiveTopology::*List)`",
                                             requires_one_of: RequiresOneOf {
                                                 features: &["primitive_topology_list_restart"],
                                                 ..Default::default()
@@ -899,7 +909,10 @@ where
                                         .primitive_topology_patch_list_restart
                                     {
                                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                            required_for: "`input_assembly_state.primitive_restart_enable` is `StateMode::Fixed(true)` and `input_assembly_state.topology` is `StateMode::Fixed(PrimitiveTopology::PatchList)`",
+                                            required_for: "`input_assembly_state.primitive_restart_enable` \
+                                                is `StateMode::Fixed(true)` and \
+                                                `input_assembly_state.topology` is \
+                                                `StateMode::Fixed(PrimitiveTopology::PatchList)`",
                                             requires_one_of: RequiresOneOf {
                                                 features: &["primitive_topology_patch_list_restart"],
                                                 ..Default::default()
@@ -917,7 +930,8 @@ where
                             || device.enabled_features().extended_dynamic_state2)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`input_assembly_state.primitive_restart_enable` is `StateMode::Dynamic`",
+                                required_for: "`input_assembly_state.primitive_restart_enable` is \
+                                    `StateMode::Dynamic`",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state2"],
@@ -1089,7 +1103,8 @@ where
                     // VUID-VkGraphicsPipelineCreateInfo-renderPass-06057
                     if view_mask != 0 {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for: "`tessellation_shaders` are provided and `render_pass` has a subpass where `view_mask` is not `0`",
+                            required_for: "`tessellation_shaders` are provided and `render_pass` \
+                                has a subpass where `view_mask` is not `0`",
                             requires_one_of: RequiresOneOf {
                                 features: &["multiview_tessellation_shader"],
                                 ..Default::default()
@@ -1158,7 +1173,8 @@ where
                     // VUID-VkGraphicsPipelineCreateInfo-renderPass-06058
                     if view_mask != 0 {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for: "`geometry_shader` is provided and `render_pass` has a subpass where `view_mask` is not `0`",
+                            required_for: "`geometry_shader` is provided and `render_pass` has a \
+                                subpass where `view_mask` is not `0`",
                             requires_one_of: RequiresOneOf {
                                 features: &["multiview_geometry_shader"],
                                 ..Default::default()
@@ -1209,7 +1225,8 @@ where
                             || device.enabled_features().extended_dynamic_state2)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`rasterization_state.rasterizer_discard_enable` is `StateMode::Dynamic`",
+                                required_for: "`rasterization_state.rasterizer_discard_enable` is \
+                                    `StateMode::Dynamic`",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -1244,8 +1261,8 @@ where
                     && !device.enabled_features().fill_mode_non_solid
                 {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                        required_for:
-                            "`rasterization_state.polygon_mode` is not `PolygonMode::Fill`",
+                        required_for: "`rasterization_state.polygon_mode` is not \
+                            `PolygonMode::Fill`",
                         requires_one_of: RequiresOneOf {
                             features: &["fill_mode_non_solid"],
                             ..Default::default()
@@ -1264,8 +1281,8 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for:
-                                    "`rasterization_state.cull_mode` is `StateMode::Dynamic`",
+                                required_for: "`rasterization_state.cull_mode` is \
+                                    `StateMode::Dynamic`",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -1287,8 +1304,8 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for:
-                                    "`rasterization_state.front_face` is `StateMode::Dynamic`",
+                                required_for: "`rasterization_state.front_face` is \
+                                    `StateMode::Dynamic`",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -1311,7 +1328,9 @@ where
                             || device.enabled_features().extended_dynamic_state2)
                     {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for: "`rasterization_state.depth_bias` is `Some(depth_bias_state)`, where `depth_bias_state.enable_dynamic` is set",
+                            required_for: "`rasterization_state.depth_bias` is \
+                                `Some(depth_bias_state)`, where `depth_bias_state.enable_dynamic` \
+                                is set",
                             requires_one_of: RequiresOneOf {
                                 api_version: Some(Version::V1_3),
                                 features: &["extended_dynamic_state2"],
@@ -1325,7 +1344,9 @@ where
                         && !device.enabled_features().depth_bias_clamp
                     {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for: "`rasterization_state.depth_bias` is `Some(depth_bias_state)`, where `depth_bias_state.bias` is `StateMode::Fixed(bias)`, where `bias.clamp` is not `0.0`",
+                            required_for: "`rasterization_state.depth_bias` is \
+                            `Some(depth_bias_state)`, where `depth_bias_state.bias` is \
+                            `StateMode::Fixed(bias)`, where `bias.clamp` is not `0.0`",
                             requires_one_of: RequiresOneOf {
                                 features: &["depth_bias_clamp"],
                                 ..Default::default()
@@ -1339,7 +1360,8 @@ where
                     && !device.enabled_features().wide_lines
                 {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                        required_for: "`rasterization_state.line_width` is `StateMode::Fixed(line_width)`, where `line_width` is not `1.0`",
+                        required_for: "`rasterization_state.line_width` is \
+                            `StateMode::Fixed(line_width)`, where `line_width` is not `1.0`",
                         requires_one_of: RequiresOneOf {
                             features: &["wide_lines"],
                             ..Default::default()
@@ -1357,7 +1379,8 @@ where
                             // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02768
                             if !device.enabled_features().rectangular_lines {
                                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                    required_for: "`rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Rectangular`",
+                                    required_for: "`rasterization_state.line_rasterization_mode` \
+                                        is `LineRasterizationMode::Rectangular`",
                                     requires_one_of: RequiresOneOf {
                                         features: &["rectangular_lines"],
                                         ..Default::default()
@@ -1369,7 +1392,8 @@ where
                             // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02769
                             if !device.enabled_features().bresenham_lines {
                                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                    required_for: "`rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Bresenham`",
+                                    required_for: "`rasterization_state.line_rasterization_mode` \
+                                        is `LineRasterizationMode::Bresenham`",
                                     requires_one_of: RequiresOneOf {
                                         features: &["bresenham_lines"],
                                         ..Default::default()
@@ -1381,7 +1405,8 @@ where
                             // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02770
                             if !device.enabled_features().smooth_lines {
                                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                    required_for: "`rasterization_state.line_rasterization_mode` is `LineRasterizationMode::RectangularSmooth`",
+                                    required_for: "`rasterization_state.line_rasterization_mode` \
+                                        is `LineRasterizationMode::RectangularSmooth`",
                                     requires_one_of: RequiresOneOf {
                                         features: &["smooth_lines"],
                                         ..Default::default()
@@ -1397,7 +1422,10 @@ where
                                 // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02774
                                 if !device.enabled_features().stippled_rectangular_lines {
                                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                        required_for: "`rasterization_state.line_stipple` is `Some` and `rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Default`",
+                                        required_for: "`rasterization_state.line_stipple` is \
+                                            `Some` and \
+                                            `rasterization_state.line_rasterization_mode` \
+                                            is `LineRasterizationMode::Default`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["stippled_rectangular_lines"],
                                             ..Default::default()
@@ -1416,7 +1444,10 @@ where
                                 // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02771
                                 if !device.enabled_features().stippled_rectangular_lines {
                                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                        required_for: "`rasterization_state.line_stipple` is `Some` and `rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Rectangular`",
+                                        required_for: "`rasterization_state.line_stipple` is \
+                                            `Some` and \
+                                            `rasterization_state.line_rasterization_mode` \
+                                            is `LineRasterizationMode::Rectangular`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["stippled_rectangular_lines"],
                                             ..Default::default()
@@ -1428,7 +1459,10 @@ where
                                 // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02772
                                 if !device.enabled_features().stippled_bresenham_lines {
                                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                        required_for: "`rasterization_state.line_stipple` is `Some` and `rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Bresenham`",
+                                        required_for: "`rasterization_state.line_stipple` is \
+                                            `Some` and \
+                                            `rasterization_state.line_rasterization_mode` \
+                                            is `LineRasterizationMode::Bresenham`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["stippled_bresenham_lines"],
                                             ..Default::default()
@@ -1440,7 +1474,10 @@ where
                                 // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02773
                                 if !device.enabled_features().stippled_smooth_lines {
                                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                        required_for: "`rasterization_state.line_stipple` is `Some` and `rasterization_state.line_rasterization_mode` is `LineRasterizationMode::RectangularSmooth`",
+                                        required_for: "`rasterization_state.line_stipple` is \
+                                            `Some` and \
+                                            `rasterization_state.line_rasterization_mode` \
+                                            is `LineRasterizationMode::RectangularSmooth`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["stippled_smooth_lines"],
                                             ..Default::default()
@@ -1459,7 +1496,8 @@ where
                 } else {
                     if line_rasterization_mode != LineRasterizationMode::Default {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for: "`rasterization_state.line_rasterization_mode` is not `LineRasterizationMode::Default`",
+                            required_for: "`rasterization_state.line_rasterization_mode` is not \
+                                `LineRasterizationMode::Default`",
                             requires_one_of: RequiresOneOf {
                                 device_extensions: &["ext_line_rasterization"],
                                 ..Default::default()
@@ -1509,7 +1547,8 @@ where
 
                     if error {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for: "`discard_rectangle_state.rectangles` is not `PartialStateMode::Fixed(vec![])`",
+                            required_for: "`discard_rectangle_state.rectangles` is not \
+                                `PartialStateMode::Fixed(vec![])`",
                             requires_one_of: RequiresOneOf {
                                 device_extensions: &["ext_discard_rectangles"],
                                 ..Default::default()
@@ -1559,8 +1598,8 @@ where
                         .extended_dynamic_state2_patch_control_points
                     {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for:
-                                "`tessellation_state.patch_control_points` is `StateMode::Dynamic`",
+                            required_for: "`tessellation_state.patch_control_points` is \
+                                `StateMode::Dynamic`",
                             requires_one_of: RequiresOneOf {
                                 features: &["extended_dynamic_state2_patch_control_points"],
                                 ..Default::default()
@@ -1637,7 +1676,9 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`viewport_state` is `ViewportState::FixedViewport`, where `scissor_count_dynamic` is set",
+                                required_for: "`viewport_state` is \
+                                    `ViewportState::FixedViewport`, where `scissor_count_dynamic` \
+                                    is set",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -1669,7 +1710,9 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`viewport_state` is `ViewportState::FixedScissor`, where `viewport_count_dynamic` is set",
+                                required_for: "`viewport_state` is \
+                                    `ViewportState::FixedScissor`, where `viewport_count_dynamic` \
+                                    is set",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -1707,7 +1750,9 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`viewport_state` is `ViewportState::Dynamic`, where `viewport_count_dynamic` is set",
+                                required_for: "`viewport_state` is \
+                                    `ViewportState::Dynamic`, where `viewport_count_dynamic` \
+                                    is set",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -1728,7 +1773,9 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`viewport_state` is `ViewportState::Dynamic`, where `scissor_count_dynamic` is set",
+                                required_for: "`viewport_state` is \
+                                    `ViewportState::Dynamic`, where `scissor_count_dynamic` \
+                                    is set",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -1756,7 +1803,8 @@ where
             // VUID-VkPipelineViewportStateCreateInfo-scissorCount-01217
             if viewport_scissor_count > 1 && !device.enabled_features().multi_viewport {
                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                    required_for: "`viewport_state` has a fixed viewport/scissor count that is greater than `1`",
+                    required_for: "`viewport_state` has a fixed viewport/scissor count that is \
+                        greater than `1`",
                     requires_one_of: RequiresOneOf {
                         features: &["multi_viewport"],
                         ..Default::default()
@@ -1867,8 +1915,8 @@ where
                         || device.enabled_features().extended_dynamic_state)
                 {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                        required_for:
-                            "`depth_stencil_state.depth` is `Some(depth_state)`, where `depth_state.enable_dynamic` is set",
+                        required_for: "`depth_stencil_state.depth` is `Some(depth_state)`, where \
+                             `depth_state.enable_dynamic` is set",
                         requires_one_of: RequiresOneOf {
                             api_version: Some(Version::V1_3),
                             features: &["extended_dynamic_state"],
@@ -1897,7 +1945,9 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`depth_stencil_state.depth` is `Some(depth_state)`, where `depth_state.write_enable` is `StateMode::Dynamic`",
+                                required_for: "`depth_stencil_state.depth` is \
+                                    `Some(depth_state)`, where `depth_state.write_enable` is \
+                                    `StateMode::Dynamic`",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -1919,7 +1969,9 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`depth_stencil_state.depth` is `Some(depth_state)`, where `depth_state.compare_op` is `StateMode::Dynamic`",
+                                required_for: "`depth_stencil_state.depth` is \
+                                    `Some(depth_state)`, where `depth_state.compare_op` is \
+                                        `StateMode::Dynamic`",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -1954,7 +2006,9 @@ where
                         || device.enabled_features().extended_dynamic_state)
                 {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                        required_for: "`depth_stencil_state.depth_bounds` is `Some(depth_bounds_state)`, where `depth_bounds_state.enable_dynamic` is set",
+                        required_for: "`depth_stencil_state.depth_bounds` is \
+                            `Some(depth_bounds_state)`, where `depth_bounds_state.enable_dynamic` \
+                            is set",
                         requires_one_of: RequiresOneOf {
                             api_version: Some(Version::V1_3),
                             features: &["extended_dynamic_state"],
@@ -1970,7 +2024,9 @@ where
                         && !(0.0..1.0).contains(bounds.end())
                     {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                            required_for: "`depth_stencil_state.depth_bounds` is `Some(depth_bounds_state)`, where `depth_bounds_state.bounds` is not between `0.0` and `1.0` inclusive",
+                            required_for: "`depth_stencil_state.depth_bounds` is \
+                                `Some(depth_bounds_state)`, where `depth_bounds_state.bounds` is \
+                                not between `0.0` and `1.0` inclusive",
                             requires_one_of: RequiresOneOf {
                                 device_extensions: &["ext_depth_range_unrestricted"],
                                 ..Default::default()
@@ -2004,8 +2060,8 @@ where
                         || device.enabled_features().extended_dynamic_state)
                 {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                        required_for:
-                            "`depth_stencil_state.stencil` is `Some(stencil_state)`, where `stencil_state.enable_dynamic` is set",
+                        required_for: "`depth_stencil_state.stencil` is `Some(stencil_state)`, \
+                            where `stencil_state.enable_dynamic` is set",
                         requires_one_of: RequiresOneOf {
                             api_version: Some(Version::V1_3),
                             features: &["extended_dynamic_state"],
@@ -2043,7 +2099,9 @@ where
                             || device.enabled_features().extended_dynamic_state)
                         {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`depth_stencil_state.stencil` is `Some(stencil_state)`, where `stencil_state.front.ops` and `stencil_state.back.ops` are `StateMode::Dynamic`",
+                                required_for: "`depth_stencil_state.stencil` is \
+                                    `Some(stencil_state)`, where `stencil_state.front.ops` and \
+                                    `stencil_state.back.ops` are `StateMode::Dynamic`",
                                 requires_one_of: RequiresOneOf {
                                     api_version: Some(Version::V1_3),
                                     features: &["extended_dynamic_state"],
@@ -2209,8 +2267,8 @@ where
                         // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04869
                         if !device.enabled_features().extended_dynamic_state2_logic_op {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for:
-                                    "`color_blend_state.logic_op` is `Some(StateMode::Dynamic)`",
+                                required_for: "`color_blend_state.logic_op` is \
+                                    `Some(StateMode::Dynamic)`",
                                 requires_one_of: RequiresOneOf {
                                     features: &["extended_dynamic_state2_logic_op"],
                                     ..Default::default()
@@ -2247,7 +2305,8 @@ where
                 // VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605
                 if !iter.all(|state| state == first) {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                        required_for: "`color_blend_state.attachments` has elements where `blend` and `color_write_mask` do not match the other elements",
+                        required_for: "`color_blend_state.attachments` has elements where \
+                            `blend` and `color_write_mask` do not match the other elements",
                         requires_one_of: RequiresOneOf {
                             features: &["independent_blend"],
                             ..Default::default()
@@ -2312,9 +2371,9 @@ where
                     {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for: "`color_blend_state.attachments` has an element where \
-                            `blend` is `Some(blend)`, where `blend.color_source`, \
-                            `blend.color_destination`, `blend.alpha_source` or \
-                            `blend.alpha_destination` is `BlendFactor::Src1*`",
+                                `blend` is `Some(blend)`, where `blend.color_source`, \
+                                `blend.color_destination`, `blend.alpha_source` or \
+                                `blend.alpha_destination` is `BlendFactor::Src1*`",
                             requires_one_of: RequiresOneOf {
                                 features: &["dual_src_blend"],
                                 ..Default::default()
@@ -2344,7 +2403,7 @@ where
                         physical_device
                             .format_properties_unchecked(format)
                             .potential_format_features()
-                            .color_attachment_blend
+                            .intersects(FormatFeatures::COLOR_ATTACHMENT_BLEND)
                     }) {
                         return Err(
                             GraphicsPipelineCreationError::ColorAttachmentFormatBlendNotSupported {
@@ -2385,7 +2444,8 @@ where
                         // VUID-VkPipelineColorWriteCreateInfoEXT-pAttachments-04801
                         if !enable && !device.enabled_features().color_write_enable {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`color_blend_state.attachments` has an element where `color_write_enable` is `StateMode::Fixed(false)`",
+                                required_for: "`color_blend_state.attachments` has an element \
+                                    where `color_write_enable` is `StateMode::Fixed(false)`",
                                 requires_one_of: RequiresOneOf {
                                     features: &["color_write_enable"],
                                     ..Default::default()
@@ -2397,7 +2457,8 @@ where
                         // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04800
                         if !device.enabled_features().color_write_enable {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
-                                required_for: "`color_blend_state.attachments` has an element where `color_write_enable` is `StateMode::Dynamic`",
+                                required_for: "`color_blend_state.attachments` has an element \
+                                    where `color_write_enable` is `StateMode::Dynamic`",
                                 requires_one_of: RequiresOneOf {
                                     features: &["color_write_enable"],
                                     ..Default::default()

@@ -75,7 +75,7 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
 
     /// Returns the features supported by the image's format.
     #[inline]
-    fn format_features(&self) -> &FormatFeatures {
+    fn format_features(&self) -> FormatFeatures {
         self.inner().image.format_features()
     }
 
@@ -93,13 +93,13 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
 
     /// Returns the usage the image was created with.
     #[inline]
-    fn usage(&self) -> &ImageUsage {
+    fn usage(&self) -> ImageUsage {
         self.inner().image.usage()
     }
 
     /// Returns the stencil usage the image was created with.
     #[inline]
-    fn stencil_usage(&self) -> &ImageUsage {
+    fn stencil_usage(&self) -> ImageUsage {
         self.inner().image.stencil_usage()
     }
 
@@ -115,12 +115,8 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     #[inline]
     fn subresource_range(&self) -> ImageSubresourceRange {
         ImageSubresourceRange {
-            aspects: ImageAspects {
-                plane0: false,
-                plane1: false,
-                plane2: false,
-                ..self.format().aspects()
-            },
+            aspects: self.format().aspects()
+                - (ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2),
             mip_levels: 0..self.mip_levels(),
             array_layers: 0..self.dimensions().array_layers(),
         }

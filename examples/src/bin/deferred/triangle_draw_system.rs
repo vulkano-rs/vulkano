@@ -60,10 +60,7 @@ impl TriangleDrawSystem {
         let vertex_buffer = {
             CpuAccessibleBuffer::from_iter(
                 memory_allocator,
-                BufferUsage {
-                    vertex_buffer: true,
-                    ..BufferUsage::empty()
-                },
+                BufferUsage::VERTEX_BUFFER,
                 false,
                 vertices,
             )

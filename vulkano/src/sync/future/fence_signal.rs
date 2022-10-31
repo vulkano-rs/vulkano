@@ -11,7 +11,7 @@ use super::{AccessCheckError, FlushError, GpuFuture};
 use crate::{
     buffer::sys::Buffer,
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
-    device::{Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned, Queue, QueueFlags},
     image::{sys::Image, ImageLayout},
     swapchain::Swapchain,
     sync::{AccessError, AccessFlags, Fence, PipelineStages, SubmitAnyBuilder},
@@ -258,11 +258,8 @@ where
                                         .into_iter()
                                         .map(|semaphore| {
                                             SemaphoreSubmitInfo {
-                                                stages: PipelineStages {
-                                                    // TODO: correct stages ; hard
-                                                    all_commands: true,
-                                                    ..PipelineStages::empty()
-                                                },
+                                                // TODO: correct stages ; hard
+                                                stages: PipelineStages::ALL_COMMANDS,
                                                 ..SemaphoreSubmitInfo::semaphore(semaphore)
                                             }
                                         })
@@ -298,12 +295,10 @@ where
                     debug_assert!(!partially_flushed);
                     // Same remark as `CommandBuffer`.
                     assert!(fence.is_none());
-                    debug_assert!(
-                        queue.device().physical_device().queue_family_properties()
-                            [queue.queue_family_index() as usize]
-                            .queue_flags
-                            .sparse_binding
-                    );
+                    debug_assert!(queue.device().physical_device().queue_family_properties()
+                        [queue.queue_family_index() as usize]
+                        .queue_flags
+                        .intersects(QueueFlags::SPARSE_BINDING));
 
                     queue
                         .with(|mut q| q.bind_sparse_unchecked(bind_infos, Some(new_fence.clone())))

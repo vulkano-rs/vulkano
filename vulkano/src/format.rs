@@ -107,8 +107,8 @@ impl Format {
         note = "Use PhysicalDevice::format_properties instead"
     )]
     #[inline]
-    pub fn properties(&self, physical_device: PhysicalDevice) -> FormatProperties {
-        physical_device.format_properties(*self).unwrap()
+    pub fn properties(self, physical_device: PhysicalDevice) -> FormatProperties {
+        physical_device.format_properties(self).unwrap()
     }
 
     /// Returns whether the format can be used with a storage image, without specifying
@@ -118,9 +118,9 @@ impl Format {
     /// [`shader_storage_image_write_without_format`](crate::device::Features::shader_storage_image_write_without_format)
     /// features are enabled on the device.
     #[inline]
-    pub fn shader_storage_image_without_format(&self) -> bool {
+    pub fn shader_storage_image_without_format(self) -> bool {
         matches!(
-            *self,
+            self,
             Format::R8G8B8A8_UNORM
                 | Format::R8G8B8A8_SNORM
                 | Format::R8G8B8A8_UINT
@@ -254,7 +254,7 @@ pub enum ChromaSampling {
 
 impl ChromaSampling {
     #[inline]
-    pub fn subsampled_extent(&self, mut extent: [u32; 3]) -> [u32; 3] {
+    pub fn subsampled_extent(self, mut extent: [u32; 3]) -> [u32; 3] {
         match self {
             ChromaSampling::Mode444 => (),
             ChromaSampling::Mode422 => {
@@ -750,131 +750,131 @@ vulkan_bitflags! {
     /* Image usage  */
 
     /// Can be used with a sampled image descriptor.
-    sampled_image = SAMPLED_IMAGE,
+    SAMPLED_IMAGE = SAMPLED_IMAGE,
 
     /// Can be used with a storage image descriptor.
-    storage_image = STORAGE_IMAGE,
+    STORAGE_IMAGE = STORAGE_IMAGE,
 
     /// Can be used with a storage image descriptor with atomic operations in a shader.
-    storage_image_atomic = STORAGE_IMAGE_ATOMIC,
+    STORAGE_IMAGE_ATOMIC = STORAGE_IMAGE_ATOMIC,
 
     /// Can be used with a storage image descriptor for reading, without specifying a format on the
     /// image view.
-    storage_read_without_format = STORAGE_READ_WITHOUT_FORMAT {
+    STORAGE_READ_WITHOUT_FORMAT = STORAGE_READ_WITHOUT_FORMAT {
         api_version: V1_3,
         device_extensions: [khr_format_feature_flags2],
     },
 
     /// Can be used with a storage image descriptor for writing, without specifying a format on the
     /// image view.
-    storage_write_without_format = STORAGE_WRITE_WITHOUT_FORMAT {
+    STORAGE_WRITE_WITHOUT_FORMAT = STORAGE_WRITE_WITHOUT_FORMAT {
         api_version: V1_3,
         device_extensions: [khr_format_feature_flags2],
     },
 
     /// Can be used with a color attachment in a framebuffer, or with an input attachment
     /// descriptor.
-    color_attachment = COLOR_ATTACHMENT,
+    COLOR_ATTACHMENT = COLOR_ATTACHMENT,
 
     /// Can be used with a color attachment in a framebuffer with blending, or with an input
     /// attachment descriptor.
-    color_attachment_blend = COLOR_ATTACHMENT_BLEND,
+    COLOR_ATTACHMENT_BLEND = COLOR_ATTACHMENT_BLEND,
 
     /// Can be used with a depth/stencil attachment in a framebuffer, or with an input attachment
     /// descriptor.
-    depth_stencil_attachment = DEPTH_STENCIL_ATTACHMENT,
+    DEPTH_STENCIL_ATTACHMENT = DEPTH_STENCIL_ATTACHMENT,
 
     /// Can be used with a fragment density map attachment in a framebuffer.
-    fragment_density_map = FRAGMENT_DENSITY_MAP_EXT {
+    FRAGMENT_DENSITY_MAP = FRAGMENT_DENSITY_MAP_EXT {
         device_extensions: [ext_fragment_density_map],
     },
 
     /// Can be used with a fragment shading rate attachment in a framebuffer.
-    fragment_shading_rate_attachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
+    FRAGMENT_SHADING_RATE_ATTACHMENT = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
         device_extensions: [khr_fragment_shading_rate],
     },
 
     /// Can be used with the source image in a transfer (copy) operation.
-    transfer_src = TRANSFER_SRC {
+    TRANSFER_SRC = TRANSFER_SRC {
         api_version: V1_1,
         device_extensions: [khr_maintenance1],
     },
 
     /// Can be used with the destination image in a transfer (copy) operation.
-    transfer_dst = TRANSFER_DST  {
+    TRANSFER_DST = TRANSFER_DST {
         api_version: V1_1,
         device_extensions: [khr_maintenance1],
     },
 
     /// Can be used with the source image in a blit operation.
-    blit_src = BLIT_SRC,
+    BLIT_SRC = BLIT_SRC,
 
     /// Can be used with the destination image in a blit operation.
-    blit_dst = BLIT_DST,
+    BLIT_DST = BLIT_DST,
 
     /* Sampling  */
 
     /// Can be used with samplers or as a blit source, using the
     /// [`Linear`](crate::sampler::Filter::Linear) filter.
-    sampled_image_filter_linear = SAMPLED_IMAGE_FILTER_LINEAR,
+    SAMPLED_IMAGE_FILTER_LINEAR = SAMPLED_IMAGE_FILTER_LINEAR,
 
     /// Can be used with samplers or as a blit source, using the
     /// [`Cubic`](crate::sampler::Filter::Cubic) filter.
-    sampled_image_filter_cubic = SAMPLED_IMAGE_FILTER_CUBIC_EXT  {
+    SAMPLED_IMAGE_FILTER_CUBIC = SAMPLED_IMAGE_FILTER_CUBIC_EXT {
         device_extensions: [ext_filter_cubic, img_filter_cubic],
     },
 
     /// Can be used with samplers using a reduction mode of
     /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
     /// [`Max`](crate::sampler::SamplerReductionMode::Max).
-    sampled_image_filter_minmax = SAMPLED_IMAGE_FILTER_MINMAX  {
+    SAMPLED_IMAGE_FILTER_MINMAX = SAMPLED_IMAGE_FILTER_MINMAX {
         api_version: V1_2,
         device_extensions: [ext_sampler_filter_minmax],
     },
 
     /// Can be used with sampler YCbCr conversions using a chroma offset of
     /// [`Midpoint`](crate::sampler::ycbcr::ChromaLocation::Midpoint).
-    midpoint_chroma_samples = MIDPOINT_CHROMA_SAMPLES {
+    MIDPOINT_CHROMA_SAMPLES = MIDPOINT_CHROMA_SAMPLES {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with sampler YCbCr conversions using a chroma offset of
     /// [`CositedEven`](crate::sampler::ycbcr::ChromaLocation::CositedEven).
-    cosited_chroma_samples = COSITED_CHROMA_SAMPLES {
+    COSITED_CHROMA_SAMPLES = COSITED_CHROMA_SAMPLES {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with sampler YCbCr conversions using the
     /// [`Linear`](crate::sampler::Filter::Linear) chroma filter.
-    sampled_image_ycbcr_conversion_linear_filter = SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER {
+    SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER = SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with sampler YCbCr conversions whose chroma filter differs from the filters of
     /// the base sampler.
-    sampled_image_ycbcr_conversion_separate_reconstruction_filter = SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER {
+    SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER = SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// When used with a sampler YCbCr conversion, the implementation will always perform
     /// explicit chroma reconstruction.
-    sampled_image_ycbcr_conversion_chroma_reconstruction_explicit = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT {
+    SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with sampler YCbCr conversions with forced explicit reconstruction.
-    sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE {
+    SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with samplers using depth comparison.
-    sampled_image_depth_comparison = SAMPLED_IMAGE_DEPTH_COMPARISON {
+    SAMPLED_IMAGE_DEPTH_COMPARISON = SAMPLED_IMAGE_DEPTH_COMPARISON {
         api_version: V1_3,
         device_extensions: [khr_format_feature_flags2],
     },
@@ -882,29 +882,31 @@ vulkan_bitflags! {
     /* Video */
 
     /// Can be used with the output image of a video decode operation.
-    video_decode_output = VIDEO_DECODE_OUTPUT_KHR {
+    VIDEO_DECODE_OUTPUT = VIDEO_DECODE_OUTPUT_KHR {
         device_extensions: [khr_video_decode_queue],
     },
 
     /// Can be used with the DPB image of a video decode operation.
-    video_decode_dpb = VIDEO_DECODE_DPB_KHR {
+    VIDEO_DECODE_DPB = VIDEO_DECODE_DPB_KHR {
         device_extensions: [khr_video_decode_queue],
     },
 
     /// Can be used with the input image of a video encode operation.
-    video_encode_input = VIDEO_ENCODE_INPUT_KHR {
+    VIDEO_ENCODE_INPUT = VIDEO_ENCODE_INPUT_KHR {
         device_extensions: [khr_video_encode_queue],
     },
 
     /// Can be used with the DPB image of a video encode operation.
-    video_encode_dpb = VIDEO_ENCODE_DPB_KHR {
+    VIDEO_ENCODE_DPB = VIDEO_ENCODE_DPB_KHR {
         device_extensions: [khr_video_encode_queue],
     },
 
     /* Misc image features */
 
-    /// For multi-planar formats, can be used with images created with the `disjoint` flag.
-    disjoint = DISJOINT {
+    /// For multi-planar formats, can be used with images created with the [`DISJOINT`] flag.
+    ///
+    /// [`DISJOINT`]: crate::image::ImageCreateFlags::DISJOINT
+    DISJOINT = DISJOINT {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
@@ -912,20 +914,20 @@ vulkan_bitflags! {
     /* Buffer usage  */
 
     /// Can be used with a uniform texel buffer descriptor.
-    uniform_texel_buffer = UNIFORM_TEXEL_BUFFER,
+    UNIFORM_TEXEL_BUFFER = UNIFORM_TEXEL_BUFFER,
 
     /// Can be used with a storage texel buffer descriptor.
-    storage_texel_buffer = STORAGE_TEXEL_BUFFER,
+    STORAGE_TEXEL_BUFFER = STORAGE_TEXEL_BUFFER,
 
     /// Can be used with a storage texel buffer descriptor with atomic operations in a shader.
-    storage_texel_buffer_atomic = STORAGE_TEXEL_BUFFER_ATOMIC,
+    STORAGE_TEXEL_BUFFER_ATOMIC = STORAGE_TEXEL_BUFFER_ATOMIC,
 
     /// Can be used as the format of a vertex attribute in the vertex input state of a graphics
     /// pipeline.
-    vertex_buffer = VERTEX_BUFFER,
+    VERTEX_BUFFER = VERTEX_BUFFER,
 
     /// Can be used with the vertex buffer of an acceleration structure.
-    acceleration_structure_vertex_buffer = ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR {
+    ACCELERATION_STRUCTURE_VERTEX_BUFFER = ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR {
         device_extensions: [khr_acceleration_structure],
     },
 }

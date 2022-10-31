@@ -1126,7 +1126,7 @@ impl<'a> QueueGuard<'a> {
             .ext_debug_utils
         {
             return Err(QueueError::RequirementNotMet {
-                required_for: "`begin_debug_utils_label`",
+                required_for: "`QueueGuard::begin_debug_utils_label`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
@@ -1183,7 +1183,7 @@ impl<'a> QueueGuard<'a> {
             .ext_debug_utils
         {
             return Err(QueueError::RequirementNotMet {
-                required_for: "`end_debug_utils_label`",
+                required_for: "`QueueGuard::end_debug_utils_label`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
@@ -1233,7 +1233,7 @@ impl<'a> QueueGuard<'a> {
             .ext_debug_utils
         {
             return Err(QueueError::RequirementNotMet {
-                required_for: "`insert_debug_utils_label`",
+                required_for: "`QueueGuard::insert_debug_utils_label`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
@@ -1592,7 +1592,7 @@ impl QueueFamilyProperties {
     /// Returns whether the queues of this family support a particular pipeline stage.
     #[inline]
     pub fn supports_stage(&self, stage: PipelineStage) -> bool {
-        ash::vk::QueueFlags::from(self.queue_flags).contains(stage.required_queue_flags())
+        self.queue_flags.contains(stage.required_queue_flags())
     }
 }
 
@@ -1619,29 +1619,29 @@ vulkan_bitflags! {
     QueueFlags = QueueFlags(u32);
 
     /// Queues of this family can execute graphics operations.
-    graphics = GRAPHICS,
+    GRAPHICS = GRAPHICS,
 
     /// Queues of this family can execute compute operations.
-    compute = COMPUTE,
+    COMPUTE = COMPUTE,
 
     /// Queues of this family can execute transfer operations.
-    transfer = TRANSFER,
+    TRANSFER = TRANSFER,
 
     /// Queues of this family can execute sparse memory management operations.
-    sparse_binding = SPARSE_BINDING,
+    SPARSE_BINDING = SPARSE_BINDING,
 
     /// Queues of this family can be created using the `protected` flag.
-    protected = PROTECTED {
+    PROTECTED = PROTECTED {
         api_version: V1_1,
     },
 
     /// Queues of this family can execute video decode operations.
-    video_decode = VIDEO_DECODE_KHR {
+    VIDEO_DECODE = VIDEO_DECODE_KHR {
         device_extensions: [khr_video_decode_queue],
     },
 
     /// Queues of this family can execute video encode operations.
-    video_encode = VIDEO_ENCODE_KHR {
+    VIDEO_ENCODE = VIDEO_ENCODE_KHR {
         device_extensions: [khr_video_encode_queue],
     },
 }

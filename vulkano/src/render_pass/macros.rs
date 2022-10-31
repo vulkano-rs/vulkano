@@ -154,24 +154,12 @@ macro_rules! ordered_passes_renderpass {
             let dependencies: Vec<_> = (0..subpasses.len().saturating_sub(1) as u32)
                 .map(|id| {
                     // TODO: correct values
-                    let src_stages = $crate::sync::PipelineStages {
-                        all_graphics: true,
-                        ..$crate::sync::PipelineStages::empty()
-                    };
-                    let dst_stages = $crate::sync::PipelineStages {
-                        all_graphics: true,
-                        ..$crate::sync::PipelineStages::empty()
-                    };
-                    let src_access = $crate::sync::AccessFlags {
-                        memory_read: true,
-                        memory_write: true,
-                        ..$crate::sync::AccessFlags::empty()
-                    };
-                    let dst_access = $crate::sync::AccessFlags {
-                        memory_read: true,
-                        memory_write: true,
-                        ..$crate::sync::AccessFlags::empty()
-                    };
+                    let src_stages = $crate::sync::PipelineStages::ALL_GRAPHICS;
+                    let dst_stages = $crate::sync::PipelineStages::ALL_GRAPHICS;
+                    let src_access = $crate::sync::AccessFlags::MEMORY_READ
+                        | $crate::sync::AccessFlags::MEMORY_WRITE;
+                    let dst_access = $crate::sync::AccessFlags::MEMORY_READ
+                        | $crate::sync::AccessFlags::MEMORY_WRITE;
 
                     $crate::render_pass::SubpassDependency {
                         src_subpass: id.into(),

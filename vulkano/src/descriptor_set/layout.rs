@@ -221,7 +221,8 @@ impl DescriptorSetLayout {
                     .descriptor_binding_variable_descriptor_count
                 {
                     return Err(DescriptorSetLayoutCreationError::RequirementNotMet {
-                        required_for: "`create_info.bindings` has an element where `variable_descriptor_count` is set",
+                        required_for: "`create_info.bindings` has an element where \
+                            `variable_descriptor_count` is set",
                         requires_one_of: RequiresOneOf {
                             features: &["descriptor_binding_variable_descriptor_count"],
                             ..Default::default()
@@ -756,7 +757,7 @@ impl DescriptorSetLayoutBinding {
             }
         }
 
-        if !self.stages.contains(&stages) {
+        if !self.stages.contains(stages) {
             return Err(DescriptorRequirementsNotMet::ShaderStages {
                 required: stages,
                 obtained: self.stages,

@@ -89,20 +89,14 @@ impl PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let vertex_buffer = CpuAccessibleBuffer::<[TexturedVertex]>::from_iter(
             memory_allocator,
-            BufferUsage {
-                vertex_buffer: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::VERTEX_BUFFER,
             false,
             vertices.into_iter(),
         )
         .unwrap();
         let index_buffer = CpuAccessibleBuffer::<[u32]>::from_iter(
             memory_allocator,
-            BufferUsage {
-                index_buffer: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::INDEX_BUFFER,
             false,
             indices.into_iter(),
         )

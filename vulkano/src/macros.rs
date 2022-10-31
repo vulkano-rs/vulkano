@@ -18,23 +18,19 @@ macro_rules! vulkan_bitflags {
         )+
     } => {
         $(#[doc = $ty_doc])*
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-        pub struct $ty {
-            $(
-                $(#[doc = $flag_doc])*
-                pub $flag_name: bool,
-            )+
-        }
+        #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $ty($repr);
 
         impl $ty {
+            $(
+                $(#[doc = $flag_doc])*
+                pub const $flag_name: Self = Self(ash::vk::$ty_ffi::$flag_name_ffi.as_raw());
+            )*
+
             #[doc = concat!("Returns a `", stringify!($ty), "` with none of the flags set.")]
             #[inline]
             pub const fn empty() -> Self {
-                Self {
-                    $(
-                        $flag_name: false,
-                    )+
-                }
+                Self(0)
             }
 
             #[deprecated(since = "0.31.0", note = "Use `empty` instead.")]
@@ -47,120 +43,107 @@ macro_rules! vulkan_bitflags {
             #[doc = concat!("Returns a `", stringify!($ty), "` with all of the flags set.")]
             #[inline]
             pub const fn all() -> Self {
-                Self {
-                    $(
-                        $flag_name: true,
-                    )+
-                }
+                Self(Self::all_raw())
+            }
+
+            const fn all_raw() -> $repr {
+                0
+                $(
+                    | ash::vk::$ty_ffi::$flag_name_ffi.as_raw()
+                )*
             }
 
             /// Returns whether no flags are set in `self`.
             #[inline]
-            pub const fn is_empty(&self) -> bool {
-                !(
-                    $(
-                        self.$flag_name
-                    )||+
-                )
+            pub const fn is_empty(self) -> bool {
+                self.0 == 0
             }
 
             /// Returns whether any flags are set in both `self` and `other`.
             #[inline]
-            pub const fn intersects(&self, other: &Self) -> bool {
-                $(
-                    (self.$flag_name && other.$flag_name)
-                )||+
+            pub const fn intersects(self, #[allow(unused_variables)] other: Self) -> bool {
+                self.0 & other.0 != 0
             }
 
             /// Returns whether all flags in `other` are set in `self`.
             #[inline]
-            pub const fn contains(&self, other: &Self) -> bool {
-                $(
-                    (self.$flag_name || !other.$flag_name)
-                )&&+
+            pub const fn contains(self, #[allow(unused_variables)] other: Self) -> bool {
+                self.0 & other.0 == other.0
             }
 
             /// Returns the union of `self` and `other`.
             #[inline]
-            pub const fn union(&self, other: &Self) -> Self {
-                Self {
-                    $(
-                        $flag_name: (self.$flag_name || other.$flag_name),
-                    )+
-                }
+            pub const fn union(self, #[allow(unused_variables)] other: Self) -> Self {
+                Self(self.0 | other.0)
             }
 
             /// Returns the intersection of `self` and `other`.
             #[inline]
-            pub const fn intersection(&self, other: &Self) -> Self {
-                Self {
-                    $(
-                        $flag_name: (self.$flag_name && other.$flag_name),
-                    )+
-                }
+            pub const fn intersection(self, #[allow(unused_variables)] other: Self) -> Self {
+                Self(self.0 & other.0)
             }
 
             /// Returns `self` without the flags set in `other`.
             #[inline]
-            pub const fn difference(&self, other: &Self) -> Self {
-                Self {
-                    $(
-                        $flag_name: (self.$flag_name && !other.$flag_name),
-                    )+
-                }
+            pub const fn difference(self, #[allow(unused_variables)] other: Self) -> Self {
+                Self(self.0 & !other.0)
             }
 
-            /// Returns the flags set in `self` or `other`, but not both.
+            /// Returns the flags that are set in `self` or `other`, but not in both.
             #[inline]
-            pub const fn symmetric_difference(&self, other: &Self) -> Self {
-                Self {
-                    $(
-                        $flag_name: (self.$flag_name ^ other.$flag_name),
-                    )+
-                }
+            pub const fn symmetric_difference(self, #[allow(unused_variables)] other: Self) -> Self {
+                Self(self.0 ^ other.0)
             }
 
             /// Returns the flags not in `self`.
             #[inline]
-            pub const fn complement(&self) -> Self {
-                Self {
-                    $(
-                        $flag_name: !self.$flag_name,
-                    )+
-                }
-            }
-        }
-
-        impl From<$ty> for ash::vk::$ty_ffi {
-            #[inline]
-            fn from(val: $ty) -> Self {
-                let mut result = ash::vk::$ty_ffi::empty();
-                $(
-                    if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
-                )+
-                result
-            }
-        }
-
-        impl From<ash::vk::$ty_ffi> for $ty {
-            #[inline]
-            fn from(val: ash::vk::$ty_ffi) -> Self {
-                Self {
-                    $(
-                        $flag_name: val.intersects(ash::vk::$ty_ffi::$flag_name_ffi),
-                    )+
-                }
+            pub const fn complement(self) -> Self {
+                Self(!self.0 & Self::all_raw())
             }
         }
 
         impl Default for $ty {
             #[inline]
             fn default() -> Self {
-                Self {
-                    $(
-                        $flag_name: false,
-                    )+
+                Self::empty()
+            }
+        }
+
+        impl std::fmt::Debug for $ty {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                #[allow(unused_mut)]
+                let mut written = false;
+
+                $(
+                    if self.intersects(Self::$flag_name) {
+                        if written {
+                            write!(f, " | ")?;
+                        }
+
+                        write!(f, stringify!($flag_name))?;
+                        written = true;
+                    }
+                )*
+
+                if !written {
+                    write!(f, "empty()")?;
                 }
+
+                Ok(())
+            }
+        }
+
+        impl From<$ty> for ash::vk::$ty_ffi {
+            #[inline]
+            fn from(val: $ty) -> Self {
+                ash::vk::$ty_ffi::from_raw(val.0)
+            }
+        }
+
+        impl From<ash::vk::$ty_ffi> for $ty {
+            #[inline]
+            fn from(val: ash::vk::$ty_ffi) -> Self {
+                Self(val.as_raw() & Self::all_raw())
             }
         }
 
@@ -169,14 +152,14 @@ macro_rules! vulkan_bitflags {
 
             #[inline]
             fn bitand(self, rhs: Self) -> Self {
-                self.intersection(&rhs)
+                self.intersection(rhs)
             }
         }
 
         impl std::ops::BitAndAssign for $ty {
             #[inline]
             fn bitand_assign(&mut self, rhs: Self) {
-                *self = self.intersection(&rhs);
+                *self = self.intersection(rhs);
             }
         }
 
@@ -185,14 +168,14 @@ macro_rules! vulkan_bitflags {
 
             #[inline]
             fn bitor(self, rhs: Self) -> Self {
-                self.union(&rhs)
+                self.union(rhs)
             }
         }
 
         impl std::ops::BitOrAssign for $ty {
             #[inline]
             fn bitor_assign(&mut self, rhs: Self) {
-                *self = self.union(&rhs);
+                *self = self.union(rhs);
             }
         }
 
@@ -201,14 +184,14 @@ macro_rules! vulkan_bitflags {
 
             #[inline]
             fn bitxor(self, rhs: Self) -> Self {
-                self.symmetric_difference(&rhs)
+                self.symmetric_difference(rhs)
             }
         }
 
         impl std::ops::BitXorAssign for $ty {
             #[inline]
             fn bitxor_assign(&mut self, rhs: Self) {
-                *self = self.symmetric_difference(&rhs);
+                *self = self.symmetric_difference(rhs);
             }
         }
 
@@ -217,14 +200,14 @@ macro_rules! vulkan_bitflags {
 
             #[inline]
             fn sub(self, rhs: Self) -> Self {
-                self.difference(&rhs)
+                self.difference(rhs)
             }
         }
 
         impl std::ops::SubAssign for $ty {
             #[inline]
             fn sub_assign(&mut self, rhs: Self) {
-                *self = self.difference(&rhs);
+                *self = self.difference(rhs);
             }
         }
 
@@ -256,25 +239,19 @@ macro_rules! vulkan_bitflags {
         )*
     } => {
         $(#[doc = $ty_doc])*
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-        pub struct $ty {
-            $(
-                $(#[doc = $flag_doc])*
-                pub $flag_name: bool,
-            )*
-            pub _ne: crate::NonExhaustive,
-        }
+        #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $ty($repr);
 
         impl $ty {
+            $(
+                $(#[doc = $flag_doc])*
+                pub const $flag_name: Self = Self(ash::vk::$ty_ffi::$flag_name_ffi.as_raw());
+            )*
+
             #[doc = concat!("Returns a `", stringify!($ty), "` with none of the flags set.")]
             #[inline]
             pub const fn empty() -> Self {
-                Self {
-                    $(
-                        $flag_name: false,
-                    )*
-                    _ne: crate::NonExhaustive(()),
-                }
+                Self(0)
             }
 
             #[deprecated(since = "0.31.0", note = "Use `empty` instead.")]
@@ -284,78 +261,59 @@ macro_rules! vulkan_bitflags {
                 Self::empty()
             }
 
+            const fn all_raw() -> $repr {
+                0
+                $(
+                    | ash::vk::$ty_ffi::$flag_name_ffi.as_raw()
+                )*
+            }
+
+            /// Returns the number of flags set in self.
+            #[inline]
+            pub const fn count(self) -> u32 {
+                self.0.count_ones()
+            }
+
             /// Returns whether no flags are set in `self`.
             #[inline]
-            pub const fn is_empty(&self) -> bool {
-                !(
-                    false
-                    $(
-                        || self.$flag_name
-                    )*
-
-                )
+            pub const fn is_empty(self) -> bool {
+                self.0 == 0
             }
 
             /// Returns whether any flags are set in both `self` and `other`.
             #[inline]
-            pub const fn intersects(&self, #[allow(unused_variables)] other: &Self) -> bool {
-                false
-                $(
-                    || (self.$flag_name && other.$flag_name)
-                )*
+            pub const fn intersects(self, #[allow(unused_variables)] other: Self) -> bool {
+                self.0 & other.0 != 0
             }
 
             /// Returns whether all flags in `other` are set in `self`.
             #[inline]
-            pub const fn contains(&self, #[allow(unused_variables)] other: &Self) -> bool {
-                true
-                $(
-                    && (self.$flag_name || !other.$flag_name)
-                )*
+            pub const fn contains(self, #[allow(unused_variables)] other: Self) -> bool {
+                self.0 & other.0 == other.0
             }
 
             /// Returns the union of `self` and `other`.
             #[inline]
-            pub const fn union(&self, #[allow(unused_variables)] other: &Self) -> Self {
-                Self {
-                    $(
-                        $flag_name: (self.$flag_name || other.$flag_name),
-                    )*
-                    _ne: crate::NonExhaustive(()),
-                }
+            pub const fn union(self, #[allow(unused_variables)] other: Self) -> Self {
+                Self(self.0 | other.0)
             }
 
             /// Returns the intersection of `self` and `other`.
             #[inline]
-            pub const fn intersection(&self, #[allow(unused_variables)] other: &Self) -> Self {
-                Self {
-                    $(
-                        $flag_name: (self.$flag_name && other.$flag_name),
-                    )*
-                    _ne: crate::NonExhaustive(()),
-                }
+            pub const fn intersection(self, #[allow(unused_variables)] other: Self) -> Self {
+                Self(self.0 & other.0)
             }
 
             /// Returns `self` without the flags set in `other`.
             #[inline]
-            pub const fn difference(&self, #[allow(unused_variables)] other: &Self) -> Self {
-                Self {
-                    $(
-                        $flag_name: (self.$flag_name ^ other.$flag_name),
-                    )*
-                    _ne: crate::NonExhaustive(()),
-                }
+            pub const fn difference(self, #[allow(unused_variables)] other: Self) -> Self {
+                Self(self.0 & !other.0)
             }
 
-            /// Returns the flags set in `self` or `other`, but not both.
+            /// Returns the flags that are set in `self` or `other`, but not in both.
             #[inline]
-            pub const fn symmetric_difference(&self, #[allow(unused_variables)] other: &Self) -> Self {
-                Self {
-                    $(
-                        $flag_name: (self.$flag_name ^ other.$flag_name),
-                    )*
-                    _ne: crate::NonExhaustive(()),
-                }
+            pub const fn symmetric_difference(self, #[allow(unused_variables)] other: Self) -> Self {
+                Self(self.0 ^ other.0)
             }
 
             #[allow(dead_code)]
@@ -365,7 +323,7 @@ macro_rules! vulkan_bitflags {
             ) -> Result<(), crate::RequirementNotMet> {
                 $(
                     $(
-                        if self.$flag_name && ![
+                        if self.intersects(Self::$flag_name) && ![
                             $(
                                 device.api_version() >= crate::Version::$api_version,
                             )?
@@ -403,7 +361,7 @@ macro_rules! vulkan_bitflags {
             ) -> Result<(), crate::RequirementNotMet> {
                 $(
                     $(
-                        if self.$flag_name && ![
+                        if self.intersects(Self::$flag_name) && ![
                             $(
                                 physical_device.api_version() >= crate::Version::$api_version,
                             )?
@@ -441,7 +399,7 @@ macro_rules! vulkan_bitflags {
             ) -> Result<(), crate::RequirementNotMet> {
                 $(
                     $(
-                        if self.$flag_name && ![
+                        if self.intersects(Self::$flag_name) && ![
                             $(
                                 instance.api_version() >= crate::Version::$api_version,
                             )?
@@ -465,39 +423,48 @@ macro_rules! vulkan_bitflags {
             }
         }
 
+        impl Default for $ty {
+            #[inline]
+            fn default() -> Self {
+                Self::empty()
+            }
+        }
+
+        impl std::fmt::Debug for $ty {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                #[allow(unused_mut)]
+                let mut written = false;
+
+                $(
+                    if self.intersects(Self::$flag_name) {
+                        if written {
+                            write!(f, " | ")?;
+                        }
+
+                        write!(f, stringify!($flag_name))?;
+                        written = true;
+                    }
+                )*
+
+                if !written {
+                    write!(f, "empty()")?;
+                }
+
+                Ok(())
+            }
+        }
+
         impl From<$ty> for ash::vk::$ty_ffi {
             #[inline]
-            fn from(#[allow(unused_variables)] val: $ty) -> Self {
-                #[allow(unused_mut)]
-                let mut result = ash::vk::$ty_ffi::empty();
-                $(
-                    if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
-                )*
-                result
+            fn from(val: $ty) -> Self {
+                ash::vk::$ty_ffi::from_raw(val.0)
             }
         }
 
         impl From<ash::vk::$ty_ffi> for $ty {
             #[inline]
-            fn from(#[allow(unused_variables)] val: ash::vk::$ty_ffi) -> Self {
-                Self {
-                    $(
-                        $flag_name: val.intersects(ash::vk::$ty_ffi::$flag_name_ffi),
-                    )*
-                    _ne: crate::NonExhaustive(()),
-                }
-            }
-        }
-
-        impl Default for $ty {
-            #[inline]
-            fn default() -> Self {
-                Self {
-                    $(
-                        $flag_name: false,
-                    )*
-                    _ne: crate::NonExhaustive(()),
-                }
+            fn from(val: ash::vk::$ty_ffi) -> Self {
+                Self(val.as_raw() & Self::all_raw())
             }
         }
 
@@ -506,14 +473,14 @@ macro_rules! vulkan_bitflags {
 
             #[inline]
             fn bitand(self, rhs: Self) -> Self {
-                self.intersection(&rhs)
+                self.intersection(rhs)
             }
         }
 
         impl std::ops::BitAndAssign for $ty {
             #[inline]
             fn bitand_assign(&mut self, rhs: Self) {
-                *self = self.intersection(&rhs);
+                *self = self.intersection(rhs);
             }
         }
 
@@ -522,14 +489,14 @@ macro_rules! vulkan_bitflags {
 
             #[inline]
             fn bitor(self, rhs: Self) -> Self {
-                self.union(&rhs)
+                self.union(rhs)
             }
         }
 
         impl std::ops::BitOrAssign for $ty {
             #[inline]
             fn bitor_assign(&mut self, rhs: Self) {
-                *self = self.union(&rhs);
+                *self = self.union(rhs);
             }
         }
 
@@ -538,14 +505,14 @@ macro_rules! vulkan_bitflags {
 
             #[inline]
             fn bitxor(self, rhs: Self) -> Self {
-                self.symmetric_difference(&rhs)
+                self.symmetric_difference(rhs)
             }
         }
 
         impl std::ops::BitXorAssign for $ty {
             #[inline]
             fn bitxor_assign(&mut self, rhs: Self) {
-                *self = self.symmetric_difference(&rhs);
+                *self = self.symmetric_difference(rhs);
             }
         }
 
@@ -554,14 +521,14 @@ macro_rules! vulkan_bitflags {
 
             #[inline]
             fn sub(self, rhs: Self) -> Self {
-                self.difference(&rhs)
+                self.difference(rhs)
             }
         }
 
         impl std::ops::SubAssign for $ty {
             #[inline]
             fn sub_assign(&mut self, rhs: Self) {
-                *self = self.difference(&rhs);
+                *self = self.difference(rhs);
             }
         }
     };

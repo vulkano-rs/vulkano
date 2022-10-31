@@ -159,7 +159,7 @@ impl Default for PrimitiveTopology {
 impl PrimitiveTopology {
     /// Returns the topology class of this topology.
     #[inline]
-    pub fn class(&self) -> PrimitiveTopologyClass {
+    pub fn class(self) -> PrimitiveTopologyClass {
         match self {
             Self::PointList => PrimitiveTopologyClass::Point,
             Self::LineList
@@ -187,7 +187,7 @@ pub enum PrimitiveTopologyClass {
 
 impl PrimitiveTopologyClass {
     /// Returns a representative example of this topology class.
-    pub(crate) fn example(&self) -> PrimitiveTopology {
+    pub(crate) fn example(self) -> PrimitiveTopology {
         match self {
             Self::Point => PrimitiveTopology::PointList,
             Self::Line => PrimitiveTopology::LineList,
@@ -251,7 +251,7 @@ vulkan_enum! {
 impl IndexType {
     /// Returns the size in bytes of indices of this type.
     #[inline]
-    pub fn size(&self) -> DeviceSize {
+    pub fn size(self) -> DeviceSize {
         match self {
             IndexType::U8 => 1,
             IndexType::U16 => 2,

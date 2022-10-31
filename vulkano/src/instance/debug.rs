@@ -105,7 +105,7 @@ impl DebugUtilsMessenger {
 
         if !instance.enabled_extensions().ext_debug_utils {
             return Err(DebugUtilsMessengerCreationError::RequirementNotMet {
-                required_for: "`DebugUtilsMessenger`",
+                required_for: "`DebugUtilsMessenger::new`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
@@ -319,15 +319,8 @@ impl DebugUtilsMessengerCreateInfo {
     #[inline]
     pub fn user_callback(user_callback: UserCallback) -> Self {
         Self {
-            message_severity: DebugUtilsMessageSeverity {
-                error: true,
-                warning: true,
-                ..DebugUtilsMessageSeverity::empty()
-            },
-            message_type: DebugUtilsMessageType {
-                general: true,
-                ..DebugUtilsMessageType::empty()
-            },
+            message_severity: DebugUtilsMessageSeverity::ERROR | DebugUtilsMessageSeverity::WARNING,
+            message_type: DebugUtilsMessageType::GENERAL,
             user_callback,
             _ne: crate::NonExhaustive(()),
         }
@@ -368,16 +361,16 @@ vulkan_bitflags! {
     DebugUtilsMessageSeverity = DebugUtilsMessageSeverityFlagsEXT(u32);
 
     /// An error that may cause undefined results, including an application crash.
-    error = ERROR,
+    ERROR = ERROR,
 
     /// An unexpected use.
-    warning = WARNING,
+    WARNING = WARNING,
 
     /// An informational message that may be handy when debugging an application.
-    information = INFO,
+    INFO = INFO,
 
     /// Diagnostic information from the loader and layers.
-    verbose = VERBOSE,
+    VERBOSE = VERBOSE,
 }
 
 vulkan_bitflags! {
@@ -386,13 +379,13 @@ vulkan_bitflags! {
     DebugUtilsMessageType = DebugUtilsMessageTypeFlagsEXT(u32);
 
     /// Specifies that some general event has occurred.
-    general = GENERAL,
+    GENERAL = GENERAL,
 
     /// Specifies that something has occurred during validation against the vulkan specification
-    validation = VALIDATION,
+    VALIDATION = VALIDATION,
 
     /// Specifies a potentially non-optimal use of Vulkan
-    performance = PERFORMANCE,
+    PERFORMANCE = PERFORMANCE,
 }
 
 /// A label to associate with a span of work in a queue.
@@ -529,16 +522,10 @@ mod tests {
             DebugUtilsMessenger::new(
                 instance,
                 DebugUtilsMessengerCreateInfo {
-                    message_severity: DebugUtilsMessageSeverity {
-                        error: true,
-                        ..DebugUtilsMessageSeverity::empty()
-                    },
-                    message_type: DebugUtilsMessageType {
-                        general: true,
-                        validation: true,
-                        performance: true,
-                        ..DebugUtilsMessageType::empty()
-                    },
+                    message_severity: DebugUtilsMessageSeverity::ERROR,
+                    message_type: DebugUtilsMessageType::GENERAL
+                        | DebugUtilsMessageType::VALIDATION
+                        | DebugUtilsMessageType::PERFORMANCE,
                     ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|_| {}))
                 },
             )

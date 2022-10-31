@@ -26,7 +26,7 @@ mod linux {
         },
         device::{
             physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
-            QueueCreateInfo,
+            QueueCreateInfo, QueueFlags,
         },
         format::Format,
         image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
@@ -107,16 +107,8 @@ mod linux {
                 array_layers: 1,
             },
             Format::R16G16B16A16_UNORM,
-            ImageUsage {
-                sampled: true,
-                transfer_src: true,
-                transfer_dst: true,
-                ..ImageUsage::empty()
-            },
-            ImageCreateFlags {
-                mutable_format: true,
-                ..ImageCreateFlags::empty()
-            },
+            ImageUsage::SAMPLED | ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST,
+            ImageCreateFlags::MUTABLE_FORMAT,
             [queue.queue_family_index()],
         )
         .unwrap();
@@ -132,10 +124,7 @@ mod linux {
             Semaphore::new(
                 device.clone(),
                 SemaphoreCreateInfo {
-                    export_handle_types: ExternalSemaphoreHandleTypes {
-                        opaque_fd: true,
-                        ..ExternalSemaphoreHandleTypes::empty()
-                    },
+                    export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
                     ..Default::default()
                 },
             )
@@ -145,10 +134,7 @@ mod linux {
             Semaphore::new(
                 device.clone(),
                 SemaphoreCreateInfo {
-                    export_handle_types: ExternalSemaphoreHandleTypes {
-                        opaque_fd: true,
-                        ..ExternalSemaphoreHandleTypes::empty()
-                    },
+                    export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
                     ..Default::default()
                 },
             )
@@ -486,7 +472,7 @@ mod linux {
                     .iter()
                     .enumerate()
                     .position(|(i, q)| {
-                        q.queue_flags.graphics
+                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
                             && p.surface_support(i as u32, &surface).unwrap_or(false)
                     })
                     .map(|i| (p, i as u32))
@@ -550,10 +536,7 @@ mod linux {
                     min_image_count: surface_capabilities.min_image_count,
                     image_format,
                     image_extent: window.inner_size().into(),
-                    image_usage: ImageUsage {
-                        color_attachment: true,
-                        ..ImageUsage::empty()
-                    },
+                    image_usage: ImageUsage::COLOR_ATTACHMENT,
                     composite_alpha: surface_capabilities
                         .supported_composite_alpha
                         .iter()
@@ -583,10 +566,7 @@ mod linux {
         ];
         let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
             &memory_allocator,
-            BufferUsage {
-                vertex_buffer: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::VERTEX_BUFFER,
             false,
             vertices,
         )

@@ -619,7 +619,7 @@ impl Subpass {
 
         self.attachment_desc(atch_num)
             .format
-            .map_or(false, |f| f.aspects().depth)
+            .map_or(false, |f| f.aspects().intersects(ImageAspects::DEPTH))
     }
 
     /// Returns true if the subpass has a depth attachment or a depth-stencil attachment whose
@@ -643,7 +643,7 @@ impl Subpass {
 
         self.attachment_desc(atch_num)
             .format
-            .map_or(false, |f| f.aspects().depth)
+            .map_or(false, |f| f.aspects().intersects(ImageAspects::DEPTH))
     }
 
     /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment.
@@ -657,7 +657,7 @@ impl Subpass {
 
         self.attachment_desc(atch_num)
             .format
-            .map_or(false, |f| f.aspects().stencil)
+            .map_or(false, |f| f.aspects().intersects(ImageAspects::STENCIL))
     }
 
     /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment whose
@@ -682,7 +682,7 @@ impl Subpass {
 
         self.attachment_desc(atch_num)
             .format
-            .map_or(false, |f| f.aspects().stencil)
+            .map_or(false, |f| f.aspects().intersects(ImageAspects::STENCIL))
     }
 
     /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`
@@ -1185,27 +1185,27 @@ vulkan_bitflags! {
     ResolveModes = ResolveModeFlags(u32);
 
     // TODO: document
-    sample_zero = SAMPLE_ZERO,
+    SAMPLE_ZERO = SAMPLE_ZERO,
 
     // TODO: document
-    average = AVERAGE,
+    AVERAGE = AVERAGE,
 
     // TODO: document
-    min = MIN,
+    MIN = MIN,
 
     // TODO: document
-    max = MAX,
+    MAX = MAX,
 }
 
 impl ResolveModes {
     /// Returns whether `self` contains the given `mode`.
     #[inline]
-    pub fn contains_mode(&self, mode: ResolveMode) -> bool {
+    pub fn contains_mode(self, mode: ResolveMode) -> bool {
         match mode {
-            ResolveMode::SampleZero => self.sample_zero,
-            ResolveMode::Average => self.average,
-            ResolveMode::Min => self.min,
-            ResolveMode::Max => self.max,
+            ResolveMode::SampleZero => self.intersects(ResolveModes::SAMPLE_ZERO),
+            ResolveMode::Average => self.intersects(ResolveModes::AVERAGE),
+            ResolveMode::Min => self.intersects(ResolveModes::MIN),
+            ResolveMode::Max => self.intersects(ResolveModes::MAX),
         }
     }
 }

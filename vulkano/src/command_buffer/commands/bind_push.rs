@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::{BufferAccess, BufferContents, TypedBufferAccess},
+    buffer::{BufferAccess, BufferContents, BufferUsage, TypedBufferAccess},
     command_buffer::{
         allocator::CommandBufferAllocator,
         auto::RenderPassStateType,
@@ -21,7 +21,7 @@ use crate::{
         DescriptorSetUpdateError, DescriptorSetWithOffsets, DescriptorSetsCollection,
         DescriptorWriteInfo, WriteDescriptorSet,
     },
-    device::DeviceOwned,
+    device::{DeviceOwned, QueueFlags},
     pipeline::{
         graphics::{
             input_assembly::{Index, IndexType},
@@ -104,12 +104,18 @@ where
         // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-00361
         match pipeline_bind_point {
             PipelineBindPoint::Compute => {
-                if !queue_family_properties.queue_flags.compute {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::COMPUTE)
+                {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
             PipelineBindPoint::Graphics => {
-                if !queue_family_properties.queue_flags.graphics {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::GRAPHICS)
+                {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
@@ -152,11 +158,12 @@ where
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
     /// - Panics if `self` and `index_buffer` do not belong to the same device.
-    /// - Panics if `index_buffer` does not have the
-    ///   [`index_buffer`](crate::buffer::BufferUsage::index_buffer) usage enabled.
-    /// - If the index buffer contains `u8` indices, panics if the
-    ///   [`index_type_uint8`](crate::device::Features::index_type_uint8) feature is not
-    ///   enabled on the device.
+    /// - Panics if `index_buffer` does not have the [`BufferUsage::INDEX_BUFFER`] usage enabled.
+    /// - If the index buffer contains `u8` indices, panics if the [`index_type_uint8`] feature is
+    ///   not enabled on the device.
+    ///
+    /// [`BufferUsage::INDEX_BUFFER`]: crate::buffer::BufferUsage::INDEX_BUFFER
+    /// [`index_type_uint8`]: crate::device::Features::index_type_uint8
     pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Arc<Ib>) -> &mut Self
     where
         Ib: TypedBufferAccess<Content = [I]> + 'static,
@@ -180,7 +187,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBindIndexBuffer-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -188,7 +198,7 @@ where
         assert_eq!(self.device(), index_buffer.device());
 
         // VUID-vkCmdBindIndexBuffer-buffer-00433
-        if !index_buffer.usage().index_buffer {
+        if !index_buffer.usage().intersects(BufferUsage::INDEX_BUFFER) {
             return Err(BindPushError::IndexBufferMissingUsage);
         }
 
@@ -232,7 +242,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBindPipeline-pipelineBindPoint-00777
-        if !queue_family_properties.queue_flags.compute {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE)
+        {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -265,7 +278,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBindPipeline-pipelineBindPoint-00778
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -322,11 +338,13 @@ where
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
     /// - Panics if the highest vertex buffer binding being bound is greater than the
-    ///   [`max_vertex_input_bindings`](crate::device::Properties::max_vertex_input_bindings)
-    //    device property.
+    ///   [`max_vertex_input_bindings`] device property.
     /// - Panics if `self` and any element of `vertex_buffers` do not belong to the same device.
     /// - Panics if any element of `vertex_buffers` does not have the
-    ///   [`vertex_buffer`](crate::buffer::BufferUsage::vertex_buffer) usage enabled.
+    ///   [`BufferUsage::VERTEX_BUFFER`] usage enabled.
+    ///
+    /// [`max_vertex_input_bindings`]: crate::device::Properties::max_vertex_input_bindings
+    /// [`BufferUsage::VERTEX_BUFFER`]: crate::buffer::BufferUsage::VERTEX_BUFFER
     pub fn bind_vertex_buffers(
         &mut self,
         first_binding: u32,
@@ -355,7 +373,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBindVertexBuffers-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -383,7 +404,7 @@ where
             assert_eq!(self.device(), buffer.device());
 
             // VUID-vkCmdBindVertexBuffers-pBuffers-00627
-            if !buffer.usage().vertex_buffer {
+            if !buffer.usage().intersects(BufferUsage::VERTEX_BUFFER) {
                 return Err(BindPushError::VertexBufferMissingUsage);
             }
         }
@@ -554,7 +575,7 @@ where
     ) -> Result<(), BindPushError> {
         if !self.device().enabled_extensions().khr_push_descriptor {
             return Err(BindPushError::RequirementNotMet {
-                required_for: "`push_descriptor_set`",
+                required_for: "`AutoCommandBufferBuilder::push_descriptor_set`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_push_descriptor"],
                     ..Default::default()
@@ -571,12 +592,18 @@ where
         // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-00363
         match pipeline_bind_point {
             PipelineBindPoint::Compute => {
-                if !queue_family_properties.queue_flags.compute {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::COMPUTE)
+                {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
             PipelineBindPoint::Graphics => {
-                if !queue_family_properties.queue_flags.graphics {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::GRAPHICS)
+                {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
@@ -999,7 +1026,7 @@ impl UnsafeCommandBufferBuilder {
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner.buffer.usage().index_buffer);
+        debug_assert!(inner.buffer.usage().intersects(BufferUsage::INDEX_BUFFER));
 
         (fns.v1_0.cmd_bind_index_buffer)(
             self.handle,
@@ -1184,7 +1211,7 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
     #[inline]
     pub fn add(&mut self, buffer: &dyn BufferAccess) {
         let inner = buffer.inner();
-        debug_assert!(inner.buffer.usage().vertex_buffer);
+        debug_assert!(inner.buffer.usage().intersects(BufferUsage::VERTEX_BUFFER));
         self.raw_buffers.push(inner.buffer.handle());
         self.offsets.push(inner.offset);
     }

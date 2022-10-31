@@ -216,14 +216,7 @@ where
     ///
     /// - Panics if `T` has zero size.
     pub fn upload(allocator: Arc<A>) -> CpuBufferPool<T, A> {
-        CpuBufferPool::new(
-            allocator,
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            },
-            MemoryUsage::Upload,
-        )
+        CpuBufferPool::new(allocator, BufferUsage::TRANSFER_SRC, MemoryUsage::Upload)
     }
 
     /// Builds a `CpuBufferPool` meant for simple downloads.
@@ -235,14 +228,7 @@ where
     ///
     /// - Panics if `T` has zero size.
     pub fn download(allocator: Arc<A>) -> CpuBufferPool<T, A> {
-        CpuBufferPool::new(
-            allocator,
-            BufferUsage {
-                transfer_dst: true,
-                ..BufferUsage::empty()
-            },
-            MemoryUsage::Download,
-        )
+        CpuBufferPool::new(allocator, BufferUsage::TRANSFER_DST, MemoryUsage::Download)
     }
 
     /// Builds a `CpuBufferPool` meant for usage as a uniform buffer.
@@ -254,14 +240,7 @@ where
     ///
     /// - Panics if `T` has zero size.
     pub fn uniform_buffer(allocator: Arc<A>) -> CpuBufferPool<T, A> {
-        CpuBufferPool::new(
-            allocator,
-            BufferUsage {
-                uniform_buffer: true,
-                ..BufferUsage::empty()
-            },
-            MemoryUsage::Upload,
-        )
+        CpuBufferPool::new(allocator, BufferUsage::UNIFORM_BUFFER, MemoryUsage::Upload)
     }
 
     /// Builds a `CpuBufferPool` meant for usage as a vertex buffer.
@@ -273,14 +252,7 @@ where
     ///
     /// - Panics if `T` has zero size.
     pub fn vertex_buffer(allocator: Arc<A>) -> CpuBufferPool<T, A> {
-        CpuBufferPool::new(
-            allocator,
-            BufferUsage {
-                vertex_buffer: true,
-                ..BufferUsage::empty()
-            },
-            MemoryUsage::Upload,
-        )
+        CpuBufferPool::new(allocator, BufferUsage::VERTEX_BUFFER, MemoryUsage::Upload)
     }
 
     /// Builds a `CpuBufferPool` meant for usage as a indirect buffer.
@@ -292,14 +264,7 @@ where
     ///
     /// - Panics if `T` has zero size.
     pub fn indirect_buffer(allocator: Arc<A>) -> CpuBufferPool<T, A> {
-        CpuBufferPool::new(
-            allocator,
-            BufferUsage {
-                indirect_buffer: true,
-                ..BufferUsage::empty()
-            },
-            MemoryUsage::Upload,
-        )
+        CpuBufferPool::new(allocator, BufferUsage::INDIRECT_BUFFER, MemoryUsage::Upload)
     }
 }
 
@@ -538,7 +503,7 @@ where
                 let idx = current_buffer.next_index.load(Ordering::SeqCst);
 
                 // Find the required alignment in bytes.
-                let align_uniform = if self.buffer_usage.uniform_buffer {
+                let align_uniform = if self.buffer_usage.intersects(BufferUsage::UNIFORM_BUFFER) {
                     self.device()
                         .physical_device()
                         .properties()
@@ -546,7 +511,7 @@ where
                 } else {
                     1
                 };
-                let align_storage = if self.buffer_usage.storage_buffer {
+                let align_storage = if self.buffer_usage.intersects(BufferUsage::STORAGE_BUFFER) {
                     self.device()
                         .physical_device()
                         .properties()

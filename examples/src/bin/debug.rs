@@ -87,37 +87,31 @@ fn main() {
         DebugUtilsMessenger::new(
             instance.clone(),
             DebugUtilsMessengerCreateInfo {
-                message_severity: DebugUtilsMessageSeverity {
-                    error: true,
-                    warning: true,
-                    information: true,
-                    verbose: true,
-                    ..DebugUtilsMessageSeverity::empty()
-                },
-                message_type: DebugUtilsMessageType {
-                    general: true,
-                    validation: true,
-                    performance: true,
-                    ..DebugUtilsMessageType::empty()
-                },
+                message_severity: DebugUtilsMessageSeverity::ERROR
+                    | DebugUtilsMessageSeverity::WARNING
+                    | DebugUtilsMessageSeverity::INFO
+                    | DebugUtilsMessageSeverity::VERBOSE,
+                message_type: DebugUtilsMessageType::GENERAL
+                    | DebugUtilsMessageType::VALIDATION
+                    | DebugUtilsMessageType::PERFORMANCE,
                 ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
-                    let severity = if msg.severity.error {
+                    let severity = if msg.severity.intersects(DebugUtilsMessageSeverity::ERROR) {
                         "error"
-                    } else if msg.severity.warning {
+                    } else if msg.severity.intersects(DebugUtilsMessageSeverity::WARNING) {
                         "warning"
-                    } else if msg.severity.information {
+                    } else if msg.severity.intersects(DebugUtilsMessageSeverity::INFO) {
                         "information"
-                    } else if msg.severity.verbose {
+                    } else if msg.severity.intersects(DebugUtilsMessageSeverity::VERBOSE) {
                         "verbose"
                     } else {
                         panic!("no-impl");
                     };
 
-                    let ty = if msg.ty.general {
+                    let ty = if msg.ty.intersects(DebugUtilsMessageType::GENERAL) {
                         "general"
-                    } else if msg.ty.validation {
+                    } else if msg.ty.intersects(DebugUtilsMessageType::VALIDATION) {
                         "validation"
-                    } else if msg.ty.performance {
+                    } else if msg.ty.intersects(DebugUtilsMessageType::PERFORMANCE) {
                         "performance"
                     } else {
                         panic!("no-impl");

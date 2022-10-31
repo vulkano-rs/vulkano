@@ -17,93 +17,93 @@ vulkan_bitflags! {
     BufferUsage = BufferUsageFlags(u32);
 
     /// The buffer can be used as a source for transfer, blit, resolve and clear commands.
-    transfer_src = TRANSFER_SRC,
+    TRANSFER_SRC = TRANSFER_SRC,
 
     /// The buffer can be used as a destination for transfer, blit, resolve and clear commands.
-    transfer_dst = TRANSFER_DST,
+    TRANSFER_DST = TRANSFER_DST,
 
     /// The buffer can be used as a uniform texel buffer in a descriptor set.
-    uniform_texel_buffer = UNIFORM_TEXEL_BUFFER,
+    UNIFORM_TEXEL_BUFFER = UNIFORM_TEXEL_BUFFER,
 
     /// The buffer can be used as a storage texel buffer in a descriptor set.
-    storage_texel_buffer = STORAGE_TEXEL_BUFFER,
+    STORAGE_TEXEL_BUFFER = STORAGE_TEXEL_BUFFER,
 
     /// The buffer can be used as a uniform buffer in a descriptor set.
-    uniform_buffer = UNIFORM_BUFFER,
+    UNIFORM_BUFFER = UNIFORM_BUFFER,
 
     /// The buffer can be used as a storage buffer in a descriptor set.
-    storage_buffer = STORAGE_BUFFER,
+    STORAGE_BUFFER = STORAGE_BUFFER,
 
     /// The buffer can be used as an index buffer.
-    index_buffer = INDEX_BUFFER,
+    INDEX_BUFFER = INDEX_BUFFER,
 
     /// The buffer can be used as a vertex or instance buffer.
-    vertex_buffer = VERTEX_BUFFER,
+    VERTEX_BUFFER = VERTEX_BUFFER,
 
     /// The buffer can be used as an indirect buffer.
-    indirect_buffer = INDIRECT_BUFFER,
+    INDIRECT_BUFFER = INDIRECT_BUFFER,
 
     /// The buffer's device address can be retrieved.
     ///
     /// A buffer created with this usage can only be bound to device memory allocated with the
-    /// [`device_address`] flag set unless the [`ext_buffer_device_address`] extension is enabled
-    /// on the device.
+    /// [`MemoryAllocateFlags::DEVICE_ADDRESS`] flag, unless the [`ext_buffer_device_address`]
+    /// extension is enabled on the device.
     ///
-    /// [`device_address`]: crate::memory::MemoryAllocateFlags::device_address
+    /// [`MemoryAllocateFlags::DEVICE_ADDRESS`]: crate::memory::MemoryAllocateFlags::DEVICE_ADDRESS
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
-    shader_device_address = SHADER_DEVICE_ADDRESS {
+    SHADER_DEVICE_ADDRESS = SHADER_DEVICE_ADDRESS {
         api_version: V1_2,
         device_extensions: [khr_buffer_device_address, ext_buffer_device_address],
     },
 
     /*
     // TODO: document
-    video_decode_src = VIDEO_DECODE_SRC_KHR {
+    VIDEO_DECODE_SRC = VIDEO_DECODE_SRC_KHR {
         device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
-    video_decode_dst = VIDEO_DECODE_DST_KHR {
+    VIDEO_DECODE_DST = VIDEO_DECODE_DST_KHR {
         device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
-    transform_feedback_buffer = TRANSFORM_FEEDBACK_BUFFER_EXT {
+    TRANSFORM_FEEDBACK_BUFFER = TRANSFORM_FEEDBACK_BUFFER_EXT {
         device_extensions: [ext_transform_feedback],
     },
 
     // TODO: document
-    transform_feedback_counter_buffer = TRANSFORM_FEEDBACK_COUNTER_BUFFER_EXT {
+    TRANSFORM_FEEDBACK_COUNTER_BUFFER = TRANSFORM_FEEDBACK_COUNTER_BUFFER_EXT {
         device_extensions: [ext_transform_feedback],
     },
 
     // TODO: document
-    conditional_rendering = CONDITIONAL_RENDERING_EXT {
+    CONDITIONAL_RENDERING = CONDITIONAL_RENDERING_EXT {
         device_extensions: [ext_conditional_rendering],
     },
 
     // TODO: document
-    acceleration_structure_build_input_read_only = ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR {
+    ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR = ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR {
         device_extensions: [khr_acceleration_structure],
     },
 
     // TODO: document
-    acceleration_structure_storage = ACCELERATION_STRUCTURE_STORAGE_KHR {
+    ACCELERATION_STRUCTURE_STORAGE = ACCELERATION_STRUCTURE_STORAGE_KHR {
         device_extensions: [khr_acceleration_structure],
     },
 
     // TODO: document
-    shader_binding_table = SHADER_BINDING_TABLE_KHR {
+    SHADER_BINDING_TABLE = SHADER_BINDING_TABLE_KHR {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
-    video_encode_dst = VIDEO_ENCODE_DST_KHR {
+    VIDEO_ENCODE_DST = VIDEO_ENCODE_DST_KHR {
         device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
-    video_encode_src = VIDEO_ENCODE_SRC_KHR {
+    VIDEO_ENCODE_SRC = VIDEO_ENCODE_SRC_KHR {
         device_extensions: [khr_video_encode_queue],
     },
      */

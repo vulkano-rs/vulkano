@@ -26,6 +26,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFlags,
     },
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
@@ -57,7 +58,7 @@ fn main() {
         .filter_map(|p| {
             p.queue_family_properties()
                 .iter()
-                .position(|q| q.queue_flags.compute)
+                .position(|q| q.queue_flags.intersects(QueueFlags::COMPUTE))
                 .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
@@ -168,10 +169,7 @@ fn main() {
 
     let input_buffer = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
-        BufferUsage {
-            uniform_buffer: true,
-            ..BufferUsage::empty()
-        },
+        BufferUsage::UNIFORM_BUFFER,
         false,
         aligned_data.into_iter(),
     )
@@ -179,10 +177,7 @@ fn main() {
 
     let output_buffer = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
-        BufferUsage {
-            storage_buffer: true,
-            ..BufferUsage::empty()
-        },
+        BufferUsage::STORAGE_BUFFER,
         false,
         (0..12).map(|_| 0u32),
     )

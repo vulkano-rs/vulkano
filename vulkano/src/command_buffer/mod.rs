@@ -229,10 +229,12 @@ pub struct CommandBufferInheritanceInfo {
     /// Which pipeline statistics queries are allowed to be active on the primary command buffer
     /// when this secondary command buffer is executed.
     ///
-    /// The `pipeline_statistics_query` feature must be enabled if any of the flags of this value
-    /// are set.
+    /// If this value is not empty, the [`pipeline_statistics_query`] feature must be enabled on
+    /// the device.
     ///
     /// The default value is [`QueryPipelineStatisticFlags::empty()`].
+    ///
+    /// [`pipeline_statistics_query`]: crate::device::Features::pipeline_statistics_query
     pub query_statistics_flags: QueryPipelineStatisticFlags,
 
     pub _ne: crate::NonExhaustive,
@@ -326,10 +328,11 @@ pub struct CommandBufferInheritanceRenderingInfo {
     /// indices that are rendered to. The value is a bitmask, so that that for example `0b11` will
     /// draw to the first two views and `0b101` will draw to the first and third view.
     ///
-    /// If set to a nonzero value, the [`multiview`](crate::device::Features::multiview) feature
-    /// must be enabled on the device.
+    /// If set to a nonzero value, then the [`multiview`] feature must be enabled on the device.
     ///
     /// The default value is `0`.
+    ///
+    /// [`multiview`]: crate::device::Features::multiview
     pub view_mask: u32,
 
     /// The formats of the color attachments that will be used during rendering.
@@ -449,11 +452,13 @@ pub struct SemaphoreSubmitInfo {
     /// For a semaphore signal operation, specifies the pipeline stages in the first synchronization
     /// scope: stages of queue operations preceding the signal operation that must complete before
     /// the semaphore is signalled.
-    /// If not set to `all_commands` only, the
-    /// [`synchronization2`](crate::device::Features::synchronization2) feature must be enabled
-    /// on the device.
+    /// If this value does not equal [`ALL_COMMANDS`], then the [`synchronization2`] feature must
+    /// be enabled on the device.
     ///
-    /// The default value has only `all_commands` set.
+    /// The default value is [`ALL_COMMANDS`].
+    ///
+    /// [`ALL_COMMANDS`]: PipelineStages::ALL_COMMANDS
+    /// [`synchronization2`]: crate::device::Features::synchronization2
     pub stages: PipelineStages,
 
     pub _ne: crate::NonExhaustive,
@@ -465,10 +470,7 @@ impl SemaphoreSubmitInfo {
     pub fn semaphore(semaphore: Arc<Semaphore>) -> Self {
         Self {
             semaphore,
-            stages: PipelineStages {
-                all_commands: true,
-                ..PipelineStages::empty()
-            },
+            stages: PipelineStages::ALL_COMMANDS,
             _ne: crate::NonExhaustive(()),
         }
     }

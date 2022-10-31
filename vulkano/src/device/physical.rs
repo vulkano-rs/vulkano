@@ -14,7 +14,7 @@ use crate::{
     device::{properties::Properties, DeviceExtensions, Features, FeaturesFfi, PropertiesFfi},
     format::{Format, FormatProperties},
     image::{
-        ImageFormatInfo, ImageFormatProperties, ImageUsage, SparseImageFormatInfo,
+        ImageAspects, ImageFormatInfo, ImageFormatProperties, ImageUsage, SparseImageFormatInfo,
         SparseImageFormatProperties,
     },
     instance::Instance,
@@ -442,7 +442,7 @@ impl PhysicalDevice {
     ) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().ext_directfb_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`directfb_presentation_support`",
+                required_for: "`PhysicalDevice::directfb_presentation_support`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_directfb_surface"],
                     ..Default::default()
@@ -510,7 +510,7 @@ impl PhysicalDevice {
                 .khr_external_memory_capabilities)
         {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`external_buffer_properties`",
+                required_for: "`PhysicalDevice::external_buffer_properties`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_1),
                     instance_extensions: &["khr_external_memory_capabilities"],
@@ -623,7 +623,7 @@ impl PhysicalDevice {
                 .khr_external_fence_capabilities)
         {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`external_fence_properties`",
+                required_for: "`PhysicalDevice::external_fence_properties`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_1),
                     instance_extensions: &["khr_external_fence_capabilities"],
@@ -731,7 +731,7 @@ impl PhysicalDevice {
                 .khr_external_semaphore_capabilities)
         {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`external_semaphore_properties`",
+                required_for: "`PhysicalDevice::external_semaphore_properties`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_1),
                     instance_extensions: &["khr_external_semaphore_capabilities"],
@@ -941,13 +941,14 @@ impl PhysicalDevice {
         let format = format.unwrap();
         let aspects = format.aspects();
 
-        let has_separate_stencil_usage =
-            if stencil_usage.is_empty() || !(aspects.depth && aspects.stencil) {
-                stencil_usage = usage;
-                false
-            } else {
-                stencil_usage == usage
-            };
+        let has_separate_stencil_usage = if stencil_usage.is_empty()
+            || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        {
+            stencil_usage = usage;
+            false
+        } else {
+            stencil_usage == usage
+        };
 
         // VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter
         format.validate_physical_device(self)?;
@@ -969,7 +970,8 @@ impl PhysicalDevice {
                 || self.supported_extensions().ext_separate_stencil_usage)
             {
                 return Err(PhysicalDeviceError::RequirementNotMet {
-                    required_for: "`image_format_info.stencil_usage` is `Some` and `image_format_info.format` has both a depth and a stencil aspect",
+                    required_for: "`image_format_info.stencil_usage` is `Some` and \
+                        `image_format_info.format` has both a depth and a stencil aspect",
                     requires_one_of: RequiresOneOf {
                         api_version: Some(Version::V1_2),
                         device_extensions: &["ext_separate_stencil_usage"],
@@ -1040,7 +1042,9 @@ impl PhysicalDevice {
 
             let aspects = format.unwrap().aspects();
 
-            if stencil_usage.is_empty() || !(aspects.depth && aspects.stencil) {
+            if stencil_usage.is_empty()
+                || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+            {
                 *stencil_usage = *usage;
             }
         }
@@ -1213,7 +1217,7 @@ impl PhysicalDevice {
     ) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().qnx_screen_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`qnx_screen_presentation_support`",
+                required_for: "`PhysicalDevice::qnx_screen_presentation_support`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["qnx_screen_surface"],
                     ..Default::default()
@@ -1486,7 +1490,7 @@ impl PhysicalDevice {
             || self.instance.enabled_extensions().khr_surface)
         {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`surface_capabilities`",
+                required_for: "`PhysicalDevice::surface_capabilities`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
                     ..Default::default()
@@ -1668,7 +1672,7 @@ impl PhysicalDevice {
             supported_usage_flags: {
                 let usage =
                     ImageUsage::from(capabilities_vk.surface_capabilities.supported_usage_flags);
-                debug_assert!(usage.color_attachment); // specs say that this must be true
+                debug_assert!(usage.intersects(ImageUsage::COLOR_ATTACHMENT)); // specs say that this must be true
                 usage
             },
 
@@ -1711,7 +1715,7 @@ impl PhysicalDevice {
             || self.instance.enabled_extensions().khr_surface)
         {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`surface_formats`",
+                required_for: "`PhysicalDevice::surface_formats`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
                     ..Default::default()
@@ -1928,7 +1932,7 @@ impl PhysicalDevice {
     fn validate_surface_present_modes(&self, surface: &Surface) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`surface_present_modes`",
+                required_for: "`PhysicalDevice::surface_present_modes`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_surface"],
                     ..Default::default()
@@ -2022,7 +2026,7 @@ impl PhysicalDevice {
     ) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`surface_support`",
+                required_for: "`PhysicalDevice::surface_support`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_surface"],
                     ..Default::default()
@@ -2084,7 +2088,7 @@ impl PhysicalDevice {
     fn validate_tool_properties(&self) -> Result<(), PhysicalDeviceError> {
         if !(self.api_version() >= Version::V1_3 || self.supported_extensions().ext_tooling_info) {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`tooling_properties`",
+                required_for: "`PhysicalDevice::tooling_properties`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     device_extensions: &["ext_tooling_info"],
@@ -2195,7 +2199,7 @@ impl PhysicalDevice {
     ) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_wayland_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`wayland_presentation_support`",
+                required_for: "`PhysicalDevice::wayland_presentation_support`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_wayland_surface"],
                     ..Default::default()
@@ -2250,7 +2254,7 @@ impl PhysicalDevice {
     ) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_win32_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`win32_presentation_support`",
+                required_for: "`PhysicalDevice::win32_presentation_support`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_win32_surface"],
                     ..Default::default()
@@ -2304,7 +2308,7 @@ impl PhysicalDevice {
     ) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_xcb_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`xcb_presentation_support`",
+                required_for: "`PhysicalDevice::xcb_presentation_support`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_xcb_surface"],
                     ..Default::default()
@@ -2368,7 +2372,7 @@ impl PhysicalDevice {
     ) -> Result<(), PhysicalDeviceError> {
         if !self.instance.enabled_extensions().khr_xlib_surface {
             return Err(PhysicalDeviceError::RequirementNotMet {
-                required_for: "`xlib_presentation_support`",
+                required_for: "`PhysicalDevice::xlib_presentation_support`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["khr_xlib_surface"],
                     ..Default::default()
@@ -2555,30 +2559,30 @@ vulkan_bitflags! {
     ToolPurposes = ToolPurposeFlags(u32);
 
     /// The tool provides validation of API usage.
-    validation = VALIDATION,
+    VALIDATION = VALIDATION,
 
     /// The tool provides profiling of API usage.
-    profiling = PROFILING,
+    PROFILING = PROFILING,
 
     /// The tool is capturing data about the application's API usage.
-    tracing = TRACING,
+    TRACING = TRACING,
 
     /// The tool provides additional API features or extensions on top of the underlying
     /// implementation.
-    additional_features = ADDITIONAL_FEATURES,
+    ADDITIONAL_FEATURES = ADDITIONAL_FEATURES,
 
     /// The tool modifies the API features, limits or extensions presented to the application.
-    modifying_features = MODIFYING_FEATURES,
+    MODIFYING_FEATURES = MODIFYING_FEATURES,
 
     /// The tool reports information to the user via a
     /// [`DebugUtilsMessenger`](crate::instance::debug::DebugUtilsMessenger).
-    debug_reporting = DEBUG_REPORTING_EXT {
+    DEBUG_REPORTING = DEBUG_REPORTING_EXT {
         instance_extensions: [ext_debug_utils, ext_debug_report],
     },
 
     /// The tool consumes debug markers or object debug annotation, queue labels or command buffer
     /// labels.
-    debug_markers = DEBUG_MARKERS_EXT {
+    DEBUG_MARKERS = DEBUG_MARKERS_EXT {
         device_extensions: [ext_debug_marker],
         instance_extensions: [ext_debug_utils],
     },
@@ -2590,31 +2594,31 @@ vulkan_bitflags! {
     SubgroupFeatures = SubgroupFeatureFlags(u32);
 
     // TODO: document
-    basic = BASIC,
+    BASIC = BASIC,
 
     // TODO: document
-    vote = VOTE,
+    VOTE = VOTE,
 
     // TODO: document
-    arithmetic = ARITHMETIC,
+    ARITHMETIC = ARITHMETIC,
 
     // TODO: document
-    ballot = BALLOT,
+    BALLOT = BALLOT,
 
     // TODO: document
-    shuffle = SHUFFLE,
+    SHUFFLE = SHUFFLE,
 
     // TODO: document
-    shuffle_relative = SHUFFLE_RELATIVE,
+    SHUFFLE_RELATIVE = SHUFFLE_RELATIVE,
 
     // TODO: document
-    clustered = CLUSTERED,
+    CLUSTERED = CLUSTERED,
 
     // TODO: document
-    quad = QUAD,
+    QUAD = QUAD,
 
     // TODO: document
-    partitioned = PARTITIONED_NV {
+    PARTITIONED = PARTITIONED_NV {
         device_extensions: [nv_shader_subgroup_partitioned],
     },
 }

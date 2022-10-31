@@ -118,7 +118,7 @@ vulkan_bitflags! {
     ///
     /// [`bind_memory`]: sys::RawBuffer::bind_memory
     /// [`sparse_binding`]: crate::device::Features::sparse_binding
-    sparse_binding = SPARSE_BINDING,
+    SPARSE_BINDING = SPARSE_BINDING,
 
     /// The buffer can be used without being fully resident in memory at the time of use.
     ///
@@ -127,7 +127,7 @@ vulkan_bitflags! {
     /// The [`sparse_residency_buffer`] feature must be enabled on the device.
     ///
     /// [`sparse_residency_buffer`]: crate::device::Features::sparse_residency_buffer
-    sparse_residency = SPARSE_RESIDENCY,
+    SPARSE_RESIDENCY = SPARSE_RESIDENCY,
 
     /// The buffer's memory can alias with another buffer or a different part of the same buffer.
     ///
@@ -136,13 +136,13 @@ vulkan_bitflags! {
     /// The [`sparse_residency_aliased`] feature must be enabled on the device.
     ///
     /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
-    sparse_aliased = SPARSE_ALIASED,
+    SPARSE_ALIASED = SPARSE_ALIASED,
 
     /// The buffer is protected, and can only be used in combination with protected memory and other
     /// protected objects.
     ///
     /// The device API version must be at least 1.1.
-    protected = PROTECTED {
+    PROTECTED = PROTECTED {
         api_version: V1_1,
     },
 
@@ -150,7 +150,7 @@ vulkan_bitflags! {
     ///
     /// The device API version must be at least 1.2, or either the [`khr_buffer_device_address`] or
     /// [`ext_buffer_device_address`] extension must be enabled on the device.
-    device_address_capture_replay = DEVICE_ADDRESS_CAPTURE_REPLAY {
+    DEVICE_ADDRESS_CAPTURE_REPLAY = DEVICE_ADDRESS_CAPTURE_REPLAY {
         api_version: V1_2,
         device_extensions: [khr_buffer_device_address, ext_buffer_device_address],
     },

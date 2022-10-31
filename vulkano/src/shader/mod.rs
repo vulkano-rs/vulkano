@@ -512,7 +512,7 @@ pub enum GeometryShaderInput {
 impl GeometryShaderInput {
     /// Returns true if the given primitive topology can be used as input for this geometry shader.
     #[inline]
-    pub fn is_compatible_with(&self, topology: PrimitiveTopology) -> bool {
+    pub fn is_compatible_with(self, topology: PrimitiveTopology) -> bool {
         match self {
             Self::Points => matches!(topology, PrimitiveTopology::PointList),
             Self::Lines => matches!(
@@ -1151,54 +1151,18 @@ impl From<ShaderStage> for ShaderStages {
     #[inline]
     fn from(val: ShaderStage) -> Self {
         match val {
-            ShaderStage::Vertex => Self {
-                vertex: true,
-                ..Self::empty()
-            },
-            ShaderStage::TessellationControl => Self {
-                tessellation_control: true,
-                ..Self::empty()
-            },
-            ShaderStage::TessellationEvaluation => Self {
-                tessellation_evaluation: true,
-                ..Self::empty()
-            },
-            ShaderStage::Geometry => Self {
-                geometry: true,
-                ..Self::empty()
-            },
-            ShaderStage::Fragment => Self {
-                fragment: true,
-                ..Self::empty()
-            },
-            ShaderStage::Compute => Self {
-                compute: true,
-                ..Self::empty()
-            },
-            ShaderStage::Raygen => Self {
-                raygen: true,
-                ..Self::empty()
-            },
-            ShaderStage::AnyHit => Self {
-                any_hit: true,
-                ..Self::empty()
-            },
-            ShaderStage::ClosestHit => Self {
-                closest_hit: true,
-                ..Self::empty()
-            },
-            ShaderStage::Miss => Self {
-                miss: true,
-                ..Self::empty()
-            },
-            ShaderStage::Intersection => Self {
-                intersection: true,
-                ..Self::empty()
-            },
-            ShaderStage::Callable => Self {
-                callable: true,
-                ..Self::empty()
-            },
+            ShaderStage::Vertex => Self::VERTEX,
+            ShaderStage::TessellationControl => Self::TESSELLATION_CONTROL,
+            ShaderStage::TessellationEvaluation => Self::TESSELLATION_EVALUATION,
+            ShaderStage::Geometry => Self::GEOMETRY,
+            ShaderStage::Fragment => Self::FRAGMENT,
+            ShaderStage::Compute => Self::COMPUTE,
+            ShaderStage::Raygen => Self::RAYGEN,
+            ShaderStage::AnyHit => Self::ANY_HIT,
+            ShaderStage::ClosestHit => Self::CLOSEST_HIT,
+            ShaderStage::Miss => Self::MISS,
+            ShaderStage::Intersection => Self::INTERSECTION,
+            ShaderStage::Callable => Self::CALLABLE,
         }
     }
 }
@@ -1209,66 +1173,66 @@ vulkan_bitflags! {
     ShaderStages = ShaderStageFlags(u32);
 
     // TODO: document
-    vertex = VERTEX,
+    VERTEX = VERTEX,
 
     // TODO: document
-    tessellation_control = TESSELLATION_CONTROL,
+    TESSELLATION_CONTROL = TESSELLATION_CONTROL,
 
     // TODO: document
-    tessellation_evaluation = TESSELLATION_EVALUATION,
+    TESSELLATION_EVALUATION = TESSELLATION_EVALUATION,
 
     // TODO: document
-    geometry = GEOMETRY,
+    GEOMETRY = GEOMETRY,
 
     // TODO: document
-    fragment = FRAGMENT,
+    FRAGMENT = FRAGMENT,
 
     // TODO: document
-    compute = COMPUTE,
+    COMPUTE = COMPUTE,
 
     // TODO: document
-    raygen = RAYGEN_KHR {
+    RAYGEN = RAYGEN_KHR {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
-    any_hit = ANY_HIT_KHR {
+    ANY_HIT = ANY_HIT_KHR {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
-    closest_hit = CLOSEST_HIT_KHR {
+    CLOSEST_HIT = CLOSEST_HIT_KHR {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
-    miss = MISS_KHR {
+    MISS = MISS_KHR {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
-    intersection = INTERSECTION_KHR {
+    INTERSECTION = INTERSECTION_KHR {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
-    callable = CALLABLE_KHR {
+    CALLABLE = CALLABLE_KHR {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     /*
     // TODO: document
-    task = TASK_NV {
+    TASK = TASK_NV {
         device_extensions: [nv_mesh_shader],
     },
 
     // TODO: document
-    mesh = MESH_NV {
+    MESH = MESH_NV {
         device_extensions: [nv_mesh_shader],
     },
 
     // TODO: document
-    subpass_shading = SUBPASS_SHADING_HUAWEI {
+    SUBPASS_SHADING = SUBPASS_SHADING_HUAWEI {
         device_extensions: [huawei_subpass_shading],
     },
      */
@@ -1278,55 +1242,55 @@ impl ShaderStages {
     /// Creates a `ShaderStages` struct with all graphics stages set to `true`.
     #[inline]
     pub const fn all_graphics() -> ShaderStages {
-        ShaderStages {
-            vertex: true,
-            tessellation_control: true,
-            tessellation_evaluation: true,
-            geometry: true,
-            fragment: true,
-            ..ShaderStages::empty()
-        }
-    }
-
-    /// Creates a `ShaderStages` struct with the compute stage set to `true`.
-    #[inline]
-    pub const fn compute() -> ShaderStages {
-        ShaderStages {
-            compute: true,
-            ..ShaderStages::empty()
-        }
+        ShaderStages::VERTEX
+            .union(ShaderStages::TESSELLATION_CONTROL)
+            .union(ShaderStages::TESSELLATION_EVALUATION)
+            .union(ShaderStages::GEOMETRY)
+            .union(ShaderStages::FRAGMENT)
     }
 }
 
 impl From<ShaderStages> for PipelineStages {
     #[inline]
     fn from(stages: ShaderStages) -> PipelineStages {
-        let ShaderStages {
-            vertex,
-            tessellation_control,
-            tessellation_evaluation,
-            geometry,
-            fragment,
-            compute,
-            raygen,
-            any_hit,
-            closest_hit,
-            miss,
-            intersection,
-            callable,
-            _ne: _,
-        } = stages;
+        let mut result = PipelineStages::empty();
 
-        PipelineStages {
-            vertex_shader: vertex,
-            tessellation_control_shader: tessellation_control,
-            tessellation_evaluation_shader: tessellation_evaluation,
-            geometry_shader: geometry,
-            fragment_shader: fragment,
-            compute_shader: compute,
-            ray_tracing_shader: raygen | any_hit | closest_hit | miss | intersection | callable,
-            ..PipelineStages::empty()
+        if stages.intersects(ShaderStages::VERTEX) {
+            result |= PipelineStages::VERTEX_SHADER
         }
+
+        if stages.intersects(ShaderStages::TESSELLATION_CONTROL) {
+            result |= PipelineStages::TESSELLATION_CONTROL_SHADER
+        }
+
+        if stages.intersects(ShaderStages::TESSELLATION_EVALUATION) {
+            result |= PipelineStages::TESSELLATION_EVALUATION_SHADER
+        }
+
+        if stages.intersects(ShaderStages::GEOMETRY) {
+            result |= PipelineStages::GEOMETRY_SHADER
+        }
+
+        if stages.intersects(ShaderStages::FRAGMENT) {
+            result |= PipelineStages::FRAGMENT_SHADER
+        }
+
+        if stages.intersects(ShaderStages::COMPUTE) {
+            result |= PipelineStages::COMPUTE_SHADER
+        }
+
+        if stages.intersects(
+            ShaderStages::RAYGEN
+                | ShaderStages::ANY_HIT
+                | ShaderStages::CLOSEST_HIT
+                | ShaderStages::MISS
+                | ShaderStages::INTERSECTION
+                | ShaderStages::CALLABLE,
+        ) {
+            result |= PipelineStages::RAY_TRACING_SHADER
+        }
+
+        result
     }
 }
 

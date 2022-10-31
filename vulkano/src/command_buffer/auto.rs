@@ -23,8 +23,8 @@ use crate::{
     buffer::{sys::Buffer, BufferAccess},
     command_buffer::CommandBufferInheritanceRenderingInfo,
     device::{Device, DeviceOwned, Queue, QueueFamilyProperties},
-    format::Format,
-    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
+    format::{Format, FormatFeatures},
+    image::{sys::Image, ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange},
     query::{QueryControlFlags, QueryType},
     render_pass::{Framebuffer, Subpass},
     sync::{AccessCheckError, AccessFlags, PipelineMemoryAccess, PipelineStages},
@@ -350,7 +350,9 @@ where
                         // VUID-VkCommandBufferInheritanceRenderingInfo-multiview-06008
                         if view_mask != 0 && !device.enabled_features().multiview {
                             return Err(CommandBufferBeginError::RequirementNotMet {
-                                required_for: "`inheritance_info.render_pass` is `CommandBufferInheritanceRenderPassType::BeginRendering`, where `view_mask` is not `0`",
+                                required_for: "`inheritance_info.render_pass` is \
+                                    `CommandBufferInheritanceRenderPassType::BeginRendering`, \
+                                    where `view_mask` is not `0`",
                                 requires_one_of: RequiresOneOf {
                                     features: &["multiview"],
                                     ..Default::default()
@@ -382,7 +384,7 @@ where
                             // Use unchecked, because all validation has been done above.
                             if !unsafe { physical_device.format_properties_unchecked(format) }
                                 .potential_format_features()
-                                .color_attachment
+                                .intersects(FormatFeatures::COLOR_ATTACHMENT)
                             {
                                 return Err(
                                     CommandBufferBeginError::ColorAttachmentFormatUsageNotSupported {
@@ -397,7 +399,7 @@ where
                             format.validate_device(device)?;
 
                             // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06540
-                            if !format.aspects().depth {
+                            if !format.aspects().intersects(ImageAspects::DEPTH) {
                                 return Err(
                                     CommandBufferBeginError::DepthAttachmentFormatUsageNotSupported,
                                 );
@@ -407,7 +409,7 @@ where
                             // Use unchecked, because all validation has been done above.
                             if !unsafe { physical_device.format_properties_unchecked(format) }
                                 .potential_format_features()
-                                .depth_stencil_attachment
+                                .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
                             {
                                 return Err(
                                     CommandBufferBeginError::DepthAttachmentFormatUsageNotSupported,
@@ -420,7 +422,7 @@ where
                             format.validate_device(device)?;
 
                             // VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-06541
-                            if !format.aspects().stencil {
+                            if !format.aspects().intersects(ImageAspects::STENCIL) {
                                 return Err(
                                     CommandBufferBeginError::StencilAttachmentFormatUsageNotSupported,
                                 );
@@ -430,7 +432,7 @@ where
                             // Use unchecked, because all validation has been done above.
                             if !unsafe { physical_device.format_properties_unchecked(format) }
                                 .potential_format_features()
-                                .depth_stencil_attachment
+                                .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
                             {
                                 return Err(
                                     CommandBufferBeginError::StencilAttachmentFormatUsageNotSupported,
@@ -472,10 +474,13 @@ where
                 }
 
                 // VUID-vkBeginCommandBuffer-commandBuffer-00052
-                if control_flags.precise && !device.enabled_features().occlusion_query_precise {
+                if control_flags.intersects(QueryControlFlags::PRECISE)
+                    && !device.enabled_features().occlusion_query_precise
+                {
                     return Err(CommandBufferBeginError::RequirementNotMet {
-                        required_for:
-                            "`inheritance_info.occlusion_query` is `Some(control_flags)`, where `control_flags.precise` is set",
+                        required_for: "`inheritance_info.occlusion_query` is \
+                            `Some(control_flags)`, where `control_flags` contains \
+                            `QueryControlFlags::PRECISE`",
                         requires_one_of: RequiresOneOf {
                             features: &["occlusion_query_precise"],
                             ..Default::default()
@@ -948,10 +953,7 @@ mod tests {
 
         let source = CpuAccessibleBuffer::from_iter(
             &memory_allocator,
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_SRC,
             true,
             [1_u32, 2].iter().copied(),
         )
@@ -959,10 +961,7 @@ mod tests {
 
         let destination = CpuAccessibleBuffer::from_iter(
             &memory_allocator,
-            BufferUsage {
-                transfer_dst: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_DST,
             true,
             [0_u32, 10, 20, 3, 4].iter().copied(),
         )
@@ -1083,11 +1082,7 @@ mod tests {
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let source = CpuAccessibleBuffer::from_iter(
             &memory_allocator,
-            BufferUsage {
-                transfer_src: true,
-                transfer_dst: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
             true,
             [0_u32, 1, 2, 3].iter().copied(),
         )
@@ -1135,11 +1130,7 @@ mod tests {
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let source = CpuAccessibleBuffer::from_iter(
             &memory_allocator,
-            BufferUsage {
-                transfer_src: true,
-                transfer_dst: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
             true,
             [0_u32, 1, 2, 3].iter().copied(),
         )

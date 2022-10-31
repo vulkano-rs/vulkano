@@ -295,7 +295,7 @@ impl Swapchain {
 
         if !device.enabled_extensions().khr_swapchain {
             return Err(SwapchainCreationError::RequirementNotMet {
-                required_for: "`Swapchain`",
+                required_for: "`Swapchain::new`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_swapchain"],
                     ..Default::default()
@@ -326,8 +326,8 @@ impl Swapchain {
         if full_screen_exclusive != FullScreenExclusive::Default {
             if !device.enabled_extensions().ext_full_screen_exclusive {
                 return Err(SwapchainCreationError::RequirementNotMet {
-                    required_for:
-                        "`create_info.full_screen_exclusive` is not `FullScreenExclusive::Default`",
+                    required_for: "`create_info.full_screen_exclusive` is not \
+                        `FullScreenExclusive::Default`",
                     requires_one_of: RequiresOneOf {
                         device_extensions: &["ext_full_screen_exclusive"],
                         ..Default::default()

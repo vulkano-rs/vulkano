@@ -14,7 +14,7 @@ use crate::{
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
     },
-    device::DeviceOwned,
+    device::{DeviceOwned, QueueFlags},
     pipeline::{
         graphics::{
             color_blend::LogicOp,
@@ -82,7 +82,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetBlendConstants-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -125,14 +128,17 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetColorWriteEnableEXT-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
         // VUID-vkCmdSetColorWriteEnableEXT-None-04803
         if !self.device().enabled_features().color_write_enable {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_color_write_enable`",
+                required_for: "`AutoCommandBufferBuilder::set_color_write_enable`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["ext_color_write_enable"],
                     ..Default::default()
@@ -188,7 +194,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetCullMode-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -197,7 +206,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_cull_mode`",
+                required_for: "`AutoCommandBufferBuilder::set_cull_mode`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -245,7 +254,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetDepthBias-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -288,7 +300,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetDepthBiasEnable-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -297,7 +312,7 @@ where
             || self.device().enabled_features().extended_dynamic_state2)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_depth_bias_enable`",
+                required_for: "`AutoCommandBufferBuilder::set_depth_bias_enable`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state2"],
@@ -338,7 +353,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetDepthBounds-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -390,7 +408,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetDepthBoundsTestEnable-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -399,7 +420,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_depth_bounds_test_enable`",
+                required_for: "`AutoCommandBufferBuilder::set_depth_bounds_test_enable`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -442,7 +463,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetDepthCompareOp-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -451,7 +475,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_depth_compare_op`",
+                required_for: "`AutoCommandBufferBuilder::set_depth_compare_op`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -488,7 +512,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetDepthTestEnable-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -497,7 +524,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_depth_test_enable`",
+                required_for: "`AutoCommandBufferBuilder::set_depth_test_enable`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -534,7 +561,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetDepthWriteEnable-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -543,7 +573,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_depth_write_enable`",
+                required_for: "`AutoCommandBufferBuilder::set_depth_write_enable`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -594,13 +624,16 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetDiscardRectangle-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
         if self.device().enabled_extensions().ext_discard_rectangles {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_discard_rectangle`",
+                required_for: "`AutoCommandBufferBuilder::set_discard_rectangle`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["ext_discard_rectangles"],
                     ..Default::default()
@@ -659,7 +692,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetFrontFace-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -668,7 +704,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_front_face`",
+                required_for: "`AutoCommandBufferBuilder::set_front_face`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -709,13 +745,16 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetLineStippleEXT-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
         if !self.device().enabled_extensions().ext_line_rasterization {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_line_stipple`",
+                required_for: "`AutoCommandBufferBuilder::set_line_stipple`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["ext_line_rasterization"],
                     ..Default::default()
@@ -755,7 +794,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetLineWidth-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -801,7 +843,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetLogicOpEXT-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -812,7 +857,7 @@ where
             .extended_dynamic_state2_logic_op
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_logic_op`",
+                required_for: "`AutoCommandBufferBuilder::set_logic_op`",
                 requires_one_of: RequiresOneOf {
                     features: &["extended_dynamic_state2_logic_op"],
                     ..Default::default()
@@ -852,7 +897,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetPatchControlPointsEXT-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -863,7 +911,7 @@ where
             .extended_dynamic_state2_patch_control_points
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_patch_control_points`",
+                required_for: "`AutoCommandBufferBuilder::set_patch_control_points`",
                 requires_one_of: RequiresOneOf {
                     features: &["extended_dynamic_state2_patch_control_points"],
                     ..Default::default()
@@ -923,7 +971,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetPrimitiveRestartEnable-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -932,7 +983,7 @@ where
             || self.device().enabled_features().extended_dynamic_state2)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_primitive_restart_enable`",
+                required_for: "`AutoCommandBufferBuilder::set_primitive_restart_enable`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state2"],
@@ -979,7 +1030,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetPrimitiveTopology-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -988,7 +1042,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_primitive_topology`",
+                required_for: "`AutoCommandBufferBuilder::set_primitive_topology`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -1006,9 +1060,8 @@ where
                     && !self.device().enabled_features().triangle_fans
                 {
                     return Err(SetDynamicStateError::RequirementNotMet {
-                        required_for:
-                            "this device is a portability subset device, and `topology` is \
-                            `PrimitiveTopology::TriangleFan`",
+                        required_for: "this device is a portability subset device, and `topology` \
+                            is `PrimitiveTopology::TriangleFan`",
                         requires_one_of: RequiresOneOf {
                             features: &["triangle_fans"],
                             ..Default::default()
@@ -1075,7 +1128,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetRasterizerDiscardEnable-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1084,7 +1140,7 @@ where
             || self.device().enabled_features().extended_dynamic_state2)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_rasterizer_discard_enable`",
+                required_for: "`AutoCommandBufferBuilder::set_rasterizer_discard_enable`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state2"],
@@ -1131,7 +1187,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetScissor-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1208,7 +1267,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetScissorWithCount-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1217,7 +1279,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_scissor_with_count`",
+                required_for: "`AutoCommandBufferBuilder::set_scissor_with_count`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -1282,7 +1344,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetStencilCompareMask-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1345,7 +1410,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetStencilOp-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1354,7 +1422,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_stencil_op`",
+                required_for: "`AutoCommandBufferBuilder::set_stencil_op`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -1396,7 +1464,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetStencilReference-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1428,7 +1499,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetStencilTestEnable-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1437,7 +1511,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_stencil_test_enable`",
+                required_for: "`AutoCommandBufferBuilder::set_stencil_test_enable`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],
@@ -1479,7 +1553,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetStencilWriteMask-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1522,7 +1599,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetViewport-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1599,7 +1679,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdSetViewportWithCount-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1608,7 +1691,7 @@ where
             || self.device().enabled_features().extended_dynamic_state)
         {
             return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`set_viewport_with_count`",
+                required_for: "`AutoCommandBufferBuilder::set_viewport_with_count`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_3),
                     features: &["extended_dynamic_state"],

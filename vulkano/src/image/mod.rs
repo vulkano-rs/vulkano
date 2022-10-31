@@ -90,7 +90,7 @@ vulkan_bitflags! {
     ///
     /// [`bind_memory`]: sys::RawImage::bind_memory
     /// [`sparse_binding`]: crate::device::Features::sparse_binding
-    sparse_binding = SPARSE_BINDING,
+    SPARSE_BINDING = SPARSE_BINDING,
 
     /// The image can be used without being fully resident in memory at the time of use.
     ///
@@ -110,7 +110,7 @@ vulkan_bitflags! {
     /// [`sparse_residency4_samples`]: crate::device::Features::sparse_residency4_samples
     /// [`sparse_residency8_samples`]: crate::device::Features::sparse_residency8_samples
     /// [`sparse_residency16_samples`]: crate::device::Features::sparse_residency16_samples
-    sparse_residency = SPARSE_RESIDENCY,
+    SPARSE_RESIDENCY = SPARSE_RESIDENCY,
 
     /// The buffer's memory can alias with another image or a different part of the same image.
     ///
@@ -119,7 +119,7 @@ vulkan_bitflags! {
     /// The [`sparse_residency_aliased`] feature must be enabled on the device.
     ///
     /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
-    sparse_aliased = SPARSE_ALIASED,
+    SPARSE_ALIASED = SPARSE_ALIASED,
      */
 
     /// For non-multi-planar formats, whether an image view wrapping the image can have a
@@ -127,24 +127,24 @@ vulkan_bitflags! {
     ///
     /// For multi-planar formats, whether an image view wrapping the image can be created from a
     /// single plane of the image.
-    mutable_format = MUTABLE_FORMAT,
+    MUTABLE_FORMAT = MUTABLE_FORMAT,
 
     /// For 2D images, whether an image view of type [`ImageViewType::Cube`] or
     /// [`ImageViewType::CubeArray`] can be created from the image.
     ///
     /// [`ImageViewType::Cube`]: crate::image::view::ImageViewType::Cube
     /// [`ImageViewType::CubeArray`]: crate::image::view::ImageViewType::CubeArray
-    cube_compatible = CUBE_COMPATIBLE,
+    CUBE_COMPATIBLE = CUBE_COMPATIBLE,
 
     /*
     // TODO: document
-    alias = ALIAS {
+    ALIAS = ALIAS {
         api_version: V1_1,
         device_extensions: [khr_bind_memory2],
     },
 
     // TODO: document
-    split_instance_bind_regions = SPLIT_INSTANCE_BIND_REGIONS {
+    SPLIT_INSTANCE_BIND_REGIONS = SPLIT_INSTANCE_BIND_REGIONS {
         api_version: V1_1,
         device_extensions: [khr_device_group],
     },
@@ -160,7 +160,7 @@ vulkan_bitflags! {
     /// [`ImageViewType::Dim2dArray`]: crate::image::view::ImageViewType::Dim2dArray
     /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
     /// [`image_view2_d_on3_d_image`]: crate::device::Features::image_view2_d_on3_d_image
-    array_2d_compatible = TYPE_2D_ARRAY_COMPATIBLE {
+    ARRAY_2D_COMPATIBLE = TYPE_2D_ARRAY_COMPATIBLE {
         api_version: V1_1,
         device_extensions: [khr_maintenance1],
     },
@@ -170,59 +170,59 @@ vulkan_bitflags! {
     /// compressed texel block in the image.
     ///
     /// Requires `mutable_format`.
-    block_texel_view_compatible = BLOCK_TEXEL_VIEW_COMPATIBLE {
+    BLOCK_TEXEL_VIEW_COMPATIBLE = BLOCK_TEXEL_VIEW_COMPATIBLE {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],
     },
 
     /*
     // TODO: document
-    extended_usage = EXTENDED_USAGE {
+    EXTENDED_USAGE = EXTENDED_USAGE {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],
     },
 
     // TODO: document
-    protected = PROTECTED {
+    PROTECTED = PROTECTED {
         api_version: V1_1,
     },
      */
 
     /// For images with a multi-planar format, whether each plane will have its memory bound
     /// separately, rather than having a single memory binding for the whole image.
-    disjoint = DISJOINT {
+    DISJOINT = DISJOINT {
         api_version: V1_1,
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /*
     // TODO: document
-    corner_sampled = CORNER_SAMPLED_NV {
+    CORNER_SAMPLED = CORNER_SAMPLED_NV {
         device_extensions: [nv_corner_sampled_image],
     },
 
     // TODO: document
-    sample_locations_compatible_depth = SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_EXT {
+    SAMPLE_LOCATIONS_COMPATIBLE_DEPTH = SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_EXT {
         device_extensions: [ext_sample_locations],
     },
 
     // TODO: document
-    subsampled = SUBSAMPLED_EXT {
+    SUBSAMPLED = SUBSAMPLED_EXT {
         device_extensions: [ext_fragment_density_map],
     },
 
     // TODO: document
-    multisampled_render_to_single_sampled = MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_EXT {
+    MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED = MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_EXT {
         device_extensions: [ext_multisampled_render_to_single_sampled],
     },
 
     // TODO: document
-    view_2d_compatible = TYPE_2D_VIEW_COMPATIBLE_EXT {
+    TYPE_2D_VIEW_COMPATIBLE = TYPE_2D_VIEW_COMPATIBLE_EXT {
         device_extensions: [ext_image_2d_view_of_3d],
     },
 
     // TODO: document
-    fragment_density_map_offset = FRAGMENT_DENSITY_MAP_OFFSET_QCOM {
+    FRAGMENT_DENSITY_MAP_OFFSET = FRAGMENT_DENSITY_MAP_OFFSET_QCOM {
         device_extensions: [qcom_fragment_density_map_offset],
     },
      */
@@ -279,53 +279,59 @@ vulkan_bitflags! {
     SampleCounts = SampleCountFlags(u32);
 
     /// 1 sample per pixel.
-    sample1 = TYPE_1,
+    SAMPLE_1 = TYPE_1,
 
     /// 2 samples per pixel.
-    sample2 = TYPE_2,
+    SAMPLE_2 = TYPE_2,
 
     /// 4 samples per pixel.
-    sample4 = TYPE_4,
+    SAMPLE_4 = TYPE_4,
 
     /// 8 samples per pixel.
-    sample8 = TYPE_8,
+    SAMPLE_8 = TYPE_8,
 
     /// 16 samples per pixel.
-    sample16 = TYPE_16,
+    SAMPLE_16 = TYPE_16,
 
     /// 32 samples per pixel.
-    sample32 = TYPE_32,
+    SAMPLE_32 = TYPE_32,
 
     /// 64 samples per pixel.
-    sample64 = TYPE_64,
+    SAMPLE_64 = TYPE_64,
 }
 
 impl SampleCounts {
     /// Returns true if `self` has the `sample_count` value set.
     #[inline]
-    pub const fn contains_count(&self, sample_count: SampleCount) -> bool {
+    pub const fn contains_count(self, sample_count: SampleCount) -> bool {
         match sample_count {
-            SampleCount::Sample1 => self.sample1,
-            SampleCount::Sample2 => self.sample2,
-            SampleCount::Sample4 => self.sample4,
-            SampleCount::Sample8 => self.sample8,
-            SampleCount::Sample16 => self.sample16,
-            SampleCount::Sample32 => self.sample32,
-            SampleCount::Sample64 => self.sample64,
+            SampleCount::Sample1 => self.intersects(SampleCounts::SAMPLE_1),
+            SampleCount::Sample2 => self.intersects(SampleCounts::SAMPLE_2),
+            SampleCount::Sample4 => self.intersects(SampleCounts::SAMPLE_4),
+            SampleCount::Sample8 => self.intersects(SampleCounts::SAMPLE_8),
+            SampleCount::Sample16 => self.intersects(SampleCounts::SAMPLE_16),
+            SampleCount::Sample32 => self.intersects(SampleCounts::SAMPLE_32),
+            SampleCount::Sample64 => self.intersects(SampleCounts::SAMPLE_64),
         }
     }
 
     /// Returns the maximum sample count supported by `self`.
     #[inline]
-    pub const fn max_count(&self) -> SampleCount {
-        match self {
-            Self { sample64: true, .. } => SampleCount::Sample64,
-            Self { sample32: true, .. } => SampleCount::Sample32,
-            Self { sample16: true, .. } => SampleCount::Sample16,
-            Self { sample8: true, .. } => SampleCount::Sample8,
-            Self { sample4: true, .. } => SampleCount::Sample4,
-            Self { sample2: true, .. } => SampleCount::Sample2,
-            _ => SampleCount::Sample1,
+    pub const fn max_count(self) -> SampleCount {
+        if self.intersects(SampleCounts::SAMPLE_64) {
+            SampleCount::Sample64
+        } else if self.intersects(SampleCounts::SAMPLE_32) {
+            SampleCount::Sample32
+        } else if self.intersects(SampleCounts::SAMPLE_16) {
+            SampleCount::Sample16
+        } else if self.intersects(SampleCounts::SAMPLE_8) {
+            SampleCount::Sample8
+        } else if self.intersects(SampleCounts::SAMPLE_4) {
+            SampleCount::Sample4
+        } else if self.intersects(SampleCounts::SAMPLE_2) {
+            SampleCount::Sample2
+        } else {
+            SampleCount::Sample1
         }
     }
 }
@@ -625,11 +631,8 @@ impl ImageSubresourceLayers {
             aspects: {
                 let aspects = format.aspects();
 
-                if aspects.plane0 {
-                    ImageAspects {
-                        plane0: true,
-                        ..ImageAspects::empty()
-                    }
+                if aspects.intersects(ImageAspects::PLANE_0) {
+                    ImageAspects::PLANE_0
                 } else {
                     aspects
                 }
@@ -678,12 +681,8 @@ impl ImageSubresourceRange {
     #[inline]
     pub fn from_parameters(format: Format, mip_levels: u32, array_layers: u32) -> Self {
         Self {
-            aspects: ImageAspects {
-                plane0: false,
-                plane1: false,
-                plane2: false,
-                ..format.aspects()
-            },
+            aspects: format.aspects()
+                - (ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2),
             mip_levels: 0..mip_levels,
             array_layers: 0..array_layers,
         }
@@ -951,14 +950,14 @@ vulkan_bitflags! {
 
     /// The image uses a single mip tail region for all array layers, instead of one mip tail region
     /// per array layer.
-    single_miptail = SINGLE_MIPTAIL,
+    SINGLE_MIPTAIL = SINGLE_MIPTAIL,
 
     /// The image's mip tail region begins with the first mip level whose dimensions are not an
     /// integer multiple of the corresponding sparse image block dimensions.
-    aligned_mip_size = ALIGNED_MIP_SIZE,
+    ALIGNED_MIP_SIZE = ALIGNED_MIP_SIZE,
 
     /// The image uses non-standard sparse image block dimensions.
-    nonstandard_block_size = NONSTANDARD_BLOCK_SIZE,
+    NONSTANDARD_BLOCK_SIZE = NONSTANDARD_BLOCK_SIZE,
 }
 
 /// Requirements for binding memory to a sparse image.

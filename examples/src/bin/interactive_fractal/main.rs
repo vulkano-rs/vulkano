@@ -57,13 +57,10 @@ fn main() {
     primary_window_renderer.add_additional_image_view(
         render_target_id,
         DEFAULT_IMAGE_FORMAT,
-        ImageUsage {
-            sampled: true,
-            storage: true,
-            color_attachment: true,
-            transfer_dst: true,
-            ..ImageUsage::empty()
-        },
+        ImageUsage::SAMPLED
+            | ImageUsage::STORAGE
+            | ImageUsage::COLOR_ATTACHMENT
+            | ImageUsage::TRANSFER_DST,
     );
 
     // Create app to hold the logic of our fractal explorer

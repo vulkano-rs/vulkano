@@ -8,18 +8,18 @@
 // according to those terms.
 
 use crate::{
-    buffer::{BufferAccess, BufferContents, TypedBufferAccess},
+    buffer::{BufferAccess, BufferContents, BufferUsage, TypedBufferAccess},
     command_buffer::{
         allocator::CommandBufferAllocator,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CopyError, CopyErrorResource,
     },
-    device::DeviceOwned,
-    format::Format,
+    device::{DeviceOwned, QueueFlags},
+    format::{Format, FormatFeatures},
     image::{
-        ImageAccess, ImageAspects, ImageLayout, ImageSubresourceLayers, ImageType, SampleCount,
-        SampleCounts,
+        ImageAccess, ImageAspects, ImageLayout, ImageSubresourceLayers, ImageType, ImageUsage,
+        SampleCount, SampleCounts,
     },
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     DeviceSize, SafeDeref, Version, VulkanObject,
@@ -69,9 +69,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdCopyBuffer2-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.transfer
-            || queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -91,7 +91,7 @@ where
         assert_eq!(device, dst_buffer.device());
 
         // VUID-VkCopyBufferInfo2-srcBuffer-00118
-        if !src_buffer.usage().transfer_src {
+        if !src_buffer.usage().intersects(BufferUsage::TRANSFER_SRC) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -99,7 +99,7 @@ where
         }
 
         // VUID-VkCopyBufferInfo2-dstBuffer-00120
-        if !dst_buffer.usage().transfer_dst {
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -216,9 +216,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdCopyImage2-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.transfer
-            || queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -251,7 +251,10 @@ where
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-VkCopyImageInfo2-srcImage-01995
-            if !src_image.format_features().transfer_src {
+            if !src_image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_SRC)
+            {
                 return Err(CopyError::MissingFormatFeature {
                     resource: CopyErrorResource::Source,
                     format_feature: "transfer_src",
@@ -259,7 +262,10 @@ where
             }
 
             // VUID-VkCopyImageInfo2-dstImage-01996
-            if !dst_image.format_features().transfer_dst {
+            if !dst_image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_DST)
+            {
                 return Err(CopyError::MissingFormatFeature {
                     resource: CopyErrorResource::Destination,
                     format_feature: "transfer_dst",
@@ -275,7 +281,9 @@ where
             });
         }
 
-        if !(src_image_aspects.color || dst_image_aspects.color) {
+        if !(src_image_aspects.intersects(ImageAspects::COLOR)
+            || dst_image_aspects.intersects(ImageAspects::COLOR))
+        {
             // VUID-VkCopyImageInfo2-srcImage-01548
             if src_image.format() != dst_image.format() {
                 return Err(CopyError::FormatsMismatch {
@@ -327,22 +335,28 @@ where
                 };
 
                 Some((
-                    granularity(src_image.format().block_extent(), src_image_aspects.plane0),
-                    granularity(dst_image.format().block_extent(), dst_image_aspects.plane0),
+                    granularity(
+                        src_image.format().block_extent(),
+                        src_image_aspects.intersects(ImageAspects::PLANE_0),
+                    ),
+                    granularity(
+                        dst_image.format().block_extent(),
+                        dst_image_aspects.intersects(ImageAspects::PLANE_0),
+                    ),
                 ))
             }
         };
 
-        if src_image_aspects.plane0 {
+        if src_image_aspects.intersects(ImageAspects::PLANE_0) {
             // VUID-VkCopyImageInfo2-srcImage-01552
             // VUID-VkCopyImageInfo2-srcImage-01553
-            src_image_aspects.color = false;
+            src_image_aspects -= ImageAspects::COLOR;
         }
 
-        if dst_image_aspects.plane0 {
+        if dst_image_aspects.intersects(ImageAspects::PLANE_0) {
             // VUID-VkCopyImageInfo2-dstImage-01554
             // VUID-VkCopyImageInfo2-dstImage-01555
-            dst_image_aspects.color = false;
+            dst_image_aspects -= ImageAspects::COLOR;
         }
 
         let mut src_image_aspects_used = ImageAspects::empty();
@@ -363,7 +377,7 @@ where
 
             let check_subresource = |resource: CopyErrorResource,
                                      image: &dyn ImageAccess,
-                                     image_aspects: &ImageAspects,
+                                     image_aspects: ImageAspects,
                                      subresource: &ImageSubresourceLayers|
              -> Result<_, CopyError> {
                 // VUID-VkCopyImageInfo2-srcSubresource-01696
@@ -401,62 +415,63 @@ where
 
                 // VUID-VkCopyImageInfo2-aspectMask-00142
                 // VUID-VkCopyImageInfo2-aspectMask-00143
-                if !image_aspects.contains(&subresource.aspects) {
+                if !image_aspects.contains(subresource.aspects) {
                     return Err(CopyError::AspectsNotAllowed {
                         resource,
                         region_index,
                         aspects: subresource.aspects,
-                        allowed_aspects: *image_aspects,
+                        allowed_aspects: image_aspects,
                     });
                 }
 
-                let (subresource_format, subresource_extent) = if image_aspects.plane0 {
-                    // VUID-VkCopyImageInfo2-srcImage-01552
-                    // VUID-VkCopyImageInfo2-srcImage-01553
-                    // VUID-VkCopyImageInfo2-dstImage-01554
-                    // VUID-VkCopyImageInfo2-dstImage-01555
-                    if subresource.aspects.iter().count() != 1 {
-                        return Err(CopyError::MultipleAspectsNotAllowed {
-                            resource,
-                            region_index,
-                            aspects: subresource.aspects,
-                        });
-                    }
+                let (subresource_format, subresource_extent) =
+                    if image_aspects.intersects(ImageAspects::PLANE_0) {
+                        // VUID-VkCopyImageInfo2-srcImage-01552
+                        // VUID-VkCopyImageInfo2-srcImage-01553
+                        // VUID-VkCopyImageInfo2-dstImage-01554
+                        // VUID-VkCopyImageInfo2-dstImage-01555
+                        if subresource.aspects.iter().count() != 1 {
+                            return Err(CopyError::MultipleAspectsNotAllowed {
+                                resource,
+                                region_index,
+                                aspects: subresource.aspects,
+                            });
+                        }
 
-                    if subresource.aspects.plane0 {
-                        (
-                            image.format().planes()[0],
-                            image.dimensions().width_height_depth(),
-                        )
-                    } else if subresource.aspects.plane1 {
-                        (
-                            image.format().planes()[1],
-                            image
-                                .format()
-                                .ycbcr_chroma_sampling()
-                                .unwrap()
-                                .subsampled_extent(image.dimensions().width_height_depth()),
-                        )
+                        if subresource.aspects.intersects(ImageAspects::PLANE_0) {
+                            (
+                                image.format().planes()[0],
+                                image.dimensions().width_height_depth(),
+                            )
+                        } else if subresource.aspects.intersects(ImageAspects::PLANE_1) {
+                            (
+                                image.format().planes()[1],
+                                image
+                                    .format()
+                                    .ycbcr_chroma_sampling()
+                                    .unwrap()
+                                    .subsampled_extent(image.dimensions().width_height_depth()),
+                            )
+                        } else {
+                            (
+                                image.format().planes()[2],
+                                image
+                                    .format()
+                                    .ycbcr_chroma_sampling()
+                                    .unwrap()
+                                    .subsampled_extent(image.dimensions().width_height_depth()),
+                            )
+                        }
                     } else {
                         (
-                            image.format().planes()[2],
+                            image.format(),
                             image
-                                .format()
-                                .ycbcr_chroma_sampling()
+                                .dimensions()
+                                .mip_level_dimensions(subresource.mip_level)
                                 .unwrap()
-                                .subsampled_extent(image.dimensions().width_height_depth()),
+                                .width_height_depth(),
                         )
-                    }
-                } else {
-                    (
-                        image.format(),
-                        image
-                            .dimensions()
-                            .mip_level_dimensions(subresource.mip_level)
-                            .unwrap()
-                            .width_height_depth(),
-                    )
-                };
+                    };
 
                 Ok((subresource_format, subresource_extent))
             };
@@ -467,17 +482,19 @@ where
             let (src_subresource_format, src_subresource_extent) = check_subresource(
                 CopyErrorResource::Source,
                 src_image,
-                &src_image_aspects,
+                src_image_aspects,
                 src_subresource,
             )?;
             let (dst_subresource_format, dst_subresource_extent) = check_subresource(
                 CopyErrorResource::Destination,
                 dst_image,
-                &dst_image_aspects,
+                dst_image_aspects,
                 dst_subresource,
             )?;
 
-            if !(src_image_aspects.plane0 || dst_image_aspects.plane0) {
+            if !(src_image_aspects.intersects(ImageAspects::PLANE_0)
+                || dst_image_aspects.intersects(ImageAspects::PLANE_0))
+            {
                 // VUID-VkCopyImageInfo2-srcImage-01551
                 if src_subresource.aspects != dst_subresource.aspects {
                     return Err(CopyError::AspectsMismatch {
@@ -663,7 +680,7 @@ where
                         } = dst_region;
 
                         // For a single-plane image, the aspects must always be identical anyway
-                        if src_image_aspects.plane0
+                        if src_image_aspects.intersects(ImageAspects::PLANE_0)
                             && src_subresource.aspects != dst_subresource.aspects
                         {
                             continue;
@@ -777,7 +794,7 @@ where
                             ..
                         } = dst_region;
 
-                        if src_image_aspects.plane0
+                        if src_image_aspects.intersects(ImageAspects::PLANE_0)
                             && src_subresource.aspects != dst_subresource.aspects
                         {
                             continue;
@@ -806,12 +823,8 @@ where
         }
 
         // VUID-VkCopyImageInfo2-aspect-06662
-        if !(ImageAspects {
-            stencil: false,
-            ..src_image_aspects_used
-        })
-        .is_empty()
-            && !src_image.usage().transfer_src
+        if !(src_image_aspects_used - ImageAspects::STENCIL).is_empty()
+            && !src_image.usage().intersects(ImageUsage::TRANSFER_SRC)
         {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
@@ -820,12 +833,8 @@ where
         }
 
         // VUID-VkCopyImageInfo2-aspect-06663
-        if !(ImageAspects {
-            stencil: false,
-            ..dst_image_aspects_used
-        })
-        .is_empty()
-            && !dst_image.usage().transfer_dst
+        if !(dst_image_aspects_used - ImageAspects::STENCIL).is_empty()
+            && !dst_image.usage().intersects(ImageUsage::TRANSFER_DST)
         {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
@@ -834,7 +843,11 @@ where
         }
 
         // VUID-VkCopyImageInfo2-aspect-06664
-        if src_image_aspects_used.stencil && !src_image.stencil_usage().transfer_src {
+        if src_image_aspects_used.intersects(ImageAspects::STENCIL)
+            && !src_image
+                .stencil_usage()
+                .intersects(ImageUsage::TRANSFER_SRC)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -842,7 +855,11 @@ where
         }
 
         // VUID-VkCopyImageInfo2-aspect-06665
-        if dst_image_aspects_used.stencil && !dst_image.stencil_usage().transfer_dst {
+        if dst_image_aspects_used.intersects(ImageAspects::STENCIL)
+            && !dst_image
+                .stencil_usage()
+                .intersects(ImageUsage::TRANSFER_DST)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -901,9 +918,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdCopyBufferToImage2-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.transfer
-            || queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -927,12 +944,16 @@ where
         let mut image_aspects = dst_image.format().aspects();
 
         // VUID-VkCopyBufferToImageInfo2-commandBuffer-04477
-        if !queue_family_properties.queue_flags.graphics && !image_aspects.color {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+            && !image_aspects.intersects(ImageAspects::COLOR)
+        {
             return Err(CopyError::DepthStencilNotSupportedByQueueFamily);
         }
 
         // VUID-VkCopyBufferToImageInfo2-srcBuffer-00174
-        if !src_buffer.usage().transfer_src {
+        if !src_buffer.usage().intersects(BufferUsage::TRANSFER_SRC) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -940,7 +961,7 @@ where
         }
 
         // VUID-VkCopyBufferToImageInfo2-dstImage-00177
-        if !dst_image.usage().transfer_dst {
+        if !dst_image.usage().intersects(ImageUsage::TRANSFER_DST) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -949,7 +970,10 @@ where
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-VkCopyBufferToImageInfo2-dstImage-01997
-            if !dst_image.format_features().transfer_dst {
+            if !dst_image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_DST)
+            {
                 return Err(CopyError::MissingFormatFeature {
                     resource: CopyErrorResource::Destination,
                     format_feature: "transfer_dst",
@@ -962,10 +986,7 @@ where
             return Err(CopyError::SampleCountInvalid {
                 resource: CopyErrorResource::Destination,
                 sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts {
-                    sample1: true,
-                    ..SampleCounts::empty()
-                },
+                allowed_sample_counts: SampleCounts::SAMPLE_1,
             });
         }
 
@@ -1001,14 +1022,14 @@ where
 
                 Some(granularity(
                     dst_image.format().block_extent(),
-                    image_aspects.plane0,
+                    image_aspects.intersects(ImageAspects::PLANE_0),
                 ))
             }
         };
 
-        if image_aspects.plane0 {
+        if image_aspects.intersects(ImageAspects::PLANE_0) {
             // VUID-VkCopyBufferToImageInfo2-aspectMask-01560
-            image_aspects.color = false;
+            image_aspects -= ImageAspects::COLOR;
         }
 
         for (region_index, region) in regions.iter().enumerate() {
@@ -1051,7 +1072,7 @@ where
             assert!(!image_subresource.aspects.is_empty());
 
             // VUID-VkCopyBufferToImageInfo2-aspectMask-00211
-            if !image_aspects.contains(&image_subresource.aspects) {
+            if !image_aspects.contains(image_subresource.aspects) {
                 return Err(CopyError::AspectsNotAllowed {
                     resource: CopyErrorResource::Destination,
                     region_index,
@@ -1070,41 +1091,42 @@ where
                 });
             }
 
-            let (image_subresource_format, image_subresource_extent) = if image_aspects.plane0 {
-                if image_subresource.aspects.plane0 {
-                    (
-                        dst_image.format().planes()[0],
-                        dst_image.dimensions().width_height_depth(),
-                    )
-                } else if image_subresource.aspects.plane1 {
-                    (
-                        dst_image.format().planes()[1],
-                        dst_image
-                            .format()
-                            .ycbcr_chroma_sampling()
-                            .unwrap()
-                            .subsampled_extent(dst_image.dimensions().width_height_depth()),
-                    )
+            let (image_subresource_format, image_subresource_extent) =
+                if image_aspects.intersects(ImageAspects::PLANE_0) {
+                    if image_subresource.aspects.intersects(ImageAspects::PLANE_0) {
+                        (
+                            dst_image.format().planes()[0],
+                            dst_image.dimensions().width_height_depth(),
+                        )
+                    } else if image_subresource.aspects.intersects(ImageAspects::PLANE_1) {
+                        (
+                            dst_image.format().planes()[1],
+                            dst_image
+                                .format()
+                                .ycbcr_chroma_sampling()
+                                .unwrap()
+                                .subsampled_extent(dst_image.dimensions().width_height_depth()),
+                        )
+                    } else {
+                        (
+                            dst_image.format().planes()[2],
+                            dst_image
+                                .format()
+                                .ycbcr_chroma_sampling()
+                                .unwrap()
+                                .subsampled_extent(dst_image.dimensions().width_height_depth()),
+                        )
+                    }
                 } else {
                     (
-                        dst_image.format().planes()[2],
+                        dst_image.format(),
                         dst_image
-                            .format()
-                            .ycbcr_chroma_sampling()
+                            .dimensions()
+                            .mip_level_dimensions(image_subresource.mip_level)
                             .unwrap()
-                            .subsampled_extent(dst_image.dimensions().width_height_depth()),
+                            .width_height_depth(),
                     )
-                }
-            } else {
-                (
-                    dst_image.format(),
-                    dst_image
-                        .dimensions()
-                        .mip_level_dimensions(image_subresource.mip_level)
-                        .unwrap()
-                        .width_height_depth(),
-                )
-            };
+                };
 
             if let Some(extent_alignment) = extent_alignment {
                 for i in 0..3 {
@@ -1222,20 +1244,21 @@ where
             }
 
             // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
-            let image_subresource_block_size = if image_subresource.aspects.stencil {
-                1
-            } else if image_subresource.aspects.depth {
-                match image_subresource_format {
-                    Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
-                    Format::D32_SFLOAT
-                    | Format::D32_SFLOAT_S8_UINT
-                    | Format::X8_D24_UNORM_PACK32
-                    | Format::D24_UNORM_S8_UINT => 4,
-                    _ => unreachable!(),
-                }
-            } else {
-                image_subresource_format.block_size().unwrap()
-            };
+            let image_subresource_block_size =
+                if image_subresource.aspects.intersects(ImageAspects::STENCIL) {
+                    1
+                } else if image_subresource.aspects.intersects(ImageAspects::DEPTH) {
+                    match image_subresource_format {
+                        Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
+                        Format::D32_SFLOAT
+                        | Format::D32_SFLOAT_S8_UINT
+                        | Format::X8_D24_UNORM_PACK32
+                        | Format::D24_UNORM_S8_UINT => 4,
+                        _ => unreachable!(),
+                    }
+                } else {
+                    image_subresource_format.block_size().unwrap()
+                };
 
             // VUID-VkCopyBufferToImageInfo2-pRegions-04725
             // VUID-VkCopyBufferToImageInfo2-pRegions-04726
@@ -1250,27 +1273,29 @@ where
                 });
             }
 
-            let buffer_offset_alignment = if image_aspects.depth || image_aspects.stencil {
-                4
-            } else {
-                let mut buffer_offset_alignment = image_subresource_block_size;
+            let buffer_offset_alignment =
+                if image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
+                    4
+                } else {
+                    let mut buffer_offset_alignment = image_subresource_block_size;
 
-                // VUID-VkCopyBufferToImageInfo2-commandBuffer-04052
-                // Make the alignment a multiple of 4.
-                if !(queue_family_properties.queue_flags.graphics
-                    || queue_family_properties.queue_flags.compute)
-                {
-                    if buffer_offset_alignment % 2 != 0 {
-                        buffer_offset_alignment *= 2;
+                    // VUID-VkCopyBufferToImageInfo2-commandBuffer-04052
+                    // Make the alignment a multiple of 4.
+                    if !queue_family_properties
+                        .queue_flags
+                        .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+                    {
+                        if buffer_offset_alignment % 2 != 0 {
+                            buffer_offset_alignment *= 2;
+                        }
+
+                        if buffer_offset_alignment % 4 != 0 {
+                            buffer_offset_alignment *= 2;
+                        }
                     }
 
-                    if buffer_offset_alignment % 4 != 0 {
-                        buffer_offset_alignment *= 2;
-                    }
-                }
-
-                buffer_offset_alignment
-            };
+                    buffer_offset_alignment
+                };
 
             // VUID-VkCopyBufferToImageInfo2-bufferOffset-00206
             // VUID-VkCopyBufferToImageInfo2-bufferOffset-01558
@@ -1332,9 +1357,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdCopyImageToBuffer2-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.transfer
-            || queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -1358,7 +1383,7 @@ where
         let mut image_aspects = src_image.format().aspects();
 
         // VUID-VkCopyImageToBufferInfo2-srcImage-00186
-        if !src_image.usage().transfer_src {
+        if !src_image.usage().intersects(ImageUsage::TRANSFER_SRC) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -1366,7 +1391,7 @@ where
         }
 
         // VUID-VkCopyImageToBufferInfo2-dstBuffer-00191
-        if !dst_buffer.usage().transfer_dst {
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -1375,7 +1400,10 @@ where
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-VkCopyImageToBufferInfo2-srcImage-01998
-            if !src_image.format_features().transfer_src {
+            if !src_image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_SRC)
+            {
                 return Err(CopyError::MissingFormatFeature {
                     resource: CopyErrorResource::Source,
                     format_feature: "transfer_src",
@@ -1388,10 +1416,7 @@ where
             return Err(CopyError::SampleCountInvalid {
                 resource: CopyErrorResource::Source,
                 sample_count: src_image.samples(),
-                allowed_sample_counts: SampleCounts {
-                    sample1: true,
-                    ..SampleCounts::empty()
-                },
+                allowed_sample_counts: SampleCounts::SAMPLE_1,
             });
         }
 
@@ -1427,14 +1452,14 @@ where
 
                 Some(granularity(
                     src_image.format().block_extent(),
-                    image_aspects.plane0,
+                    image_aspects.intersects(ImageAspects::PLANE_0),
                 ))
             }
         };
 
-        if image_aspects.plane0 {
+        if image_aspects.intersects(ImageAspects::PLANE_0) {
             // VUID-VkCopyImageToBufferInfo2-aspectMask-01560
-            image_aspects.color = false;
+            image_aspects -= ImageAspects::COLOR;
         }
 
         for (region_index, region) in regions.iter().enumerate() {
@@ -1476,7 +1501,7 @@ where
             assert!(!image_subresource.aspects.is_empty());
 
             // VUID-VkCopyImageToBufferInfo2-aspectMask-00211
-            if !image_aspects.contains(&image_subresource.aspects) {
+            if !image_aspects.contains(image_subresource.aspects) {
                 return Err(CopyError::AspectsNotAllowed {
                     resource: CopyErrorResource::Source,
                     region_index,
@@ -1494,41 +1519,42 @@ where
                 });
             }
 
-            let (image_subresource_format, image_subresource_extent) = if image_aspects.plane0 {
-                if image_subresource.aspects.plane0 {
-                    (
-                        src_image.format().planes()[0],
-                        src_image.dimensions().width_height_depth(),
-                    )
-                } else if image_subresource.aspects.plane1 {
-                    (
-                        src_image.format().planes()[1],
-                        src_image
-                            .format()
-                            .ycbcr_chroma_sampling()
-                            .unwrap()
-                            .subsampled_extent(src_image.dimensions().width_height_depth()),
-                    )
+            let (image_subresource_format, image_subresource_extent) =
+                if image_aspects.intersects(ImageAspects::PLANE_0) {
+                    if image_subresource.aspects.intersects(ImageAspects::PLANE_0) {
+                        (
+                            src_image.format().planes()[0],
+                            src_image.dimensions().width_height_depth(),
+                        )
+                    } else if image_subresource.aspects.intersects(ImageAspects::PLANE_1) {
+                        (
+                            src_image.format().planes()[1],
+                            src_image
+                                .format()
+                                .ycbcr_chroma_sampling()
+                                .unwrap()
+                                .subsampled_extent(src_image.dimensions().width_height_depth()),
+                        )
+                    } else {
+                        (
+                            src_image.format().planes()[2],
+                            src_image
+                                .format()
+                                .ycbcr_chroma_sampling()
+                                .unwrap()
+                                .subsampled_extent(src_image.dimensions().width_height_depth()),
+                        )
+                    }
                 } else {
                     (
-                        src_image.format().planes()[2],
+                        src_image.format(),
                         src_image
-                            .format()
-                            .ycbcr_chroma_sampling()
+                            .dimensions()
+                            .mip_level_dimensions(image_subresource.mip_level)
                             .unwrap()
-                            .subsampled_extent(src_image.dimensions().width_height_depth()),
+                            .width_height_depth(),
                     )
-                }
-            } else {
-                (
-                    src_image.format(),
-                    src_image
-                        .dimensions()
-                        .mip_level_dimensions(image_subresource.mip_level)
-                        .unwrap()
-                        .width_height_depth(),
-                )
-            };
+                };
 
             if let Some(extent_alignment) = extent_alignment {
                 for i in 0..3 {
@@ -1646,20 +1672,21 @@ where
             }
 
             // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
-            let image_subresource_block_size = if image_subresource.aspects.stencil {
-                1
-            } else if image_subresource.aspects.depth {
-                match image_subresource_format {
-                    Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
-                    Format::D32_SFLOAT
-                    | Format::D32_SFLOAT_S8_UINT
-                    | Format::X8_D24_UNORM_PACK32
-                    | Format::D24_UNORM_S8_UINT => 4,
-                    _ => unreachable!(),
-                }
-            } else {
-                image_subresource_format.block_size().unwrap()
-            };
+            let image_subresource_block_size =
+                if image_subresource.aspects.intersects(ImageAspects::STENCIL) {
+                    1
+                } else if image_subresource.aspects.intersects(ImageAspects::DEPTH) {
+                    match image_subresource_format {
+                        Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
+                        Format::D32_SFLOAT
+                        | Format::D32_SFLOAT_S8_UINT
+                        | Format::X8_D24_UNORM_PACK32
+                        | Format::D24_UNORM_S8_UINT => 4,
+                        _ => unreachable!(),
+                    }
+                } else {
+                    image_subresource_format.block_size().unwrap()
+                };
 
             // VUID-VkCopyImageToBufferInfo2-pRegions-04725
             // VUID-VkCopyImageToBufferInfo2-pRegions-04726
@@ -1674,27 +1701,29 @@ where
                 });
             }
 
-            let buffer_offset_alignment = if image_aspects.depth || image_aspects.stencil {
-                4
-            } else {
-                let mut buffer_offset_alignment = image_subresource_block_size;
+            let buffer_offset_alignment =
+                if image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
+                    4
+                } else {
+                    let mut buffer_offset_alignment = image_subresource_block_size;
 
-                // VUID-VkCopyImageToBufferInfo2-commandBuffer-04052
-                // Make the alignment a multiple of 4.
-                if !(queue_family_properties.queue_flags.graphics
-                    || queue_family_properties.queue_flags.compute)
-                {
-                    if buffer_offset_alignment % 2 != 0 {
-                        buffer_offset_alignment *= 2;
+                    // VUID-VkCopyImageToBufferInfo2-commandBuffer-04052
+                    // Make the alignment a multiple of 4.
+                    if !queue_family_properties
+                        .queue_flags
+                        .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+                    {
+                        if buffer_offset_alignment % 2 != 0 {
+                            buffer_offset_alignment *= 2;
+                        }
+
+                        if buffer_offset_alignment % 4 != 0 {
+                            buffer_offset_alignment *= 2;
+                        }
                     }
 
-                    if buffer_offset_alignment % 4 != 0 {
-                        buffer_offset_alignment *= 2;
-                    }
-                }
-
-                buffer_offset_alignment
-            };
+                    buffer_offset_alignment
+                };
 
             // VUID-VkCopyImageToBufferInfo2-bufferOffset-01558
             // VUID-VkCopyImageToBufferInfo2-bufferOffset-01559
@@ -1761,16 +1790,17 @@ where
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-vkCmdFillBuffer-commandBuffer-cmdpool
-            if !(queue_family_properties.queue_flags.transfer
-                || queue_family_properties.queue_flags.graphics
-                || queue_family_properties.queue_flags.compute)
+            if !queue_family_properties
+                .queue_flags
+                .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
             {
                 return Err(CopyError::NotSupportedByQueueFamily);
             }
         } else {
             // VUID-vkCmdFillBuffer-commandBuffer-00030
-            if !(queue_family_properties.queue_flags.graphics
-                || queue_family_properties.queue_flags.compute)
+            if !queue_family_properties
+                .queue_flags
+                .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
             {
                 return Err(CopyError::NotSupportedByQueueFamily);
             }
@@ -1793,7 +1823,7 @@ where
         assert!(size != 0);
 
         // VUID-vkCmdFillBuffer-dstBuffer-00029
-        if !dst_buffer.usage().transfer_dst {
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -1878,9 +1908,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdUpdateBuffer-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.transfer
-            || queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -1894,7 +1924,7 @@ where
         assert!(size_of_val(data) != 0);
 
         // VUID-vkCmdUpdateBuffer-dstBuffer-00034
-        if !dst_buffer.usage().transfer_dst {
+        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -1992,14 +2022,8 @@ impl SyncCommandBufferBuilder {
                             buffer: src_buffer.clone(),
                             range: src_offset..src_offset + size,
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_read: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_READ,
                                 exclusive: false,
                             },
                         },
@@ -2010,14 +2034,8 @@ impl SyncCommandBufferBuilder {
                             buffer: dst_buffer.clone(),
                             range: dst_offset..dst_offset + size,
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_write: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_WRITE,
                                 exclusive: true,
                             },
                         },
@@ -2090,14 +2108,8 @@ impl SyncCommandBufferBuilder {
                             image: src_image.clone(),
                             subresource_range: src_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_read: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_READ,
                                 exclusive: false,
                             },
                             start_layout: src_image_layout,
@@ -2110,14 +2122,8 @@ impl SyncCommandBufferBuilder {
                             image: dst_image.clone(),
                             subresource_range: dst_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_write: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_WRITE,
                                 exclusive: true,
                             },
                             start_layout: dst_image_layout,
@@ -2193,14 +2199,8 @@ impl SyncCommandBufferBuilder {
                             range: buffer_offset
                                 ..buffer_offset + region.buffer_copy_size(dst_image.format()),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_read: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_READ,
                                 exclusive: false,
                             },
                         },
@@ -2211,14 +2211,8 @@ impl SyncCommandBufferBuilder {
                             image: dst_image.clone(),
                             subresource_range: image_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_write: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_WRITE,
                                 exclusive: true,
                             },
                             start_layout: dst_image_layout,
@@ -2295,14 +2289,8 @@ impl SyncCommandBufferBuilder {
                             image: src_image.clone(),
                             subresource_range: image_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_read: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_READ,
                                 exclusive: false,
                             },
                             start_layout: src_image_layout,
@@ -2316,14 +2304,8 @@ impl SyncCommandBufferBuilder {
                             range: buffer_offset
                                 ..buffer_offset + region.buffer_copy_size(src_image.format()),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_write: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_WRITE,
                                 exclusive: true,
                             },
                         },
@@ -2381,14 +2363,8 @@ impl SyncCommandBufferBuilder {
                 buffer: dst_buffer.clone(),
                 range: dst_offset..dst_offset + size,
                 memory: PipelineMemoryAccess {
-                    stages: PipelineStages {
-                        all_transfer: true,
-                        ..PipelineStages::empty()
-                    },
-                    access: AccessFlags {
-                        transfer_write: true,
-                        ..AccessFlags::empty()
-                    },
+                    stages: PipelineStages::ALL_TRANSFER,
+                    access: AccessFlags::TRANSFER_WRITE,
                     exclusive: true,
                 },
             },
@@ -2444,14 +2420,8 @@ impl SyncCommandBufferBuilder {
                 buffer: dst_buffer.clone(),
                 range: dst_offset..dst_offset + size_of_val(data.deref()) as DeviceSize,
                 memory: PipelineMemoryAccess {
-                    stages: PipelineStages {
-                        all_transfer: true,
-                        ..PipelineStages::empty()
-                    },
-                    access: AccessFlags {
-                        transfer_write: true,
-                        ..AccessFlags::empty()
-                    },
+                    stages: PipelineStages::ALL_TRANSFER,
+                    access: AccessFlags::TRANSFER_WRITE,
                     exclusive: true,
                 },
             },
@@ -3521,9 +3491,9 @@ impl BufferImageCopy {
         let num_blocks = blocks_to_last_slice + blocks_to_last_row + image_extent[0] as DeviceSize;
 
         // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
-        let block_size = if image_subresource.aspects.stencil {
+        let block_size = if image_subresource.aspects.intersects(ImageAspects::STENCIL) {
             1
-        } else if image_subresource.aspects.depth {
+        } else if image_subresource.aspects.intersects(ImageAspects::DEPTH) {
             match format {
                 Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
                 Format::D32_SFLOAT

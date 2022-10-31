@@ -19,7 +19,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures},
-    image::{ImageAspects, ImageTiling, ImageType, SampleCount},
+    image::{ImageAspects, ImageCreateFlags, ImageTiling, ImageType, SampleCount},
     macros::vulkan_enum,
     sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
@@ -145,32 +145,24 @@ where
         // VUID-VkImageSubresourceRange-aspectMask-parameter
         subresource_range.aspects.validate_device(device)?;
 
-        {
-            let ImageAspects {
-                color,
-                depth,
-                stencil,
-                metadata,
-                plane0,
-                plane1,
-                plane2,
-                memory_plane0,
-                memory_plane1,
-                memory_plane2,
-                _ne: _,
-            } = subresource_range.aspects;
-
-            assert!(!(metadata || memory_plane0 || memory_plane1 || memory_plane2));
-            assert!({
-                let num_bits = color as u8
-                    + depth as u8
-                    + stencil as u8
-                    + plane0 as u8
-                    + plane1 as u8
-                    + plane2 as u8;
-                num_bits == 1 || depth && stencil && !(color || plane0 || plane1 || plane2)
-            });
-        }
+        assert!(!subresource_range.aspects.intersects(
+            ImageAspects::METADATA
+                | ImageAspects::MEMORY_PLANE_0
+                | ImageAspects::MEMORY_PLANE_1
+                | ImageAspects::MEMORY_PLANE_2
+        ));
+        assert!({
+            subresource_range.aspects.count() == 1
+                || subresource_range
+                    .aspects
+                    .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+                    && !subresource_range.aspects.intersects(
+                        ImageAspects::COLOR
+                            | ImageAspects::PLANE_0
+                            | ImageAspects::PLANE_1
+                            | ImageAspects::PLANE_2,
+                    )
+        });
 
         // Get format features
         let format_features = unsafe { Self::get_format_features(format, image_inner) };
@@ -180,7 +172,7 @@ where
             .format()
             .unwrap()
             .aspects()
-            .contains(&subresource_range.aspects)
+            .contains(subresource_range.aspects)
         {
             return Err(ImageViewCreationError::ImageAspectsNotCompatible {
                 aspects: subresource_range.aspects,
@@ -203,7 +195,9 @@ where
 
         // VUID-VkImageViewCreateInfo-image-01003
         if (view_type == ImageViewType::Cube || view_type == ImageViewType::CubeArray)
-            && !image_inner.flags().cube_compatible
+            && !image_inner
+                .flags()
+                .intersects(ImageCreateFlags::CUBE_COMPATIBLE)
         {
             return Err(ImageViewCreationError::ImageNotCubeCompatible);
         }
@@ -231,7 +225,10 @@ where
             && (view_type == ImageViewType::Dim2d || view_type == ImageViewType::Dim2dArray)
         {
             // VUID-VkImageViewCreateInfo-image-01005
-            if !image_inner.flags().array_2d_compatible {
+            if !image_inner
+                .flags()
+                .intersects(ImageCreateFlags::ARRAY_2D_COMPATIBLE)
+            {
                 return Err(ImageViewCreationError::ImageNotArray2dCompatible);
             }
 
@@ -299,7 +296,7 @@ where
             // VUID-VkImageViewCreateInfo-pNext-02662
             // VUID-VkImageViewCreateInfo-pNext-02663
             // VUID-VkImageViewCreateInfo-pNext-02664
-            if !default_usage.contains(&usage) {
+            if !default_usage.contains(usage) {
                 return Err(ImageViewCreationError::UsageNotSupportedByImage {
                     usage,
                     supported_usage: default_usage,
@@ -308,43 +305,54 @@ where
         }
 
         // VUID-VkImageViewCreateInfo-image-04441
-        if !(image_inner.usage().sampled
-            || image_inner.usage().storage
-            || image_inner.usage().color_attachment
-            || image_inner.usage().depth_stencil_attachment
-            || image_inner.usage().input_attachment
-            || image_inner.usage().transient_attachment)
-        {
+        if !image_inner.usage().intersects(
+            ImageUsage::SAMPLED
+                | ImageUsage::STORAGE
+                | ImageUsage::COLOR_ATTACHMENT
+                | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                | ImageUsage::INPUT_ATTACHMENT
+                | ImageUsage::TRANSIENT_ATTACHMENT,
+        ) {
             return Err(ImageViewCreationError::ImageMissingUsage);
         }
 
         // VUID-VkImageViewCreateInfo-usage-02274
-        if usage.sampled && !format_features.sampled_image {
+        if usage.intersects(ImageUsage::SAMPLED)
+            && !format_features.intersects(FormatFeatures::SAMPLED_IMAGE)
+        {
             return Err(ImageViewCreationError::FormatUsageNotSupported { usage: "sampled" });
         }
 
         // VUID-VkImageViewCreateInfo-usage-02275
-        if usage.storage && !format_features.storage_image {
+        if usage.intersects(ImageUsage::STORAGE)
+            && !format_features.intersects(FormatFeatures::STORAGE_IMAGE)
+        {
             return Err(ImageViewCreationError::FormatUsageNotSupported { usage: "storage" });
         }
 
         // VUID-VkImageViewCreateInfo-usage-02276
-        if usage.color_attachment && !format_features.color_attachment {
+        if usage.intersects(ImageUsage::COLOR_ATTACHMENT)
+            && !format_features.intersects(FormatFeatures::COLOR_ATTACHMENT)
+        {
             return Err(ImageViewCreationError::FormatUsageNotSupported {
                 usage: "color_attachment",
             });
         }
 
         // VUID-VkImageViewCreateInfo-usage-02277
-        if usage.depth_stencil_attachment && !format_features.depth_stencil_attachment {
+        if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            && !format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
+        {
             return Err(ImageViewCreationError::FormatUsageNotSupported {
                 usage: "depth_stencil_attachment",
             });
         }
 
         // VUID-VkImageViewCreateInfo-usage-02652
-        if usage.input_attachment
-            && !(format_features.color_attachment || format_features.depth_stencil_attachment)
+        if usage.intersects(ImageUsage::INPUT_ATTACHMENT)
+            && !format_features.intersects(
+                FormatFeatures::COLOR_ATTACHMENT | FormatFeatures::DEPTH_STENCIL_ATTACHMENT,
+            )
         {
             return Err(ImageViewCreationError::FormatUsageNotSupported {
                 usage: "input_attachment",
@@ -355,9 +363,11 @@ where
 
         if Some(format) != image_inner.format() {
             // VUID-VkImageViewCreateInfo-image-01762
-            if !image_inner.flags().mutable_format
+            if !image_inner
+                .flags()
+                .intersects(ImageCreateFlags::MUTABLE_FORMAT)
                 || !image_inner.format().unwrap().planes().is_empty()
-                    && subresource_range.aspects.color
+                    && subresource_range.aspects.intersects(ImageAspects::COLOR)
             {
                 return Err(ImageViewCreationError::FormatNotCompatible);
             }
@@ -370,10 +380,9 @@ where
                 && format.components() != image_inner.format().unwrap().components()
             {
                 return Err(ImageViewCreationError::RequirementNotMet {
-                    required_for:
-                        "this device is a portability subset device, and the format of the image \
-                        view does not have the same components and number of bits per component as \
-                        the parent image",
+                    required_for: "this device is a portability subset device, and the format of \
+                        the image view does not have the same components and number of bits per \
+                        component as the parent image",
                     requires_one_of: RequiresOneOf {
                         features: &["image_view_format_reinterpretation"],
                         ..Default::default()
@@ -381,7 +390,10 @@ where
                 });
             }
 
-            if image_inner.flags().block_texel_view_compatible {
+            if image_inner
+                .flags()
+                .intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE)
+            {
                 // VUID-VkImageViewCreateInfo-image-01583
                 if !(format.compatibility() == image_inner.format().unwrap().compatibility()
                     || format.block_size() == image_inner.format().unwrap().block_size())
@@ -411,11 +423,11 @@ where
                         return Err(ImageViewCreationError::FormatNotCompatible);
                     }
                 } else {
-                    let plane = if subresource_range.aspects.plane0 {
+                    let plane = if subresource_range.aspects.intersects(ImageAspects::PLANE_0) {
                         0
-                    } else if subresource_range.aspects.plane1 {
+                    } else if subresource_range.aspects.intersects(ImageAspects::PLANE_1) {
                         1
-                    } else if subresource_range.aspects.plane2 {
+                    } else if subresource_range.aspects.intersects(ImageAspects::PLANE_2) {
                         2
                     } else {
                         unreachable!()
@@ -660,7 +672,7 @@ where
                         format: image_inner.format(),
                         image_type: image.dimensions().image_type(),
                         tiling: image_inner.tiling(),
-                        usage: *image_inner.usage(),
+                        usage: image_inner.usage(),
                         image_view_type: Some(view_type),
                         ..Default::default()
                     })?;
@@ -689,19 +701,15 @@ where
 
     // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkImageViewCreateInfo.html#_description
     fn get_default_usage(aspects: ImageAspects, image: &Image) -> ImageUsage {
-        let has_stencil_aspect = aspects.stencil;
-        let has_non_stencil_aspect = !(ImageAspects {
-            stencil: false,
-            ..aspects
-        })
-        .is_empty();
+        let has_stencil_aspect = aspects.intersects(ImageAspects::STENCIL);
+        let has_non_stencil_aspect = !(aspects - ImageAspects::STENCIL).is_empty();
 
         if has_stencil_aspect && has_non_stencil_aspect {
-            *image.usage() & *image.stencil_usage()
+            image.usage() & image.stencil_usage()
         } else if has_stencil_aspect {
-            *image.stencil_usage()
+            image.stencil_usage()
         } else if has_non_stencil_aspect {
-            *image.usage()
+            image.usage()
         } else {
             unreachable!()
         }
@@ -711,7 +719,7 @@ where
     unsafe fn get_format_features(format: Format, image: &Image) -> FormatFeatures {
         let device = image.device();
 
-        let format_features = if Some(format) != image.format() {
+        let mut format_features = if Some(format) != image.format() {
             // Use unchecked, because all validation should have been done before calling.
             let format_properties = device.physical_device().format_properties_unchecked(format);
 
@@ -720,28 +728,34 @@ where
                 ImageTiling::Linear => format_properties.linear_tiling_features,
             }
         } else {
-            *image.format_features()
+            image.format_features()
         };
 
-        if device.enabled_extensions().khr_format_feature_flags2 {
-            format_features
-        } else {
-            let is_without_format = format.shader_storage_image_without_format();
+        if !device.enabled_extensions().khr_format_feature_flags2 {
+            if format.type_color().is_none()
+                && format_features.intersects(FormatFeatures::SAMPLED_IMAGE)
+            {
+                format_features |= FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON;
+            }
 
-            FormatFeatures {
-                sampled_image_depth_comparison: format.type_color().is_none()
-                    && format_features.sampled_image,
-                storage_read_without_format: is_without_format
-                    && device
-                        .enabled_features()
-                        .shader_storage_image_read_without_format,
-                storage_write_without_format: is_without_format
-                    && device
-                        .enabled_features()
-                        .shader_storage_image_write_without_format,
-                ..format_features
+            if format.shader_storage_image_without_format() {
+                if device
+                    .enabled_features()
+                    .shader_storage_image_read_without_format
+                {
+                    format_features |= FormatFeatures::STORAGE_READ_WITHOUT_FORMAT;
+                }
+
+                if device
+                    .enabled_features()
+                    .shader_storage_image_write_without_format
+                {
+                    format_features |= FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT;
+                }
             }
         }
+
+        format_features
     }
 
     /// Returns the wrapped image that this image view was created from.
@@ -1175,7 +1189,7 @@ vulkan_enum! {
 impl ImageViewType {
     /// Returns whether the type is arrayed.
     #[inline]
-    pub fn is_arrayed(&self) -> bool {
+    pub fn is_arrayed(self) -> bool {
         match self {
             Self::Dim1d | Self::Dim2d | Self::Dim3d | Self::Cube => false,
             Self::Dim1dArray | Self::Dim2dArray | Self::CubeArray => true,
@@ -1184,9 +1198,9 @@ impl ImageViewType {
 
     /// Returns whether `self` is compatible with the given `image_type`.
     #[inline]
-    pub fn is_compatible_with(&self, image_type: ImageType) -> bool {
+    pub fn is_compatible_with(self, image_type: ImageType) -> bool {
         matches!(
-            (*self, image_type,),
+            (self, image_type,),
             (
                 ImageViewType::Dim1d | ImageViewType::Dim1dArray,
                 ImageType::Dim1d
@@ -1254,7 +1268,7 @@ pub unsafe trait ImageViewAbstract:
     fn format(&self) -> Option<Format>;
 
     /// Returns the features supported by the image view's format.
-    fn format_features(&self) -> &FormatFeatures;
+    fn format_features(&self) -> FormatFeatures;
 
     /// Returns the sampler YCbCr conversion that this image view was created with, if any.
     fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>>;
@@ -1263,7 +1277,7 @@ pub unsafe trait ImageViewAbstract:
     fn subresource_range(&self) -> &ImageSubresourceRange;
 
     /// Returns the usage of the image view.
-    fn usage(&self) -> &ImageUsage;
+    fn usage(&self) -> ImageUsage;
 
     /// Returns the [`ImageViewType`] of this image view.
     fn view_type(&self) -> ImageViewType;
@@ -1293,8 +1307,8 @@ where
         self.format
     }
 
-    fn format_features(&self) -> &FormatFeatures {
-        &self.format_features
+    fn format_features(&self) -> FormatFeatures {
+        self.format_features
     }
 
     fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
@@ -1305,8 +1319,8 @@ where
         &self.subresource_range
     }
 
-    fn usage(&self) -> &ImageUsage {
-        &self.usage
+    fn usage(&self) -> ImageUsage {
+        self.usage
     }
 
     fn view_type(&self) -> ImageViewType {
@@ -1341,8 +1355,8 @@ unsafe impl ImageViewAbstract for ImageView<dyn ImageAccess> {
     }
 
     #[inline]
-    fn format_features(&self) -> &FormatFeatures {
-        &self.format_features
+    fn format_features(&self) -> FormatFeatures {
+        self.format_features
     }
 
     #[inline]
@@ -1356,8 +1370,8 @@ unsafe impl ImageViewAbstract for ImageView<dyn ImageAccess> {
     }
 
     #[inline]
-    fn usage(&self) -> &ImageUsage {
-        &self.usage
+    fn usage(&self) -> ImageUsage {
+        self.usage
     }
 
     #[inline]

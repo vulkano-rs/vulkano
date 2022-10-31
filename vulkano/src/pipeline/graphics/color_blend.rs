@@ -658,14 +658,14 @@ vulkan_bitflags! {
     ColorComponents = ColorComponentFlags(u32);
 
     /// The red component.
-    r = R,
+    R = R,
 
     /// The green component.
-    g = G,
+    G = G,
 
     /// The blue component.
-    b = B,
+    B = B,
 
     /// The alpha component.
-    a = A,
+    A = A,
 }

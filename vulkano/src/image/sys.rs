@@ -29,7 +29,8 @@ use crate::{
     },
     memory::{
         allocator::{AllocationCreationError, MemoryAlloc},
-        DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryRequirements,
+        DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryPropertyFlags,
+        MemoryRequirements,
     },
     range_map::RangeMap,
     swapchain::Swapchain,
@@ -140,13 +141,14 @@ impl RawImage {
         let format = format.unwrap(); // Can be None for "external formats" but Vulkano doesn't support that yet
         let aspects = format.aspects();
 
-        let has_separate_stencil_usage =
-            if stencil_usage.is_empty() || !(aspects.depth && aspects.stencil) {
-                stencil_usage = usage;
-                false
-            } else {
-                stencil_usage == usage
-            };
+        let has_separate_stencil_usage = if stencil_usage.is_empty()
+            || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        {
+            stencil_usage = usage;
+            false
+        } else {
+            stencil_usage == usage
+        };
 
         // VUID-VkImageCreateInfo-flags-parameter
         flags.validate_device(device)?;
@@ -171,7 +173,8 @@ impl RawImage {
                 || device.enabled_extensions().ext_separate_stencil_usage)
             {
                 return Err(ImageError::RequirementNotMet {
-                    required_for: "`create_info.stencil_usage` is `Some` and `create_info.format` has both a depth and a stencil aspect",
+                    required_for: "`create_info.stencil_usage` is `Some` and `create_info.format` \
+                        has both a depth and a stencil aspect",
                     requires_one_of: RequiresOneOf {
                         api_version: Some(Version::V1_2),
                         device_extensions: &["ext_separate_stencil_usage"],
@@ -197,7 +200,9 @@ impl RawImage {
         ));
 
         // VUID-VkImageCreateInfo-flags-01573
-        assert!(!flags.block_texel_view_compatible || flags.mutable_format);
+        assert!(!flags.intersects(
+            ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE | ImageCreateFlags::MUTABLE_FORMAT
+        ));
 
         // Get format features
         let format_features = {
@@ -266,7 +271,7 @@ impl RawImage {
                 return Err(ImageError::MultisampleNot2d);
             }
 
-            if flags.cube_compatible {
+            if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) {
                 return Err(ImageError::MultisampleCubeCompatible);
             }
 
@@ -284,10 +289,9 @@ impl RawImage {
                 && array_layers != 1
             {
                 return Err(ImageError::RequirementNotMet {
-                    required_for:
-                        "this device is a portability subset device, `create_info.samples` is not \
-                        `SampleCount::Sample1` and `create_info.dimensions.array_layers()` is \
-                        greater than `1`",
+                    required_for: "this device is a portability subset device, \
+                        `create_info.samples` is not `SampleCount::Sample1` and \
+                        `create_info.dimensions.array_layers()` is greater than `1`",
                     requires_one_of: RequiresOneOf {
                         features: &["multisample_array_image"],
                         ..Default::default()
@@ -316,7 +320,8 @@ impl RawImage {
             // VUID-VkImageCreateInfo-format-06413
             if array_layers > 1 && !device.enabled_features().ycbcr_image_arrays {
                 return Err(ImageError::RequirementNotMet {
-                    required_for: "`create_info.format.ycbcr_chroma_sampling()` is `Some` and `create_info.dimensions.array_layers()` is greater than `1`",
+                    required_for: "`create_info.format.ycbcr_chroma_sampling()` is `Some` and \
+                        `create_info.dimensions.array_layers()` is greater than `1`",
                     requires_one_of: RequiresOneOf {
                         features: &["ycbcr_image_arrays"],
                         ..Default::default()
@@ -346,35 +351,44 @@ impl RawImage {
 
         let combined_usage = usage | stencil_usage;
 
-        if combined_usage.sampled && !format_features.sampled_image {
+        if combined_usage.intersects(ImageUsage::SAMPLED)
+            && !format_features.intersects(FormatFeatures::SAMPLED_IMAGE)
+        {
             return Err(ImageError::FormatUsageNotSupported { usage: "sampled" });
         }
 
-        if combined_usage.color_attachment && !format_features.color_attachment {
+        if combined_usage.intersects(ImageUsage::COLOR_ATTACHMENT)
+            && !format_features.intersects(FormatFeatures::COLOR_ATTACHMENT)
+        {
             return Err(ImageError::FormatUsageNotSupported {
                 usage: "color_attachment",
             });
         }
 
-        if combined_usage.depth_stencil_attachment && !format_features.depth_stencil_attachment {
+        if combined_usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            && !format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
+        {
             return Err(ImageError::FormatUsageNotSupported {
                 usage: "depth_stencil_attachment",
             });
         }
 
-        if combined_usage.input_attachment
-            && !(format_features.color_attachment || format_features.depth_stencil_attachment)
+        if combined_usage.intersects(ImageUsage::INPUT_ATTACHMENT)
+            && !format_features.intersects(
+                FormatFeatures::COLOR_ATTACHMENT | FormatFeatures::DEPTH_STENCIL_ATTACHMENT,
+            )
         {
             return Err(ImageError::FormatUsageNotSupported {
                 usage: "input_attachment",
             });
         }
 
-        if combined_usage.color_attachment
-            || combined_usage.depth_stencil_attachment
-            || combined_usage.input_attachment
-            || combined_usage.transient_attachment
-        {
+        if combined_usage.intersects(
+            ImageUsage::COLOR_ATTACHMENT
+                | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                | ImageUsage::INPUT_ATTACHMENT
+                | ImageUsage::TRANSIENT_ATTACHMENT,
+        ) {
             // VUID-VkImageCreateInfo-usage-00964
             // VUID-VkImageCreateInfo-usage-00965
             // VUID-VkImageCreateInfo-Format-02536
@@ -392,8 +406,8 @@ impl RawImage {
             }
         }
 
-        if combined_usage.storage {
-            if !format_features.storage_image {
+        if combined_usage.intersects(ImageUsage::STORAGE) {
+            if !format_features.intersects(FormatFeatures::STORAGE_IMAGE) {
                 return Err(ImageError::FormatUsageNotSupported { usage: "storage" });
             }
 
@@ -403,7 +417,9 @@ impl RawImage {
                 && samples != SampleCount::Sample1
             {
                 return Err(ImageError::RequirementNotMet {
-                    required_for: "`create_info.usage.storage` or `create_info.stencil_usage.storage` is set and `create_info.samples` is not `SampleCount::Sample1`",
+                    required_for: "`create_info.usage` or `create_info.stencil_usage` contains \
+                        `ImageUsage::STORAGE`, and `create_info.samples` is not \
+                        `SampleCount::Sample1`",
                     requires_one_of: RequiresOneOf {
                         features: &["shader_storage_image_multisample"],
                         ..Default::default()
@@ -414,40 +430,46 @@ impl RawImage {
 
         // These flags only exist in later versions, ignore them otherwise
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
-            if combined_usage.transfer_src && !format_features.transfer_src {
+            if combined_usage.intersects(ImageUsage::TRANSFER_SRC)
+                && !format_features.intersects(FormatFeatures::TRANSFER_SRC)
+            {
                 return Err(ImageError::FormatUsageNotSupported {
                     usage: "transfer_src",
                 });
             }
 
-            if combined_usage.transfer_dst && !format_features.transfer_dst {
+            if combined_usage.intersects(ImageUsage::TRANSFER_DST)
+                && !format_features.intersects(FormatFeatures::TRANSFER_DST)
+            {
                 return Err(ImageError::FormatUsageNotSupported {
                     usage: "transfer_dst",
                 });
             }
         }
 
-        if usage.transient_attachment {
+        if usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT) {
             // VUID-VkImageCreateInfo-usage-00966
-            assert!(
-                usage.color_attachment || usage.depth_stencil_attachment || usage.input_attachment
-            );
+            assert!(usage.intersects(
+                ImageUsage::COLOR_ATTACHMENT
+                    | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                    | ImageUsage::INPUT_ATTACHMENT
+            ));
 
             // VUID-VkImageCreateInfo-usage-00963
-            assert!(ImageUsage {
-                transient_attachment: false,
-                color_attachment: false,
-                depth_stencil_attachment: false,
-                input_attachment: false,
-                ..usage
-            }
-            .is_empty())
+            assert!((usage
+                - (ImageUsage::TRANSIENT_ATTACHMENT
+                    | ImageUsage::COLOR_ATTACHMENT
+                    | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                    | ImageUsage::INPUT_ATTACHMENT))
+                .is_empty())
         }
 
         if has_separate_stencil_usage {
             // VUID-VkImageCreateInfo-format-02795
             // VUID-VkImageCreateInfo-format-02796
-            if usage.depth_stencil_attachment != stencil_usage.depth_stencil_attachment {
+            if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                != stencil_usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            {
                 return Err(ImageError::StencilUsageMismatch {
                     usage,
                     stencil_usage,
@@ -456,28 +478,28 @@ impl RawImage {
 
             // VUID-VkImageCreateInfo-format-02797
             // VUID-VkImageCreateInfo-format-02798
-            if usage.transient_attachment != stencil_usage.transient_attachment {
+            if usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
+                != stencil_usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
+            {
                 return Err(ImageError::StencilUsageMismatch {
                     usage,
                     stencil_usage,
                 });
             }
 
-            if stencil_usage.transient_attachment {
+            if stencil_usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT) {
                 // VUID-VkImageStencilUsageCreateInfo-stencilUsage-02539
-                assert!(ImageUsage {
-                    transient_attachment: false,
-                    depth_stencil_attachment: false,
-                    input_attachment: false,
-                    ..stencil_usage
-                }
-                .is_empty())
+                assert!((stencil_usage
+                    - (ImageUsage::TRANSIENT_ATTACHMENT
+                        | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                        | ImageUsage::INPUT_ATTACHMENT))
+                    .is_empty())
             }
         }
 
         /* Check flags requirements */
 
-        if flags.cube_compatible {
+        if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) {
             // VUID-VkImageCreateInfo-flags-00949
             if image_type != ImageType::Dim2d {
                 return Err(ImageError::CubeCompatibleNot2d);
@@ -494,7 +516,7 @@ impl RawImage {
             }
         }
 
-        if flags.array_2d_compatible {
+        if flags.intersects(ImageCreateFlags::ARRAY_2D_COMPATIBLE) {
             // VUID-VkImageCreateInfo-flags-00950
             if image_type != ImageType::Dim3d {
                 return Err(ImageError::Array2dCompatibleNot3d);
@@ -505,9 +527,8 @@ impl RawImage {
                 && !device.enabled_features().image_view2_d_on3_d_image
             {
                 return Err(ImageError::RequirementNotMet {
-                    required_for:
-                        "this device is a portability subset device, and the `array_2d_compatible`
-                        flag is enabled",
+                    required_for: "this device is a portability subset device, and \
+                        `create_info.flags` contains `ImageCreateFlags::ARRAY_2D_COMPATIBLE`",
                     requires_one_of: RequiresOneOf {
                         features: &["image_view2_d_on3_d_image"],
                         ..Default::default()
@@ -516,21 +537,21 @@ impl RawImage {
             }
         }
 
-        if flags.block_texel_view_compatible {
+        if flags.intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE) {
             // VUID-VkImageCreateInfo-flags-01572
             if format.compression().is_none() {
                 return Err(ImageError::BlockTexelViewCompatibleNotCompressed);
             }
         }
 
-        if flags.disjoint {
+        if flags.intersects(ImageCreateFlags::DISJOINT) {
             // VUID-VkImageCreateInfo-format-01577
             if format.planes().len() < 2 {
                 return Err(ImageError::DisjointFormatNotSupported);
             }
 
             // VUID-VkImageCreateInfo-imageCreateFormatFeatures-02260
-            if !format_features.disjoint {
+            if !format_features.intersects(FormatFeatures::DISJOINT) {
                 return Err(ImageError::DisjointFormatNotSupported);
             }
         }
@@ -598,7 +619,7 @@ impl RawImage {
                 let limit = device.physical_device().properties().max_image_dimension1_d;
                 extent[0] > limit
             }
-            ImageType::Dim2d if flags.cube_compatible => {
+            ImageType::Dim2d if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) => {
                 let limit = device
                     .physical_device()
                     .properties()
@@ -641,7 +662,7 @@ impl RawImage {
                 return false;
             }
 
-            if combined_usage.color_attachment
+            if combined_usage.intersects(ImageUsage::COLOR_ATTACHMENT)
                 && !device_properties
                     .framebuffer_color_sample_counts
                     .contains_count(samples)
@@ -651,8 +672,8 @@ impl RawImage {
                 return true;
             }
 
-            if combined_usage.depth_stencil_attachment {
-                if aspects.depth
+            if combined_usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT) {
+                if aspects.intersects(ImageAspects::DEPTH)
                     && !device_properties
                         .framebuffer_depth_sample_counts
                         .contains_count(samples)
@@ -660,7 +681,7 @@ impl RawImage {
                     return true;
                 }
 
-                if aspects.stencil
+                if aspects.intersects(ImageAspects::STENCIL)
                     && !device_properties
                         .framebuffer_stencil_sample_counts
                         .contains_count(samples)
@@ -669,7 +690,7 @@ impl RawImage {
                 }
             }
 
-            if combined_usage.sampled {
+            if combined_usage.intersects(ImageUsage::SAMPLED) {
                 if let Some(numeric_type) = format.type_color() {
                     match numeric_type {
                         NumericType::UINT | NumericType::SINT => {
@@ -696,7 +717,7 @@ impl RawImage {
                         }
                     }
                 } else {
-                    if aspects.depth
+                    if aspects.intersects(ImageAspects::DEPTH)
                         && !device_properties
                             .sampled_image_depth_sample_counts
                             .contains_count(samples)
@@ -704,7 +725,7 @@ impl RawImage {
                         return true;
                     }
 
-                    if aspects.stencil
+                    if aspects.intersects(ImageAspects::STENCIL)
                         && device_properties
                             .sampled_image_stencil_sample_counts
                             .contains_count(samples)
@@ -714,7 +735,7 @@ impl RawImage {
                 }
             }
 
-            if combined_usage.storage
+            if combined_usage.intersects(ImageUsage::STORAGE)
                 && !device_properties
                     .storage_image_sample_counts
                     .contains_count(samples)
@@ -733,11 +754,7 @@ impl RawImage {
                     && array_layers == 1
                     // VUID-VkImageCreateInfo-samples-02257 already states that multisampling+linear
                     // is invalid so no need to check for that here.
-                    && ImageUsage {
-                        transfer_src: false,
-                        transfer_dst: false,
-                        ..usage
-                    }.is_empty())
+                    && (usage - (ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST)).is_empty())
             } else {
                 false
             }
@@ -856,13 +873,14 @@ impl RawImage {
 
         let aspects = format.map_or_else(Default::default, |format| format.aspects());
 
-        let has_separate_stencil_usage =
-            if stencil_usage.is_empty() || !(aspects.depth && aspects.stencil) {
-                stencil_usage = usage;
-                false
-            } else {
-                stencil_usage == usage
-            };
+        let has_separate_stencil_usage = if stencil_usage.is_empty()
+            || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        {
+            stencil_usage = usage;
+            false
+        } else {
+            stencil_usage == usage
+        };
 
         let (image_type, extent, array_layers) = match dimensions {
             ImageDimensions::Dim1d {
@@ -984,7 +1002,9 @@ impl RawImage {
 
         let aspects = format.map_or_else(Default::default, |format| format.aspects());
 
-        if stencil_usage.is_empty() || !(aspects.depth && aspects.stencil) {
+        if stencil_usage.is_empty()
+            || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        {
             stencil_usage = usage;
         }
 
@@ -1001,7 +1021,7 @@ impl RawImage {
             }
         };
 
-        let memory_requirements = if flags.disjoint {
+        let memory_requirements = if flags.intersects(ImageCreateFlags::DISJOINT) {
             (0..format.unwrap().planes().len())
                 .map(|plane| Self::get_memory_requirements(&device, handle, Some(plane)))
                 .collect()
@@ -1342,7 +1362,7 @@ impl RawImage {
     }
 
     fn validate_bind_memory(&self, allocations: &[MemoryAlloc]) -> Result<(), ImageError> {
-        if self.flags.disjoint {
+        if self.flags.intersects(ImageCreateFlags::DISJOINT) {
             if allocations.len() != self.format.unwrap().planes().len() {
                 return Err(ImageError::AllocationsWrongNumberOfElements {
                     provided: allocations.len(),
@@ -1398,7 +1418,10 @@ impl RawImage {
             }
 
             // VUID-VkBindImageMemoryInfo-None-01901
-            if memory_type.property_flags.protected {
+            if memory_type
+                .property_flags
+                .intersects(MemoryPropertyFlags::PROTECTED)
+            {
                 return Err(ImageError::MemoryProtectedMismatch {
                     allocations_index,
                     image_protected: false,
@@ -1410,7 +1433,7 @@ impl RawImage {
             if !memory.export_handle_types().is_empty()
                 && !memory
                     .export_handle_types()
-                    .intersects(&self.external_memory_handle_types)
+                    .intersects(self.external_memory_handle_types)
             {
                 return Err(ImageError::MemoryExternalHandleTypesDisjoint {
                     allocations_index,
@@ -1422,7 +1445,7 @@ impl RawImage {
             if let Some(handle_type) = memory.imported_handle_type() {
                 // VUID-VkBindImageMemoryInfo-memory-02989
                 if !ExternalMemoryHandleTypes::from(handle_type)
-                    .intersects(&self.external_memory_handle_types)
+                    .intersects(self.external_memory_handle_types)
                 {
                     return Err(ImageError::MemoryImportedHandleTypeNotEnabled {
                         allocations_index,
@@ -1493,7 +1516,7 @@ impl RawImage {
             let mut infos_vk: SmallVec<[_; 3]> = SmallVec::with_capacity(3);
             let mut plane_infos_vk: SmallVec<[_; 3]> = SmallVec::with_capacity(3);
 
-            if self.flags.disjoint {
+            if self.flags.intersects(ImageCreateFlags::DISJOINT) {
                 debug_assert_eq!(allocations.len(), self.format.unwrap().planes().len());
 
                 for (plane, allocation) in allocations.iter().enumerate() {
@@ -1602,8 +1625,8 @@ impl RawImage {
 
     /// Returns the features supported by the image's format.
     #[inline]
-    pub fn format_features(&self) -> &FormatFeatures {
-        &self.format_features
+    pub fn format_features(&self) -> FormatFeatures {
+        self.format_features
     }
 
     /// Returns the number of mipmap levels in the image.
@@ -1632,14 +1655,14 @@ impl RawImage {
 
     /// Returns the usage the image was created with.
     #[inline]
-    pub fn usage(&self) -> &ImageUsage {
-        &self.usage
+    pub fn usage(&self) -> ImageUsage {
+        self.usage
     }
 
     /// Returns the stencil usage the image was created with.
     #[inline]
-    pub fn stencil_usage(&self) -> &ImageUsage {
-        &self.stencil_usage
+    pub fn stencil_usage(&self) -> ImageUsage {
+        self.stencil_usage
     }
 
     /// Returns the sharing the image was created with.
@@ -1662,11 +1685,8 @@ impl RawImage {
             aspects: {
                 let aspects = self.format.unwrap().aspects();
 
-                if aspects.plane0 {
-                    ImageAspects {
-                        plane0: true,
-                        ..ImageAspects::empty()
-                    }
+                if aspects.intersects(ImageAspects::PLANE_0) {
+                    ImageAspects::PLANE_0
                 } else {
                     aspects
                 }
@@ -1681,12 +1701,8 @@ impl RawImage {
     #[inline]
     pub fn subresource_range(&self) -> ImageSubresourceRange {
         ImageSubresourceRange {
-            aspects: ImageAspects {
-                plane0: false,
-                plane1: false,
-                plane2: false,
-                ..self.format.unwrap().aspects()
-            },
+            aspects: self.format.unwrap().aspects()
+                - (ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2),
             mip_levels: 0..self.mip_levels,
             array_layers: 0..self.dimensions.array_layers(),
         }
@@ -1754,12 +1770,14 @@ impl RawImage {
         // VUID-vkGetImageSubresourceLayout-aspectMask-00997
         // VUID-vkGetImageSubresourceLayout-format-04462
         // VUID-vkGetImageSubresourceLayout-format-04463
-        if allowed_aspects.depth && allowed_aspects.stencil {
+        if allowed_aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             return Err(ImageError::DepthStencilFormatsNotSupported);
         }
 
-        if allowed_aspects.plane0 || allowed_aspects.plane1 || allowed_aspects.plane2 {
-            allowed_aspects.color = false;
+        if allowed_aspects
+            .intersects(ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2)
+        {
+            allowed_aspects -= ImageAspects::COLOR;
         }
 
         // VUID-vkGetImageSubresourceLayout-format-04461
@@ -1768,7 +1786,7 @@ impl RawImage {
         // VUID-vkGetImageSubresourceLayout-format-04464
         // VUID-vkGetImageSubresourceLayout-format-01581
         // VUID-vkGetImageSubresourceLayout-format-01582
-        if !allowed_aspects.contains(&aspect.into()) {
+        if !allowed_aspects.contains(aspect.into()) {
             return Err(ImageError::AspectNotAllowed {
                 provided_aspect: aspect,
                 allowed_aspects,
@@ -2088,8 +2106,8 @@ impl Image {
 
     /// Returns the features supported by the image's format.
     #[inline]
-    pub fn format_features(&self) -> &FormatFeatures {
-        &self.inner.format_features
+    pub fn format_features(&self) -> FormatFeatures {
+        self.inner.format_features
     }
 
     /// Returns the number of mipmap levels in the image.
@@ -2118,14 +2136,14 @@ impl Image {
 
     /// Returns the usage the image was created with.
     #[inline]
-    pub fn usage(&self) -> &ImageUsage {
-        &self.inner.usage
+    pub fn usage(&self) -> ImageUsage {
+        self.inner.usage
     }
 
     /// Returns the stencil usage the image was created with.
     #[inline]
-    pub fn stencil_usage(&self) -> &ImageUsage {
-        &self.inner.stencil_usage
+    pub fn stencil_usage(&self) -> ImageUsage {
+        self.inner.stencil_usage
     }
 
     /// Returns the sharing the image was created with.
@@ -2206,7 +2224,7 @@ impl Image {
             .format()
             .unwrap()
             .aspects()
-            .contains(&subresource_range.aspects));
+            .contains(subresource_range.aspects));
         assert!(subresource_range.mip_levels.end <= self.inner.mip_levels);
         assert!(subresource_range.array_layers.end <= self.inner.dimensions.array_layers());
 
@@ -3239,10 +3257,7 @@ mod tests {
                     array_layers: 1,
                 },
                 format: Some(Format::R8G8B8A8_UNORM),
-                usage: ImageUsage {
-                    sampled: true,
-                    ..ImageUsage::empty()
-                },
+                usage: ImageUsage::SAMPLED,
                 ..Default::default()
             },
         )
@@ -3262,11 +3277,7 @@ mod tests {
                     array_layers: 1,
                 },
                 format: Some(Format::R8G8B8A8_UNORM),
-                usage: ImageUsage {
-                    transient_attachment: true,
-                    color_attachment: true,
-                    ..ImageUsage::empty()
-                },
+                usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::COLOR_ATTACHMENT,
                 ..Default::default()
             },
         )
@@ -3288,10 +3299,7 @@ mod tests {
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
                     mip_levels: 0,
-                    usage: ImageUsage {
-                        sampled: true,
-                        ..ImageUsage::empty()
-                    },
+                    usage: ImageUsage::SAMPLED,
                     ..Default::default()
                 },
             );
@@ -3312,10 +3320,7 @@ mod tests {
                 },
                 format: Some(Format::R8G8B8A8_UNORM),
                 mip_levels: u32::MAX,
-                usage: ImageUsage {
-                    sampled: true,
-                    ..ImageUsage::empty()
-                },
+                usage: ImageUsage::SAMPLED,
                 ..Default::default()
             },
         );
@@ -3340,10 +3345,7 @@ mod tests {
                 },
                 format: Some(Format::R8G8B8A8_UNORM),
                 samples: SampleCount::Sample2,
-                usage: ImageUsage {
-                    storage: true,
-                    ..ImageUsage::empty()
-                },
+                usage: ImageUsage::STORAGE,
                 ..Default::default()
             },
         );
@@ -3371,10 +3373,7 @@ mod tests {
                     array_layers: 1,
                 },
                 format: Some(Format::ASTC_5x4_UNORM_BLOCK),
-                usage: ImageUsage {
-                    color_attachment: true,
-                    ..ImageUsage::empty()
-                },
+                usage: ImageUsage::COLOR_ATTACHMENT,
                 ..Default::default()
             },
         );
@@ -3402,11 +3401,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
-                    usage: ImageUsage {
-                        transient_attachment: true,
-                        sampled: true,
-                        ..ImageUsage::empty()
-                    },
+                    usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::SAMPLED,
                     ..Default::default()
                 },
             );
@@ -3420,20 +3415,14 @@ mod tests {
         let res = RawImage::new(
             device,
             ImageCreateInfo {
-                flags: ImageCreateFlags {
-                    cube_compatible: true,
-                    ..ImageCreateFlags::empty()
-                },
+                flags: ImageCreateFlags::CUBE_COMPATIBLE,
                 dimensions: ImageDimensions::Dim2d {
                     width: 32,
                     height: 64,
                     array_layers: 1,
                 },
                 format: Some(Format::R8G8B8A8_UNORM),
-                usage: ImageUsage {
-                    sampled: true,
-                    ..ImageUsage::empty()
-                },
+                usage: ImageUsage::SAMPLED,
                 ..Default::default()
             },
         );
@@ -3449,15 +3438,12 @@ mod tests {
     #[allow(clippy::erasing_op, clippy::identity_op)]
     fn subresource_range_iterator() {
         // A fictitious set of aspects that no real image would actually ever have.
-        let image_aspect_list: SmallVec<[ImageAspect; 4]> = ImageAspects {
-            color: true,
-            depth: true,
-            stencil: true,
-            plane0: true,
-            ..ImageAspects::empty()
-        }
-        .iter()
-        .collect();
+        let image_aspect_list: SmallVec<[ImageAspect; 4]> = (ImageAspects::COLOR
+            | ImageAspects::DEPTH
+            | ImageAspects::STENCIL
+            | ImageAspects::PLANE_0)
+            .iter()
+            .collect();
         let image_mip_levels = 6;
         let image_array_layers = 8;
 
@@ -3467,13 +3453,10 @@ mod tests {
         // Whole image
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
-                aspects: ImageAspects {
-                    color: true,
-                    depth: true,
-                    stencil: true,
-                    plane0: true,
-                    ..ImageAspects::empty()
-                },
+                aspects: ImageAspects::COLOR
+                    | ImageAspects::DEPTH
+                    | ImageAspects::STENCIL
+                    | ImageAspects::PLANE_0,
                 mip_levels: 0..6,
                 array_layers: 0..8,
             },
@@ -3490,13 +3473,7 @@ mod tests {
         // Only some aspects
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
-                aspects: ImageAspects {
-                    color: true,
-                    depth: true,
-                    stencil: false,
-                    plane0: true,
-                    ..ImageAspects::empty()
-                },
+                aspects: ImageAspects::COLOR | ImageAspects::DEPTH | ImageAspects::PLANE_0,
                 mip_levels: 0..6,
                 array_layers: 0..8,
             },
@@ -3514,13 +3491,7 @@ mod tests {
         // Two aspects, and only some of the mip levels
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
-                aspects: ImageAspects {
-                    color: false,
-                    depth: true,
-                    stencil: true,
-                    plane0: false,
-                    ..ImageAspects::empty()
-                },
+                aspects: ImageAspects::DEPTH | ImageAspects::STENCIL,
                 mip_levels: 2..4,
                 array_layers: 0..8,
             },
@@ -3537,13 +3508,8 @@ mod tests {
         // One aspect, one mip level, only some of the array layers
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
-                aspects: ImageAspects {
-                    color: true,
-                    depth: false,
-                    stencil: false,
-                    plane0: false,
-                    ..ImageAspects::empty()
-                },
+                aspects: ImageAspects::COLOR,
+
                 mip_levels: 0..1,
                 array_layers: 2..4,
             },
@@ -3563,13 +3529,7 @@ mod tests {
         // Two aspects, two mip levels, only some of the array layers
         let mut iter = SubresourceRangeIterator::new(
             ImageSubresourceRange {
-                aspects: ImageAspects {
-                    color: false,
-                    depth: true,
-                    stencil: true,
-                    plane0: false,
-                    ..ImageAspects::empty()
-                },
+                aspects: ImageAspects::DEPTH | ImageAspects::STENCIL,
                 mip_levels: 2..4,
                 array_layers: 6..8,
             },
