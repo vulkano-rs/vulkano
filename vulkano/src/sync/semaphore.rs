@@ -381,7 +381,7 @@ impl Semaphore {
         handle_type.validate_device(&self.device)?;
 
         // VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01126
-        if !self.export_handle_types.intersects(&handle_type.into()) {
+        if !self.export_handle_types.intersects(handle_type.into()) {
             return Err(SemaphoreError::HandleTypeNotEnabled);
         }
 
@@ -411,7 +411,7 @@ impl Semaphore {
 
                     if !external_semaphore_properties
                         .export_from_imported_handle_types
-                        .intersects(&imported_handle_type.into())
+                        .intersects(imported_handle_type.into())
                     {
                         return Err(SemaphoreError::ExportFromImportedNotSupported {
                             imported_handle_type,
@@ -804,7 +804,8 @@ impl Semaphore {
         // Can't validate, therefore unsafe
 
         // VUID?
-        if handle_type.has_copy_transference() && !flags.temporary {
+        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
+        {
             return Err(SemaphoreError::HandletypeCopyNotTemporary);
         }
 
@@ -850,7 +851,10 @@ impl Semaphore {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.import(handle_type, flags.temporary);
+        state.import(
+            handle_type,
+            flags.intersects(SemaphoreImportFlags::TEMPORARY),
+        );
 
         Ok(())
     }
@@ -922,7 +926,8 @@ impl Semaphore {
         // VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-zirconHandle-04767
         // Can't validate, therefore unsafe
 
-        if handle_type.has_copy_transference() && !flags.temporary {
+        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
+        {
             return Err(SemaphoreError::HandletypeCopyNotTemporary);
         }
 
@@ -967,7 +972,10 @@ impl Semaphore {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.import(handle_type, flags.temporary);
+        state.import(
+            handle_type,
+            flags.intersects(SemaphoreImportFlags::TEMPORARY),
+        );
 
         Ok(())
     }

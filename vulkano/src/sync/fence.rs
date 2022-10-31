@@ -721,7 +721,7 @@ impl Fence {
         handle_type.validate_device(&self.device)?;
 
         // VUID-VkFenceGetWin32HandleInfoKHR-handleType-01448
-        if !self.export_handle_types.intersects(&handle_type.into()) {
+        if !self.export_handle_types.intersects(handle_type.into()) {
             return Err(FenceError::HandleTypeNotEnabled);
         }
 
@@ -756,7 +756,7 @@ impl Fence {
 
                     if !external_fence_properties
                         .export_from_imported_handle_types
-                        .intersects(&imported_handle_type.into())
+                        .intersects(imported_handle_type.into())
                     {
                         return Err(FenceError::ExportFromImportedNotSupported {
                             imported_handle_type,
@@ -1002,7 +1002,7 @@ impl Fence {
         // Can't validate, therefore unsafe
 
         // VUID?
-        if handle_type.has_copy_transference() && !flags.temporary {
+        if handle_type.has_copy_transference() && !flags.intersects(FenceImportFlags::TEMPORARY) {
             return Err(FenceError::HandletypeCopyNotTemporary);
         }
 
@@ -1050,7 +1050,7 @@ impl Fence {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.import(handle_type, flags.temporary);
+        state.import(handle_type, flags.intersects(FenceImportFlags::TEMPORARY));
 
         Ok(())
     }
