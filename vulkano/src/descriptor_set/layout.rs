@@ -372,6 +372,10 @@ impl DescriptorSetLayout {
         Ok(handle)
     }
 
+    pub(crate) fn id(&self) -> NonZeroU64 {
+        self.id
+    }
+
     /// Returns the bindings of the descriptor set layout.
     #[inline]
     pub fn bindings(&self) -> &BTreeMap<u32, DescriptorSetLayoutBinding> {

@@ -82,7 +82,6 @@ pub(crate) use self::update::{check_descriptor_write, DescriptorWriteInfo};
 pub use self::{
     collection::DescriptorSetsCollection,
     persistent::PersistentDescriptorSet,
-    single_layout_pool::{SingleLayoutDescriptorSetPool, SingleLayoutVariableDescriptorSetPool},
     update::{DescriptorSetUpdateError, WriteDescriptorSet, WriteDescriptorSetElements},
 };
 use self::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
@@ -109,7 +108,6 @@ mod collection;
 pub mod layout;
 pub mod persistent;
 pub mod pool;
-pub mod single_layout_pool;
 pub mod sys;
 mod update;
 
