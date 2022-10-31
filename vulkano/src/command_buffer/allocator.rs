@@ -28,7 +28,7 @@ use crate::{
     OomError,
 };
 use crossbeam_queue::ArrayQueue;
-use smallvec::SmallVec;
+use smallvec::{IntoIter, SmallVec};
 use std::{
     cell::{Cell, UnsafeCell},
     error::Error,
@@ -36,7 +36,6 @@ use std::{
     marker::PhantomData,
     mem::ManuallyDrop,
     sync::Arc,
-    vec::IntoIter,
 };
 use thread_local::ThreadLocal;
 
@@ -204,7 +203,7 @@ impl StandardCommandBufferAllocator {
 }
 
 unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
-    type Iter = IntoIter<StandardCommandBufferBuilderAlloc>;
+    type Iter = IntoIter<[StandardCommandBufferBuilderAlloc; 1]>;
 
     type Builder = StandardCommandBufferBuilderAlloc;
 
@@ -276,7 +275,7 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
 }
 
 unsafe impl CommandBufferAllocator for Arc<StandardCommandBufferAllocator> {
-    type Iter = IntoIter<StandardCommandBufferBuilderAlloc>;
+    type Iter = IntoIter<[StandardCommandBufferBuilderAlloc; 1]>;
 
     type Builder = StandardCommandBufferBuilderAlloc;
 
@@ -418,7 +417,7 @@ impl Pool {
         self: &Arc<Self>,
         level: CommandBufferLevel,
         command_buffer_count: u32,
-    ) -> Option<IntoIter<StandardCommandBufferBuilderAlloc>> {
+    ) -> Option<IntoIter<[StandardCommandBufferBuilderAlloc; 1]>> {
         let command_buffer_count = command_buffer_count as usize;
 
         match level {
@@ -426,7 +425,7 @@ impl Pool {
                 if let Some(pool) = &self.inner.primary_pool {
                     let count = self.inner.primary_allocations.get();
                     if count + command_buffer_count <= pool.capacity() {
-                        let mut output = Vec::with_capacity(command_buffer_count);
+                        let mut output = SmallVec::<[_; 1]>::with_capacity(command_buffer_count);
                         for _ in 0..command_buffer_count {
                             output.push(StandardCommandBufferBuilderAlloc {
                                 inner: StandardCommandBufferAlloc {
@@ -462,7 +461,7 @@ impl Pool {
                 if let Some(pool) = &self.inner.secondary_pool {
                     let count = self.inner.secondary_allocations.get();
                     if count + command_buffer_count <= pool.capacity() {
-                        let mut output = Vec::with_capacity(command_buffer_count);
+                        let mut output = SmallVec::<[_; 1]>::with_capacity(command_buffer_count);
                         for _ in 0..command_buffer_count {
                             output.push(StandardCommandBufferBuilderAlloc {
                                 inner: StandardCommandBufferAlloc {
