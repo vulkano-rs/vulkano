@@ -15,7 +15,7 @@
 
 ### Bugs fixed
 
-# Version 0.32.0 (2022-10-30)
+# Version 0.32.0 (2022-10-31)
 
 ### Breaking changes
 
