@@ -96,7 +96,7 @@ impl RenderPassPlaceOverFrame {
         .unwrap();
         // Create primary command buffer builder
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            &*self.command_buffer_allocator,
+            &self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

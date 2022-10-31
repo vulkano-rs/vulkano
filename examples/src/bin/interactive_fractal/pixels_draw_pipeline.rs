@@ -151,7 +151,7 @@ impl PixelsDrawPipeline {
         .unwrap();
 
         PersistentDescriptorSet::new(
-            &*self.descriptor_set_allocator,
+            &self.descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::image_view_sampler(
                 0,
@@ -169,7 +169,7 @@ impl PixelsDrawPipeline {
         image: Arc<dyn ImageViewAbstract>,
     ) -> SecondaryAutoCommandBuffer {
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &*self.command_buffer_allocator,
+            &self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {

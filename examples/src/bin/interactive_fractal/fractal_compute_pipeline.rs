@@ -56,7 +56,7 @@ impl FractalComputePipeline {
         ];
         let palette_size = colors.len() as i32;
         let palette = CpuAccessibleBuffer::from_iter(
-            &*memory_allocator,
+            &memory_allocator,
             BufferUsage {
                 storage_buffer: true,
                 ..BufferUsage::empty()
@@ -102,7 +102,7 @@ impl FractalComputePipeline {
             colors.push([r, g, b, a]);
         }
         self.palette = CpuAccessibleBuffer::from_iter(
-            &*self.memory_allocator,
+            &self.memory_allocator,
             BufferUsage {
                 storage_buffer: true,
                 ..BufferUsage::empty()
@@ -127,7 +127,7 @@ impl FractalComputePipeline {
         let pipeline_layout = self.pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
-            &*self.descriptor_set_allocator,
+            &self.descriptor_set_allocator,
             desc_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, image),
@@ -136,7 +136,7 @@ impl FractalComputePipeline {
         )
         .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(
-            &*self.command_buffer_allocator,
+            &self.command_buffer_allocator,
             self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
