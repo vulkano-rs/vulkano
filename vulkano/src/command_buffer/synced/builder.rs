@@ -689,7 +689,6 @@ impl SyncCommandBufferBuilder {
 
                                         // A layout transition is a write, so if we perform one, we
                                         // need exclusive access.
-                                        state.memory.exclusive = true; // TODO: is this correct?
                                         state.exclusive_any = true;
                                         barrier.new_layout = start_layout;
                                     }
