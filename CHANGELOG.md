@@ -14,7 +14,7 @@
 ### Additions
 
 ### Bugs fixed
-- [#2074](https://github.com/vulkano-rs/vulkano/issues/2074) Fixed error on multiple draw calls using a texture that had a layout transition.
+- [#2074](https://github.com/vulkano-rs/vulkano/issues/2074): Fixed error on multiple draw calls using a texture that had a layout transition.
 
 # Version 0.32.0 (2022-10-31)
 
