@@ -9,7 +9,7 @@
 
 use crate::{
     device::{Device, DeviceOwned, Queue},
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{vulkan_bitflags, vulkan_bitflags_enum},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -1265,106 +1265,55 @@ impl Default for FenceCreateInfo {
     }
 }
 
-vulkan_enum! {
-    /// The handle type used for Vulkan external fence APIs.
+vulkan_bitflags_enum! {
     #[non_exhaustive]
-    ExternalFenceHandleType = ExternalFenceHandleTypeFlags(u32);
+    /// A set of [`ExternalFenceHandleType`] values.
+    ExternalFenceHandleTypes,
 
-    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueFd = OPAQUE_FD,
-
-    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueWin32 = OPAQUE_WIN32,
-
-    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
-
-    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
-    ///
-    /// This handle type has *copy transference*.
-    SyncFd = SYNC_FD,
-}
-
-impl ExternalFenceHandleType {
-    /// Returns whether the given handle type has *copy transference* rather than *reference
-    /// transference*.
-    ///
-    /// Imports of handles with copy transference must always be temporary. Exports of such
-    /// handles must only occur if the fence is already signaled, or if there is a fence signal
-    /// operation pending in a queue.
-    #[inline]
-    pub fn has_copy_transference(self) -> bool {
-        // As defined by
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-win32
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-fd
-        matches!(self, Self::SyncFd)
-    }
-}
-
-vulkan_bitflags! {
-    /// A mask of multiple external fence handle types.
-    #[non_exhaustive]
-    ExternalFenceHandleTypes = ExternalFenceHandleTypeFlags(u32);
-
-    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OPAQUE_FD = OPAQUE_FD,
-
-    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OPAQUE_WIN32 = OPAQUE_WIN32,
-
-    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OPAQUE_WIN32_KMT = OPAQUE_WIN32_KMT,
-
-    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
-    ///
-    /// This handle type has *copy transference*.
-    SYNC_FD = SYNC_FD,
-}
-
-impl From<ExternalFenceHandleType> for ExternalFenceHandleTypes {
-    #[inline]
-    fn from(val: ExternalFenceHandleType) -> Self {
-        match val {
-            ExternalFenceHandleType::OpaqueFd => ExternalFenceHandleTypes::OPAQUE_FD,
-            ExternalFenceHandleType::OpaqueWin32 => ExternalFenceHandleTypes::OPAQUE_WIN32,
-            ExternalFenceHandleType::OpaqueWin32Kmt => ExternalFenceHandleTypes::OPAQUE_WIN32_KMT,
-            ExternalFenceHandleType::SyncFd => ExternalFenceHandleTypes::SYNC_FD,
+    /// The handle type used to export or import fences to/from an external source.
+    ExternalFenceHandleType impl {
+        /// Returns whether the given handle type has *copy transference* rather than *reference
+        /// transference*.
+        ///
+        /// Imports of handles with copy transference must always be temporary. Exports of such
+        /// handles must only occur if the fence is already signaled, or if there is a fence signal
+        /// operation pending in a queue.
+        #[inline]
+        pub fn has_copy_transference(self) -> bool {
+            // As defined by
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-win32
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-fd
+            matches!(self, Self::SyncFd)
         }
-    }
-}
+    },
 
-impl ExternalFenceHandleTypes {
-    fn into_iter(self) -> impl IntoIterator<Item = ExternalFenceHandleType> {
-        [
-            self.intersects(ExternalFenceHandleTypes::OPAQUE_FD)
-                .then_some(ExternalFenceHandleType::OpaqueFd),
-            self.intersects(ExternalFenceHandleTypes::OPAQUE_WIN32)
-                .then_some(ExternalFenceHandleType::OpaqueWin32),
-            self.intersects(ExternalFenceHandleTypes::OPAQUE_WIN32_KMT)
-                .then_some(ExternalFenceHandleType::OpaqueWin32Kmt),
-            self.intersects(ExternalFenceHandleTypes::SYNC_FD)
-                .then_some(ExternalFenceHandleType::SyncFd),
-        ]
-        .into_iter()
-        .flatten()
-    }
+    = ExternalFenceHandleTypeFlags(u32);
+
+    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_FD, OpaqueFd = OPAQUE_FD,
+
+    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_WIN32, OpaqueWin32 = OPAQUE_WIN32,
+
+    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_WIN32_KMT, OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
+
+    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
+    ///
+    /// This handle type has *copy transference*.
+    SYNC_FD, SyncFd = SYNC_FD,
 }
 
 vulkan_bitflags! {
-    /// Additional parameters for a fence payload import.
     #[non_exhaustive]
+
+    /// Additional parameters for a fence payload import.
     FenceImportFlags = FenceImportFlags(u32);
 
     /// The fence payload will be imported only temporarily, regardless of the permanence of the

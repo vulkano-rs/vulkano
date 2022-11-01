@@ -733,8 +733,9 @@ impl Default for SamplerYcbcrConversionCreateInfo {
 }
 
 vulkan_enum! {
-    /// The conversion between the color model of the source image and the color model of the shader.
     #[non_exhaustive]
+
+    /// The conversion between the color model of the source image and the color model of the shader.
     SamplerYcbcrModelConversion = SamplerYcbcrModelConversion(i32);
 
     /// The input values are already in the shader's model, and are passed through unmodified.
@@ -757,8 +758,9 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
-    /// How the numeric range of the input data is converted.
     #[non_exhaustive]
+
+    /// How the numeric range of the input data is converted.
     SamplerYcbcrRange = SamplerYcbcrRange(i32);
 
     /// The input values cover the full numeric range, and are interpreted according to the ITU
@@ -771,9 +773,10 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// For formats with chroma subsampling, the location where the chroma components are sampled,
     /// relative to the luma component.
-    #[non_exhaustive]
     ChromaLocation = ChromaLocation(i32);
 
     /// The chroma components are sampled at the even luma coordinate.

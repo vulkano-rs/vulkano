@@ -144,6 +144,7 @@ impl Default for ColorBlendState {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
     /// Which logical operation to apply to the output values.
     ///
     /// The operation is applied individually for each channel (red, green, blue and alpha).
@@ -151,7 +152,6 @@ vulkan_enum! {
     /// Only relevant for integer or unsigned attachments.
     ///
     /// Also note that some implementations don't support logic operations.
-    #[non_exhaustive]
     LogicOp = LogicOp(i32);
 
     /// Returns `0`.
@@ -318,6 +318,8 @@ impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// The operation that takes `source` (output from the fragment shader), `destination` (value
     /// currently in the framebuffer attachment) and `blend_constant` input values,
     /// and produces new inputs to be fed to `BlendOp`.
@@ -325,7 +327,6 @@ vulkan_enum! {
     /// Some operations take `source1` as an input, representing the second source value. The
     /// [`dual_src_blend`](crate::device::Features::dual_src_blend) feature must be enabled on the
     /// device when these are used.
-    #[non_exhaustive]
     BlendFactor = BlendFactor(i32);
 
     /// Always `0`.
@@ -400,9 +401,10 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// The arithmetic operation that is applied between the `source` and `destination` component
     /// values, after the appropriate `BlendFactor` is applied to both.
-    #[non_exhaustive]
     BlendOp = BlendOp(i32);
 
     /// `source + destination`.

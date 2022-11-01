@@ -570,8 +570,9 @@ impl From<QueryType> for ash::vk::QueryType {
 }
 
 vulkan_bitflags! {
-    /// Flags that control how a query is to be executed.
     #[non_exhaustive]
+
+    /// Flags that control how a query is to be executed.
     QueryControlFlags = QueryControlFlags(u32);
 
     /// For occlusion queries, specifies that the result must reflect the exact number of
@@ -581,9 +582,34 @@ vulkan_bitflags! {
 }
 
 vulkan_bitflags! {
-    /// For pipeline statistics queries, the statistics that should be gathered.
     #[non_exhaustive]
-    QueryPipelineStatisticFlags = QueryPipelineStatisticFlags(u32);
+
+    /// For pipeline statistics queries, the statistics that should be gathered.
+    QueryPipelineStatisticFlags impl {
+        /// Returns `true` if `self` contains any flags referring to compute operations.
+        #[inline]
+        pub const fn is_compute(self) -> bool {
+            self.intersects(QueryPipelineStatisticFlags::COMPUTE_SHADER_INVOCATIONS)
+        }
+
+        /// Returns `true` if `self` contains any flags referring to graphics operations.
+        #[inline]
+        pub const fn is_graphics(self) -> bool {
+            self.intersects(
+                (QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES)
+                    .union(QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES)
+                    .union(QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS)
+                    .union(QueryPipelineStatisticFlags::GEOMETRY_SHADER_INVOCATIONS)
+                    .union(QueryPipelineStatisticFlags::GEOMETRY_SHADER_PRIMITIVES)
+                    .union(QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS)
+                    .union(QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES)
+                    .union(QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS)
+                    .union(QueryPipelineStatisticFlags::TESSELLATION_CONTROL_SHADER_PATCHES)
+                    .union(QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS),
+            )
+        }
+    }
+    = QueryPipelineStatisticFlags(u32);
 
     /// Count the number of vertices processed by the input assembly.
     INPUT_ASSEMBLY_VERTICES = INPUT_ASSEMBLY_VERTICES,
@@ -631,37 +657,13 @@ vulkan_bitflags! {
      */
 }
 
-impl QueryPipelineStatisticFlags {
-    /// Returns `true` if `self` contains any flags referring to compute operations.
-    #[inline]
-    pub const fn is_compute(self) -> bool {
-        self.intersects(QueryPipelineStatisticFlags::COMPUTE_SHADER_INVOCATIONS)
-    }
-
-    /// Returns `true` if `self` contains any flags referring to graphics operations.
-    #[inline]
-    pub const fn is_graphics(self) -> bool {
-        self.intersects(
-            (QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES)
-                .union(QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES)
-                .union(QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS)
-                .union(QueryPipelineStatisticFlags::GEOMETRY_SHADER_INVOCATIONS)
-                .union(QueryPipelineStatisticFlags::GEOMETRY_SHADER_PRIMITIVES)
-                .union(QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS)
-                .union(QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES)
-                .union(QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS)
-                .union(QueryPipelineStatisticFlags::TESSELLATION_CONTROL_SHADER_PATCHES)
-                .union(QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS),
-        )
-    }
-}
-
 vulkan_bitflags! {
+    #[non_exhaustive]
+
     /// Flags to control how the results of a query should be retrieved.
     ///
     /// `VK_QUERY_RESULT_64_BIT` is not included, as it is determined automatically via the
     /// [`QueryResultElement`] trait.
-    #[non_exhaustive]
     QueryResultFlags = QueryResultFlags(u32);
 
     /// Wait for the results to become available before writing the results.

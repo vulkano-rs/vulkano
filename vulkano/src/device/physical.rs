@@ -21,8 +21,8 @@ use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
     memory::MemoryProperties,
     swapchain::{
-        ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface,
-        SurfaceApi, SurfaceCapabilities, SurfaceInfo,
+        ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceApi, SurfaceCapabilities,
+        SurfaceInfo, SurfaceTransforms,
     },
     sync::{
         ExternalFenceInfo, ExternalFenceProperties, ExternalSemaphoreInfo,
@@ -1659,10 +1659,10 @@ impl PhysicalDevice {
                 .supported_transforms
                 .into(),
 
-            current_transform: SupportedSurfaceTransforms::from(
+            current_transform: SurfaceTransforms::from(
                 capabilities_vk.surface_capabilities.current_transform,
             )
-            .iter()
+            .into_iter()
             .next()
             .unwrap(), // TODO:
             supported_composite_alpha: capabilities_vk
@@ -2424,8 +2424,9 @@ unsafe impl VulkanObject for PhysicalDevice {
 crate::impl_id_counter!(PhysicalDevice);
 
 vulkan_enum! {
-    /// Type of a physical device.
     #[non_exhaustive]
+
+    /// Type of a physical device.
     PhysicalDeviceType = PhysicalDeviceType(i32);
 
     /// The device is an integrated GPU.
@@ -2486,8 +2487,9 @@ impl Display for ConformanceVersion {
 }
 
 vulkan_enum! {
-    /// An identifier for the driver of a physical device.
     #[non_exhaustive]
+
+    /// An identifier for the driver of a physical device.
     DriverId = DriverId(i32);
 
     // TODO: document
@@ -2554,8 +2556,9 @@ pub struct ToolProperties {
 }
 
 vulkan_bitflags! {
-    /// The purpose of an active tool.
     #[non_exhaustive]
+
+    /// The purpose of an active tool.
     ToolPurposes = ToolPurposeFlags(u32);
 
     /// The tool provides validation of API usage.
@@ -2589,8 +2592,9 @@ vulkan_bitflags! {
 }
 
 vulkan_bitflags! {
-    /// Specifies which subgroup operations are supported.
     #[non_exhaustive]
+
+    /// Specifies which subgroup operations are supported.
     SubgroupFeatures = SubgroupFeatureFlags(u32);
 
     // TODO: document
@@ -2624,8 +2628,9 @@ vulkan_bitflags! {
 }
 
 vulkan_enum! {
-    /// Specifies how the device clips single point primitives.
     #[non_exhaustive]
+
+    /// Specifies how the device clips single point primitives.
     PointClippingBehavior = PointClippingBehavior(i32);
 
     /// Points are clipped if they lie outside any clip plane, both those bounding the view volume
@@ -2637,8 +2642,9 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
-    /// Specifies whether, and how, shader float controls can be set independently.
     #[non_exhaustive]
+
+    /// Specifies whether, and how, shader float controls can be set independently.
     ShaderFloatControlsIndependence = ShaderFloatControlsIndependence(i32);
 
     // TODO: document

@@ -170,7 +170,7 @@ fn main() {
                 image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_caps
                     .supported_composite_alpha
-                    .iter()
+                    .into_iter()
                     .next()
                     .unwrap(),
                 ..Default::default()
@@ -324,7 +324,7 @@ fn main() {
             let (swapchain, images) = {
                 let composite_alpha = surface_caps
                     .supported_composite_alpha
-                    .iter()
+                    .into_iter()
                     .next()
                     .unwrap();
                 let image_format = Some(

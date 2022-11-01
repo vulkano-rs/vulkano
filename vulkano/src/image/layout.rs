@@ -10,6 +10,8 @@
 use crate::{descriptor_set::layout::DescriptorType, macros::vulkan_enum};
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// In-memory layout of the pixel data of an image.
     ///
     /// The pixel data of a Vulkan image is arranged in a particular way, which is called its
@@ -34,7 +36,6 @@ vulkan_enum! {
     /// user to specify which one. Vulkano helps with this by providing sensible defaults,
     /// automatically tracking the layout of each image when creating a command buffer, and adding
     /// layout transitions where needed.
-    #[non_exhaustive]
     ImageLayout = ImageLayout(i32);
 
     /// The layout of the data is unknown, and the image is treated as containing no valid data.

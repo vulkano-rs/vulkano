@@ -249,7 +249,7 @@ fn main() {
                 // example, you can choose whether the window will be opaque or transparent.
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
-                    .iter()
+                    .into_iter()
                     .next()
                     .unwrap(),
 

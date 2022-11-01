@@ -323,9 +323,9 @@
 
 pub use self::{
     surface::{
-        ColorSpace, CompositeAlpha, PresentMode, SupportedCompositeAlpha,
-        SupportedSurfaceTransforms, Surface, SurfaceApi, SurfaceCapabilities, SurfaceCreationError,
-        SurfaceInfo, SurfaceTransform,
+        ColorSpace, CompositeAlpha, CompositeAlphas, PresentMode, Surface, SurfaceApi,
+        SurfaceCapabilities, SurfaceCreationError, SurfaceInfo, SurfaceTransform,
+        SurfaceTransforms,
     },
     swapchain::{
         acquire_next_image, acquire_next_image_raw, present, wait_for_present, AcquireError,

@@ -144,7 +144,7 @@ fn main() {
                 image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
-                    .iter()
+                    .into_iter()
                     .next()
                     .unwrap(),
                 ..Default::default()

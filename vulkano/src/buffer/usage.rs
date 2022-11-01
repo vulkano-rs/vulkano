@@ -10,10 +10,11 @@
 use crate::macros::vulkan_bitflags;
 
 vulkan_bitflags! {
+    #[non_exhaustive]
+
     /// Describes how a buffer is going to be used. This is **not** just an optimization.
     ///
     /// If you try to use a buffer in a way that you didn't declare, an error will be returned.
-    #[non_exhaustive]
     BufferUsage = BufferUsageFlags(u32);
 
     /// The buffer can be used as a source for transfer, blit, resolve and clear commands.

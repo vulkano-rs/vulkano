@@ -169,8 +169,9 @@ pub struct DispatchIndirectCommand {
 }
 
 vulkan_enum! {
-    /// Describes what a subpass in a command buffer will contain.
     #[non_exhaustive]
+
+    /// Describes what a subpass in a command buffer will contain.
     SubpassContents = SubpassContents(i32);
 
     /// The subpass will only directly contain commands.

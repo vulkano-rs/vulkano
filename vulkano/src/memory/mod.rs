@@ -152,8 +152,9 @@ pub struct MemoryType {
 }
 
 vulkan_bitflags! {
-    /// Properties of a memory type.
     #[non_exhaustive]
+
+    /// Properties of a memory type.
     MemoryPropertyFlags = MemoryPropertyFlags(u32);
 
     /// The memory is located on the device, and is allocated from a heap that also has the
@@ -278,8 +279,9 @@ pub struct MemoryHeap {
 }
 
 vulkan_bitflags! {
-    /// Attributes of a memory heap.
     #[non_exhaustive]
+
+    /// Attributes of a memory heap.
     MemoryHeapFlags = MemoryHeapFlags(u32);
 
     /// The heap corresponds to device-local memory.

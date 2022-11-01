@@ -10,7 +10,7 @@
 use super::{DedicatedAllocation, DedicatedTo};
 use crate::{
     device::{Device, DeviceOwned},
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{vulkan_bitflags, vulkan_bitflags_enum},
     memory::MemoryPropertyFlags,
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -869,192 +869,73 @@ pub enum MemoryImportInfo {
     },
 }
 
-vulkan_enum! {
-    /// Describes a handle type used for Vulkan external memory apis.  This is **not** just a
-    /// suggestion.  Check out vkExternalMemoryHandleTypeFlagBits in the Vulkan spec.
-    ///
-    /// If you specify an handle type that doesnt make sense (for example, using a dma-buf handle
-    /// type on Windows) when using this handle, a panic will happen.
+vulkan_bitflags_enum! {
     #[non_exhaustive]
-    ExternalMemoryHandleType = ExternalMemoryHandleTypeFlags(u32);
 
-    // TODO: document
-    OpaqueFd = OPAQUE_FD,
+    /// A set of [`ExternalMemoryHandleType`] values.
+    ExternalMemoryHandleTypes,
 
-    // TODO: document
-    OpaqueWin32 = OPAQUE_WIN32,
+    /// A handle type used to export or import memory to/from an external source.
+    ExternalMemoryHandleType,
 
-    // TODO: document
-    OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
+    = ExternalMemoryHandleTypeFlags(u32);
 
-    // TODO: document
-    D3D11Texture = D3D11_TEXTURE,
+    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
+    OPAQUE_FD, OpaqueFd = OPAQUE_FD,
 
-    // TODO: document
-    D3D11TextureKmt = D3D11_TEXTURE_KMT,
+    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
+    OPAQUE_WIN32, OpaqueWin32 = OPAQUE_WIN32,
 
-    // TODO: document
-    D3D12Heap = D3D12_HEAP,
+    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
+    OPAQUE_WIN32_KMT, OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
 
-    // TODO: document
-    D3D12Resource = D3D12_RESOURCE,
+    /// A Windows NT handle that refers to a Direct3D 10 or 11 texture resource.
+    D3D11_TEXTURE, D3D11Texture = D3D11_TEXTURE,
 
-    // TODO: document
-    DmaBuf = DMA_BUF_EXT {
+    /// A Windows global share handle that refers to a Direct3D 10 or 11 texture resource.
+    D3D11_TEXTURE_KMT, D3D11TextureKmt = D3D11_TEXTURE_KMT,
+
+    /// A Windows NT handle that refers to a Direct3D 12 heap resource.
+    D3D12_HEAP, D3D12Heap = D3D12_HEAP,
+
+    /// A Windows NT handle that refers to a Direct3D 12 committed resource.
+    D3D12_RESOURCE, D3D12Resource = D3D12_RESOURCE,
+
+    /// A POSIX file descriptor handle that refers to a Linux dma-buf.
+    DMA_BUF, DmaBuf = DMA_BUF_EXT {
         device_extensions: [ext_external_memory_dma_buf],
     },
 
-    // TODO: document
-    AndroidHardwareBuffer = ANDROID_HARDWARE_BUFFER_ANDROID {
+    /// A handle for an Android `AHardwareBuffer` object.
+    ANDROID_HARDWARE_BUFFER, AndroidHardwareBuffer = ANDROID_HARDWARE_BUFFER_ANDROID {
         device_extensions: [android_external_memory_android_hardware_buffer],
     },
 
-    // TODO: document
-    HostAllocation = HOST_ALLOCATION_EXT {
+    /// A pointer to memory that was allocated by the host.
+    HOST_ALLOCATION, HostAllocation = HOST_ALLOCATION_EXT {
         device_extensions: [ext_external_memory_host],
     },
 
-    // TODO: document
-    HostMappedForeignMemory = HOST_MAPPED_FOREIGN_MEMORY_EXT {
+    /// A pointer to a memory mapping on the host that maps non-host memory.
+    HOST_MAPPED_FOREIGN_MEMORY, HostMappedForeignMemory = HOST_MAPPED_FOREIGN_MEMORY_EXT {
         device_extensions: [ext_external_memory_host],
     },
 
-    // TODO: document
-    ZirconVmo = ZIRCON_VMO_FUCHSIA {
+    /// A Zircon handle to a virtual memory object.
+    ZIRCON_VMO, ZirconVmo = ZIRCON_VMO_FUCHSIA {
         device_extensions: [fuchsia_external_memory],
     },
 
-    // TODO: document
-    RdmaAddress = RDMA_ADDRESS_NV {
+    /// A Remote Direct Memory Address handle to an allocation that is accessible by remote devices.
+    RDMA_ADDRESS, RdmaAddress = RDMA_ADDRESS_NV {
         device_extensions: [nv_external_memory_rdma],
     },
 }
 
 vulkan_bitflags! {
-    /// A mask of multiple handle types.
     #[non_exhaustive]
-    ExternalMemoryHandleTypes = ExternalMemoryHandleTypeFlags(u32);
 
-    // TODO: document
-    OPAQUE_FD = OPAQUE_FD,
-
-    // TODO: document
-    OPAQUE_WIN32 = OPAQUE_WIN32,
-
-    // TODO: document
-    OPAQUE_WIN32_KMT = OPAQUE_WIN32_KMT,
-
-    // TODO: document
-    D3D11_TEXTURE = D3D11_TEXTURE,
-
-    // TODO: document
-    D3D11_TEXTURE_KMT = D3D11_TEXTURE_KMT,
-
-    // TODO: document
-    D3D12_HEAP = D3D12_HEAP,
-
-    // TODO: document
-    D3D12_RESOURCE = D3D12_RESOURCE,
-
-    // TODO: document
-    DMA_BUF = DMA_BUF_EXT {
-        device_extensions: [ext_external_memory_dma_buf],
-    },
-
-    // TODO: document
-    ANDROID_HARDWARE_BUFFER = ANDROID_HARDWARE_BUFFER_ANDROID {
-        device_extensions: [android_external_memory_android_hardware_buffer],
-    },
-
-    // TODO: document
-    HOST_ALLOCATION = HOST_ALLOCATION_EXT {
-        device_extensions: [ext_external_memory_host],
-    },
-
-    // TODO: document
-    HOST_MAPPED_FOREIGN_MEMORY = HOST_MAPPED_FOREIGN_MEMORY_EXT {
-        device_extensions: [ext_external_memory_host],
-    },
-
-    // TODO: document
-    ZIRCON_VMO = ZIRCON_VMO_FUCHSIA {
-        device_extensions: [fuchsia_external_memory],
-    },
-
-    // TODO: document
-    RDMA_ADDRESS = RDMA_ADDRESS_NV {
-        device_extensions: [nv_external_memory_rdma],
-    },
-}
-
-impl From<ExternalMemoryHandleType> for ExternalMemoryHandleTypes {
-    #[inline]
-    fn from(val: ExternalMemoryHandleType) -> Self {
-        match val {
-            ExternalMemoryHandleType::OpaqueFd => ExternalMemoryHandleTypes::OPAQUE_FD,
-            ExternalMemoryHandleType::OpaqueWin32 => ExternalMemoryHandleTypes::OPAQUE_WIN32,
-            ExternalMemoryHandleType::OpaqueWin32Kmt => ExternalMemoryHandleTypes::OPAQUE_WIN32_KMT,
-            ExternalMemoryHandleType::D3D11Texture => ExternalMemoryHandleTypes::D3D11_TEXTURE,
-            ExternalMemoryHandleType::D3D11TextureKmt => {
-                ExternalMemoryHandleTypes::D3D11_TEXTURE_KMT
-            }
-            ExternalMemoryHandleType::D3D12Heap => ExternalMemoryHandleTypes::D3D12_HEAP,
-            ExternalMemoryHandleType::D3D12Resource => ExternalMemoryHandleTypes::D3D12_RESOURCE,
-            ExternalMemoryHandleType::DmaBuf => ExternalMemoryHandleTypes::DMA_BUF,
-            ExternalMemoryHandleType::AndroidHardwareBuffer => {
-                ExternalMemoryHandleTypes::ANDROID_HARDWARE_BUFFER
-            }
-            ExternalMemoryHandleType::HostAllocation => ExternalMemoryHandleTypes::HOST_ALLOCATION,
-            ExternalMemoryHandleType::HostMappedForeignMemory => {
-                ExternalMemoryHandleTypes::HOST_MAPPED_FOREIGN_MEMORY
-            }
-            ExternalMemoryHandleType::ZirconVmo => ExternalMemoryHandleTypes::ZIRCON_VMO,
-            ExternalMemoryHandleType::RdmaAddress => ExternalMemoryHandleTypes::RDMA_ADDRESS,
-        }
-    }
-}
-
-impl ExternalMemoryHandleTypes {
-    /// Returns an iterator of `ExternalMemoryHandleType` enum values, representing the fields that
-    /// are set in `self`.
-    #[inline]
-    pub fn iter(self) -> impl Iterator<Item = ExternalMemoryHandleType> {
-        [
-            self.intersects(ExternalMemoryHandleTypes::OPAQUE_FD)
-                .then_some(ExternalMemoryHandleType::OpaqueFd),
-            self.intersects(ExternalMemoryHandleTypes::OPAQUE_WIN32)
-                .then_some(ExternalMemoryHandleType::OpaqueWin32),
-            self.intersects(ExternalMemoryHandleTypes::OPAQUE_WIN32_KMT)
-                .then_some(ExternalMemoryHandleType::OpaqueWin32Kmt),
-            self.intersects(ExternalMemoryHandleTypes::D3D11_TEXTURE)
-                .then_some(ExternalMemoryHandleType::D3D11Texture),
-            self.intersects(ExternalMemoryHandleTypes::D3D11_TEXTURE_KMT)
-                .then_some(ExternalMemoryHandleType::D3D11TextureKmt),
-            self.intersects(ExternalMemoryHandleTypes::D3D12_HEAP)
-                .then_some(ExternalMemoryHandleType::D3D12Heap),
-            self.intersects(ExternalMemoryHandleTypes::D3D12_RESOURCE)
-                .then_some(ExternalMemoryHandleType::D3D12Resource),
-            self.intersects(ExternalMemoryHandleTypes::DMA_BUF)
-                .then_some(ExternalMemoryHandleType::DmaBuf),
-            self.intersects(ExternalMemoryHandleTypes::ANDROID_HARDWARE_BUFFER)
-                .then_some(ExternalMemoryHandleType::AndroidHardwareBuffer),
-            self.intersects(ExternalMemoryHandleTypes::HOST_ALLOCATION)
-                .then_some(ExternalMemoryHandleType::HostAllocation),
-            self.intersects(ExternalMemoryHandleTypes::HOST_MAPPED_FOREIGN_MEMORY)
-                .then_some(ExternalMemoryHandleType::HostMappedForeignMemory),
-            self.intersects(ExternalMemoryHandleTypes::ZIRCON_VMO)
-                .then_some(ExternalMemoryHandleType::HostMappedForeignMemory),
-            self.intersects(ExternalMemoryHandleTypes::RDMA_ADDRESS)
-                .then_some(ExternalMemoryHandleType::HostMappedForeignMemory),
-        ]
-        .into_iter()
-        .flatten()
-    }
-}
-
-vulkan_bitflags! {
     /// A mask specifying flags for device memory allocation.
-    #[non_exhaustive]
     MemoryAllocateFlags = MemoryAllocateFlags(u32);
 
     // TODO: implement

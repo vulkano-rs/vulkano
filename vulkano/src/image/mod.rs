@@ -60,7 +60,7 @@ pub use self::{
 };
 use crate::{
     format::Format,
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{ExternalMemoryHandleType, ExternalMemoryProperties},
     DeviceSize,
 };
@@ -78,8 +78,9 @@ mod usage;
 pub mod view;
 
 vulkan_bitflags! {
-    /// Flags that can be set when creating a new image.
     #[non_exhaustive]
+
+    /// Flags that can be set when creating a new image.
     ImageCreateFlags = ImageCreateFlags(u32);
 
     /*
@@ -228,31 +229,57 @@ vulkan_bitflags! {
      */
 }
 
-vulkan_enum! {
-    // TODO: document
+vulkan_bitflags_enum! {
     #[non_exhaustive]
-    SampleCount = SampleCountFlags(u32);
 
-    // TODO: document
-    Sample1 = TYPE_1,
+    /// A set of [`SampleCount`] values.
+    SampleCounts impl {
+        /// Returns the maximum sample count in `self`.
+        #[inline]
+        pub const fn max_count(self) -> SampleCount {
+            if self.intersects(SampleCounts::SAMPLE_64) {
+                SampleCount::Sample64
+            } else if self.intersects(SampleCounts::SAMPLE_32) {
+                SampleCount::Sample32
+            } else if self.intersects(SampleCounts::SAMPLE_16) {
+                SampleCount::Sample16
+            } else if self.intersects(SampleCounts::SAMPLE_8) {
+                SampleCount::Sample8
+            } else if self.intersects(SampleCounts::SAMPLE_4) {
+                SampleCount::Sample4
+            } else if self.intersects(SampleCounts::SAMPLE_2) {
+                SampleCount::Sample2
+            } else {
+                SampleCount::Sample1
+            }
+        }
+    },
 
-    // TODO: document
-    Sample2 = TYPE_2,
+    /// The number of samples per texel of an image.
+    SampleCount,
 
-    // TODO: document
-    Sample4 = TYPE_4,
+    = SampleCountFlags(u32);
 
-    // TODO: document
-    Sample8 = TYPE_8,
+    /// 1 sample per texel.
+    SAMPLE_1, Sample1 = TYPE_1,
 
-    // TODO: document
-    Sample16 = TYPE_16,
+    /// 2 samples per texel.
+    SAMPLE_2, Sample2 = TYPE_2,
 
-    // TODO: document
-    Sample32 = TYPE_32,
+    /// 4 samples per texel.
+    SAMPLE_4, Sample4 = TYPE_4,
 
-    // TODO: document
-    Sample64 = TYPE_64,
+    /// 8 samples per texel.
+    SAMPLE_8, Sample8 = TYPE_8,
+
+    /// 16 samples per texel.
+    SAMPLE_16, Sample16 = TYPE_16,
+
+    /// 32 samples per texel.
+    SAMPLE_32, Sample32 = TYPE_32,
+
+    /// 64 samples per texel.
+    SAMPLE_64, Sample64 = TYPE_64,
 }
 
 impl TryFrom<u32> for SampleCount {
@@ -269,69 +296,6 @@ impl TryFrom<u32> for SampleCount {
             32 => Ok(Self::Sample32),
             64 => Ok(Self::Sample64),
             _ => Err(()),
-        }
-    }
-}
-
-vulkan_bitflags! {
-    /// Specifies a set of [`SampleCount`] values.
-    #[non_exhaustive]
-    SampleCounts = SampleCountFlags(u32);
-
-    /// 1 sample per pixel.
-    SAMPLE_1 = TYPE_1,
-
-    /// 2 samples per pixel.
-    SAMPLE_2 = TYPE_2,
-
-    /// 4 samples per pixel.
-    SAMPLE_4 = TYPE_4,
-
-    /// 8 samples per pixel.
-    SAMPLE_8 = TYPE_8,
-
-    /// 16 samples per pixel.
-    SAMPLE_16 = TYPE_16,
-
-    /// 32 samples per pixel.
-    SAMPLE_32 = TYPE_32,
-
-    /// 64 samples per pixel.
-    SAMPLE_64 = TYPE_64,
-}
-
-impl SampleCounts {
-    /// Returns true if `self` has the `sample_count` value set.
-    #[inline]
-    pub const fn contains_count(self, sample_count: SampleCount) -> bool {
-        match sample_count {
-            SampleCount::Sample1 => self.intersects(SampleCounts::SAMPLE_1),
-            SampleCount::Sample2 => self.intersects(SampleCounts::SAMPLE_2),
-            SampleCount::Sample4 => self.intersects(SampleCounts::SAMPLE_4),
-            SampleCount::Sample8 => self.intersects(SampleCounts::SAMPLE_8),
-            SampleCount::Sample16 => self.intersects(SampleCounts::SAMPLE_16),
-            SampleCount::Sample32 => self.intersects(SampleCounts::SAMPLE_32),
-            SampleCount::Sample64 => self.intersects(SampleCounts::SAMPLE_64),
-        }
-    }
-
-    /// Returns the maximum sample count supported by `self`.
-    #[inline]
-    pub const fn max_count(self) -> SampleCount {
-        if self.intersects(SampleCounts::SAMPLE_64) {
-            SampleCount::Sample64
-        } else if self.intersects(SampleCounts::SAMPLE_32) {
-            SampleCount::Sample32
-        } else if self.intersects(SampleCounts::SAMPLE_16) {
-            SampleCount::Sample16
-        } else if self.intersects(SampleCounts::SAMPLE_8) {
-            SampleCount::Sample8
-        } else if self.intersects(SampleCounts::SAMPLE_4) {
-            SampleCount::Sample4
-        } else if self.intersects(SampleCounts::SAMPLE_2) {
-            SampleCount::Sample2
-        } else {
-            SampleCount::Sample1
         }
     }
 }
@@ -364,8 +328,9 @@ impl From<u32> for MipmapsCount {
 }
 
 vulkan_enum! {
-    // TODO: document
     #[non_exhaustive]
+
+    // TODO: document
     ImageType = ImageType(i32);
 
     // TODO: document
@@ -379,8 +344,9 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
-    // TODO: document
     #[non_exhaustive]
+
+    // TODO: document
     ImageTiling = ImageTiling(i32);
 
     // TODO: document
@@ -945,6 +911,8 @@ pub struct SparseImageFormatProperties {
 }
 
 vulkan_bitflags! {
+    #[non_exhaustive]
+
     /// Flags specifying information about a sparse resource.
     SparseImageFormatFlags = SparseImageFormatFlags(u32);
 

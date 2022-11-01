@@ -1614,8 +1614,9 @@ impl From<ash::vk::QueueFamilyProperties> for QueueFamilyProperties {
 }
 
 vulkan_bitflags! {
-    /// Attributes of a queue or queue family.
     #[non_exhaustive]
+
+    /// Attributes of a queue or queue family.
     QueueFlags = QueueFlags(u32);
 
     /// Queues of this family can execute graphics operations.

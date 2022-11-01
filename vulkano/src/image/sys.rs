@@ -665,7 +665,7 @@ impl RawImage {
             if combined_usage.intersects(ImageUsage::COLOR_ATTACHMENT)
                 && !device_properties
                     .framebuffer_color_sample_counts
-                    .contains_count(samples)
+                    .contains_enum(samples)
             {
                 // TODO: how to handle framebuffer_integer_color_sample_counts limit, which only
                 // exists >= Vulkan 1.2
@@ -676,7 +676,7 @@ impl RawImage {
                 if aspects.intersects(ImageAspects::DEPTH)
                     && !device_properties
                         .framebuffer_depth_sample_counts
-                        .contains_count(samples)
+                        .contains_enum(samples)
                 {
                     return true;
                 }
@@ -684,7 +684,7 @@ impl RawImage {
                 if aspects.intersects(ImageAspects::STENCIL)
                     && !device_properties
                         .framebuffer_stencil_sample_counts
-                        .contains_count(samples)
+                        .contains_enum(samples)
                 {
                     return true;
                 }
@@ -696,7 +696,7 @@ impl RawImage {
                         NumericType::UINT | NumericType::SINT => {
                             if !device_properties
                                 .sampled_image_integer_sample_counts
-                                .contains_count(samples)
+                                .contains_enum(samples)
                             {
                                 return true;
                             }
@@ -710,7 +710,7 @@ impl RawImage {
                         | NumericType::SRGB => {
                             if !device_properties
                                 .sampled_image_color_sample_counts
-                                .contains_count(samples)
+                                .contains_enum(samples)
                             {
                                 return true;
                             }
@@ -720,7 +720,7 @@ impl RawImage {
                     if aspects.intersects(ImageAspects::DEPTH)
                         && !device_properties
                             .sampled_image_depth_sample_counts
-                            .contains_count(samples)
+                            .contains_enum(samples)
                     {
                         return true;
                     }
@@ -728,7 +728,7 @@ impl RawImage {
                     if aspects.intersects(ImageAspects::STENCIL)
                         && device_properties
                             .sampled_image_stencil_sample_counts
-                            .contains_count(samples)
+                            .contains_enum(samples)
                     {
                         return true;
                     }
@@ -738,7 +738,7 @@ impl RawImage {
             if combined_usage.intersects(ImageUsage::STORAGE)
                 && !device_properties
                     .storage_image_sample_counts
-                    .contains_count(samples)
+                    .contains_enum(samples)
             {
                 return true;
             }
@@ -773,7 +773,7 @@ impl RawImage {
                 if !external_memory_handle_types.is_empty() {
                     // If external memory handles are used, the properties need to be queried
                     // individually for each handle type.
-                    external_memory_handle_types.iter().map(Some).collect()
+                    external_memory_handle_types.into_iter().map(Some).collect()
                 } else {
                     smallvec![None]
                 };
@@ -836,7 +836,7 @@ impl RawImage {
                 }
 
                 // VUID-VkImageCreateInfo-samples-02258
-                if !sample_counts.contains_count(samples) {
+                if !sample_counts.contains_enum(samples) {
                     return Err(ImageError::SampleCountNotSupported {
                         samples,
                         supported: sample_counts,
@@ -2015,7 +2015,7 @@ pub enum ImageMemory {
 impl Image {
     fn from_raw(inner: RawImage, memory: ImageMemory) -> Self {
         let aspects = inner.format.unwrap().aspects();
-        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
+        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.into_iter().collect();
         let mip_level_size = inner.dimensions.array_layers() as DeviceSize;
         let aspect_size = mip_level_size * inner.mip_levels as DeviceSize;
         let range_size = aspect_list.len() as DeviceSize * aspect_size;
@@ -2626,7 +2626,7 @@ impl SubresourceRangeIterator {
 
         let mut aspect_nums = subresource_range
             .aspects
-            .iter()
+            .into_iter()
             .map(|aspect| image_aspect_list.iter().position(|&a| a == aspect).unwrap())
             .collect::<SmallVec<[usize; 4]>>()
             .into_iter()
@@ -3442,7 +3442,7 @@ mod tests {
             | ImageAspects::DEPTH
             | ImageAspects::STENCIL
             | ImageAspects::PLANE_0)
-            .iter()
+            .into_iter()
             .collect();
         let image_mip_levels = 6;
         let image_array_layers = 8;

@@ -33,7 +33,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::Format,
     image::{ImageAspects, ImageLayout, SampleCount},
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{vulkan_bitflags_enum, vulkan_enum},
     shader::ShaderInterface,
     sync::{AccessFlags, PipelineStages},
     Version, VulkanObject,
@@ -1087,8 +1087,9 @@ impl Default for SubpassDependency {
 }
 
 vulkan_enum! {
-    /// Describes what the implementation should do with an attachment at the start of the subpass.
     #[non_exhaustive]
+
+    /// Describes what the implementation should do with an attachment at the start of the subpass.
     LoadOp = AttachmentLoadOp(i32);
 
     /// The content of the attachment will be loaded from memory. This is what you want if you want
@@ -1122,9 +1123,10 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// Describes what the implementation should do with an attachment after all the subpasses have
     /// completed.
-    #[non_exhaustive]
     StoreOp = AttachmentStoreOp(i32);
 
     /// The attachment will be stored. This is what you usually want.
@@ -1152,62 +1154,37 @@ vulkan_enum! {
      */
 }
 
-vulkan_enum! {
-    /// Possible resolve modes for attachments.
+vulkan_bitflags_enum! {
     #[non_exhaustive]
-    ResolveMode = ResolveModeFlags(u32);
+
+    /// A set of [`ResolveMode`] values.
+    ResolveModes,
+
+    /// Possible resolve modes for attachments.
+    ResolveMode,
+
+    = ResolveModeFlags(u32);
 
     /// The resolved sample is taken from sample number zero, the other samples are ignored.
     ///
     /// This mode is supported for depth and stencil formats, and for color images with an integer
     /// format.
-    SampleZero = SAMPLE_ZERO,
+    SAMPLE_ZERO, SampleZero = SAMPLE_ZERO,
 
     /// The resolved sample is calculated from the average of the samples.
     ///
     /// This mode is supported for depth formats, and for color images with a non-integer format.
-    Average = AVERAGE,
+    AVERAGE, Average = AVERAGE,
 
     /// The resolved sample is calculated from the minimum of the samples.
     ///
     /// This mode is supported for depth and stencil formats only.
-    Min = MIN,
+    MIN, Min = MIN,
 
     /// The resolved sample is calculated from the maximum of the samples.
     ///
     /// This mode is supported for depth and stencil formats only.
-    Max = MAX,
-}
-
-vulkan_bitflags! {
-    // TODO: document
-    #[non_exhaustive]
-    ResolveModes = ResolveModeFlags(u32);
-
-    // TODO: document
-    SAMPLE_ZERO = SAMPLE_ZERO,
-
-    // TODO: document
-    AVERAGE = AVERAGE,
-
-    // TODO: document
-    MIN = MIN,
-
-    // TODO: document
-    MAX = MAX,
-}
-
-impl ResolveModes {
-    /// Returns whether `self` contains the given `mode`.
-    #[inline]
-    pub fn contains_mode(self, mode: ResolveMode) -> bool {
-        match mode {
-            ResolveMode::SampleZero => self.intersects(ResolveModes::SAMPLE_ZERO),
-            ResolveMode::Average => self.intersects(ResolveModes::AVERAGE),
-            ResolveMode::Min => self.intersects(ResolveModes::MIN),
-            ResolveMode::Max => self.intersects(ResolveModes::MAX),
-        }
-    }
+    MAX, Max = MAX,
 }
 
 #[cfg(test)]

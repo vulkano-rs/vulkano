@@ -1024,7 +1024,7 @@ where
                 // VUID-VkRenderingInfo-pDepthAttachment-06102
                 if !properties
                     .supported_depth_resolve_modes
-                    .map_or(false, |modes| modes.contains_mode(mode))
+                    .map_or(false, |modes| modes.contains_enum(mode))
                 {
                     return Err(RenderPassError::DepthAttachmentResolveModeNotSupported);
                 }
@@ -1154,7 +1154,7 @@ where
                 // VUID-VkRenderingInfo-pStencilAttachment-06103
                 if !properties
                     .supported_stencil_resolve_modes
-                    .map_or(false, |modes| modes.contains_mode(mode))
+                    .map_or(false, |modes| modes.contains_enum(mode))
                 {
                     return Err(RenderPassError::StencilAttachmentResolveModeNotSupported);
                 }

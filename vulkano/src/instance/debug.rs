@@ -356,8 +356,9 @@ pub struct Message<'a> {
 }
 
 vulkan_bitflags! {
-    /// Severity of message.
     #[non_exhaustive]
+
+    /// Severity of message.
     DebugUtilsMessageSeverity = DebugUtilsMessageSeverityFlagsEXT(u32);
 
     /// An error that may cause undefined results, including an application crash.
@@ -374,8 +375,9 @@ vulkan_bitflags! {
 }
 
 vulkan_bitflags! {
-    /// Type of message.
     #[non_exhaustive]
+
+    /// Type of message.
     DebugUtilsMessageType = DebugUtilsMessageTypeFlagsEXT(u32);
 
     /// Specifies that some general event has occurred.
@@ -421,6 +423,8 @@ impl Default for DebugUtilsLabel {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// Features of the validation layer to enable.
     ValidationFeatureEnable = ValidationFeatureEnableEXT(i32);
 
@@ -454,6 +458,8 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// Features of the validation layer to disable.
     ValidationFeatureDisable = ValidationFeatureDisableEXT(i32);
 

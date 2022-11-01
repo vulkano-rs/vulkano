@@ -1160,9 +1160,38 @@ impl From<RequirementNotMet> for ImageViewCreationError {
 }
 
 vulkan_enum! {
-    /// The geometry type of an image view.
     #[non_exhaustive]
-    ImageViewType = ImageViewType(i32);
+
+    /// The geometry type of an image view.
+    ImageViewType impl {
+        /// Returns whether the type is arrayed.
+        #[inline]
+        pub fn is_arrayed(self) -> bool {
+            match self {
+                Self::Dim1d | Self::Dim2d | Self::Dim3d | Self::Cube => false,
+                Self::Dim1dArray | Self::Dim2dArray | Self::CubeArray => true,
+            }
+        }
+
+        /// Returns whether `self` is compatible with the given `image_type`.
+        #[inline]
+        pub fn is_compatible_with(self, image_type: ImageType) -> bool {
+            matches!(
+                (self, image_type,),
+                (
+                    ImageViewType::Dim1d | ImageViewType::Dim1dArray,
+                    ImageType::Dim1d
+                ) | (
+                    ImageViewType::Dim2d | ImageViewType::Dim2dArray,
+                    ImageType::Dim2d | ImageType::Dim3d
+                ) | (
+                    ImageViewType::Cube | ImageViewType::CubeArray,
+                    ImageType::Dim2d
+                ) | (ImageViewType::Dim3d, ImageType::Dim3d)
+            )
+        }
+    }
+    = ImageViewType(i32);
 
     // TODO: document
     Dim1d = TYPE_1D,
@@ -1184,35 +1213,6 @@ vulkan_enum! {
 
     // TODO: document
     CubeArray = CUBE_ARRAY,
-}
-
-impl ImageViewType {
-    /// Returns whether the type is arrayed.
-    #[inline]
-    pub fn is_arrayed(self) -> bool {
-        match self {
-            Self::Dim1d | Self::Dim2d | Self::Dim3d | Self::Cube => false,
-            Self::Dim1dArray | Self::Dim2dArray | Self::CubeArray => true,
-        }
-    }
-
-    /// Returns whether `self` is compatible with the given `image_type`.
-    #[inline]
-    pub fn is_compatible_with(self, image_type: ImageType) -> bool {
-        matches!(
-            (self, image_type,),
-            (
-                ImageViewType::Dim1d | ImageViewType::Dim1dArray,
-                ImageType::Dim1d
-            ) | (
-                ImageViewType::Dim2d | ImageViewType::Dim2dArray,
-                ImageType::Dim2d | ImageType::Dim3d
-            ) | (
-                ImageViewType::Cube | ImageViewType::CubeArray,
-                ImageType::Dim2d
-            ) | (ImageViewType::Dim3d, ImageType::Dim3d)
-        )
-    }
 }
 
 /// Trait for types that represent the GPU can access an image view.

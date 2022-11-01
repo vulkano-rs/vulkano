@@ -1294,8 +1294,9 @@ impl From<ComponentMapping> for ash::vk::ComponentMapping {
 }
 
 vulkan_enum! {
-    /// Describes the value that an individual component must return when being accessed.
     #[non_exhaustive]
+
+    /// Describes the value that an individual component must return when being accessed.
     ComponentSwizzle = ComponentSwizzle(i32);
 
     /// Returns the value that this component should normally have.
@@ -1330,8 +1331,9 @@ impl Default for ComponentSwizzle {
 }
 
 vulkan_enum! {
-    /// Describes how the color of each pixel should be determined.
     #[non_exhaustive]
+
+    /// Describes how the color of each pixel should be determined.
     Filter = Filter(i32);
 
     /// The pixel whose center is nearest to the requested coordinates is taken from the source
@@ -1356,8 +1358,9 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
-    /// Describes which mipmap from the source to use.
     #[non_exhaustive]
+
+    /// Describes which mipmap from the source to use.
     SamplerMipmapMode = SamplerMipmapMode(i32);
 
     /// Use the mipmap whose dimensions are the nearest to the dimensions of the destination.
@@ -1369,9 +1372,10 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// How the sampler should behave when it needs to access a pixel that is out of range of the
     /// texture.
-    #[non_exhaustive]
     SamplerAddressMode = SamplerAddressMode(i32);
 
     /// Repeat the texture. In other words, the pixel at coordinate `x + 1.0` is the same as the
@@ -1410,12 +1414,13 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// The color to use for the border of an image.
     ///
     /// Only relevant if you use `ClampToBorder`.
     ///
     /// Using a border color restricts the sampler to either floating-point images or integer images.
-    #[non_exhaustive]
     BorderColor = BorderColor(i32);
 
     /// The value `(0.0, 0.0, 0.0, 0.0)`. Can only be used with floating-point images.
@@ -1451,9 +1456,10 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// Describes how the value sampled from a mipmap should be calculated from the selected
     /// pixels, for the `Linear` and `Cubic` filters.
-    #[non_exhaustive]
     SamplerReductionMode = SamplerReductionMode(i32);
 
     /// Calculates a weighted average of the selected pixels. For `Linear` filtering the pixels

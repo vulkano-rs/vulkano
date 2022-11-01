@@ -825,8 +825,9 @@ impl Display for DescriptorRequirementsNotMet {
 }
 
 vulkan_enum! {
-    /// Describes what kind of resource may later be bound to a descriptor.
     #[non_exhaustive]
+
+    /// Describes what kind of resource may later be bound to a descriptor.
     DescriptorType = DescriptorType(i32);
 
     /// Describes how a `SampledImage` descriptor should be read.

@@ -11,22 +11,426 @@ use crate::{
     buffer::sys::Buffer,
     device::QueueFlags,
     image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{vulkan_bitflags, vulkan_bitflags_enum},
     DeviceSize,
 };
 use smallvec::SmallVec;
 use std::{ops::Range, sync::Arc};
 
-vulkan_enum! {
-    /// A single stage in the device's processing pipeline.
+vulkan_bitflags_enum! {
     #[non_exhaustive]
-    PipelineStage = PipelineStageFlags2(u64);
+    /// A set of [`PipelineStage`] values.
+    PipelineStages impl {
+        /// Returns whether `self` contains stages that are only available in
+        /// `VkPipelineStageFlagBits2`.
+        pub(crate) fn is_2(self) -> bool {
+            !(self
+                - (PipelineStages::TOP_OF_PIPE
+                    | PipelineStages::DRAW_INDIRECT
+                    | PipelineStages::VERTEX_INPUT
+                    | PipelineStages::VERTEX_SHADER
+                    | PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER
+                    | PipelineStages::GEOMETRY_SHADER
+                    | PipelineStages::FRAGMENT_SHADER
+                    | PipelineStages::EARLY_FRAGMENT_TESTS
+                    | PipelineStages::LATE_FRAGMENT_TESTS
+                    | PipelineStages::COLOR_ATTACHMENT_OUTPUT
+                    | PipelineStages::COMPUTE_SHADER
+                    | PipelineStages::ALL_TRANSFER
+                    | PipelineStages::BOTTOM_OF_PIPE
+                    | PipelineStages::HOST
+                    | PipelineStages::ALL_GRAPHICS
+                    | PipelineStages::ALL_COMMANDS
+                    | PipelineStages::TRANSFORM_FEEDBACK
+                    | PipelineStages::CONDITIONAL_RENDERING
+                    | PipelineStages::ACCELERATION_STRUCTURE_BUILD
+                    | PipelineStages::RAY_TRACING_SHADER
+                    | PipelineStages::FRAGMENT_DENSITY_PROCESS
+                    | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
+                    | PipelineStages::COMMAND_PREPROCESS
+                    | PipelineStages::TASK_SHADER
+                    | PipelineStages::MESH_SHADER))
+                .is_empty()
+        }
+
+        /// Replaces and unsets flags that are equivalent to multiple other flags.
+        ///
+        /// This may set flags that are not supported by the device, so this is for internal use only
+        /// and should not be passed on to Vulkan.
+        pub(crate) fn normalize(mut self) -> Self {
+            if self.intersects(PipelineStages::ALL_COMMANDS) {
+                self -= PipelineStages::ALL_COMMANDS;
+                self |= PipelineStages::TOP_OF_PIPE
+                    | PipelineStages::DRAW_INDIRECT
+                    | PipelineStages::VERTEX_INPUT
+                    | PipelineStages::VERTEX_SHADER
+                    | PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER
+                    | PipelineStages::GEOMETRY_SHADER
+                    | PipelineStages::FRAGMENT_SHADER
+                    | PipelineStages::EARLY_FRAGMENT_TESTS
+                    | PipelineStages::LATE_FRAGMENT_TESTS
+                    | PipelineStages::COLOR_ATTACHMENT_OUTPUT
+                    | PipelineStages::COMPUTE_SHADER
+                    | PipelineStages::ALL_TRANSFER
+                    | PipelineStages::BOTTOM_OF_PIPE
+                    | PipelineStages::HOST
+                    | PipelineStages::ALL_GRAPHICS
+                    | PipelineStages::COPY
+                    | PipelineStages::RESOLVE
+                    | PipelineStages::BLIT
+                    | PipelineStages::CLEAR
+                    | PipelineStages::INDEX_INPUT
+                    | PipelineStages::VERTEX_ATTRIBUTE_INPUT
+                    | PipelineStages::PRE_RASTERIZATION_SHADERS
+                    | PipelineStages::VIDEO_DECODE
+                    | PipelineStages::VIDEO_ENCODE
+                    | PipelineStages::TRANSFORM_FEEDBACK
+                    | PipelineStages::CONDITIONAL_RENDERING
+                    | PipelineStages::ACCELERATION_STRUCTURE_BUILD
+                    | PipelineStages::RAY_TRACING_SHADER
+                    | PipelineStages::FRAGMENT_DENSITY_PROCESS
+                    | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
+                    | PipelineStages::COMMAND_PREPROCESS
+                    | PipelineStages::TASK_SHADER
+                    | PipelineStages::MESH_SHADER
+                    | PipelineStages::SUBPASS_SHADING
+                    | PipelineStages::INVOCATION_MASK;
+            }
+
+            if self.intersects(PipelineStages::ALL_GRAPHICS) {
+                self -= PipelineStages::ALL_GRAPHICS;
+                self |= PipelineStages::DRAW_INDIRECT
+                    | PipelineStages::TASK_SHADER
+                    | PipelineStages::MESH_SHADER
+                    | PipelineStages::VERTEX_INPUT
+                    | PipelineStages::VERTEX_SHADER
+                    | PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER
+                    | PipelineStages::GEOMETRY_SHADER
+                    | PipelineStages::FRAGMENT_SHADER
+                    | PipelineStages::EARLY_FRAGMENT_TESTS
+                    | PipelineStages::LATE_FRAGMENT_TESTS
+                    | PipelineStages::COLOR_ATTACHMENT_OUTPUT
+                    | PipelineStages::TRANSFORM_FEEDBACK
+                    | PipelineStages::CONDITIONAL_RENDERING
+                    | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
+                    | PipelineStages::FRAGMENT_DENSITY_PROCESS
+                    | PipelineStages::INVOCATION_MASK;
+            }
+
+            if self.intersects(PipelineStages::VERTEX_INPUT) {
+                self -= PipelineStages::VERTEX_INPUT;
+                self |= PipelineStages::INDEX_INPUT | PipelineStages::VERTEX_ATTRIBUTE_INPUT;
+            }
+
+            if self.intersects(PipelineStages::PRE_RASTERIZATION_SHADERS) {
+                self -= PipelineStages::PRE_RASTERIZATION_SHADERS;
+                self |= PipelineStages::VERTEX_SHADER
+                    | PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER
+                    | PipelineStages::GEOMETRY_SHADER
+                    | PipelineStages::TASK_SHADER
+                    | PipelineStages::MESH_SHADER;
+            }
+
+            if self.intersects(PipelineStages::ALL_TRANSFER) {
+                self -= PipelineStages::ALL_TRANSFER;
+                self |= PipelineStages::COPY
+                    | PipelineStages::RESOLVE
+                    | PipelineStages::BLIT
+                    | PipelineStages::CLEAR;
+                //PipelineStages::ACCELERATION_STRUCTURE_COPY;
+            }
+
+            self
+        }
+
+        /// Returns the access types that are supported with the given pipeline stages.
+        ///
+        /// Corresponds to the table
+        /// "[Supported access types](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported)"
+        /// in the Vulkan specification.
+        #[inline]
+        pub fn supported_access(mut self) -> AccessFlags {
+            if self.is_empty() {
+                return AccessFlags::empty();
+            }
+
+            self = self.normalize();
+            let mut result = AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE;
+
+            if self.intersects(PipelineStages::DRAW_INDIRECT) {
+                result |=
+                    AccessFlags::INDIRECT_COMMAND_READ | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ;
+            }
+
+            if self.intersects(PipelineStages::VERTEX_INPUT) {}
+
+            if self.intersects(PipelineStages::VERTEX_SHADER) {
+                result |= AccessFlags::SHADER_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
+            }
+
+            if self.intersects(PipelineStages::TESSELLATION_CONTROL_SHADER) {
+                result |= AccessFlags::SHADER_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
+            }
+
+            if self.intersects(PipelineStages::TESSELLATION_EVALUATION_SHADER) {
+                result |= AccessFlags::SHADER_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
+            }
+
+            if self.intersects(PipelineStages::GEOMETRY_SHADER) {
+                result |= AccessFlags::SHADER_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
+            }
+
+            if self.intersects(PipelineStages::FRAGMENT_SHADER) {
+                result |= AccessFlags::SHADER_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ
+                    | AccessFlags::INPUT_ATTACHMENT_READ;
+            }
+
+            if self.intersects(PipelineStages::EARLY_FRAGMENT_TESTS) {
+                result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
+            }
+
+            if self.intersects(PipelineStages::LATE_FRAGMENT_TESTS) {
+                result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
+            }
+
+            if self.intersects(PipelineStages::COLOR_ATTACHMENT_OUTPUT) {
+                result |= AccessFlags::COLOR_ATTACHMENT_READ
+                    | AccessFlags::COLOR_ATTACHMENT_WRITE
+                    | AccessFlags::COLOR_ATTACHMENT_READ_NONCOHERENT;
+            }
+
+            if self.intersects(PipelineStages::COMPUTE_SHADER) {
+                result |= AccessFlags::SHADER_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
+            }
+
+            if self.intersects(PipelineStages::ALL_TRANSFER) {}
+
+            if self.intersects(PipelineStages::BOTTOM_OF_PIPE) {}
+
+            if self.intersects(PipelineStages::HOST) {
+                result |= AccessFlags::HOST_READ | AccessFlags::HOST_WRITE;
+            }
+
+            if self.intersects(PipelineStages::ALL_GRAPHICS) {}
+
+            if self.intersects(PipelineStages::ALL_COMMANDS) {}
+
+            if self.intersects(PipelineStages::COPY) {
+                result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
+            }
+
+            if self.intersects(PipelineStages::RESOLVE) {
+                result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
+            }
+
+            if self.intersects(PipelineStages::BLIT) {
+                result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
+            }
+
+            if self.intersects(PipelineStages::CLEAR) {
+                result |= AccessFlags::TRANSFER_WRITE;
+            }
+
+            if self.intersects(PipelineStages::INDEX_INPUT) {
+                result |= AccessFlags::INDEX_READ;
+            }
+
+            if self.intersects(PipelineStages::VERTEX_ATTRIBUTE_INPUT) {
+                result |= AccessFlags::VERTEX_ATTRIBUTE_READ;
+            }
+
+            if self.intersects(PipelineStages::PRE_RASTERIZATION_SHADERS) {}
+
+            if self.intersects(PipelineStages::VIDEO_DECODE) {
+                result |= AccessFlags::VIDEO_DECODE_READ | AccessFlags::VIDEO_DECODE_WRITE;
+            }
+
+            if self.intersects(PipelineStages::VIDEO_ENCODE) {
+                result |= AccessFlags::VIDEO_ENCODE_READ | AccessFlags::VIDEO_ENCODE_WRITE;
+            }
+
+            if self.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
+                result |= AccessFlags::TRANSFORM_FEEDBACK_WRITE
+                    | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_WRITE
+                    | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ;
+            }
+
+            if self.intersects(PipelineStages::CONDITIONAL_RENDERING) {
+                result |= AccessFlags::CONDITIONAL_RENDERING_READ;
+            }
+
+            if self.intersects(PipelineStages::ACCELERATION_STRUCTURE_BUILD) {
+                result |= AccessFlags::INDIRECT_COMMAND_READ
+                    | AccessFlags::SHADER_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::TRANSFER_READ
+                    | AccessFlags::TRANSFER_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ
+                    | AccessFlags::ACCELERATION_STRUCTURE_WRITE;
+            }
+
+            if self.intersects(PipelineStages::RAY_TRACING_SHADER) {
+                result |= AccessFlags::SHADER_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
+            }
+
+            if self.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
+                result |= AccessFlags::FRAGMENT_DENSITY_MAP_READ;
+            }
+
+            if self.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
+                result |= AccessFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_READ;
+            }
+
+            if self.intersects(PipelineStages::COMMAND_PREPROCESS) {
+                result |= AccessFlags::COMMAND_PREPROCESS_READ | AccessFlags::COMMAND_PREPROCESS_WRITE;
+            }
+
+            if self.intersects(PipelineStages::TASK_SHADER) {
+                result |= AccessFlags::SHADER_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
+            }
+
+            if self.intersects(PipelineStages::MESH_SHADER) {
+                result |= AccessFlags::SHADER_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
+            }
+
+            if self.intersects(PipelineStages::SUBPASS_SHADING) {
+                result |= AccessFlags::INPUT_ATTACHMENT_READ;
+            }
+
+            if self.intersects(PipelineStages::INVOCATION_MASK) {
+                result |= AccessFlags::INVOCATION_MASK_READ;
+            }
+
+            result
+        }
+    },
+
+    /// A single stage in the device's processing pipeline.
+    PipelineStage impl {
+        #[inline]
+        pub fn required_queue_flags(self) -> QueueFlags {
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-stages-supported
+            match self {
+                Self::TopOfPipe => QueueFlags::empty(),
+                Self::DrawIndirect => QueueFlags::GRAPHICS | QueueFlags::COMPUTE,
+                Self::VertexInput => QueueFlags::GRAPHICS,
+                Self::VertexShader => QueueFlags::GRAPHICS,
+                Self::TessellationControlShader => QueueFlags::GRAPHICS,
+                Self::TessellationEvaluationShader => QueueFlags::GRAPHICS,
+                Self::GeometryShader => QueueFlags::GRAPHICS,
+                Self::FragmentShader => QueueFlags::GRAPHICS,
+                Self::EarlyFragmentTests => QueueFlags::GRAPHICS,
+                Self::LateFragmentTests => QueueFlags::GRAPHICS,
+                Self::ColorAttachmentOutput => QueueFlags::GRAPHICS,
+                Self::ComputeShader => QueueFlags::COMPUTE,
+                Self::AllTransfer => QueueFlags::GRAPHICS | QueueFlags::COMPUTE | QueueFlags::TRANSFER,
+                Self::BottomOfPipe => QueueFlags::empty(),
+                Self::Host => QueueFlags::empty(),
+                Self::AllGraphics => QueueFlags::GRAPHICS,
+                Self::AllCommands => QueueFlags::empty(),
+                Self::Copy => todo!(
+                    "The spec doesn't currently say which queue flags support this pipeline stage"
+                ),
+                Self::Resolve => todo!(
+                    "The spec doesn't currently say which queue flags support this pipeline stage"
+                ),
+                Self::Blit => todo!(
+                    "The spec doesn't currently say which queue flags support this pipeline stage"
+                ),
+                Self::Clear => todo!(
+                    "The spec doesn't currently say which queue flags support this pipeline stage"
+                ),
+                Self::IndexInput => QueueFlags::GRAPHICS,
+                Self::VertexAttributeInput => QueueFlags::GRAPHICS,
+                Self::PreRasterizationShaders => QueueFlags::GRAPHICS,
+                Self::VideoDecode => QueueFlags::VIDEO_DECODE,
+                Self::VideoEncode => QueueFlags::VIDEO_ENCODE,
+                Self::ConditionalRendering => QueueFlags::GRAPHICS | QueueFlags::COMPUTE,
+                Self::TransformFeedback => QueueFlags::GRAPHICS,
+                Self::CommandPreprocess => QueueFlags::GRAPHICS | QueueFlags::COMPUTE,
+                Self::FragmentShadingRateAttachment => QueueFlags::GRAPHICS,
+                Self::TaskShader => QueueFlags::GRAPHICS,
+                Self::MeshShader => QueueFlags::GRAPHICS,
+                Self::AccelerationStructureBuild => QueueFlags::COMPUTE,
+                Self::RayTracingShader => QueueFlags::COMPUTE,
+                Self::FragmentDensityProcess => QueueFlags::GRAPHICS,
+                Self::SubpassShading => QueueFlags::GRAPHICS,
+                Self::InvocationMask => todo!(
+                    "The spec doesn't currently say which queue flags support this pipeline stage"
+                ),
+            }
+        }
+    },
+
+    = PipelineStageFlags2(u64);
 
     /// A pseudo-stage representing the start of the pipeline.
-    TopOfPipe = TOP_OF_PIPE,
+    TOP_OF_PIPE, TopOfPipe = TOP_OF_PIPE,
 
     /// Indirect buffers are read.
-    DrawIndirect = DRAW_INDIRECT,
+    DRAW_INDIRECT, DrawIndirect = DRAW_INDIRECT,
 
     /// Vertex and index buffers are read.
     ///
@@ -35,40 +439,40 @@ vulkan_enum! {
     /// flags that are added to Vulkan, if they are not yet supported by Vulkano.
     /// - `index_input`
     /// - `vertex_attribute_input`
-    VertexInput = VERTEX_INPUT,
+    VERTEX_INPUT, VertexInput = VERTEX_INPUT,
 
     /// Vertex shaders are executed.
-    VertexShader = VERTEX_SHADER,
+    VERTEX_SHADER, VertexShader = VERTEX_SHADER,
 
     /// Tessellation control shaders are executed.
-    TessellationControlShader = TESSELLATION_CONTROL_SHADER,
+    TESSELLATION_CONTROL_SHADER, TessellationControlShader = TESSELLATION_CONTROL_SHADER,
 
     /// Tessellation evaluation shaders are executed.
-    TessellationEvaluationShader = TESSELLATION_EVALUATION_SHADER,
+    TESSELLATION_EVALUATION_SHADER, TessellationEvaluationShader = TESSELLATION_EVALUATION_SHADER,
 
     /// Geometry shaders are executed.
-    GeometryShader = GEOMETRY_SHADER,
+    GEOMETRY_SHADER, GeometryShader = GEOMETRY_SHADER,
 
     /// Fragment shaders are executed.
-    FragmentShader = FRAGMENT_SHADER,
+    FRAGMENT_SHADER, FragmentShader = FRAGMENT_SHADER,
 
     /// Early fragment tests (depth and stencil tests before fragment shading) are performed.
     /// Subpass load operations for framebuffer attachments with a depth/stencil format are
     /// performed.
-    EarlyFragmentTests = EARLY_FRAGMENT_TESTS,
+    EARLY_FRAGMENT_TESTS, EarlyFragmentTests = EARLY_FRAGMENT_TESTS,
 
     /// Late fragment tests (depth and stencil tests after fragment shading) are performed.
     /// Subpass store operations for framebuffer attachments with a depth/stencil format are
     /// performed.
-    LateFragmentTests = LATE_FRAGMENT_TESTS,
+    LATE_FRAGMENT_TESTS, LateFragmentTests = LATE_FRAGMENT_TESTS,
 
     /// The final color values are output from the pipeline after blending.
     /// Subpass load and store operations, multisample resolve operations for framebuffer
     /// attachments with a color or depth/stencil format, and `clear_attachments` are performed.
-    ColorAttachmentOutput = COLOR_ATTACHMENT_OUTPUT,
+    COLOR_ATTACHMENT_OUTPUT, ColorAttachmentOutput = COLOR_ATTACHMENT_OUTPUT,
 
     /// Compute shaders are executed.
-    ComputeShader = COMPUTE_SHADER,
+    COMPUTE_SHADER, ComputeShader = COMPUTE_SHADER,
 
     /// The set of all current and future transfer pipeline stages.
     ///
@@ -80,13 +484,13 @@ vulkan_enum! {
     /// - `resolve`
     /// - `clear`
     /// - `acceleration_structure_copy`
-    AllTransfer = ALL_TRANSFER,
+    ALL_TRANSFER, AllTransfer = ALL_TRANSFER,
 
     /// A pseudo-stage representing the end of the pipeline.
-    BottomOfPipe = BOTTOM_OF_PIPE,
+    BOTTOM_OF_PIPE, BottomOfPipe = BOTTOM_OF_PIPE,
 
     /// A pseudo-stage representing reads and writes to device memory on the host.
-    Host = HOST,
+    HOST, Host = HOST,
 
     /// The set of all current and future graphics pipeline stages.
     ///
@@ -110,49 +514,49 @@ vulkan_enum! {
     /// - `fragment_shading_rate_attachment`
     /// - `fragment_density_process`
     /// - `invocation_mask`
-    AllGraphics = ALL_GRAPHICS,
+    ALL_GRAPHICS, AllGraphics = ALL_GRAPHICS,
 
     /// The set of all current and future pipeline stages of all types.
     ///
     /// It is currently equivalent to setting all flags in `PipelineStages`, but automatically
     /// omitting any that are not supported in a given context. It also implicitly includes future
     /// flags that are added to Vulkan, if they are not yet supported by Vulkano.
-    AllCommands = ALL_COMMANDS,
+    ALL_COMMANDS, AllCommands = ALL_COMMANDS,
 
     /// The `copy_buffer`, `copy_image`, `copy_buffer_to_image`, `copy_image_to_buffer` and
     /// `copy_query_pool_results` commands are executed.
-    Copy = COPY {
+    COPY, Copy = COPY {
         api_version: V1_3,
         device_extensions: [khr_synchronization2],
     },
 
     /// The `resolve_image` command is executed.
-    Resolve = RESOLVE {
+    RESOLVE, Resolve = RESOLVE {
         api_version: V1_3,
         device_extensions: [khr_synchronization2],
     },
 
     /// The `blit_image` command is executed.
-    Blit = BLIT {
+    BLIT, Blit = BLIT {
         api_version: V1_3,
         device_extensions: [khr_synchronization2],
     },
 
     /// The `clear_color_image`, `clear_depth_stencil_image`, `fill_buffer` and `update_buffer`
     /// commands are executed.
-    Clear = CLEAR {
+    CLEAR, Clear = CLEAR {
         api_version: V1_3,
         device_extensions: [khr_synchronization2],
     },
 
     /// Index buffers are read.
-    IndexInput = INDEX_INPUT {
+    INDEX_INPUT, IndexInput = INDEX_INPUT {
         api_version: V1_3,
         device_extensions: [khr_synchronization2],
     },
 
     /// Vertex buffers are read.
-    VertexAttributeInput = VERTEX_ATTRIBUTE_INPUT {
+    VERTEX_ATTRIBUTE_INPUT, VertexAttributeInput = VERTEX_ATTRIBUTE_INPUT {
         api_version: V1_3,
         device_extensions: [khr_synchronization2],
     },
@@ -168,738 +572,97 @@ vulkan_enum! {
     /// - `geometry_shader`
     /// - `task_shader`
     /// - `mesh_shader`
-    PreRasterizationShaders = PRE_RASTERIZATION_SHADERS {
+    PRE_RASTERIZATION_SHADERS, PreRasterizationShaders = PRE_RASTERIZATION_SHADERS {
         api_version: V1_3,
         device_extensions: [khr_synchronization2],
     },
 
     /// Video decode operations are performed.
-    VideoDecode = VIDEO_DECODE_KHR {
+    VIDEO_DECODE, VideoDecode = VIDEO_DECODE_KHR {
         device_extensions: [khr_video_decode_queue],
     },
 
     /// Video encode operations are performed.
-    VideoEncode = VIDEO_ENCODE_KHR {
+    VIDEO_ENCODE, VideoEncode = VIDEO_ENCODE_KHR {
         device_extensions: [khr_video_encode_queue],
     },
 
     /// Vertex attribute output values are written to the transform feedback buffers.
-    TransformFeedback = TRANSFORM_FEEDBACK_EXT {
+    TRANSFORM_FEEDBACK, TransformFeedback = TRANSFORM_FEEDBACK_EXT {
         device_extensions: [ext_transform_feedback],
     },
 
     /// The predicate of conditional rendering is read.
-    ConditionalRendering = CONDITIONAL_RENDERING_EXT {
+    CONDITIONAL_RENDERING, ConditionalRendering = CONDITIONAL_RENDERING_EXT {
         device_extensions: [ext_conditional_rendering],
     },
 
     /// Acceleration_structure commands are executed.
-    AccelerationStructureBuild = ACCELERATION_STRUCTURE_BUILD_KHR {
+    ACCELERATION_STRUCTURE_BUILD, AccelerationStructureBuild = ACCELERATION_STRUCTURE_BUILD_KHR {
         device_extensions: [khr_acceleration_structure, nv_ray_tracing],
     },
 
     /// The various ray tracing shader types are executed.
-    RayTracingShader = RAY_TRACING_SHADER_KHR {
+    RAY_TRACING_SHADER, RayTracingShader = RAY_TRACING_SHADER_KHR {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     /// The fragment density map is read to generate the fragment areas.
-    FragmentDensityProcess = FRAGMENT_DENSITY_PROCESS_EXT {
+    FRAGMENT_DENSITY_PROCESS, FragmentDensityProcess = FRAGMENT_DENSITY_PROCESS_EXT {
         device_extensions: [ext_fragment_density_map],
     },
 
     /// The fragment shading rate attachment or shading rate image is read to determine the
     /// fragment shading rate for portions of a rasterized primitive.
-    FragmentShadingRateAttachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
+    FRAGMENT_SHADING_RATE_ATTACHMENT, FragmentShadingRateAttachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
         device_extensions: [khr_fragment_shading_rate],
     },
 
     /// Device-side preprocessing for generated commands via the `preprocess_generated_commands`
     /// command is handled.
-    CommandPreprocess = COMMAND_PREPROCESS_NV {
+    COMMAND_PREPROCESS, CommandPreprocess = COMMAND_PREPROCESS_NV {
         device_extensions: [nv_device_generated_commands],
     },
 
     /// Task shaders are executed.
-    TaskShader = TASK_SHADER_NV {
+    TASK_SHADER, TaskShader = TASK_SHADER_NV {
         device_extensions: [nv_mesh_shader],
     },
 
     /// Mesh shaders are executed.
-    MeshShader = MESH_SHADER_NV {
+    MESH_SHADER, MeshShader = MESH_SHADER_NV {
         device_extensions: [nv_mesh_shader],
     },
 
     /// Subpass shading shaders are executed.
-    SubpassShading = SUBPASS_SHADING_HUAWEI {
+    SUBPASS_SHADING, SubpassShading = SUBPASS_SHADING_HUAWEI {
         device_extensions: [huawei_subpass_shading],
     },
 
     /// The invocation mask image is read to optimize ray dispatch.
-    InvocationMask = INVOCATION_MASK_HUAWEI {
+    INVOCATION_MASK, InvocationMask = INVOCATION_MASK_HUAWEI {
         device_extensions: [huawei_invocation_mask],
     },
 
     /*
-    AccelerationStructureCopy = ACCELERATION_STRUCTURE_COPY_KHR {
+    ACCELERATION_STRUCTURE_COPY, AccelerationStructureCopy = ACCELERATION_STRUCTURE_COPY_KHR {
         device_extensions: [khr_ray_tracing_maintenance1],
     },
 
-    MicromapBuild = MICROMAP_BUILD_EXT {
+    MICROMAP_BUILD, MicromapBuild = MICROMAP_BUILD_EXT {
         device_extensions: [ext_opacity_micromap],
     },
 
-    OpticalFlow = OPTICAL_FLOW_NV {
+    OPTICAL_FLOW, OpticalFlow = OPTICAL_FLOW_NV {
         device_extensions: [nv_optical_flow],
     },
      */
-}
-
-impl PipelineStage {
-    #[inline]
-    pub fn required_queue_flags(self) -> QueueFlags {
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-stages-supported
-        match self {
-            Self::TopOfPipe => QueueFlags::empty(),
-            Self::DrawIndirect => QueueFlags::GRAPHICS | QueueFlags::COMPUTE,
-            Self::VertexInput => QueueFlags::GRAPHICS,
-            Self::VertexShader => QueueFlags::GRAPHICS,
-            Self::TessellationControlShader => QueueFlags::GRAPHICS,
-            Self::TessellationEvaluationShader => QueueFlags::GRAPHICS,
-            Self::GeometryShader => QueueFlags::GRAPHICS,
-            Self::FragmentShader => QueueFlags::GRAPHICS,
-            Self::EarlyFragmentTests => QueueFlags::GRAPHICS,
-            Self::LateFragmentTests => QueueFlags::GRAPHICS,
-            Self::ColorAttachmentOutput => QueueFlags::GRAPHICS,
-            Self::ComputeShader => QueueFlags::COMPUTE,
-            Self::AllTransfer => QueueFlags::GRAPHICS | QueueFlags::COMPUTE | QueueFlags::TRANSFER,
-            Self::BottomOfPipe => QueueFlags::empty(),
-            Self::Host => QueueFlags::empty(),
-            Self::AllGraphics => QueueFlags::GRAPHICS,
-            Self::AllCommands => QueueFlags::empty(),
-            Self::Copy => todo!(
-                "The spec doesn't currently say which queue flags support this pipeline stage"
-            ),
-            Self::Resolve => todo!(
-                "The spec doesn't currently say which queue flags support this pipeline stage"
-            ),
-            Self::Blit => todo!(
-                "The spec doesn't currently say which queue flags support this pipeline stage"
-            ),
-            Self::Clear => todo!(
-                "The spec doesn't currently say which queue flags support this pipeline stage"
-            ),
-            Self::IndexInput => QueueFlags::GRAPHICS,
-            Self::VertexAttributeInput => QueueFlags::GRAPHICS,
-            Self::PreRasterizationShaders => QueueFlags::GRAPHICS,
-            Self::VideoDecode => QueueFlags::VIDEO_DECODE,
-            Self::VideoEncode => QueueFlags::VIDEO_ENCODE,
-            Self::ConditionalRendering => QueueFlags::GRAPHICS | QueueFlags::COMPUTE,
-            Self::TransformFeedback => QueueFlags::GRAPHICS,
-            Self::CommandPreprocess => QueueFlags::GRAPHICS | QueueFlags::COMPUTE,
-            Self::FragmentShadingRateAttachment => QueueFlags::GRAPHICS,
-            Self::TaskShader => QueueFlags::GRAPHICS,
-            Self::MeshShader => QueueFlags::GRAPHICS,
-            Self::AccelerationStructureBuild => QueueFlags::COMPUTE,
-            Self::RayTracingShader => QueueFlags::COMPUTE,
-            Self::FragmentDensityProcess => QueueFlags::GRAPHICS,
-            Self::SubpassShading => QueueFlags::GRAPHICS,
-            Self::InvocationMask => todo!(
-                "The spec doesn't currently say which queue flags support this pipeline stage"
-            ),
-        }
-    }
 }
 
 impl From<PipelineStage> for ash::vk::PipelineStageFlags {
     #[inline]
     fn from(val: PipelineStage) -> Self {
         Self::from_raw(val as u32)
-    }
-}
-
-vulkan_bitflags! {
-    /// A set of stages in the device's processing pipeline.
-    #[non_exhaustive]
-    PipelineStages = PipelineStageFlags2(u64);
-
-    /// A pseudo-stage representing the start of the pipeline.
-    TOP_OF_PIPE = TOP_OF_PIPE,
-
-    /// Indirect buffers are read.
-    DRAW_INDIRECT = DRAW_INDIRECT,
-
-    /// Vertex and index buffers are read.
-    ///
-    /// It is currently equivalent to setting all of the following flags, but automatically
-    /// omitting any that are not supported in a given context. It also implicitly includes future
-    /// flags that are added to Vulkan, if they are not yet supported by Vulkano.
-    /// - `index_input`
-    /// - `vertex_attribute_input`
-    VERTEX_INPUT = VERTEX_INPUT,
-
-    /// Vertex shaders are executed.
-    VERTEX_SHADER = VERTEX_SHADER,
-
-    /// Tessellation control shaders are executed.
-    TESSELLATION_CONTROL_SHADER = TESSELLATION_CONTROL_SHADER,
-
-    /// Tessellation evaluation shaders are executed.
-    TESSELLATION_EVALUATION_SHADER = TESSELLATION_EVALUATION_SHADER,
-
-    /// Geometry shaders are executed.
-    GEOMETRY_SHADER = GEOMETRY_SHADER,
-
-    /// Fragment shaders are executed.
-    FRAGMENT_SHADER = FRAGMENT_SHADER,
-
-    /// Early fragment tests (depth and stencil tests before fragment shading) are performed.
-    /// Subpass load operations for framebuffer attachments with a depth/stencil format are
-    /// performed.
-    EARLY_FRAGMENT_TESTS = EARLY_FRAGMENT_TESTS,
-
-    /// Late fragment tests (depth and stencil tests after fragment shading) are performed.
-    /// Subpass store operations for framebuffer attachments with a depth/stencil format are
-    /// performed.
-    LATE_FRAGMENT_TESTS = LATE_FRAGMENT_TESTS,
-
-    /// The final color values are output from the pipeline after blending.
-    /// Subpass load and store operations, multisample resolve operations for framebuffer
-    /// attachments with a color or depth/stencil format, and `clear_attachments` are performed.
-    COLOR_ATTACHMENT_OUTPUT = COLOR_ATTACHMENT_OUTPUT,
-
-    /// Compute shaders are executed.
-    COMPUTE_SHADER = COMPUTE_SHADER,
-
-    /// The set of all current and future transfer pipeline stages.
-    ///
-    /// It is currently equivalent to setting all of the following flags, but automatically
-    /// omitting any that are not supported in a given context. It also implicitly includes future
-    /// flags that are added to Vulkan, if they are not yet supported by Vulkano.
-    /// - `copy`
-    /// - `blit`
-    /// - `resolve`
-    /// - `clear`
-    /// - `acceleration_structure_copy`
-    ALL_TRANSFER = ALL_TRANSFER,
-
-    /// A pseudo-stage representing the end of the pipeline.
-    BOTTOM_OF_PIPE = BOTTOM_OF_PIPE,
-
-    /// A pseudo-stage representing reads and writes to device memory on the host.
-    HOST = HOST,
-
-    /// The set of all current and future graphics pipeline stages.
-    ///
-    /// It is currently equivalent to setting all of the following flags, but automatically
-    /// omitting any that are not supported in a given context. It also implicitly includes future
-    /// flags that are added to Vulkan, if they are not yet supported by Vulkano.
-    /// - `draw_indirect`
-    /// - `task_shader`
-    /// - `mesh_shader`
-    /// - `vertex_input`
-    /// - `vertex_shader`
-    /// - `tessellation_control_shader`
-    /// - `tessellation_evaluation_shader`
-    /// - `geometry_shader`
-    /// - `fragment_shader`
-    /// - `early_fragment_tests`
-    /// - `late_fragment_tests`
-    /// - `color_attachment_output`
-    /// - `conditional_rendering`
-    /// - `transform_feedback`
-    /// - `fragment_shading_rate_attachment`
-    /// - `fragment_density_process`
-    /// - `invocation_mask`
-    ALL_GRAPHICS = ALL_GRAPHICS,
-
-    /// The set of all current and future pipeline stages of all types.
-    ///
-    /// It is currently equivalent to setting all flags in `PipelineStages`, but automatically
-    /// omitting any that are not supported in a given context. It also implicitly includes future
-    /// flags that are added to Vulkan, if they are not yet supported by Vulkano.
-    ALL_COMMANDS = ALL_COMMANDS,
-
-    /// The `copy_buffer`, `copy_image`, `copy_buffer_to_image`, `copy_image_to_buffer` and
-    /// `copy_query_pool_results` commands are executed.
-    COPY = COPY {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
-
-    /// The `resolve_image` command is executed.
-    RESOLVE = RESOLVE {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
-
-    /// The `blit_image` command is executed.
-    BLIT = BLIT {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
-
-    /// The `clear_color_image`, `clear_depth_stencil_image`, `fill_buffer` and `update_buffer`
-    /// commands are executed.
-    CLEAR = CLEAR {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
-
-    /// Index buffers are read.
-    INDEX_INPUT = INDEX_INPUT {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
-
-    /// Vertex buffers are read.
-    VERTEX_ATTRIBUTE_INPUT = VERTEX_ATTRIBUTE_INPUT {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
-
-    /// The various pre-rasterization shader types are executed.
-    ///
-    /// It is currently equivalent to setting all of the following flags, but automatically
-    /// omitting any that are not supported in a given context. It also implicitly includes future
-    /// flags that are added to Vulkan, if they are not yet supported by Vulkano.
-    /// - `vertex_shader`
-    /// - `tessellation_control_shader`
-    /// - `tessellation_evaluation_shader`
-    /// - `geometry_shader`
-    /// - `task_shader`
-    /// - `mesh_shader`
-    PRE_RASTERIZATION_SHADERS = PRE_RASTERIZATION_SHADERS {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
-
-    /// Video decode operations are performed.
-    VIDEO_DECODE = VIDEO_DECODE_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },
-
-    /// Video encode operations are performed.
-    VIDEO_ENCODE = VIDEO_ENCODE_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },
-
-    /// Vertex attribute output values are written to the transform feedback buffers.
-    TRANSFORM_FEEDBACK = TRANSFORM_FEEDBACK_EXT {
-        device_extensions: [ext_transform_feedback],
-    },
-
-    /// The predicate of conditional rendering is read.
-    CONDITIONAL_RENDERING = CONDITIONAL_RENDERING_EXT {
-        device_extensions: [ext_conditional_rendering],
-    },
-
-    /// Acceleration_structure commands are executed.
-    ACCELERATION_STRUCTURE_BUILD = ACCELERATION_STRUCTURE_BUILD_KHR {
-        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
-    },
-
-    /// The various ray tracing shader types are executed.
-    RAY_TRACING_SHADER = RAY_TRACING_SHADER_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },
-
-    /// The fragment density map is read to generate the fragment areas.
-    FRAGMENT_DENSITY_PROCESS = FRAGMENT_DENSITY_PROCESS_EXT {
-        device_extensions: [ext_fragment_density_map],
-    },
-
-    /// The fragment shading rate attachment or shading rate image is read to determine the
-    /// fragment shading rate for portions of a rasterized primitive.
-    FRAGMENT_SHADING_RATE_ATTACHMENT = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
-        device_extensions: [khr_fragment_shading_rate, nv_shading_rate_image],
-    },
-
-    /// Device-side preprocessing for generated commands via the `preprocess_generated_commands`
-    /// command is handled.
-    COMMAND_PREPROCESS = COMMAND_PREPROCESS_NV {
-        device_extensions: [nv_device_generated_commands],
-    },
-
-    /// Task shaders are executed.
-    TASK_SHADER = TASK_SHADER_NV {
-        device_extensions: [nv_mesh_shader],
-    },
-
-    /// Mesh shaders are executed.
-    MESH_SHADER = MESH_SHADER_NV {
-        device_extensions: [nv_mesh_shader],
-    },
-
-    /// Subpass shading shaders are executed.
-    SUBPASS_SHADING = SUBPASS_SHADING_HUAWEI {
-        device_extensions: [huawei_subpass_shading],
-    },
-
-    /// The invocation mask image is read to optimize ray dispatch.
-    INVOCATION_MASK = INVOCATION_MASK_HUAWEI {
-        device_extensions: [huawei_invocation_mask],
-    },
-
-    /*
-    ACCELERATION_STRUCTURE_COPY = ACCELERATION_STRUCTURE_COPY_KHR {
-        device_extensions: [khr_ray_tracing_maintenance1],
-    },
-
-    MICROMAP_BUILD = MICROMAP_BUILD_EXT {
-        device_extensions: [ext_opacity_micromap],
-    },
-
-    OPTICAL_FLOW = OPTICAL_FLOW_NV {
-        device_extensions: [nv_optical_flow],
-    },
-     */
-}
-
-impl PipelineStages {
-    /// Returns whether `self` contains stages that are only available in
-    /// `VkPipelineStageFlagBits2`.
-    pub(crate) fn is_2(self) -> bool {
-        !(self
-            - (PipelineStages::TOP_OF_PIPE
-                | PipelineStages::DRAW_INDIRECT
-                | PipelineStages::VERTEX_INPUT
-                | PipelineStages::VERTEX_SHADER
-                | PipelineStages::TESSELLATION_CONTROL_SHADER
-                | PipelineStages::TESSELLATION_EVALUATION_SHADER
-                | PipelineStages::GEOMETRY_SHADER
-                | PipelineStages::FRAGMENT_SHADER
-                | PipelineStages::EARLY_FRAGMENT_TESTS
-                | PipelineStages::LATE_FRAGMENT_TESTS
-                | PipelineStages::COLOR_ATTACHMENT_OUTPUT
-                | PipelineStages::COMPUTE_SHADER
-                | PipelineStages::ALL_TRANSFER
-                | PipelineStages::BOTTOM_OF_PIPE
-                | PipelineStages::HOST
-                | PipelineStages::ALL_GRAPHICS
-                | PipelineStages::ALL_COMMANDS
-                | PipelineStages::TRANSFORM_FEEDBACK
-                | PipelineStages::CONDITIONAL_RENDERING
-                | PipelineStages::ACCELERATION_STRUCTURE_BUILD
-                | PipelineStages::RAY_TRACING_SHADER
-                | PipelineStages::FRAGMENT_DENSITY_PROCESS
-                | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
-                | PipelineStages::COMMAND_PREPROCESS
-                | PipelineStages::TASK_SHADER
-                | PipelineStages::MESH_SHADER))
-            .is_empty()
-    }
-
-    /// Replaces and unsets flags that are equivalent to multiple other flags.
-    ///
-    /// This may set flags that are not supported by the device, so this is for internal use only
-    /// and should not be passed on to Vulkan.
-    pub(crate) fn normalize(mut self) -> Self {
-        if self.intersects(PipelineStages::ALL_COMMANDS) {
-            self -= PipelineStages::ALL_COMMANDS;
-            self |= PipelineStages::TOP_OF_PIPE
-                | PipelineStages::DRAW_INDIRECT
-                | PipelineStages::VERTEX_INPUT
-                | PipelineStages::VERTEX_SHADER
-                | PipelineStages::TESSELLATION_CONTROL_SHADER
-                | PipelineStages::TESSELLATION_EVALUATION_SHADER
-                | PipelineStages::GEOMETRY_SHADER
-                | PipelineStages::FRAGMENT_SHADER
-                | PipelineStages::EARLY_FRAGMENT_TESTS
-                | PipelineStages::LATE_FRAGMENT_TESTS
-                | PipelineStages::COLOR_ATTACHMENT_OUTPUT
-                | PipelineStages::COMPUTE_SHADER
-                | PipelineStages::ALL_TRANSFER
-                | PipelineStages::BOTTOM_OF_PIPE
-                | PipelineStages::HOST
-                | PipelineStages::ALL_GRAPHICS
-                | PipelineStages::COPY
-                | PipelineStages::RESOLVE
-                | PipelineStages::BLIT
-                | PipelineStages::CLEAR
-                | PipelineStages::INDEX_INPUT
-                | PipelineStages::VERTEX_ATTRIBUTE_INPUT
-                | PipelineStages::PRE_RASTERIZATION_SHADERS
-                | PipelineStages::VIDEO_DECODE
-                | PipelineStages::VIDEO_ENCODE
-                | PipelineStages::TRANSFORM_FEEDBACK
-                | PipelineStages::CONDITIONAL_RENDERING
-                | PipelineStages::ACCELERATION_STRUCTURE_BUILD
-                | PipelineStages::RAY_TRACING_SHADER
-                | PipelineStages::FRAGMENT_DENSITY_PROCESS
-                | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
-                | PipelineStages::COMMAND_PREPROCESS
-                | PipelineStages::TASK_SHADER
-                | PipelineStages::MESH_SHADER
-                | PipelineStages::SUBPASS_SHADING
-                | PipelineStages::INVOCATION_MASK;
-        }
-
-        if self.intersects(PipelineStages::ALL_GRAPHICS) {
-            self -= PipelineStages::ALL_GRAPHICS;
-            self |= PipelineStages::DRAW_INDIRECT
-                | PipelineStages::TASK_SHADER
-                | PipelineStages::MESH_SHADER
-                | PipelineStages::VERTEX_INPUT
-                | PipelineStages::VERTEX_SHADER
-                | PipelineStages::TESSELLATION_CONTROL_SHADER
-                | PipelineStages::TESSELLATION_EVALUATION_SHADER
-                | PipelineStages::GEOMETRY_SHADER
-                | PipelineStages::FRAGMENT_SHADER
-                | PipelineStages::EARLY_FRAGMENT_TESTS
-                | PipelineStages::LATE_FRAGMENT_TESTS
-                | PipelineStages::COLOR_ATTACHMENT_OUTPUT
-                | PipelineStages::TRANSFORM_FEEDBACK
-                | PipelineStages::CONDITIONAL_RENDERING
-                | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
-                | PipelineStages::FRAGMENT_DENSITY_PROCESS
-                | PipelineStages::INVOCATION_MASK;
-        }
-
-        if self.intersects(PipelineStages::VERTEX_INPUT) {
-            self -= PipelineStages::VERTEX_INPUT;
-            self |= PipelineStages::INDEX_INPUT | PipelineStages::VERTEX_ATTRIBUTE_INPUT;
-        }
-
-        if self.intersects(PipelineStages::PRE_RASTERIZATION_SHADERS) {
-            self -= PipelineStages::PRE_RASTERIZATION_SHADERS;
-            self |= PipelineStages::VERTEX_SHADER
-                | PipelineStages::TESSELLATION_CONTROL_SHADER
-                | PipelineStages::TESSELLATION_EVALUATION_SHADER
-                | PipelineStages::GEOMETRY_SHADER
-                | PipelineStages::TASK_SHADER
-                | PipelineStages::MESH_SHADER;
-        }
-
-        if self.intersects(PipelineStages::ALL_TRANSFER) {
-            self -= PipelineStages::ALL_TRANSFER;
-            self |= PipelineStages::COPY
-                | PipelineStages::RESOLVE
-                | PipelineStages::BLIT
-                | PipelineStages::CLEAR;
-            //PipelineStages::ACCELERATION_STRUCTURE_COPY;
-        }
-
-        self
-    }
-
-    /// Returns the access types that are supported with the given pipeline stages.
-    ///
-    /// Corresponds to the table
-    /// "[Supported access types](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported)"
-    /// in the Vulkan specification.
-    #[inline]
-    pub fn supported_access(mut self) -> AccessFlags {
-        if self.is_empty() {
-            return AccessFlags::empty();
-        }
-
-        self = self.normalize();
-        let mut result = AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE;
-
-        if self.intersects(PipelineStages::DRAW_INDIRECT) {
-            result |=
-                AccessFlags::INDIRECT_COMMAND_READ | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ;
-        }
-
-        if self.intersects(PipelineStages::VERTEX_INPUT) {}
-
-        if self.intersects(PipelineStages::VERTEX_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if self.intersects(PipelineStages::TESSELLATION_CONTROL_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if self.intersects(PipelineStages::TESSELLATION_EVALUATION_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if self.intersects(PipelineStages::GEOMETRY_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if self.intersects(PipelineStages::FRAGMENT_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ
-                | AccessFlags::INPUT_ATTACHMENT_READ;
-        }
-
-        if self.intersects(PipelineStages::EARLY_FRAGMENT_TESTS) {
-            result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
-        }
-
-        if self.intersects(PipelineStages::LATE_FRAGMENT_TESTS) {
-            result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
-        }
-
-        if self.intersects(PipelineStages::COLOR_ATTACHMENT_OUTPUT) {
-            result |= AccessFlags::COLOR_ATTACHMENT_READ
-                | AccessFlags::COLOR_ATTACHMENT_WRITE
-                | AccessFlags::COLOR_ATTACHMENT_READ_NONCOHERENT;
-        }
-
-        if self.intersects(PipelineStages::COMPUTE_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if self.intersects(PipelineStages::ALL_TRANSFER) {}
-
-        if self.intersects(PipelineStages::BOTTOM_OF_PIPE) {}
-
-        if self.intersects(PipelineStages::HOST) {
-            result |= AccessFlags::HOST_READ | AccessFlags::HOST_WRITE;
-        }
-
-        if self.intersects(PipelineStages::ALL_GRAPHICS) {}
-
-        if self.intersects(PipelineStages::ALL_COMMANDS) {}
-
-        if self.intersects(PipelineStages::COPY) {
-            result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
-        }
-
-        if self.intersects(PipelineStages::RESOLVE) {
-            result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
-        }
-
-        if self.intersects(PipelineStages::BLIT) {
-            result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
-        }
-
-        if self.intersects(PipelineStages::CLEAR) {
-            result |= AccessFlags::TRANSFER_WRITE;
-        }
-
-        if self.intersects(PipelineStages::INDEX_INPUT) {
-            result |= AccessFlags::INDEX_READ;
-        }
-
-        if self.intersects(PipelineStages::VERTEX_ATTRIBUTE_INPUT) {
-            result |= AccessFlags::VERTEX_ATTRIBUTE_READ;
-        }
-
-        if self.intersects(PipelineStages::PRE_RASTERIZATION_SHADERS) {}
-
-        if self.intersects(PipelineStages::VIDEO_DECODE) {
-            result |= AccessFlags::VIDEO_DECODE_READ | AccessFlags::VIDEO_DECODE_WRITE;
-        }
-
-        if self.intersects(PipelineStages::VIDEO_ENCODE) {
-            result |= AccessFlags::VIDEO_ENCODE_READ | AccessFlags::VIDEO_ENCODE_WRITE;
-        }
-
-        if self.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
-            result |= AccessFlags::TRANSFORM_FEEDBACK_WRITE
-                | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_WRITE
-                | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ;
-        }
-
-        if self.intersects(PipelineStages::CONDITIONAL_RENDERING) {
-            result |= AccessFlags::CONDITIONAL_RENDERING_READ;
-        }
-
-        if self.intersects(PipelineStages::ACCELERATION_STRUCTURE_BUILD) {
-            result |= AccessFlags::INDIRECT_COMMAND_READ
-                | AccessFlags::SHADER_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::TRANSFER_READ
-                | AccessFlags::TRANSFER_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ
-                | AccessFlags::ACCELERATION_STRUCTURE_WRITE;
-        }
-
-        if self.intersects(PipelineStages::RAY_TRACING_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if self.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
-            result |= AccessFlags::FRAGMENT_DENSITY_MAP_READ;
-        }
-
-        if self.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
-            result |= AccessFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_READ;
-        }
-
-        if self.intersects(PipelineStages::COMMAND_PREPROCESS) {
-            result |= AccessFlags::COMMAND_PREPROCESS_READ | AccessFlags::COMMAND_PREPROCESS_WRITE;
-        }
-
-        if self.intersects(PipelineStages::TASK_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if self.intersects(PipelineStages::MESH_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if self.intersects(PipelineStages::SUBPASS_SHADING) {
-            result |= AccessFlags::INPUT_ATTACHMENT_READ;
-        }
-
-        if self.intersects(PipelineStages::INVOCATION_MASK) {
-            result |= AccessFlags::INVOCATION_MASK_READ;
-        }
-
-        result
     }
 }
 
@@ -910,61 +673,76 @@ impl From<PipelineStages> for ash::vk::PipelineStageFlags {
     }
 }
 
-impl From<PipelineStage> for PipelineStages {
-    #[inline]
-    fn from(val: PipelineStage) -> Self {
-        match val {
-            PipelineStage::TopOfPipe => PipelineStages::TOP_OF_PIPE,
-            PipelineStage::DrawIndirect => PipelineStages::DRAW_INDIRECT,
-            PipelineStage::VertexInput => PipelineStages::VERTEX_INPUT,
-            PipelineStage::VertexShader => PipelineStages::VERTEX_SHADER,
-            PipelineStage::TessellationControlShader => PipelineStages::TESSELLATION_CONTROL_SHADER,
-            PipelineStage::TessellationEvaluationShader => {
-                PipelineStages::TESSELLATION_EVALUATION_SHADER
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// A set of memory access types that are included in a memory dependency.
+    AccessFlags impl {
+        /// Returns whether `self` contains stages that are only available in
+        /// `VkAccessFlagBits2`.
+        pub(crate) fn is_2(self) -> bool {
+            !(self
+                - (AccessFlags::INDIRECT_COMMAND_READ
+                    | AccessFlags::INDEX_READ
+                    | AccessFlags::VERTEX_ATTRIBUTE_READ
+                    | AccessFlags::UNIFORM_READ
+                    | AccessFlags::INPUT_ATTACHMENT_READ
+                    | AccessFlags::SHADER_READ
+                    | AccessFlags::SHADER_WRITE
+                    | AccessFlags::COLOR_ATTACHMENT_READ
+                    | AccessFlags::COLOR_ATTACHMENT_WRITE
+                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
+                    | AccessFlags::TRANSFER_READ
+                    | AccessFlags::TRANSFER_WRITE
+                    | AccessFlags::HOST_READ
+                    | AccessFlags::HOST_WRITE
+                    | AccessFlags::MEMORY_READ
+                    | AccessFlags::MEMORY_WRITE
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_STORAGE_WRITE
+                    | AccessFlags::VIDEO_DECODE_READ
+                    | AccessFlags::VIDEO_DECODE_WRITE
+                    | AccessFlags::VIDEO_ENCODE_READ
+                    | AccessFlags::VIDEO_ENCODE_WRITE
+                    | AccessFlags::TRANSFORM_FEEDBACK_WRITE
+                    | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ
+                    | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_WRITE
+                    | AccessFlags::CONDITIONAL_RENDERING_READ
+                    | AccessFlags::COMMAND_PREPROCESS_READ
+                    | AccessFlags::COMMAND_PREPROCESS_WRITE
+                    | AccessFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_READ
+                    | AccessFlags::ACCELERATION_STRUCTURE_READ
+                    | AccessFlags::ACCELERATION_STRUCTURE_WRITE
+                    | AccessFlags::FRAGMENT_DENSITY_MAP_READ
+                    | AccessFlags::COLOR_ATTACHMENT_READ_NONCOHERENT
+                    | AccessFlags::INVOCATION_MASK_READ))
+                .is_empty()
+        }
+
+        /// Replaces and unsets flags that are equivalent to multiple other flags.
+        ///
+        /// This may set flags that are not supported by the device, so this is for internal use only
+        /// and should not be passed on to Vulkan.
+        #[allow(dead_code)] // TODO: use this function
+        pub(crate) fn normalize(mut self) -> Self {
+            if self.intersects(AccessFlags::SHADER_READ) {
+                self -= AccessFlags::SHADER_READ;
+                self |= AccessFlags::UNIFORM_READ
+                    | AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ;
             }
-            PipelineStage::GeometryShader => PipelineStages::GEOMETRY_SHADER,
-            PipelineStage::FragmentShader => PipelineStages::FRAGMENT_SHADER,
-            PipelineStage::EarlyFragmentTests => PipelineStages::EARLY_FRAGMENT_TESTS,
-            PipelineStage::LateFragmentTests => PipelineStages::LATE_FRAGMENT_TESTS,
-            PipelineStage::ColorAttachmentOutput => PipelineStages::COLOR_ATTACHMENT_OUTPUT,
-            PipelineStage::ComputeShader => PipelineStages::COMPUTE_SHADER,
-            PipelineStage::AllTransfer => PipelineStages::ALL_TRANSFER,
-            PipelineStage::BottomOfPipe => PipelineStages::BOTTOM_OF_PIPE,
-            PipelineStage::Host => PipelineStages::HOST,
-            PipelineStage::AllGraphics => PipelineStages::ALL_GRAPHICS,
-            PipelineStage::AllCommands => PipelineStages::ALL_COMMANDS,
-            PipelineStage::Copy => PipelineStages::COPY,
-            PipelineStage::Resolve => PipelineStages::RESOLVE,
-            PipelineStage::Blit => PipelineStages::BLIT,
-            PipelineStage::Clear => PipelineStages::CLEAR,
-            PipelineStage::IndexInput => PipelineStages::INDEX_INPUT,
-            PipelineStage::VertexAttributeInput => PipelineStages::VERTEX_ATTRIBUTE_INPUT,
-            PipelineStage::PreRasterizationShaders => PipelineStages::PRE_RASTERIZATION_SHADERS,
-            PipelineStage::VideoDecode => PipelineStages::VIDEO_DECODE,
-            PipelineStage::VideoEncode => PipelineStages::VIDEO_ENCODE,
-            PipelineStage::TransformFeedback => PipelineStages::TRANSFORM_FEEDBACK,
-            PipelineStage::ConditionalRendering => PipelineStages::CONDITIONAL_RENDERING,
-            PipelineStage::AccelerationStructureBuild => {
-                PipelineStages::ACCELERATION_STRUCTURE_BUILD
+
+            if self.intersects(AccessFlags::SHADER_WRITE) {
+                self -= AccessFlags::SHADER_WRITE;
+                self |= AccessFlags::SHADER_STORAGE_WRITE;
             }
-            PipelineStage::RayTracingShader => PipelineStages::RAY_TRACING_SHADER,
-            PipelineStage::FragmentDensityProcess => PipelineStages::FRAGMENT_DENSITY_PROCESS,
-            PipelineStage::FragmentShadingRateAttachment => {
-                PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
-            }
-            PipelineStage::CommandPreprocess => PipelineStages::COMMAND_PREPROCESS,
-            PipelineStage::TaskShader => PipelineStages::TASK_SHADER,
-            PipelineStage::MeshShader => PipelineStages::MESH_SHADER,
-            PipelineStage::SubpassShading => PipelineStages::SUBPASS_SHADING,
-            PipelineStage::InvocationMask => PipelineStages::INVOCATION_MASK,
+
+            self
         }
     }
-}
-
-vulkan_bitflags! {
-    /// A set of memory access types that are included in a memory dependency.
-    #[non_exhaustive]
-    AccessFlags = AccessFlags2(u64);
+    = AccessFlags2(u64);
 
     /// Read access to an indirect buffer.
     INDIRECT_COMMAND_READ = INDIRECT_COMMAND_READ,
@@ -1157,72 +935,6 @@ vulkan_bitflags! {
         device_extensions: [nv_optical_flow],
     },
     */
-}
-
-impl AccessFlags {
-    /// Returns whether `self` contains stages that are only available in
-    /// `VkAccessFlagBits2`.
-    pub(crate) fn is_2(self) -> bool {
-        !(self
-            - (AccessFlags::INDIRECT_COMMAND_READ
-                | AccessFlags::INDEX_READ
-                | AccessFlags::VERTEX_ATTRIBUTE_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::INPUT_ATTACHMENT_READ
-                | AccessFlags::SHADER_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::COLOR_ATTACHMENT_READ
-                | AccessFlags::COLOR_ATTACHMENT_WRITE
-                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
-                | AccessFlags::TRANSFER_READ
-                | AccessFlags::TRANSFER_WRITE
-                | AccessFlags::HOST_READ
-                | AccessFlags::HOST_WRITE
-                | AccessFlags::MEMORY_READ
-                | AccessFlags::MEMORY_WRITE
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::VIDEO_DECODE_READ
-                | AccessFlags::VIDEO_DECODE_WRITE
-                | AccessFlags::VIDEO_ENCODE_READ
-                | AccessFlags::VIDEO_ENCODE_WRITE
-                | AccessFlags::TRANSFORM_FEEDBACK_WRITE
-                | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ
-                | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_WRITE
-                | AccessFlags::CONDITIONAL_RENDERING_READ
-                | AccessFlags::COMMAND_PREPROCESS_READ
-                | AccessFlags::COMMAND_PREPROCESS_WRITE
-                | AccessFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_READ
-                | AccessFlags::ACCELERATION_STRUCTURE_READ
-                | AccessFlags::ACCELERATION_STRUCTURE_WRITE
-                | AccessFlags::FRAGMENT_DENSITY_MAP_READ
-                | AccessFlags::COLOR_ATTACHMENT_READ_NONCOHERENT
-                | AccessFlags::INVOCATION_MASK_READ))
-            .is_empty()
-    }
-
-    /// Replaces and unsets flags that are equivalent to multiple other flags.
-    ///
-    /// This may set flags that are not supported by the device, so this is for internal use only
-    /// and should not be passed on to Vulkan.
-    #[allow(dead_code)] // TODO: use this function
-    pub(crate) fn normalize(mut self) -> Self {
-        if self.intersects(AccessFlags::SHADER_READ) {
-            self -= AccessFlags::SHADER_READ;
-            self |= AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ;
-        }
-
-        if self.intersects(AccessFlags::SHADER_WRITE) {
-            self -= AccessFlags::SHADER_WRITE;
-            self |= AccessFlags::SHADER_STORAGE_WRITE;
-        }
-
-        self
-    }
 }
 
 impl From<AccessFlags> for ash::vk::AccessFlags {

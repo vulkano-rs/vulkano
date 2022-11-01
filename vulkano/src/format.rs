@@ -743,8 +743,9 @@ impl FormatProperties {
 }
 
 vulkan_bitflags! {
-    /// The features supported by a device for an image or buffer with a particular format.
     #[non_exhaustive]
+
+    /// The features supported by a device for an image or buffer with a particular format.
     FormatFeatures = FormatFeatureFlags2(u64);
 
     /* Image usage  */

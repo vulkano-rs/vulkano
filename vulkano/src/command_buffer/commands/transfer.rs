@@ -430,7 +430,7 @@ where
                         // VUID-VkCopyImageInfo2-srcImage-01553
                         // VUID-VkCopyImageInfo2-dstImage-01554
                         // VUID-VkCopyImageInfo2-dstImage-01555
-                        if subresource.aspects.iter().count() != 1 {
+                        if subresource.aspects.count() != 1 {
                             return Err(CopyError::MultipleAspectsNotAllowed {
                                 resource,
                                 region_index,
@@ -1083,7 +1083,7 @@ where
 
             // VUID-VkBufferImageCopy2-aspectMask-00212
             // VUID-VkCopyBufferToImageInfo2-aspectMask-01560
-            if image_subresource.aspects.iter().count() != 1 {
+            if image_subresource.aspects.count() != 1 {
                 return Err(CopyError::MultipleAspectsNotAllowed {
                     resource: CopyErrorResource::Destination,
                     region_index,
@@ -1511,7 +1511,7 @@ where
             }
 
             // VUID-VkBufferImageCopy2-aspectMask-00212
-            if image_subresource.aspects.iter().count() != 1 {
+            if image_subresource.aspects.count() != 1 {
                 return Err(CopyError::MultipleAspectsNotAllowed {
                     resource: CopyErrorResource::Source,
                     region_index,

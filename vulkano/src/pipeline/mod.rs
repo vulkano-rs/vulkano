@@ -40,13 +40,14 @@ pub trait Pipeline: DeviceOwned {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// The type of a pipeline.
     ///
     /// When binding a pipeline or descriptor sets in a command buffer, the state for each bind point
     /// is independent from the others. This means that it is possible, for example, to bind a graphics
     /// pipeline without disturbing any bound compute pipeline. Likewise, binding descriptor sets for
     /// the `Compute` bind point does not affect sets that were bound to the `Graphics` bind point.
-    #[non_exhaustive]
     PipelineBindPoint = PipelineBindPoint(i32);
 
     // TODO: document
@@ -69,9 +70,10 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// A particular state value within a graphics pipeline that can be dynamically set by a command
     /// buffer.
-    #[non_exhaustive]
     DynamicState = DynamicState(i32);
 
     // TODO: document

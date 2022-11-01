@@ -9,7 +9,7 @@
 
 use crate::{
     device::{Device, DeviceOwned, Queue},
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{vulkan_bitflags, vulkan_bitflags_enum},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -1169,147 +1169,73 @@ impl Default for SemaphoreCreateInfo {
     }
 }
 
-vulkan_enum! {
-    /// The handle type used for Vulkan external semaphore APIs.
+vulkan_bitflags_enum! {
     #[non_exhaustive]
-    ExternalSemaphoreHandleType = ExternalSemaphoreHandleTypeFlags(u32);
 
-    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueFd = OPAQUE_FD,
+    /// A set of [`ExternalSemaphoreHandleType`] values.
+    ExternalSemaphoreHandleTypes,
 
-    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueWin32 = OPAQUE_WIN32,
-
-    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
-
-    /// A Windows NT handle that refers to a Direct3D 11 or 12 fence.
-    ///
-    /// This handle type has *reference transference*.
-    D3D12Fence = D3D12_FENCE,
-
-    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
-    ///
-    /// This handle type has *copy transference*.
-    SyncFd = SYNC_FD,
-
-    /// A handle to a Zircon event object.
-    ///
-    /// This handle type has *reference transference*.
-    ///
-    /// The
-    /// [`fuchsia_external_semaphore`](crate::device::DeviceExtensions::fuchsia_external_semaphore)
-    /// extension must be enabled on the device.
-    ZirconEvent = ZIRCON_EVENT_FUCHSIA {
-        device_extensions: [fuchsia_external_semaphore],
-    },
-}
-
-impl ExternalSemaphoreHandleType {
-    /// Returns whether the given handle type has *copy transference* rather than *reference
-    /// transference*.
-    ///
-    /// Imports of handles with copy transference must always be temporary. Exports of such
-    /// handles must only occur if no queue is waiting on the semaphore, and only if the semaphore
-    /// is already signaled, or if there is a semaphore signal operation pending in a queue.
-    #[inline]
-    pub fn has_copy_transference(self) -> bool {
-        // As defined by
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-win32
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fd
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fuchsia
-        matches!(self, Self::SyncFd)
-    }
-}
-
-vulkan_bitflags! {
-    /// A mask of multiple external semaphore handle types.
-    #[non_exhaustive]
-    ExternalSemaphoreHandleTypes = ExternalSemaphoreHandleTypeFlags(u32);
-
-    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OPAQUE_FD = OPAQUE_FD,
-
-    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OPAQUE_WIN32 = OPAQUE_WIN32,
-
-    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OPAQUE_WIN32_KMT = OPAQUE_WIN32_KMT,
-
-    /// A Windows NT handle that refers to a Direct3D 11 or 12 fence.
-    ///
-    /// This handle type has *reference transference*.
-    D3D12_FENCE = D3D12_FENCE,
-
-    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
-    ///
-    /// This handle type has *copy transference*.
-    SYNC_FD = SYNC_FD,
-
-    /// A handle to a Zircon event object.
-    ///
-    /// This handle type has *reference transference*.
-    ///
-    /// The
-    /// [`fuchsia_external_semaphore`](crate::device::DeviceExtensions::fuchsia_external_semaphore)
-    /// extension must be enabled on the device.
-    ZIRCON_EVENT = ZIRCON_EVENT_FUCHSIA {
-        device_extensions: [fuchsia_external_semaphore],
-    },
-}
-
-impl From<ExternalSemaphoreHandleType> for ExternalSemaphoreHandleTypes {
-    #[inline]
-    fn from(val: ExternalSemaphoreHandleType) -> Self {
-        match val {
-            ExternalSemaphoreHandleType::OpaqueFd => ExternalSemaphoreHandleTypes::OPAQUE_FD,
-            ExternalSemaphoreHandleType::OpaqueWin32 => ExternalSemaphoreHandleTypes::OPAQUE_WIN32,
-            ExternalSemaphoreHandleType::OpaqueWin32Kmt => {
-                ExternalSemaphoreHandleTypes::OPAQUE_WIN32_KMT
-            }
-            ExternalSemaphoreHandleType::D3D12Fence => ExternalSemaphoreHandleTypes::D3D12_FENCE,
-            ExternalSemaphoreHandleType::SyncFd => ExternalSemaphoreHandleTypes::SYNC_FD,
-            ExternalSemaphoreHandleType::ZirconEvent => ExternalSemaphoreHandleTypes::ZIRCON_EVENT,
+    /// The handle type used to export or import semaphores to/from an external source.
+    ExternalSemaphoreHandleType impl {
+        /// Returns whether the given handle type has *copy transference* rather than *reference
+        /// transference*.
+        ///
+        /// Imports of handles with copy transference must always be temporary. Exports of such
+        /// handles must only occur if no queue is waiting on the semaphore, and only if the semaphore
+        /// is already signaled, or if there is a semaphore signal operation pending in a queue.
+        #[inline]
+        pub fn has_copy_transference(self) -> bool {
+            // As defined by
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-win32
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fd
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fuchsia
+            matches!(self, Self::SyncFd)
         }
-    }
-}
+    },
 
-impl ExternalSemaphoreHandleTypes {
-    fn into_iter(self) -> impl IntoIterator<Item = ExternalSemaphoreHandleType> {
-        [
-            self.intersects(ExternalSemaphoreHandleTypes::OPAQUE_FD)
-                .then_some(ExternalSemaphoreHandleType::OpaqueFd),
-            self.intersects(ExternalSemaphoreHandleTypes::OPAQUE_WIN32)
-                .then_some(ExternalSemaphoreHandleType::OpaqueWin32),
-            self.intersects(ExternalSemaphoreHandleTypes::OPAQUE_WIN32_KMT)
-                .then_some(ExternalSemaphoreHandleType::OpaqueWin32Kmt),
-            self.intersects(ExternalSemaphoreHandleTypes::D3D12_FENCE)
-                .then_some(ExternalSemaphoreHandleType::D3D12Fence),
-            self.intersects(ExternalSemaphoreHandleTypes::SYNC_FD)
-                .then_some(ExternalSemaphoreHandleType::SyncFd),
-            self.intersects(ExternalSemaphoreHandleTypes::ZIRCON_EVENT)
-                .then_some(ExternalSemaphoreHandleType::ZirconEvent),
-        ]
-        .into_iter()
-        .flatten()
-    }
+    = ExternalSemaphoreHandleTypeFlags(u32);
+
+    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_FD, OpaqueFd = OPAQUE_FD,
+
+    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_WIN32, OpaqueWin32 = OPAQUE_WIN32,
+
+    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_WIN32_KMT, OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
+
+    /// A Windows NT handle that refers to a Direct3D 11 or 12 fence.
+    ///
+    /// This handle type has *reference transference*.
+    D3D12_FENCE, D3D12Fence = D3D12_FENCE,
+
+    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
+    ///
+    /// This handle type has *copy transference*.
+    SYNC_FD, SyncFd = SYNC_FD,
+
+    /// A handle to a Zircon event object.
+    ///
+    /// This handle type has *reference transference*.
+    ///
+    /// The [`fuchsia_external_semaphore`] extension must be enabled on the device.
+    ///
+    /// [`fuchsia_external_semaphore`]: crate::device::DeviceExtensions::fuchsia_external_semaphore
+    ZIRCON_EVENT, ZirconEvent = ZIRCON_EVENT_FUCHSIA {
+        device_extensions: [fuchsia_external_semaphore],
+    },
 }
 
 vulkan_bitflags! {
-    /// Additional parameters for a semaphore payload import.
     #[non_exhaustive]
+
+    /// Additional parameters for a semaphore payload import.
     SemaphoreImportFlags = SemaphoreImportFlags(u32);
 
     /// The semaphore payload will be imported only temporarily, regardless of the permanence of the

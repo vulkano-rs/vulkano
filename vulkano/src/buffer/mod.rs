@@ -106,8 +106,9 @@ mod traits;
 mod usage;
 
 vulkan_bitflags! {
-    /// Flags to be set when creating a buffer.
     #[non_exhaustive]
+
+    /// Flags to be set when creating a buffer.
     BufferCreateFlags = BufferCreateFlags(u32);
 
     /*

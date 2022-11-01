@@ -10,7 +10,9 @@
 macro_rules! vulkan_bitflags {
     {
         $(#[doc = $ty_doc:literal])*
-        $ty:ident = $ty_ffi:ident($repr:ty);
+        $ty:ident
+        $( impl { $($impls:item)* } )?
+        = $ty_ffi:ident($repr:ty);
 
         $(
             $(#[doc = $flag_doc:literal])*
@@ -100,6 +102,8 @@ macro_rules! vulkan_bitflags {
             pub const fn complement(self) -> Self {
                 Self(!self.0 & Self::all_raw())
             }
+
+            $( $($impls)* )?
         }
 
         impl Default for $ty {
@@ -222,9 +226,12 @@ macro_rules! vulkan_bitflags {
     };
 
     {
-        $(#[doc = $ty_doc:literal])*
         #[non_exhaustive]
-        $ty:ident = $ty_ffi:ident($repr:ty);
+
+        $(#[doc = $ty_doc:literal])*
+        $ty:ident
+        $( impl { $($impls:item)* } )?
+        = $ty_ffi:ident($repr:ty);
 
         $(
             $(#[doc = $flag_doc:literal])*
@@ -421,6 +428,8 @@ macro_rules! vulkan_bitflags {
 
                 Ok(())
             }
+
+            $( $($impls)* )?
         }
 
         impl Default for $ty {
@@ -537,7 +546,9 @@ macro_rules! vulkan_bitflags {
 macro_rules! vulkan_enum {
     {
         $(#[doc = $ty_doc:literal])*
-        $ty:ident = $ty_ffi:ident($repr:ty);
+        $ty:ident
+        $( impl { $($impls:item)* } )?
+        = $ty_ffi:ident($repr:ty);
 
         $(
             $(#[doc = $flag_doc:literal])*
@@ -553,6 +564,12 @@ macro_rules! vulkan_enum {
                 $flag_name = ash::vk::$ty_ffi::$flag_name_ffi.as_raw(),
             )+
         }
+
+        $(
+            impl $ty {
+                $($impls)*
+            }
+        )?
 
         impl From<$ty> for ash::vk::$ty_ffi {
             #[inline]
@@ -577,9 +594,12 @@ macro_rules! vulkan_enum {
     };
 
     {
-        $(#[doc = $ty_doc:literal])*
         #[non_exhaustive]
-        $ty:ident = $ty_ffi:ident($repr:ty);
+
+        $(#[doc = $ty_doc:literal])*
+        $ty:ident
+        $( impl { $($impls:item)* } )?
+        = $ty_ffi:ident($repr:ty);
 
         $(
             $(#[doc = $flag_doc:literal])*
@@ -725,6 +745,10 @@ macro_rules! vulkan_enum {
 
             Ok(())
         }
+
+        $(
+            $($impls)*
+        )?
     }
 
     impl From<$ty> for ash::vk::$ty_ffi {
@@ -750,4 +774,118 @@ macro_rules! vulkan_enum {
     };
 }
 
-pub(crate) use {vulkan_bitflags, vulkan_enum};
+macro_rules! vulkan_bitflags_enum {
+    {
+        #[non_exhaustive]
+
+        $(#[doc = $ty_bitflags_doc:literal])*
+        $ty_bitflags:ident
+        $( impl { $($impls_bitflags:item)* } )?
+        ,
+
+        $(#[doc = $ty_enum_doc:literal])*
+        $ty_enum:ident
+        $( impl { $($impls_enum:item)* } )?
+        ,
+
+        = $ty_ffi:ident($repr:ty);
+
+        $(
+            $(#[doc = $flag_doc:literal])*
+            $flag_name_bitflags:ident, $flag_name_enum:ident = $flag_name_ffi:ident
+            $({
+                $(api_version: $api_version:ident,)?
+                $(features: [$($feature:ident),+ $(,)?],)?
+                $(device_extensions: [$($device_extension:ident),+ $(,)?],)?
+                $(instance_extensions: [$($instance_extension:ident),+ $(,)?],)?
+            })?
+            ,
+        )*
+    } => {
+        crate::macros::vulkan_bitflags! {
+            #[non_exhaustive]
+
+            $(#[doc = $ty_bitflags_doc])*
+            $ty_bitflags
+            impl {
+                /// Returns whether `self` contains the flag corresponding to `val`.
+                #[inline]
+                pub fn contains_enum(self, val: $ty_enum) -> bool {
+                    self.intersects(val.into())
+                }
+
+                $( $($impls_bitflags)* )?
+            }
+            = $ty_ffi($repr);
+
+            $(
+                $(#[doc = $flag_doc])*
+                $flag_name_bitflags = $flag_name_ffi
+                $({
+                    $(api_version: $api_version,)?
+                    $(features: [$($feature),+],)?
+                    $(device_extensions: [$($device_extension),+],)?
+                    $(instance_extensions: [$($instance_extension),+],)?
+                })?
+                ,
+            )*
+        }
+
+        crate::macros::vulkan_enum! {
+            #[non_exhaustive]
+
+            $(#[doc = $ty_enum_doc])*
+            $ty_enum
+            $( impl { $($impls_enum)* } )?
+            = $ty_ffi($repr);
+
+            $(
+                $(#[doc = $flag_doc])*
+                $flag_name_enum = $flag_name_ffi
+                $({
+                    $(api_version: $api_version,)?
+                    $(features: [$($feature),+],)?
+                    $(device_extensions: [$($device_extension),+],)?
+                    $(instance_extensions: [$($instance_extension),+],)?
+                })?
+                ,
+            )*
+        }
+
+        impl From<$ty_enum> for $ty_bitflags {
+            #[inline]
+            fn from(val: $ty_enum) -> Self {
+                Self(val as $repr)
+            }
+        }
+
+        impl FromIterator<$ty_enum> for $ty_bitflags {
+            #[inline]
+            fn from_iter<T>(iter: T) -> Self where T: IntoIterator<Item = $ty_enum> {
+                iter.into_iter().map(|item| Self::from(item)).fold(Self::empty(), |r, i| r.union(i))
+            }
+        }
+
+        impl IntoIterator for $ty_bitflags {
+            type Item = $ty_enum;
+            type IntoIter = std::iter::Flatten<
+                std::array::IntoIter<
+                    Option<Self::Item>,
+                    { $ty_bitflags::all_raw().count_ones() as usize },
+                >
+            >;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                [
+                    $(
+                        self.intersects(Self::$flag_name_bitflags)
+                            .then_some($ty_enum::$flag_name_enum),
+                    )*
+                ].into_iter().flatten()
+            }
+        }
+    }
+}
+
+pub(crate) use {vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum};

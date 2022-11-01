@@ -10,10 +10,11 @@
 use crate::macros::vulkan_bitflags;
 
 vulkan_bitflags! {
+    #[non_exhaustive]
+
     /// Describes how an image is going to be used. This is **not** just an optimization.
     ///
     /// If you try to use an image in a way that you didn't declare, an error will occur.
-    #[non_exhaustive]
     ImageUsage = ImageUsageFlags(u32);
 
     /// The image can be used as a source for transfer, blit, resolve and clear commands.
