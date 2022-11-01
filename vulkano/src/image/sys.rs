@@ -200,9 +200,10 @@ impl RawImage {
         ));
 
         // VUID-VkImageCreateInfo-flags-01573
-        assert!(!flags.intersects(
-            ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE | ImageCreateFlags::MUTABLE_FORMAT
-        ));
+        assert!(
+            !flags.intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE)
+                || flags.intersects(ImageCreateFlags::MUTABLE_FORMAT)
+        );
 
         // Get format features
         let format_features = {
