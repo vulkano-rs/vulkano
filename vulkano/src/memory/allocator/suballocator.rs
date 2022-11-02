@@ -14,7 +14,9 @@
 //! [the parent module]: super
 
 use self::host::SlotId;
-use super::{array_vec::ArrayVec, AllocationCreateInfo, AllocationCreationError};
+use super::{
+    align_down, align_up, array_vec::ArrayVec, AllocationCreateInfo, AllocationCreationError,
+};
 use crate::{
     device::{Device, DeviceOwned},
     image::ImageTiling,
@@ -215,6 +217,10 @@ impl MemoryAlloc {
         })
     }
 
+    pub(crate) fn atom_size(&self) -> Option<NonZeroU64> {
+        self.atom_size
+    }
+
     /// Invalidates the host (CPU) cache for a range of the allocation.
     ///
     /// You must call this method before the memory is read by the host, if the device previously
@@ -249,8 +255,7 @@ impl MemoryAlloc {
                 .result()
                 .map_err(VulkanError::from)?;
         } else {
-            // FIXME:
-            // self.debug_validate_memory_range(&range);
+            self.debug_validate_memory_range(&range);
         }
 
         Ok(())
@@ -290,8 +295,7 @@ impl MemoryAlloc {
                 .result()
                 .map_err(VulkanError::from)?;
         } else {
-            // FIXME:
-            // self.debug_validate_memory_range(&range);
+            self.debug_validate_memory_range(&range);
         }
 
         Ok(())
@@ -340,18 +344,22 @@ impl MemoryAlloc {
     /// This exists because even if no cache control is required, the parameters should still be
     /// valid, otherwise you might have bugs in your code forever just because your memory happens
     /// to be host-coherent.
-    #[allow(dead_code)]
     fn debug_validate_memory_range(&self, range: &Range<DeviceSize>) {
         debug_assert!(!range.is_empty() && range.end <= self.size);
-        debug_assert!({
-            let atom_size = self
-                .device()
-                .physical_device()
-                .properties()
-                .non_coherent_atom_size;
+        debug_assert!(
+            {
+                let atom_size = self
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .non_coherent_atom_size;
 
-            range.start % atom_size == 0 && (range.end % atom_size == 0 || range.end == self.size)
-        });
+                range.start % atom_size == 0
+                    && (range.end % atom_size == 0 || range.end == self.size)
+            },
+            "attempted to invalidate or flush a memory range that is not aligned to the \
+            non-coherent atom size",
+        );
     }
 
     /// Returns the underlying block of [`DeviceMemory`].
@@ -935,17 +943,17 @@ impl Display for SuballocationCreationError {
 /// });
 /// ```
 ///
-/// For use in allocating buffers for [`CpuBufferPool`]:
+/// For use in allocating arenas for [`CpuBufferAllocator`]:
 ///
 /// ```
 /// use std::sync::Arc;
-/// use vulkano::buffer::CpuBufferPool;
+/// use vulkano::buffer::allocator::CpuBufferAllocator;
 /// use vulkano::memory::allocator::StandardMemoryAllocator;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 ///
 /// // We need to wrap the allocator in an `Arc` so that we can share ownership of it.
 /// let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-/// let buffer_pool = CpuBufferPool::<u32>::upload(memory_allocator.clone());
+/// let buffer_allocator = CpuBufferAllocator::new(memory_allocator.clone(), Default::default());
 ///
 /// // You can continue using `memory_allocator` for other things.
 /// ```
@@ -988,7 +996,7 @@ impl Display for SuballocationCreationError {
 /// [alignment requirements]: super#alignment
 /// [`GenericMemoryAllocator`]: super::GenericMemoryAllocator
 /// [`StandardMemoryAllocator`]: super::StandardMemoryAllocator
-/// [`CpuBufferPool`]: crate::buffer::CpuBufferPool
+/// [`CpuBufferAllocator`]: crate::buffer::CpuBufferAllocator
 #[derive(Debug)]
 pub struct FreeListAllocator {
     region: MemoryAlloc,
@@ -2438,16 +2446,6 @@ impl Display for BumpAllocatorResetError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("the allocator is still in use")
     }
-}
-
-fn align_up(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
-    align_down(val + alignment - 1, alignment)
-}
-
-fn align_down(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
-    debug_assert!(alignment.is_power_of_two());
-
-    val & !(alignment - 1)
 }
 
 /// Checks if resouces A and B share a page.

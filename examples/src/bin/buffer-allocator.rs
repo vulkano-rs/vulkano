@@ -7,17 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// BufferPool Example
-//
-// Modified triangle example to show BufferPool
-// Using a pool allows multiple buffers to be "in-flight" simultaneously
-//  and is suited to highly dynamic, similar sized chunks of data
-//
-// NOTE:(jdnewman85) ATM (5/4/2020) CpuBufferPool.next() and .chunk() have identical documentation
-//      I was unable to get next() to work. The compiler complained that the resulting buffer
-//      didn't implement VertexSource. Similar issues have been reported.
-//      See: https://github.com/vulkano-rs/vulkano/issues/1221
-//      Finally, I have not profiled CpuBufferPool against CpuAccessibleBuffer
+// Modified triangle example to show `CpuBufferAllocator`.
 
 use bytemuck::{Pod, Zeroable};
 use std::{
@@ -25,7 +15,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use vulkano::{
-    buffer::CpuBufferPool,
+    buffer::{
+        allocator::{CpuBufferAllocator, CpuBufferAllocatorCreateInfo},
+        BufferUsage,
+    },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -172,8 +165,19 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    // Vertex Buffer Pool
-    let buffer_pool: CpuBufferPool<Vertex> = CpuBufferPool::vertex_buffer(memory_allocator);
+    // Using a buffer allocator allows multiple buffers to be "in-flight" simultaneously and is
+    // suited to highly dynamic data like vertex, index and uniform buffers.
+    let buffer_allocator = CpuBufferAllocator::new(
+        memory_allocator,
+        CpuBufferAllocatorCreateInfo {
+            buffer_usage: BufferUsage {
+                // We want to use the allocated subbuffers as vertex buffers.
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
+            ..Default::default()
+        },
+    );
 
     mod vs {
         vulkano_shaders::shader! {
@@ -336,8 +340,8 @@ fn main() {
                 ];
                 let num_vertices = data.len() as u32;
 
-                // Allocate a new chunk from buffer_pool
-                let buffer = buffer_pool.from_iter(data.to_vec()).unwrap();
+                // Allocate a new subbuffer using the buffer allocator.
+                let buffer = buffer_allocator.from_iter(data.iter().copied()).unwrap();
                 let mut builder = AutoCommandBufferBuilder::primary(
                     &command_buffer_allocator,
                     queue.queue_family_index(),
