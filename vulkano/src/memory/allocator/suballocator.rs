@@ -116,18 +116,7 @@ impl MemoryAlloc {
                     output.as_mut_ptr(),
                 )
                 .result()
-                .map_err(|err| match err.into() {
-                    VulkanError::OutOfHostMemory => {
-                        AllocationCreationError::VulkanError(VulkanError::OutOfHostMemory)
-                    }
-                    VulkanError::OutOfDeviceMemory => {
-                        AllocationCreationError::VulkanError(VulkanError::OutOfDeviceMemory)
-                    }
-                    VulkanError::MemoryMapFailed => {
-                        AllocationCreationError::VulkanError(VulkanError::MemoryMapFailed)
-                    }
-                    _ => unreachable!(),
-                })?;
+                .map_err(VulkanError::from)?;
 
                 NonNull::new(output.assume_init())
             }

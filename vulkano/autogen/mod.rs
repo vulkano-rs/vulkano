@@ -432,6 +432,7 @@ fn suffix_key(name: &str) -> u32 {
         static ref VENDOR_SUFFIXES: Regex = Regex::new(r"(?:AMD|GOOGLE|INTEL|NV)$").unwrap();
     }
 
+    #[allow(clippy::bool_to_int_with_if)]
     if VENDOR_SUFFIXES.is_match(name) {
         3
     } else if name.ends_with("EXT") {
