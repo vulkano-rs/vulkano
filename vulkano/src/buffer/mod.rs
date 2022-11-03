@@ -70,6 +70,8 @@
 //!
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module
 //! for how to create a buffer view.
+//!
+//! [`CpuBufferAllocator`]: allocator::CpuBufferAllocator
 
 pub use self::{
     cpu_access::CpuAccessibleBuffer,

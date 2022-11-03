@@ -996,7 +996,7 @@ impl Display for SuballocationCreationError {
 /// [alignment requirements]: super#alignment
 /// [`GenericMemoryAllocator`]: super::GenericMemoryAllocator
 /// [`StandardMemoryAllocator`]: super::StandardMemoryAllocator
-/// [`CpuBufferAllocator`]: crate::buffer::CpuBufferAllocator
+/// [`CpuBufferAllocator`]: crate::buffer::allocator::CpuBufferAllocator
 #[derive(Debug)]
 pub struct FreeListAllocator {
     region: MemoryAlloc,

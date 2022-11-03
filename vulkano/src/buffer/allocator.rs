@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Efficiently suballocates buffers into smaller subbuffers.
+
 use super::{
     sys::{Buffer, BufferCreateInfo, RawBuffer},
     BufferAccess, BufferAccessObject, BufferContents, BufferError, BufferInner, BufferUsage,
