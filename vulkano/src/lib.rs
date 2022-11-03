@@ -403,7 +403,10 @@ macro_rules! impl_id_counter {
 
                 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
-                NonZeroU64::new(COUNTER.fetch_add(1, Ordering::Relaxed)).expect("ID overflow")
+                NonZeroU64::new(COUNTER.fetch_add(1, Ordering::Relaxed)).unwrap_or_else(|| {
+                    println!("an ID counter has overflown ...somehow");
+                    std::process::abort();
+                })
             }
         }
 
