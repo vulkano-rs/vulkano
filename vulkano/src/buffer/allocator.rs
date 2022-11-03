@@ -232,9 +232,9 @@ where
             ptr::write(mapping, data);
 
             if let Some(atom_size) = allocation.atom_size() {
-                allocation
-                    .flush_range(offset..offset + align_up(size, atom_size.get()))
-                    .unwrap();
+                let size = align_up(size, atom_size.get());
+                let end = DeviceSize::min(offset + size, allocation.size());
+                allocation.flush_range(offset..end).unwrap();
             }
         }
 
@@ -285,9 +285,9 @@ where
             }
 
             if let Some(atom_size) = allocation.atom_size() {
-                allocation
-                    .flush_range(offset..offset + align_up(size, atom_size.get()))
-                    .unwrap();
+                let size = align_up(size, atom_size.get());
+                let end = DeviceSize::min(offset + size, allocation.size());
+                allocation.flush_range(offset..end).unwrap();
             }
         }
 
