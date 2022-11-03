@@ -1225,7 +1225,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// - Returns [`OutOfPoolMemory`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and none of the pools of suitable memory
     ///   types have enough free space.
-    /// - Returns [`RequiresDedicatedAllocation`] if `create_info.allocate_preference` is
+    /// - Returns [`DedicatedAllocationRequired`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and
     ///   `create_info.requirements.requires_dedicated_allocation` is `true`.
     /// - Returns [`BlockSizeExceeded`] if `create_info.allocate_preference` is
@@ -1237,11 +1237,10 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///
     /// [`device_local`]: MemoryPropertyFlags::device_local
     /// [`host_visible`]: MemoryPropertyFlags::host_visible
-    /// [`NoSuitableMemoryTypes`]: AllocationCreationError::NoSuitableMemoryTypes
     /// [`TooManyObjects`]: VulkanError::TooManyObjects
     /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     /// [`OutOfPoolMemory`]: AllocationCreationError::OutOfPoolMemory
-    /// [`RequiresDedicatedAllocation`]: AllocationCreationError::RequiresDedicatedAllocation
+    /// [`DedicatedAllocationRequired`]: AllocationCreationError::DedicatedAllocationRequired
     /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
     fn allocate(
         &self,
