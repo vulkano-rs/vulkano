@@ -1633,6 +1633,18 @@ impl SwapchainAcquireFuture {
     pub fn swapchain(&self) -> &Arc<Swapchain> {
         &self.swapchain
     }
+
+    /// Blocks the current thread until the swapchain image has been acquired, or timeout
+    ///
+    /// If timeout is `None`, will potentially block forever
+    ///
+    /// You still need to join with this future for present to work
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FenceError> {
+        match &self.fence {
+            Some(fence) => fence.wait(timeout),
+            None => Ok(()),
+        }
+    }
 }
 
 unsafe impl GpuFuture for SwapchainAcquireFuture {
