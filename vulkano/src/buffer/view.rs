@@ -26,15 +26,10 @@
 //!
 //! # let queue: Arc<vulkano::device::Queue> = return;
 //! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
-//! let usage = BufferUsage {
-//!     storage_texel_buffer: true,
-//!     ..BufferUsage::empty()
-//! };
-//!
 //! let buffer = DeviceLocalBuffer::<[u32]>::array(
 //!     &memory_allocator,
 //!     128,
-//!     usage,
+//!     BufferUsage::STORAGE_TEXEL_BUFFER,
 //!     [queue.queue_family_index()],
 //! )
 //! .unwrap();
@@ -48,7 +43,7 @@
 //! .unwrap();
 //! ```
 
-use super::{BufferAccess, BufferAccessObject, BufferInner};
+use super::{BufferAccess, BufferAccessObject, BufferInner, BufferUsage};
 use crate::{
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
@@ -107,7 +102,9 @@ where
         format.validate_device(device)?;
 
         // VUID-VkBufferViewCreateInfo-buffer-00932
-        if !(inner_buffer.usage().uniform_texel_buffer || inner_buffer.usage().storage_texel_buffer)
+        if !inner_buffer
+            .usage()
+            .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER)
         {
             return Err(BufferViewCreationError::BufferMissingUsage);
         }
@@ -121,12 +118,20 @@ where
         };
 
         // VUID-VkBufferViewCreateInfo-buffer-00933
-        if inner_buffer.usage().uniform_texel_buffer && !format_features.uniform_texel_buffer {
+        if inner_buffer
+            .usage()
+            .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
+            && !format_features.intersects(FormatFeatures::UNIFORM_TEXEL_BUFFER)
+        {
             return Err(BufferViewCreationError::UnsupportedFormat);
         }
 
         // VUID-VkBufferViewCreateInfo-buffer-00934
-        if inner_buffer.usage().storage_texel_buffer && !format_features.storage_texel_buffer {
+        if inner_buffer
+            .usage()
+            .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
+            && !format_features.intersects(FormatFeatures::STORAGE_TEXEL_BUFFER)
+        {
             return Err(BufferViewCreationError::UnsupportedFormat);
         }
 
@@ -156,7 +161,10 @@ where
                 block_size
             };
 
-            if inner_buffer.usage().storage_texel_buffer {
+            if inner_buffer
+                .usage()
+                .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
+            {
                 let mut required_alignment = properties
                     .storage_texel_buffer_offset_alignment_bytes
                     .unwrap();
@@ -177,7 +185,10 @@ where
                 }
             }
 
-            if inner_buffer.usage().uniform_texel_buffer {
+            if inner_buffer
+                .usage()
+                .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
+            {
                 let mut required_alignment = properties
                     .uniform_texel_buffer_offset_alignment_bytes
                     .unwrap();
@@ -416,7 +427,7 @@ pub unsafe trait BufferViewAbstract:
     fn format(&self) -> Option<Format>;
 
     /// Returns the features supported by the buffer view's format.
-    fn format_features(&self) -> &FormatFeatures;
+    fn format_features(&self) -> FormatFeatures;
 
     /// Returns the byte range of the wrapped buffer that this view exposes.
     fn range(&self) -> Range<DeviceSize>;
@@ -435,8 +446,8 @@ where
         self.format
     }
 
-    fn format_features(&self) -> &FormatFeatures {
-        &self.format_features
+    fn format_features(&self) -> FormatFeatures {
+        self.format_features
     }
 
     fn range(&self) -> Range<DeviceSize> {
@@ -475,10 +486,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let usage = BufferUsage {
-            uniform_texel_buffer: true,
-            ..BufferUsage::empty()
-        };
+        let usage = BufferUsage::UNIFORM_TEXEL_BUFFER;
 
         let buffer = DeviceLocalBuffer::<[[u8; 4]]>::array(
             &memory_allocator,
@@ -503,10 +511,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let usage = BufferUsage {
-            storage_texel_buffer: true,
-            ..BufferUsage::empty()
-        };
+        let usage = BufferUsage::STORAGE_TEXEL_BUFFER;
 
         let buffer = DeviceLocalBuffer::<[[u8; 4]]>::array(
             &memory_allocator,
@@ -531,10 +536,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let usage = BufferUsage {
-            storage_texel_buffer: true,
-            ..BufferUsage::empty()
-        };
+        let usage = BufferUsage::STORAGE_TEXEL_BUFFER;
 
         let buffer = DeviceLocalBuffer::<[u32]>::array(
             &memory_allocator,
@@ -562,10 +564,7 @@ mod tests {
         let buffer = DeviceLocalBuffer::<[[u8; 4]]>::array(
             &memory_allocator,
             128,
-            BufferUsage {
-                transfer_dst: true, // Dummy value
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_DST, // Dummy value
             [queue.queue_family_index()],
         )
         .unwrap();
@@ -587,11 +586,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let usage = BufferUsage {
-            uniform_texel_buffer: true,
-            storage_texel_buffer: true,
-            ..BufferUsage::empty()
-        };
+        let usage = BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER;
 
         let buffer = DeviceLocalBuffer::<[[f64; 4]]>::array(
             &memory_allocator,

@@ -578,20 +578,14 @@ mod tests {
         assert_should_panic!({
             CpuAccessibleBuffer::from_data(
                 &memory_allocator,
-                BufferUsage {
-                    transfer_dst: true,
-                    ..BufferUsage::empty()
-                },
+                BufferUsage::TRANSFER_DST,
                 false,
                 EMPTY,
             )
             .unwrap();
             CpuAccessibleBuffer::from_iter(
                 &memory_allocator,
-                BufferUsage {
-                    transfer_dst: true,
-                    ..BufferUsage::empty()
-                },
+                BufferUsage::TRANSFER_DST,
                 false,
                 EMPTY.into_iter(),
             )

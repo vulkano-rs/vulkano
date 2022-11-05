@@ -14,11 +14,11 @@ use crate::{
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CopyError, CopyErrorResource,
     },
-    device::DeviceOwned,
-    format::{ClearColorValue, ClearDepthStencilValue, NumericType},
+    device::{DeviceOwned, QueueFlags},
+    format::{ClearColorValue, ClearDepthStencilValue, FormatFeatures, NumericType},
     image::{
         ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers,
-        ImageSubresourceRange, ImageType, SampleCount, SampleCounts,
+        ImageSubresourceRange, ImageType, ImageUsage, SampleCount, SampleCounts,
     },
     sampler::Filter,
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
@@ -89,7 +89,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBlitImage2-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -125,7 +128,7 @@ where
         let dst_image_type = dst_image.dimensions().image_type();
 
         // VUID-VkBlitImageInfo2-srcImage-00219
-        if !src_image.usage().transfer_src {
+        if !src_image.usage().intersects(ImageUsage::TRANSFER_SRC) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -133,7 +136,7 @@ where
         }
 
         // VUID-VkBlitImageInfo2-dstImage-00224
-        if !dst_image.usage().transfer_dst {
+        if !dst_image.usage().intersects(ImageUsage::TRANSFER_DST) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -141,7 +144,10 @@ where
         }
 
         // VUID-VkBlitImageInfo2-srcImage-01999
-        if !src_image.format_features().blit_src {
+        if !src_image
+            .format_features()
+            .intersects(FormatFeatures::BLIT_SRC)
+        {
             return Err(CopyError::MissingFormatFeature {
                 resource: CopyErrorResource::Source,
                 format_feature: "blit_src",
@@ -149,7 +155,10 @@ where
         }
 
         // VUID-VkBlitImageInfo2-dstImage-02000
-        if !dst_image.format_features().blit_dst {
+        if !dst_image
+            .format_features()
+            .intersects(FormatFeatures::BLIT_DST)
+        {
             return Err(CopyError::MissingFormatFeature {
                 resource: CopyErrorResource::Destination,
                 format_feature: "blit_dst",
@@ -172,7 +181,9 @@ where
             });
         }
 
-        if !(src_image_aspects.color && dst_image_aspects.color) {
+        if !(src_image_aspects.intersects(ImageAspects::COLOR)
+            && dst_image_aspects.intersects(ImageAspects::COLOR))
+        {
             // VUID-VkBlitImageInfo2-srcImage-00231
             if src_image.format() != dst_image.format() {
                 return Err(CopyError::FormatsMismatch {
@@ -218,10 +229,7 @@ where
             return Err(CopyError::SampleCountInvalid {
                 resource: CopyErrorResource::Destination,
                 sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts {
-                    sample1: true,
-                    ..SampleCounts::empty()
-                },
+                allowed_sample_counts: SampleCounts::SAMPLE_1,
             });
         }
 
@@ -230,10 +238,7 @@ where
             return Err(CopyError::SampleCountInvalid {
                 resource: CopyErrorResource::Destination,
                 sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts {
-                    sample1: true,
-                    ..SampleCounts::empty()
-                },
+                allowed_sample_counts: SampleCounts::SAMPLE_1,
             });
         }
 
@@ -260,7 +265,7 @@ where
         }
 
         // VUID-VkBlitImageInfo2-srcImage-00232
-        if !src_image_aspects.color && filter != Filter::Nearest {
+        if !src_image_aspects.intersects(ImageAspects::COLOR) && filter != Filter::Nearest {
             return Err(CopyError::FilterNotSupportedByFormat);
         }
 
@@ -268,13 +273,19 @@ where
             Filter::Nearest => (),
             Filter::Linear => {
                 // VUID-VkBlitImageInfo2-filter-02001
-                if !src_image.format_features().sampled_image_filter_linear {
+                if !src_image
+                    .format_features()
+                    .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR)
+                {
                     return Err(CopyError::FilterNotSupportedByFormat);
                 }
             }
             Filter::Cubic => {
                 // VUID-VkBlitImageInfo2-filter-02002
-                if !src_image.format_features().sampled_image_filter_cubic {
+                if !src_image
+                    .format_features()
+                    .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC)
+                {
                     return Err(CopyError::FilterNotSupportedByFormat);
                 }
 
@@ -300,7 +311,7 @@ where
 
             let check_subresource = |resource: CopyErrorResource,
                                      image: &dyn ImageAccess,
-                                     image_aspects: &ImageAspects,
+                                     image_aspects: ImageAspects,
                                      subresource: &ImageSubresourceLayers|
              -> Result<_, CopyError> {
                 // VUID-VkBlitImageInfo2-srcSubresource-01705
@@ -337,12 +348,12 @@ where
 
                 // VUID-VkBlitImageInfo2-aspectMask-00241
                 // VUID-VkBlitImageInfo2-aspectMask-00242
-                if !image_aspects.contains(&subresource.aspects) {
+                if !image_aspects.contains(subresource.aspects) {
                     return Err(CopyError::AspectsNotAllowed {
                         resource,
                         region_index,
                         aspects: subresource.aspects,
-                        allowed_aspects: *image_aspects,
+                        allowed_aspects: image_aspects,
                     });
                 }
 
@@ -356,13 +367,13 @@ where
             let src_subresource_extent = check_subresource(
                 CopyErrorResource::Source,
                 src_image,
-                &src_image_aspects,
+                src_image_aspects,
                 src_subresource,
             )?;
             let dst_subresource_extent = check_subresource(
                 CopyErrorResource::Destination,
                 dst_image,
-                &dst_image_aspects,
+                dst_image_aspects,
                 dst_subresource,
             )?;
 
@@ -591,8 +602,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdClearColorImage-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -612,7 +624,7 @@ where
         assert_eq!(device, image.device());
 
         // VUID-vkCmdClearColorImage-image-00002
-        if !image.usage().transfer_dst {
+        if !image.usage().intersects(ImageUsage::TRANSFER_DST) {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -621,7 +633,10 @@ where
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-vkCmdClearColorImage-image-01993
-            if !image.format_features().transfer_dst {
+            if !image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_DST)
+            {
                 return Err(CopyError::MissingFormatFeature {
                     resource: CopyErrorResource::Destination,
                     format_feature: "transfer_dst",
@@ -632,7 +647,7 @@ where
         let image_aspects = image.format().aspects();
 
         // VUID-vkCmdClearColorImage-image-00007
-        if image_aspects.depth || image_aspects.stencil {
+        if image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             return Err(CopyError::FormatNotSupported {
                 resource: CopyErrorResource::Destination,
                 format: image.format(),
@@ -674,7 +689,7 @@ where
             assert!(!subresource_range.aspects.is_empty());
 
             // VUID-vkCmdClearColorImage-aspectMask-02498
-            if !image_aspects.contains(&subresource_range.aspects) {
+            if !image_aspects.contains(subresource_range.aspects) {
                 return Err(CopyError::AspectsNotAllowed {
                     resource: CopyErrorResource::Destination,
                     region_index,
@@ -743,7 +758,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdClearDepthStencilImage-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -763,7 +781,10 @@ where
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-vkCmdClearDepthStencilImage-image-01994
-            if !image.format_features().transfer_dst {
+            if !image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_DST)
+            {
                 return Err(CopyError::MissingFormatFeature {
                     resource: CopyErrorResource::Destination,
                     format_feature: "transfer_dst",
@@ -774,7 +795,7 @@ where
         let image_aspects = image.format().aspects();
 
         // VUID-vkCmdClearDepthStencilImage-image-00014
-        if !(image_aspects.depth || image_aspects.stencil) {
+        if !image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             return Err(CopyError::FormatNotSupported {
                 resource: CopyErrorResource::Destination,
                 format: image.format(),
@@ -797,8 +818,8 @@ where
             && !(0.0..=1.0).contains(&clear_value.depth)
         {
             return Err(CopyError::RequirementNotMet {
-                required_for:
-                    "`clear_info.clear_value.depth` is not between `0.0` and `1.0` inclusive",
+                required_for: "`clear_info.clear_value.depth` is not between `0.0` and `1.0` \
+                    inclusive",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["ext_depth_range_unrestricted"],
                     ..Default::default()
@@ -818,7 +839,7 @@ where
             // VUID-vkCmdClearDepthStencilImage-aspectMask-02824
             // VUID-vkCmdClearDepthStencilImage-image-02825
             // VUID-vkCmdClearDepthStencilImage-image-02826
-            if !image_aspects.contains(&subresource_range.aspects) {
+            if !image_aspects.contains(subresource_range.aspects) {
                 return Err(CopyError::AspectsNotAllowed {
                     resource: CopyErrorResource::Destination,
                     region_index,
@@ -860,7 +881,9 @@ where
 
         // VUID-vkCmdClearDepthStencilImage-pRanges-02658
         // VUID-vkCmdClearDepthStencilImage-pRanges-02659
-        if image_aspects_used.stencil && !image.stencil_usage().transfer_dst {
+        if image_aspects_used.intersects(ImageAspects::STENCIL)
+            && !image.stencil_usage().intersects(ImageUsage::TRANSFER_DST)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -868,12 +891,8 @@ where
         }
 
         // VUID-vkCmdClearDepthStencilImage-pRanges-02660
-        if !(ImageAspects {
-            stencil: false,
-            ..image_aspects_used
-        })
-        .is_empty()
-            && !image.usage().transfer_dst
+        if !(image_aspects_used - ImageAspects::STENCIL).is_empty()
+            && !image.usage().intersects(ImageUsage::TRANSFER_DST)
         {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
@@ -917,7 +936,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdResolveImage2-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -948,15 +970,12 @@ where
             return Err(CopyError::SampleCountInvalid {
                 resource: CopyErrorResource::Source,
                 sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts {
-                    sample2: true,
-                    sample4: true,
-                    sample8: true,
-                    sample16: true,
-                    sample32: true,
-                    sample64: true,
-                    ..SampleCounts::empty()
-                },
+                allowed_sample_counts: SampleCounts::SAMPLE_2
+                    | SampleCounts::SAMPLE_4
+                    | SampleCounts::SAMPLE_8
+                    | SampleCounts::SAMPLE_16
+                    | SampleCounts::SAMPLE_32
+                    | SampleCounts::SAMPLE_64,
             });
         }
 
@@ -965,15 +984,15 @@ where
             return Err(CopyError::SampleCountInvalid {
                 resource: CopyErrorResource::Destination,
                 sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts {
-                    sample1: true,
-                    ..SampleCounts::empty()
-                },
+                allowed_sample_counts: SampleCounts::SAMPLE_1,
             });
         }
 
         // VUID-VkResolveImageInfo2-dstImage-02003
-        if !dst_image.format_features().color_attachment {
+        if !dst_image
+            .format_features()
+            .intersects(FormatFeatures::COLOR_ATTACHMENT)
+        {
             return Err(CopyError::MissingFormatFeature {
                 resource: CopyErrorResource::Destination,
                 format_feature: "color_attachment",
@@ -1012,7 +1031,10 @@ where
 
         // Should be guaranteed by the requirement that formats match, and that the destination
         // image format features support color attachments.
-        debug_assert!(src_image.format().aspects().color && dst_image.format().aspects().color);
+        debug_assert!(
+            src_image.format().aspects().intersects(ImageAspects::COLOR)
+                && dst_image.format().aspects().intersects(ImageAspects::COLOR)
+        );
 
         for (region_index, region) in regions.iter().enumerate() {
             let &ImageResolve {
@@ -1062,20 +1084,12 @@ where
 
                 // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
                 // VUID-VkImageResolve2-aspectMask-00266
-                if subresource.aspects
-                    != (ImageAspects {
-                        color: true,
-                        ..ImageAspects::empty()
-                    })
-                {
+                if subresource.aspects != (ImageAspects::COLOR) {
                     return Err(CopyError::AspectsNotAllowed {
                         resource,
                         region_index,
                         aspects: subresource.aspects,
-                        allowed_aspects: ImageAspects {
-                            color: true,
-                            ..ImageAspects::empty()
-                        },
+                        allowed_aspects: ImageAspects::COLOR,
                     });
                 }
 
@@ -1216,14 +1230,8 @@ impl SyncCommandBufferBuilder {
                             image: src_image.clone(),
                             subresource_range: src_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_read: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_READ,
                                 exclusive: false,
                             },
                             start_layout: src_image_layout,
@@ -1236,14 +1244,8 @@ impl SyncCommandBufferBuilder {
                             image: dst_image.clone(),
                             subresource_range: dst_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_write: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_WRITE,
                                 exclusive: true,
                             },
                             start_layout: dst_image_layout,
@@ -1308,14 +1310,8 @@ impl SyncCommandBufferBuilder {
                         image: image.clone(),
                         subresource_range,
                         memory: PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                all_transfer: true,
-                                ..PipelineStages::empty()
-                            },
-                            access: AccessFlags {
-                                transfer_write: true,
-                                ..AccessFlags::empty()
-                            },
+                            stages: PipelineStages::ALL_TRANSFER,
+                            access: AccessFlags::TRANSFER_WRITE,
                             exclusive: true,
                         },
                         start_layout: image_layout,
@@ -1379,14 +1375,8 @@ impl SyncCommandBufferBuilder {
                         image: image.clone(),
                         subresource_range,
                         memory: PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                all_transfer: true,
-                                ..PipelineStages::empty()
-                            },
-                            access: AccessFlags {
-                                transfer_write: true,
-                                ..AccessFlags::empty()
-                            },
+                            stages: PipelineStages::ALL_TRANSFER,
+                            access: AccessFlags::TRANSFER_WRITE,
                             exclusive: true,
                         },
                         start_layout: image_layout,
@@ -1460,14 +1450,8 @@ impl SyncCommandBufferBuilder {
                             image: src_image.clone(),
                             subresource_range: src_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_read: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_READ,
                                 exclusive: false,
                             },
                             start_layout: src_image_layout,
@@ -1480,14 +1464,8 @@ impl SyncCommandBufferBuilder {
                             image: dst_image.clone(),
                             subresource_range: dst_subresource.clone().into(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_transfer: true,
-                                    ..PipelineStages::empty()
-                                },
-                                access: AccessFlags {
-                                    transfer_write: true,
-                                    ..AccessFlags::empty()
-                                },
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_WRITE,
                                 exclusive: true,
                             },
                             start_layout: dst_image_layout,

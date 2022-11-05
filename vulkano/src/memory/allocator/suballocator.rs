@@ -18,7 +18,7 @@ use super::{array_vec::ArrayVec, AllocationCreateInfo, AllocationCreationError};
 use crate::{
     device::{Device, DeviceOwned},
     image::ImageTiling,
-    memory::DeviceMemory,
+    memory::{DeviceMemory, MemoryPropertyFlags},
     DeviceSize, OomError, VulkanError, VulkanObject,
 };
 use crossbeam_queue::ArrayQueue;
@@ -102,7 +102,7 @@ impl MemoryAlloc {
             [memory_type_index as usize]
             .property_flags;
 
-        let mapped_ptr = if property_flags.host_visible {
+        let mapped_ptr = if property_flags.intersects(MemoryPropertyFlags::HOST_VISIBLE) {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             // This is always valid because we are mapping the whole range.
@@ -124,9 +124,10 @@ impl MemoryAlloc {
             None
         };
 
-        let atom_size = (property_flags.host_visible && !property_flags.host_coherent)
-            .then_some(physical_device.properties().non_coherent_atom_size)
-            .and_then(NonZeroU64::new);
+        let atom_size = (property_flags.intersects(MemoryPropertyFlags::HOST_VISIBLE)
+            && !property_flags.intersects(MemoryPropertyFlags::HOST_COHERENT))
+        .then_some(physical_device.properties().non_coherent_atom_size)
+        .and_then(NonZeroU64::new);
 
         Ok(MemoryAlloc {
             offset: 0,
@@ -225,7 +226,7 @@ impl MemoryAlloc {
     /// - Panics if `range.end` exceeds `self.size`.
     /// - Panics if `range.start` or `range.end` are not a multiple of the `non_coherent_atom_size`.
     ///
-    /// [host-coherent]: super::MemoryPropertyFlags::host_coherent
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     #[inline]
     pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), OomError> {
@@ -266,7 +267,7 @@ impl MemoryAlloc {
     /// - Panics if `range.end` exceeds `self.size`.
     /// - Panics if `range.start` or `range.end` are not a multiple of the `non_coherent_atom_size`.
     ///
-    /// [host-coherent]: super::MemoryPropertyFlags::host_coherent
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     #[inline]
     pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), OomError> {
@@ -605,7 +606,7 @@ unsafe impl DeviceOwned for MemoryAlloc {
 /// Allocating a region to suballocatate:
 ///
 /// ```
-/// use vulkano::memory::{DeviceMemory, MemoryAllocateInfo, MemoryType};
+/// use vulkano::memory::{DeviceMemory, MemoryAllocateInfo, MemoryPropertyFlags, MemoryType};
 /// use vulkano::memory::allocator::MemoryAlloc;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 ///
@@ -620,7 +621,7 @@ unsafe impl DeviceOwned for MemoryAlloc {
 ///     // requirements, instead of picking the first one that satisfies them. Also, you have to
 ///     // take the requirements of the resources you want to allocate memory for into consideration.
 ///     .find_map(|(index, MemoryType { property_flags, .. })| {
-///         property_flags.device_local.then_some(index)
+///         property_flags.intersects(MemoryPropertyFlags::DEVICE_LOCAL).then_some(index)
 ///     })
 ///     .unwrap() as u32;
 ///

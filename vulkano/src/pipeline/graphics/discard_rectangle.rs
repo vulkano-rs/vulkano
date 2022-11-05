@@ -51,8 +51,9 @@ impl Default for DiscardRectangleState {
 }
 
 vulkan_enum! {
-    /// The mode in which the discard rectangle test operates.
     #[non_exhaustive]
+
+    /// The mode in which the discard rectangle test operates.
     DiscardRectangleMode = DiscardRectangleModeEXT(i32);
 
     /// Samples that are inside a rectangle are kept, samples that are outside all rectangles

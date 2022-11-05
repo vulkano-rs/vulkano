@@ -251,8 +251,9 @@ impl Default for StencilOps {
 }
 
 vulkan_enum! {
-    /// Operation to perform after the depth and stencil tests.
     #[non_exhaustive]
+
+    /// Operation to perform after the depth and stencil tests.
     StencilOp = StencilOp(i32);
 
     // TODO: document
@@ -281,8 +282,9 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
-    /// Specifies a face for stencil operations.
     #[non_exhaustive]
+
+    /// Specifies a face for stencil operations.
     StencilFaces = StencilFaceFlags(u32);
 
     // TODO: document
@@ -303,10 +305,11 @@ pub struct DynamicStencilValue {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// Specifies how two values should be compared to decide whether a test passes or fails.
     ///
     /// Used for both depth testing and stencil testing.
-    #[non_exhaustive]
     CompareOp = CompareOp(i32);
 
     /// The test never passes.

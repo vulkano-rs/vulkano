@@ -9,7 +9,7 @@
 
 use crate::{
     device::{Device, DeviceOwned, Queue},
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{vulkan_bitflags, vulkan_bitflags_enum},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -94,7 +94,7 @@ impl Semaphore {
 
                 if !external_semaphore_properties
                     .compatible_handle_types
-                    .contains(&export_handle_types)
+                    .contains(export_handle_types)
                 {
                     return Err(SemaphoreError::ExportHandleTypesNotCompatible);
                 }
@@ -234,7 +234,7 @@ impl Semaphore {
     ) -> Result<(), SemaphoreError> {
         if !self.device.enabled_extensions().khr_external_semaphore_fd {
             return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`export_fd`",
+                required_for: "`Semaphore::export_fd`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_external_semaphore_fd"],
                     ..Default::default()
@@ -246,7 +246,7 @@ impl Semaphore {
         handle_type.validate_device(&self.device)?;
 
         // VUID-VkSemaphoreGetFdInfoKHR-handleType-01132
-        if !self.export_handle_types.intersects(&handle_type.into()) {
+        if !self.export_handle_types.intersects(handle_type.into()) {
             return Err(SemaphoreError::HandleTypeNotEnabled);
         }
 
@@ -267,7 +267,7 @@ impl Semaphore {
 
                     if !external_semaphore_properties
                         .export_from_imported_handle_types
-                        .intersects(&imported_handle_type.into())
+                        .intersects(imported_handle_type.into())
                     {
                         return Err(SemaphoreError::ExportFromImportedNotSupported {
                             imported_handle_type,
@@ -369,7 +369,7 @@ impl Semaphore {
             .khr_external_semaphore_win32
         {
             return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`export_win32_handle`",
+                required_for: "`Semaphore::export_win32_handle`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_external_semaphore_win32"],
                     ..Default::default()
@@ -381,7 +381,7 @@ impl Semaphore {
         handle_type.validate_device(&self.device)?;
 
         // VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01126
-        if !self.export_handle_types.intersects(&handle_type.into()) {
+        if !self.export_handle_types.intersects(handle_type.into()) {
             return Err(SemaphoreError::HandleTypeNotEnabled);
         }
 
@@ -411,7 +411,7 @@ impl Semaphore {
 
                     if !external_semaphore_properties
                         .export_from_imported_handle_types
-                        .intersects(&imported_handle_type.into())
+                        .intersects(imported_handle_type.into())
                     {
                         return Err(SemaphoreError::ExportFromImportedNotSupported {
                             imported_handle_type,
@@ -504,7 +504,7 @@ impl Semaphore {
     ) -> Result<(), SemaphoreError> {
         if !self.device.enabled_extensions().fuchsia_external_semaphore {
             return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`export_zircon_handle`",
+                required_for: "`Semaphore::export_zircon_handle`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["fuchsia_external_semaphore"],
                     ..Default::default()
@@ -635,7 +635,7 @@ impl Semaphore {
     ) -> Result<(), SemaphoreError> {
         if !self.device.enabled_extensions().khr_external_semaphore_fd {
             return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`import_fd`",
+                required_for: "`Semaphore::import_fd`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_external_semaphore_fd"],
                     ..Default::default()
@@ -674,7 +674,8 @@ impl Semaphore {
         // Can't validate, therefore unsafe
 
         // VUID-VkImportSemaphoreFdInfoKHR-handleType-07307
-        if handle_type.has_copy_transference() && !flags.temporary {
+        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
+        {
             return Err(SemaphoreError::HandletypeCopyNotTemporary);
         }
 
@@ -720,7 +721,10 @@ impl Semaphore {
             .result()
             .map_err(VulkanError::from)?;
 
-        state.import(handle_type, flags.temporary);
+        state.import(
+            handle_type,
+            flags.intersects(SemaphoreImportFlags::TEMPORARY),
+        );
 
         Ok(())
     }
@@ -760,7 +764,7 @@ impl Semaphore {
             .khr_external_semaphore_win32
         {
             return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`import_win32_handle`",
+                required_for: "`Semaphore::import_win32_handle`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_external_semaphore_win32"],
                     ..Default::default()
@@ -800,7 +804,8 @@ impl Semaphore {
         // Can't validate, therefore unsafe
 
         // VUID?
-        if handle_type.has_copy_transference() && !flags.temporary {
+        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
+        {
             return Err(SemaphoreError::HandletypeCopyNotTemporary);
         }
 
@@ -846,7 +851,10 @@ impl Semaphore {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.import(handle_type, flags.temporary);
+        state.import(
+            handle_type,
+            flags.intersects(SemaphoreImportFlags::TEMPORARY),
+        );
 
         Ok(())
     }
@@ -883,7 +891,7 @@ impl Semaphore {
     ) -> Result<(), SemaphoreError> {
         if !self.device.enabled_extensions().fuchsia_external_semaphore {
             return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`import_zircon_handle`",
+                required_for: "`Semaphore::import_zircon_handle`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["fuchsia_external_semaphore"],
                     ..Default::default()
@@ -918,7 +926,8 @@ impl Semaphore {
         // VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-zirconHandle-04767
         // Can't validate, therefore unsafe
 
-        if handle_type.has_copy_transference() && !flags.temporary {
+        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
+        {
             return Err(SemaphoreError::HandletypeCopyNotTemporary);
         }
 
@@ -963,7 +972,10 @@ impl Semaphore {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.import(handle_type, flags.temporary);
+        state.import(
+            handle_type,
+            flags.intersects(SemaphoreImportFlags::TEMPORARY),
+        );
 
         Ok(())
     }
@@ -1059,7 +1071,7 @@ impl SemaphoreState {
     #[allow(dead_code)]
     #[inline]
     fn is_exported(&self, handle_type: ExternalSemaphoreHandleType) -> bool {
-        self.exported_handle_types.intersects(&handle_type.into())
+        self.exported_handle_types.intersects(handle_type.into())
     }
 
     #[inline]
@@ -1157,158 +1169,78 @@ impl Default for SemaphoreCreateInfo {
     }
 }
 
-vulkan_enum! {
-    /// The handle type used for Vulkan external semaphore APIs.
+vulkan_bitflags_enum! {
     #[non_exhaustive]
-    ExternalSemaphoreHandleType = ExternalSemaphoreHandleTypeFlags(u32);
 
-    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueFd = OPAQUE_FD,
+    /// A set of [`ExternalSemaphoreHandleType`] values.
+    ExternalSemaphoreHandleTypes,
 
-    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueWin32 = OPAQUE_WIN32,
-
-    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
-
-    /// A Windows NT handle that refers to a Direct3D 11 or 12 fence.
-    ///
-    /// This handle type has *reference transference*.
-    D3D12Fence = D3D12_FENCE,
-
-    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
-    ///
-    /// This handle type has *copy transference*.
-    SyncFd = SYNC_FD,
-
-    /// A handle to a Zircon event object.
-    ///
-    /// This handle type has *reference transference*.
-    ///
-    /// The
-    /// [`fuchsia_external_semaphore`](crate::device::DeviceExtensions::fuchsia_external_semaphore)
-    /// extension must be enabled on the device.
-    ZirconEvent = ZIRCON_EVENT_FUCHSIA {
-        device_extensions: [fuchsia_external_semaphore],
-    },
-}
-
-impl ExternalSemaphoreHandleType {
-    /// Returns whether the given handle type has *copy transference* rather than *reference
-    /// transference*.
-    ///
-    /// Imports of handles with copy transference must always be temporary. Exports of such
-    /// handles must only occur if no queue is waiting on the semaphore, and only if the semaphore
-    /// is already signaled, or if there is a semaphore signal operation pending in a queue.
-    #[inline]
-    pub fn has_copy_transference(&self) -> bool {
-        // As defined by
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-win32
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fd
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fuchsia
-        matches!(self, Self::SyncFd)
-    }
-}
-
-vulkan_bitflags! {
-    /// A mask of multiple external semaphore handle types.
-    #[non_exhaustive]
-    ExternalSemaphoreHandleTypes = ExternalSemaphoreHandleTypeFlags(u32);
-
-    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    opaque_fd = OPAQUE_FD,
-
-    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    opaque_win32 = OPAQUE_WIN32,
-
-    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    opaque_win32_kmt = OPAQUE_WIN32_KMT,
-
-    /// A Windows NT handle that refers to a Direct3D 11 or 12 fence.
-    ///
-    /// This handle type has *reference transference*.
-    d3d12_fence = D3D12_FENCE,
-
-    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
-    ///
-    /// This handle type has *copy transference*.
-    sync_fd = SYNC_FD,
-
-    /// A handle to a Zircon event object.
-    ///
-    /// This handle type has *reference transference*.
-    ///
-    /// The
-    /// [`fuchsia_external_semaphore`](crate::device::DeviceExtensions::fuchsia_external_semaphore)
-    /// extension must be enabled on the device.
-    zircon_event = ZIRCON_EVENT_FUCHSIA {
-        device_extensions: [fuchsia_external_semaphore],
-    },
-}
-
-impl From<ExternalSemaphoreHandleType> for ExternalSemaphoreHandleTypes {
-    #[inline]
-    fn from(val: ExternalSemaphoreHandleType) -> Self {
-        let mut result = Self::empty();
-
-        match val {
-            ExternalSemaphoreHandleType::OpaqueFd => result.opaque_fd = true,
-            ExternalSemaphoreHandleType::OpaqueWin32 => result.opaque_win32 = true,
-            ExternalSemaphoreHandleType::OpaqueWin32Kmt => result.opaque_win32_kmt = true,
-            ExternalSemaphoreHandleType::D3D12Fence => result.d3d12_fence = true,
-            ExternalSemaphoreHandleType::SyncFd => result.sync_fd = true,
-            ExternalSemaphoreHandleType::ZirconEvent => result.zircon_event = true,
+    /// The handle type used to export or import semaphores to/from an external source.
+    ExternalSemaphoreHandleType impl {
+        /// Returns whether the given handle type has *copy transference* rather than *reference
+        /// transference*.
+        ///
+        /// Imports of handles with copy transference must always be temporary. Exports of such
+        /// handles must only occur if no queue is waiting on the semaphore, and only if the semaphore
+        /// is already signaled, or if there is a semaphore signal operation pending in a queue.
+        #[inline]
+        pub fn has_copy_transference(self) -> bool {
+            // As defined by
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-win32
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fd
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-semaphore-handletypes-fuchsia
+            matches!(self, Self::SyncFd)
         }
+    },
 
-        result
-    }
-}
+    = ExternalSemaphoreHandleTypeFlags(u32);
 
-impl ExternalSemaphoreHandleTypes {
-    fn into_iter(self) -> impl IntoIterator<Item = ExternalSemaphoreHandleType> {
-        let Self {
-            opaque_fd,
-            opaque_win32,
-            opaque_win32_kmt,
-            d3d12_fence,
-            sync_fd,
-            zircon_event,
-            _ne: _,
-        } = self;
+    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_FD, OpaqueFd = OPAQUE_FD,
 
-        [
-            opaque_fd.then_some(ExternalSemaphoreHandleType::OpaqueFd),
-            opaque_win32.then_some(ExternalSemaphoreHandleType::OpaqueWin32),
-            opaque_win32_kmt.then_some(ExternalSemaphoreHandleType::OpaqueWin32Kmt),
-            d3d12_fence.then_some(ExternalSemaphoreHandleType::D3D12Fence),
-            sync_fd.then_some(ExternalSemaphoreHandleType::SyncFd),
-            zircon_event.then_some(ExternalSemaphoreHandleType::ZirconEvent),
-        ]
-        .into_iter()
-        .flatten()
-    }
+    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_WIN32, OpaqueWin32 = OPAQUE_WIN32,
+
+    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_WIN32_KMT, OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
+
+    /// A Windows NT handle that refers to a Direct3D 11 or 12 fence.
+    ///
+    /// This handle type has *reference transference*.
+    D3D12_FENCE, D3D12Fence = D3D12_FENCE,
+
+    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
+    ///
+    /// This handle type has *copy transference*.
+    SYNC_FD, SyncFd = SYNC_FD,
+
+    /// A handle to a Zircon event object.
+    ///
+    /// This handle type has *reference transference*.
+    ///
+    /// The [`fuchsia_external_semaphore`] extension must be enabled on the device.
+    ///
+    /// [`fuchsia_external_semaphore`]: crate::device::DeviceExtensions::fuchsia_external_semaphore
+    ZIRCON_EVENT, ZirconEvent = ZIRCON_EVENT_FUCHSIA {
+        device_extensions: [fuchsia_external_semaphore],
+    },
 }
 
 vulkan_bitflags! {
-    /// Additional parameters for a semaphore payload import.
     #[non_exhaustive]
+
+    /// Additional parameters for a semaphore payload import.
     SemaphoreImportFlags = SemaphoreImportFlags(u32);
 
     /// The semaphore payload will be imported only temporarily, regardless of the permanence of the
     /// imported handle type.
-    temporary = TEMPORARY,
+    TEMPORARY = TEMPORARY,
 }
 
 #[cfg(unix)]
@@ -1718,10 +1650,7 @@ mod tests {
         let sem = Semaphore::new(
             device,
             SemaphoreCreateInfo {
-                export_handle_types: ExternalSemaphoreHandleTypes {
-                    opaque_fd: true,
-                    ..ExternalSemaphoreHandleTypes::empty()
-                },
+                export_handle_types: ExternalSemaphoreHandleTypes::OPAQUE_FD,
                 ..Default::default()
             },
         )

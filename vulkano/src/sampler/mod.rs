@@ -49,7 +49,8 @@ pub mod ycbcr;
 use self::ycbcr::SamplerYcbcrConversion;
 use crate::{
     device::{Device, DeviceOwned},
-    image::{view::ImageViewType, ImageViewAbstract},
+    format::FormatFeatures,
+    image::{view::ImageViewType, ImageAspects, ImageViewAbstract},
     macros::vulkan_enum,
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
@@ -167,7 +168,8 @@ impl Sampler {
                 && !device.enabled_extensions().khr_sampler_mirror_clamp_to_edge
             {
                 return Err(SamplerCreationError::RequirementNotMet {
-                    required_for: "`create_info.address_mode` contains `SamplerAddressMode::MirrorClampToEdge`",
+                    required_for: "`create_info.address_mode` contains \
+                        `SamplerAddressMode::MirrorClampToEdge`",
                     requires_one_of: RequiresOneOf {
                         features: &["sampler_mirror_clamp_to_edge"],
                         device_extensions: &["khr_sampler_mirror_clamp_to_edge"],
@@ -294,32 +296,32 @@ impl Sampler {
             }
         }
 
-        let mut sampler_reduction_mode_create_info = if reduction_mode
-            != SamplerReductionMode::WeightedAverage
-        {
-            if !(device.enabled_features().sampler_filter_minmax
-                || device.enabled_extensions().ext_sampler_filter_minmax)
-            {
-                return Err(SamplerCreationError::RequirementNotMet {
-                        required_for: "`create_info.reduction_mode` is not `SamplerReductionMode::WeightedAverage`",
+        let mut sampler_reduction_mode_create_info =
+            if reduction_mode != SamplerReductionMode::WeightedAverage {
+                if !(device.enabled_features().sampler_filter_minmax
+                    || device.enabled_extensions().ext_sampler_filter_minmax)
+                {
+                    return Err(SamplerCreationError::RequirementNotMet {
+                        required_for: "`create_info.reduction_mode` is not \
+                            `SamplerReductionMode::WeightedAverage`",
                         requires_one_of: RequiresOneOf {
                             features: &["sampler_filter_minmax"],
                             device_extensions: &["ext_sampler_filter_minmax"],
                             ..Default::default()
                         },
                     });
-            }
+                }
 
-            // VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter
-            reduction_mode.validate_device(&device)?;
+                // VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter
+                reduction_mode.validate_device(&device)?;
 
-            Some(ash::vk::SamplerReductionModeCreateInfo {
-                reduction_mode: reduction_mode.into(),
-                ..Default::default()
-            })
-        } else {
-            None
-        };
+                Some(ash::vk::SamplerReductionModeCreateInfo {
+                    reduction_mode: reduction_mode.into(),
+                    ..Default::default()
+                })
+            } else {
+                None
+            };
 
         // Don't need to check features because you can't create a conversion object without the
         // feature anyway.
@@ -337,10 +339,10 @@ impl Sampler {
             };
 
             // VUID-VkSamplerCreateInfo-minFilter-01645
-            if !potential_format_features
-                .sampled_image_ycbcr_conversion_separate_reconstruction_filter
-                && !(mag_filter == sampler_ycbcr_conversion.chroma_filter()
-                    && min_filter == sampler_ycbcr_conversion.chroma_filter())
+            if !potential_format_features.intersects(
+                FormatFeatures::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER,
+            ) && !(mag_filter == sampler_ycbcr_conversion.chroma_filter()
+                && min_filter == sampler_ycbcr_conversion.chroma_filter())
             {
                 return Err(
                     SamplerCreationError::SamplerYcbcrConversionChromaFilterMismatch {
@@ -521,18 +523,28 @@ impl Sampler {
 
         if self.compare.is_some() {
             // VUID-vkCmdDispatch-None-06479
-            if !image_view.format_features().sampled_image_depth_comparison {
+            if !image_view
+                .format_features()
+                .intersects(FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON)
+            {
                 return Err(SamplerImageViewIncompatibleError::DepthComparisonNotSupported);
             }
 
             // The SPIR-V instruction is one of the OpImage*Dref* instructions, the image
             // view format is one of the depth/stencil formats, and the image view aspect
             // is not VK_IMAGE_ASPECT_DEPTH_BIT.
-            if !image_view.subresource_range().aspects.depth {
+            if !image_view
+                .subresource_range()
+                .aspects
+                .intersects(ImageAspects::DEPTH)
+            {
                 return Err(SamplerImageViewIncompatibleError::DepthComparisonWrongAspect);
             }
         } else {
-            if !image_view.format_features().sampled_image_filter_linear {
+            if !image_view
+                .format_features()
+                .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR)
+            {
                 // VUID-vkCmdDispatch-magFilter-04553
                 if self.mag_filter == Filter::Linear || self.min_filter == Filter::Linear {
                     return Err(SamplerImageViewIncompatibleError::FilterLinearNotSupported);
@@ -547,7 +559,10 @@ impl Sampler {
 
         if self.mag_filter == Filter::Cubic || self.min_filter == Filter::Cubic {
             // VUID-vkCmdDispatch-None-02692
-            if !image_view.format_features().sampled_image_filter_cubic {
+            if !image_view
+                .format_features()
+                .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC)
+            {
                 return Err(SamplerImageViewIncompatibleError::FilterCubicNotSupported);
             }
 
@@ -569,11 +584,16 @@ impl Sampler {
         if let Some(border_color) = self.border_color {
             let aspects = image_view.subresource_range().aspects;
             let view_scalar_type = ShaderScalarType::from(
-                if aspects.color || aspects.plane0 || aspects.plane1 || aspects.plane2 {
+                if aspects.intersects(
+                    ImageAspects::COLOR
+                        | ImageAspects::PLANE_0
+                        | ImageAspects::PLANE_1
+                        | ImageAspects::PLANE_2,
+                ) {
                     image_view.format().unwrap().type_color().unwrap()
-                } else if aspects.depth {
+                } else if aspects.intersects(ImageAspects::DEPTH) {
                     image_view.format().unwrap().type_depth().unwrap()
-                } else if aspects.stencil {
+                } else if aspects.intersects(ImageAspects::STENCIL) {
                     image_view.format().unwrap().type_stencil().unwrap()
                 } else {
                     // Per `ImageViewBuilder::aspects` and
@@ -1274,8 +1294,9 @@ impl From<ComponentMapping> for ash::vk::ComponentMapping {
 }
 
 vulkan_enum! {
-    /// Describes the value that an individual component must return when being accessed.
     #[non_exhaustive]
+
+    /// Describes the value that an individual component must return when being accessed.
     ComponentSwizzle = ComponentSwizzle(i32);
 
     /// Returns the value that this component should normally have.
@@ -1310,8 +1331,9 @@ impl Default for ComponentSwizzle {
 }
 
 vulkan_enum! {
-    /// Describes how the color of each pixel should be determined.
     #[non_exhaustive]
+
+    /// Describes how the color of each pixel should be determined.
     Filter = Filter(i32);
 
     /// The pixel whose center is nearest to the requested coordinates is taken from the source
@@ -1336,8 +1358,9 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
-    /// Describes which mipmap from the source to use.
     #[non_exhaustive]
+
+    /// Describes which mipmap from the source to use.
     SamplerMipmapMode = SamplerMipmapMode(i32);
 
     /// Use the mipmap whose dimensions are the nearest to the dimensions of the destination.
@@ -1349,9 +1372,10 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// How the sampler should behave when it needs to access a pixel that is out of range of the
     /// texture.
-    #[non_exhaustive]
     SamplerAddressMode = SamplerAddressMode(i32);
 
     /// Repeat the texture. In other words, the pixel at coordinate `x + 1.0` is the same as the
@@ -1390,12 +1414,13 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// The color to use for the border of an image.
     ///
     /// Only relevant if you use `ClampToBorder`.
     ///
     /// Using a border color restricts the sampler to either floating-point images or integer images.
-    #[non_exhaustive]
     BorderColor = BorderColor(i32);
 
     /// The value `(0.0, 0.0, 0.0, 0.0)`. Can only be used with floating-point images.
@@ -1431,9 +1456,10 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// Describes how the value sampled from a mipmap should be calculated from the selected
     /// pixels, for the `Linear` and `Cubic` filters.
-    #[non_exhaustive]
     SamplerReductionMode = SamplerReductionMode(i32);
 
     /// Calculates a weighted average of the selected pixels. For `Linear` filtering the pixels

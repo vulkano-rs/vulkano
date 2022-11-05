@@ -115,7 +115,7 @@ impl ImmutableImage {
     ) -> Result<(Arc<ImmutableImage>, Arc<ImmutableImageInitialization>), ImmutableImageCreationError>
     {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
-        assert!(!flags.disjoint); // TODO: adjust the code below to make this safe
+        assert!(!flags.intersects(ImageCreateFlags::DISJOINT)); // TODO: adjust the code below to make this safe
 
         let raw_image = RawImage::new(
             allocator.device().clone(),
@@ -188,15 +188,8 @@ impl ImmutableImage {
         I::IntoIter: ExactSizeIterator,
         A: CommandBufferAllocator,
     {
-        let source = CpuAccessibleBuffer::from_iter(
-            allocator,
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            },
-            false,
-            iter,
-        )?;
+        let source =
+            CpuAccessibleBuffer::from_iter(allocator, BufferUsage::TRANSFER_SRC, false, iter)?;
 
         ImmutableImage::from_buffer(
             allocator,
@@ -246,12 +239,13 @@ impl ImmutableImage {
         }
 
         let need_to_generate_mipmaps = has_mipmaps(mip_levels);
-        let usage = ImageUsage {
-            transfer_dst: true,
-            transfer_src: need_to_generate_mipmaps,
-            sampled: true,
-            ..ImageUsage::empty()
-        };
+        let usage = ImageUsage::TRANSFER_DST
+            | ImageUsage::SAMPLED
+            | if need_to_generate_mipmaps {
+                ImageUsage::TRANSFER_SRC
+            } else {
+                ImageUsage::empty()
+            };
         let flags = ImageCreateFlags::empty();
         let layout = ImageLayout::ShaderReadOnlyOptimal;
 

@@ -10,8 +10,8 @@
 use super::{
     sys::{Image, ImageMemory, RawImage},
     traits::ImageContent,
-    ImageAccess, ImageCreateFlags, ImageDescriptorLayouts, ImageDimensions, ImageError, ImageInner,
-    ImageLayout, ImageUsage,
+    ImageAccess, ImageAspects, ImageCreateFlags, ImageDescriptorLayouts, ImageDimensions,
+    ImageError, ImageInner, ImageLayout, ImageUsage,
 };
 use crate::{
     device::{Device, DeviceOwned, Queue},
@@ -51,22 +51,22 @@ impl StorageImage {
         queue_family_indices: impl IntoIterator<Item = u32>,
     ) -> Result<Arc<StorageImage>, ImageError> {
         let aspects = format.aspects();
-        let is_depth = aspects.depth || aspects.stencil;
+        let is_depth_stencil = aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL);
 
         if format.compression().is_some() {
             panic!() // TODO: message?
         }
 
-        let usage = ImageUsage {
-            transfer_src: true,
-            transfer_dst: true,
-            sampled: true,
-            storage: true,
-            color_attachment: !is_depth,
-            depth_stencil_attachment: is_depth,
-            input_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let usage = ImageUsage::TRANSFER_SRC
+            | ImageUsage::TRANSFER_DST
+            | ImageUsage::SAMPLED
+            | ImageUsage::STORAGE
+            | ImageUsage::INPUT_ATTACHMENT
+            | if is_depth_stencil {
+                ImageUsage::DEPTH_STENCIL_ATTACHMENT
+            } else {
+                ImageUsage::COLOR_ATTACHMENT
+            };
         let flags = ImageCreateFlags::empty();
 
         StorageImage::with_usage(
@@ -89,7 +89,7 @@ impl StorageImage {
         queue_family_indices: impl IntoIterator<Item = u32>,
     ) -> Result<Arc<StorageImage>, ImageError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
-        assert!(!flags.disjoint); // TODO: adjust the code below to make this safe
+        assert!(!flags.intersects(ImageCreateFlags::DISJOINT)); // TODO: adjust the code below to make this safe
 
         let raw_image = RawImage::new(
             allocator.device().clone(),
@@ -141,7 +141,7 @@ impl StorageImage {
         queue_family_indices: impl IntoIterator<Item = u32>,
     ) -> Result<Arc<StorageImage>, ImageError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
-        assert!(!flags.disjoint); // TODO: adjust the code below to make this safe
+        assert!(!flags.intersects(ImageCreateFlags::DISJOINT)); // TODO: adjust the code below to make this safe
 
         let external_memory_properties = allocator
             .device()
@@ -163,10 +163,7 @@ impl StorageImage {
         // VUID-VkMemoryAllocateInfo-pNext-00639
         // Guaranteed because we always create a dedicated allocation
 
-        let external_memory_handle_types = ExternalMemoryHandleTypes {
-            opaque_fd: true,
-            ..ExternalMemoryHandleTypes::empty()
-        };
+        let external_memory_handle_types = ExternalMemoryHandleTypes::OPAQUE_FD;
         let raw_image = RawImage::new(
             allocator.device().clone(),
             ImageCreateInfo {
@@ -360,12 +357,8 @@ mod tests {
     fn create_general_purpose_image_view() {
         let (device, queue) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
-        let usage = ImageUsage {
-            transfer_src: true,
-            transfer_dst: true,
-            color_attachment: true,
-            ..ImageUsage::empty()
-        };
+        let usage =
+            ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::COLOR_ATTACHMENT;
         let img_view = StorageImage::general_purpose_image_view(
             &memory_allocator,
             queue,
@@ -374,7 +367,7 @@ mod tests {
             usage,
         )
         .unwrap();
-        assert_eq!(img_view.image().usage(), &usage);
+        assert_eq!(img_view.image().usage(), usage);
     }
 
     #[test]
@@ -382,10 +375,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
         // Not valid for image view...
-        let usage = ImageUsage {
-            transfer_src: true,
-            ..ImageUsage::empty()
-        };
+        let usage = ImageUsage::TRANSFER_SRC;
         let img_result = StorageImage::general_purpose_image_view(
             &memory_allocator,
             queue,

@@ -8,8 +8,8 @@
 // according to those terms.
 
 use super::{
-    ColorSpace, CompositeAlpha, PresentMode, SupportedCompositeAlpha, SupportedSurfaceTransforms,
-    Surface, SurfaceTransform, SwapchainPresentInfo,
+    ColorSpace, CompositeAlpha, CompositeAlphas, PresentMode, Surface, SurfaceTransform,
+    SurfaceTransforms, SwapchainPresentInfo,
 };
 use crate::{
     buffer::sys::Buffer,
@@ -295,7 +295,7 @@ impl Swapchain {
 
         if !device.enabled_extensions().khr_swapchain {
             return Err(SwapchainCreationError::RequirementNotMet {
-                required_for: "`Swapchain`",
+                required_for: "`Swapchain::new`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_swapchain"],
                     ..Default::default()
@@ -326,8 +326,8 @@ impl Swapchain {
         if full_screen_exclusive != FullScreenExclusive::Default {
             if !device.enabled_extensions().ext_full_screen_exclusive {
                 return Err(SwapchainCreationError::RequirementNotMet {
-                    required_for:
-                        "`create_info.full_screen_exclusive` is not `FullScreenExclusive::Default`",
+                    required_for: "`create_info.full_screen_exclusive` is not \
+                        `FullScreenExclusive::Default`",
                     requires_one_of: RequiresOneOf {
                         device_extensions: &["ext_full_screen_exclusive"],
                         ..Default::default()
@@ -506,7 +506,7 @@ impl Swapchain {
         // VUID-VkSwapchainCreateInfoKHR-preTransform-01279
         if !surface_capabilities
             .supported_transforms
-            .supports(pre_transform)
+            .contains_enum(pre_transform)
         {
             return Err(SwapchainCreationError::PreTransformNotSupported {
                 provided: pre_transform,
@@ -517,7 +517,7 @@ impl Swapchain {
         // VUID-VkSwapchainCreateInfoKHR-compositeAlpha-01280
         if !surface_capabilities
             .supported_composite_alpha
-            .supports(composite_alpha)
+            .contains_enum(composite_alpha)
         {
             return Err(SwapchainCreationError::CompositeAlphaNotSupported {
                 provided: composite_alpha,
@@ -1128,7 +1128,7 @@ pub enum SwapchainCreationError {
     /// The provided `composite_alpha` is not supported by the surface for this device.
     CompositeAlphaNotSupported {
         provided: CompositeAlpha,
-        supported: SupportedCompositeAlpha,
+        supported: CompositeAlphas,
     },
 
     /// The provided `format` and `color_space` are not supported by the surface for this device.
@@ -1185,7 +1185,7 @@ pub enum SwapchainCreationError {
     /// The provided `pre_transform` is not supported by the surface for this device.
     PreTransformNotSupported {
         provided: SurfaceTransform,
-        supported: SupportedSurfaceTransforms,
+        supported: SurfaceTransforms,
     },
 
     /// The provided `surface` is not supported by any of the device's queue families.
@@ -1340,8 +1340,9 @@ impl From<RequirementNotMet> for SwapchainCreationError {
 }
 
 vulkan_enum! {
-    /// The way full-screen exclusivity is handled.
     #[non_exhaustive]
+
+    /// The way full-screen exclusivity is handled.
     FullScreenExclusive = FullScreenExclusiveEXT(i32);
 
     /// Indicates that the driver should determine the appropriate full-screen method

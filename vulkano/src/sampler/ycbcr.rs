@@ -91,7 +91,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    format::{ChromaSampling, Format, NumericType},
+    format::{ChromaSampling, Format, FormatFeatures, NumericType},
     macros::vulkan_enum,
     sampler::{ComponentMapping, ComponentSwizzle, Filter},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
@@ -143,7 +143,7 @@ impl SamplerYcbcrConversion {
 
         if !device.enabled_features().sampler_ycbcr_conversion {
             return Err(SamplerYcbcrConversionCreationError::RequirementNotMet {
-                required_for: "`SamplerYcbcrConversion`",
+                required_for: "`SamplerYcbcrConversion::new`",
                 requires_one_of: RequiresOneOf {
                     features: &["sampler_ycbcr_conversion"],
                     ..Default::default()
@@ -205,9 +205,9 @@ impl SamplerYcbcrConversion {
         };
 
         // VUID-VkSamplerYcbcrConversionCreateInfo-format-01650
-        if !(potential_format_features.midpoint_chroma_samples
-            || potential_format_features.cosited_chroma_samples)
-        {
+        if !potential_format_features.intersects(
+            FormatFeatures::MIDPOINT_CHROMA_SAMPLES | FormatFeatures::COSITED_CHROMA_SAMPLES,
+        ) {
             return Err(SamplerYcbcrConversionCreationError::FormatNotSupported);
         }
 
@@ -224,7 +224,9 @@ impl SamplerYcbcrConversion {
                 match offset {
                     ChromaLocation::CositedEven => {
                         // VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01651
-                        if !potential_format_features.cosited_chroma_samples {
+                        if !potential_format_features
+                            .intersects(FormatFeatures::COSITED_CHROMA_SAMPLES)
+                        {
                             return Err(
                                 SamplerYcbcrConversionCreationError::FormatChromaOffsetNotSupported,
                             );
@@ -232,7 +234,9 @@ impl SamplerYcbcrConversion {
                     }
                     ChromaLocation::Midpoint => {
                         // VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01652
-                        if !potential_format_features.midpoint_chroma_samples {
+                        if !potential_format_features
+                            .intersects(FormatFeatures::MIDPOINT_CHROMA_SAMPLES)
+                        {
                             return Err(
                                 SamplerYcbcrConversionCreationError::FormatChromaOffsetNotSupported,
                             );
@@ -292,8 +296,8 @@ impl SamplerYcbcrConversion {
 
         // VUID-VkSamplerYcbcrConversionCreateInfo-forceExplicitReconstruction-01656
         if force_explicit_reconstruction
-            && !potential_format_features
-                .sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable
+            && !potential_format_features.intersects(FormatFeatures::
+                SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE)
         {
             return Err(
                 SamplerYcbcrConversionCreationError::FormatForceExplicitReconstructionNotSupported,
@@ -304,7 +308,9 @@ impl SamplerYcbcrConversion {
             Filter::Nearest => (),
             Filter::Linear => {
                 // VUID-VkSamplerYcbcrConversionCreateInfo-chromaFilter-01657
-                if !potential_format_features.sampled_image_ycbcr_conversion_linear_filter {
+                if !potential_format_features
+                    .intersects(FormatFeatures::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER)
+                {
                     return Err(
                         SamplerYcbcrConversionCreationError::FormatLinearFilterNotSupported,
                     );
@@ -727,8 +733,9 @@ impl Default for SamplerYcbcrConversionCreateInfo {
 }
 
 vulkan_enum! {
-    /// The conversion between the color model of the source image and the color model of the shader.
     #[non_exhaustive]
+
+    /// The conversion between the color model of the source image and the color model of the shader.
     SamplerYcbcrModelConversion = SamplerYcbcrModelConversion(i32);
 
     /// The input values are already in the shader's model, and are passed through unmodified.
@@ -751,8 +758,9 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
-    /// How the numeric range of the input data is converted.
     #[non_exhaustive]
+
+    /// How the numeric range of the input data is converted.
     SamplerYcbcrRange = SamplerYcbcrRange(i32);
 
     /// The input values cover the full numeric range, and are interpreted according to the ITU
@@ -765,9 +773,10 @@ vulkan_enum! {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// For formats with chroma subsampling, the location where the chroma components are sampled,
     /// relative to the luma component.
-    #[non_exhaustive]
     ChromaLocation = ChromaLocation(i32);
 
     /// The chroma components are sampled at the even luma coordinate.

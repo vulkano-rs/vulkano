@@ -34,6 +34,7 @@ use std::{
 use vulkano::{
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFlags,
     },
     instance::{Instance, InstanceCreateInfo},
     pipeline::{cache::PipelineCache, ComputePipeline},
@@ -65,7 +66,7 @@ fn main() {
         .filter_map(|p| {
             p.queue_family_properties()
                 .iter()
-                .position(|q| q.queue_flags.compute)
+                .position(|q| q.queue_flags.intersects(QueueFlags::COMPUTE))
                 .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {

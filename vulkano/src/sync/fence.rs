@@ -9,7 +9,7 @@
 
 use crate::{
     device::{Device, DeviceOwned, Queue},
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{vulkan_bitflags, vulkan_bitflags_enum},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -113,7 +113,7 @@ impl Fence {
 
                 if !external_fence_properties
                     .compatible_handle_types
-                    .contains(&export_handle_types)
+                    .contains(export_handle_types)
                 {
                     return Err(FenceError::ExportHandleTypesNotCompatible);
                 }
@@ -584,7 +584,7 @@ impl Fence {
     ) -> Result<(), FenceError> {
         if !self.device.enabled_extensions().khr_external_fence_fd {
             return Err(FenceError::RequirementNotMet {
-                required_for: "`export_fd`",
+                required_for: "`Fence::export_fd`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_external_fence_fd"],
                     ..Default::default()
@@ -596,7 +596,7 @@ impl Fence {
         handle_type.validate_device(&self.device)?;
 
         // VUID-VkFenceGetFdInfoKHR-handleType-01453
-        if !self.export_handle_types.intersects(&handle_type.into()) {
+        if !self.export_handle_types.intersects(handle_type.into()) {
             return Err(FenceError::HandleTypeNotEnabled);
         }
 
@@ -624,7 +624,7 @@ impl Fence {
 
                     if !external_fence_properties
                         .export_from_imported_handle_types
-                        .intersects(&imported_handle_type.into())
+                        .intersects(imported_handle_type.into())
                     {
                         return Err(FenceError::ExportFromImportedNotSupported {
                             imported_handle_type,
@@ -709,7 +709,7 @@ impl Fence {
     ) -> Result<(), FenceError> {
         if !self.device.enabled_extensions().khr_external_fence_win32 {
             return Err(FenceError::RequirementNotMet {
-                required_for: "`export_win32_handle`",
+                required_for: "`Fence::export_win32_handle`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_external_fence_win32"],
                     ..Default::default()
@@ -721,7 +721,7 @@ impl Fence {
         handle_type.validate_device(&self.device)?;
 
         // VUID-VkFenceGetWin32HandleInfoKHR-handleType-01448
-        if !self.export_handle_types.intersects(&handle_type.into()) {
+        if !self.export_handle_types.intersects(handle_type.into()) {
             return Err(FenceError::HandleTypeNotEnabled);
         }
 
@@ -756,7 +756,7 @@ impl Fence {
 
                     if !external_fence_properties
                         .export_from_imported_handle_types
-                        .intersects(&imported_handle_type.into())
+                        .intersects(imported_handle_type.into())
                     {
                         return Err(FenceError::ExportFromImportedNotSupported {
                             imported_handle_type,
@@ -845,7 +845,7 @@ impl Fence {
     ) -> Result<(), FenceError> {
         if !self.device.enabled_extensions().khr_external_fence_fd {
             return Err(FenceError::RequirementNotMet {
-                required_for: "`import_fd`",
+                required_for: "`Fence::import_fd`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_external_fence_fd"],
                     ..Default::default()
@@ -883,7 +883,7 @@ impl Fence {
         // Can't validate, therefore unsafe
 
         // VUID-VkImportFenceFdInfoKHR-handleType-07306
-        if handle_type.has_copy_transference() && !flags.temporary {
+        if handle_type.has_copy_transference() && !flags.intersects(FenceImportFlags::TEMPORARY) {
             return Err(FenceError::HandletypeCopyNotTemporary);
         }
 
@@ -929,7 +929,7 @@ impl Fence {
             .result()
             .map_err(VulkanError::from)?;
 
-        state.import(handle_type, flags.temporary);
+        state.import(handle_type, flags.intersects(FenceImportFlags::TEMPORARY));
 
         Ok(())
     }
@@ -964,7 +964,7 @@ impl Fence {
     ) -> Result<(), FenceError> {
         if !self.device.enabled_extensions().khr_external_fence_win32 {
             return Err(FenceError::RequirementNotMet {
-                required_for: "`import_win32_handle`",
+                required_for: "`Fence::import_win32_handle`",
                 requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_external_fence_win32"],
                     ..Default::default()
@@ -1002,7 +1002,7 @@ impl Fence {
         // Can't validate, therefore unsafe
 
         // VUID?
-        if handle_type.has_copy_transference() && !flags.temporary {
+        if handle_type.has_copy_transference() && !flags.intersects(FenceImportFlags::TEMPORARY) {
             return Err(FenceError::HandletypeCopyNotTemporary);
         }
 
@@ -1050,7 +1050,7 @@ impl Fence {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.import(handle_type, flags.temporary);
+        state.import(handle_type, flags.intersects(FenceImportFlags::TEMPORARY));
 
         Ok(())
     }
@@ -1160,7 +1160,7 @@ impl FenceState {
     #[allow(dead_code)]
     #[inline]
     fn is_exported(&self, handle_type: ExternalFenceHandleType) -> bool {
-        self.exported_handle_types.intersects(&handle_type.into())
+        self.exported_handle_types.intersects(handle_type.into())
     }
 
     #[inline]
@@ -1265,119 +1265,60 @@ impl Default for FenceCreateInfo {
     }
 }
 
-vulkan_enum! {
-    /// The handle type used for Vulkan external fence APIs.
+vulkan_bitflags_enum! {
     #[non_exhaustive]
-    ExternalFenceHandleType = ExternalFenceHandleTypeFlags(u32);
+    /// A set of [`ExternalFenceHandleType`] values.
+    ExternalFenceHandleTypes,
 
-    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueFd = OPAQUE_FD,
-
-    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueWin32 = OPAQUE_WIN32,
-
-    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
-
-    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
-    ///
-    /// This handle type has *copy transference*.
-    SyncFd = SYNC_FD,
-}
-
-impl ExternalFenceHandleType {
-    /// Returns whether the given handle type has *copy transference* rather than *reference
-    /// transference*.
-    ///
-    /// Imports of handles with copy transference must always be temporary. Exports of such
-    /// handles must only occur if the fence is already signaled, or if there is a fence signal
-    /// operation pending in a queue.
-    #[inline]
-    pub fn has_copy_transference(&self) -> bool {
-        // As defined by
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-win32
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-fd
-        matches!(self, Self::SyncFd)
-    }
-}
-
-vulkan_bitflags! {
-    /// A mask of multiple external fence handle types.
-    #[non_exhaustive]
-    ExternalFenceHandleTypes = ExternalFenceHandleTypeFlags(u32);
-
-    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    opaque_fd = OPAQUE_FD,
-
-    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    opaque_win32 = OPAQUE_WIN32,
-
-    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
-    ///
-    /// This handle type has *reference transference*.
-    opaque_win32_kmt = OPAQUE_WIN32_KMT,
-
-    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
-    ///
-    /// This handle type has *copy transference*.
-    sync_fd = SYNC_FD,
-}
-
-impl From<ExternalFenceHandleType> for ExternalFenceHandleTypes {
-    #[inline]
-    fn from(val: ExternalFenceHandleType) -> Self {
-        let mut result = Self::empty();
-
-        match val {
-            ExternalFenceHandleType::OpaqueFd => result.opaque_fd = true,
-            ExternalFenceHandleType::OpaqueWin32 => result.opaque_win32 = true,
-            ExternalFenceHandleType::OpaqueWin32Kmt => result.opaque_win32_kmt = true,
-            ExternalFenceHandleType::SyncFd => result.sync_fd = true,
+    /// The handle type used to export or import fences to/from an external source.
+    ExternalFenceHandleType impl {
+        /// Returns whether the given handle type has *copy transference* rather than *reference
+        /// transference*.
+        ///
+        /// Imports of handles with copy transference must always be temporary. Exports of such
+        /// handles must only occur if the fence is already signaled, or if there is a fence signal
+        /// operation pending in a queue.
+        #[inline]
+        pub fn has_copy_transference(self) -> bool {
+            // As defined by
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-win32
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-fence-handletypes-fd
+            matches!(self, Self::SyncFd)
         }
+    },
 
-        result
-    }
-}
+    = ExternalFenceHandleTypeFlags(u32);
 
-impl ExternalFenceHandleTypes {
-    fn into_iter(self) -> impl IntoIterator<Item = ExternalFenceHandleType> {
-        let Self {
-            opaque_fd,
-            opaque_win32,
-            opaque_win32_kmt,
-            sync_fd,
-            _ne: _,
-        } = self;
+    /// A POSIX file descriptor handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_FD, OpaqueFd = OPAQUE_FD,
 
-        [
-            opaque_fd.then_some(ExternalFenceHandleType::OpaqueFd),
-            opaque_win32.then_some(ExternalFenceHandleType::OpaqueWin32),
-            opaque_win32_kmt.then_some(ExternalFenceHandleType::OpaqueWin32Kmt),
-            sync_fd.then_some(ExternalFenceHandleType::SyncFd),
-        ]
-        .into_iter()
-        .flatten()
-    }
+    /// A Windows NT handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_WIN32, OpaqueWin32 = OPAQUE_WIN32,
+
+    /// A Windows global share handle that is only usable with Vulkan and compatible APIs.
+    ///
+    /// This handle type has *reference transference*.
+    OPAQUE_WIN32_KMT, OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
+
+    /// A POSIX file descriptor handle to a Linux Sync File or Android Fence object.
+    ///
+    /// This handle type has *copy transference*.
+    SYNC_FD, SyncFd = SYNC_FD,
 }
 
 vulkan_bitflags! {
-    /// Additional parameters for a fence payload import.
     #[non_exhaustive]
+
+    /// Additional parameters for a fence payload import.
     FenceImportFlags = FenceImportFlags(u32);
 
     /// The fence payload will be imported only temporarily, regardless of the permanence of the
     /// imported handle type.
-    temporary = TEMPORARY,
+    TEMPORARY = TEMPORARY,
 }
 
 #[cfg(unix)]

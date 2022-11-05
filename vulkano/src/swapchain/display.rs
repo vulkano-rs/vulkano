@@ -29,7 +29,7 @@
 #![allow(unused_variables)] // TODO: this module isn't finished
 
 use crate::{
-    device::physical::PhysicalDevice, swapchain::SupportedSurfaceTransforms, OomError, VulkanError,
+    device::physical::PhysicalDevice, swapchain::SurfaceTransforms, OomError, VulkanError,
     VulkanObject,
 };
 use std::{
@@ -278,7 +278,7 @@ impl Display {
 
     /// Returns the transforms supported by this display.
     #[inline]
-    pub fn supported_transforms(&self) -> SupportedSurfaceTransforms {
+    pub fn supported_transforms(&self) -> SurfaceTransforms {
         self.properties.supported_transforms.into()
     }
 

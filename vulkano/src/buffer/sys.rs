@@ -21,7 +21,8 @@ use crate::{
     device::{Device, DeviceOwned},
     memory::{
         allocator::{AllocationCreationError, MemoryAlloc},
-        DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryRequirements,
+        DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryAllocateFlags,
+        MemoryPropertyFlags, MemoryRequirements,
     },
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
@@ -126,7 +127,8 @@ impl RawBuffer {
             // VUID-VkBufferCreateInfo-flags-00916
             if sparse_level.sparse_residency && !device.enabled_features().sparse_residency_buffer {
                 return Err(BufferError::RequirementNotMet {
-                    required_for: "`create_info.sparse` is `Some(sparse_level)`, where `sparse_level.sparse_residency` is set",
+                    required_for: "`create_info.sparse` is `Some(sparse_level)`, where \
+                        `sparse_level` contains `BufferCreateFlags::SPARSE_RESIDENCY`",
                     requires_one_of: RequiresOneOf {
                         features: &["sparse_residency_buffer"],
                         ..Default::default()
@@ -137,7 +139,8 @@ impl RawBuffer {
             // VUID-VkBufferCreateInfo-flags-00917
             if sparse_level.sparse_aliased && !device.enabled_features().sparse_residency_aliased {
                 return Err(BufferError::RequirementNotMet {
-                    required_for: "`create_info.sparse` is `Some(sparse_level)`, where `sparse_level.sparse_aliased` is set",
+                    required_for: "`create_info.sparse` is `Some(sparse_level)`, where \
+                        `sparse_level` contains `BufferCreateFlags::SPARSE_ALIASED`",
                     requires_one_of: RequiresOneOf {
                         features: &["sparse_residency_aliased"],
                         ..Default::default()
@@ -302,21 +305,21 @@ impl RawBuffer {
 
         // We have to manually enforce some additional requirements for some buffer types.
         let properties = device.physical_device().properties();
-        if usage.uniform_texel_buffer || usage.storage_texel_buffer {
+        if usage.intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER) {
             memory_requirements.alignment = align(
                 memory_requirements.alignment,
                 properties.min_texel_buffer_offset_alignment,
             );
         }
 
-        if usage.storage_buffer {
+        if usage.intersects(BufferUsage::STORAGE_BUFFER) {
             memory_requirements.alignment = align(
                 memory_requirements.alignment,
                 properties.min_storage_buffer_offset_alignment,
             );
         }
 
-        if usage.uniform_buffer {
+        if usage.intersects(BufferUsage::UNIFORM_BUFFER) {
             memory_requirements.alignment = align(
                 memory_requirements.alignment,
                 properties.min_uniform_buffer_offset_alignment,
@@ -479,7 +482,10 @@ impl RawBuffer {
         }
 
         // VUID-VkBindBufferMemoryInfo-None-01899
-        if memory_type.property_flags.protected {
+        if memory_type
+            .property_flags
+            .intersects(MemoryPropertyFlags::PROTECTED)
+        {
             return Err(BufferError::MemoryProtectedMismatch {
                 buffer_protected: false,
                 memory_protected: true,
@@ -490,7 +496,7 @@ impl RawBuffer {
         if !memory.export_handle_types().is_empty()
             && !memory
                 .export_handle_types()
-                .intersects(&self.external_memory_handle_types)
+                .intersects(self.external_memory_handle_types)
         {
             return Err(BufferError::MemoryExternalHandleTypesDisjoint {
                 buffer_handle_types: self.external_memory_handle_types,
@@ -501,7 +507,7 @@ impl RawBuffer {
         if let Some(handle_type) = memory.imported_handle_type() {
             // VUID-VkBindBufferMemoryInfo-memory-02985
             if !ExternalMemoryHandleTypes::from(handle_type)
-                .intersects(&self.external_memory_handle_types)
+                .intersects(self.external_memory_handle_types)
             {
                 return Err(BufferError::MemoryImportedHandleTypeNotEnabled {
                     buffer_handle_types: self.external_memory_handle_types,
@@ -512,8 +518,10 @@ impl RawBuffer {
 
         // VUID-VkBindBufferMemoryInfo-bufferDeviceAddress-03339
         if !self.device.enabled_extensions().ext_buffer_device_address
-            && self.usage.shader_device_address
-            && !memory.flags().device_address
+            && self.usage.intersects(BufferUsage::SHADER_DEVICE_ADDRESS)
+            && !memory
+                .flags()
+                .intersects(MemoryAllocateFlags::DEVICE_ADDRESS)
         {
             return Err(BufferError::MemoryBufferDeviceAddressNotSupported);
         }
@@ -660,11 +668,12 @@ pub struct BufferCreateInfo {
 
     /// The external memory handle types that are going to be used with the buffer.
     ///
-    /// If any of the fields in this value are set, the device must either support API version 1.1
-    /// or the [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
-    /// extension must be enabled.
+    /// If this value is not empty, then the device API version must be at least 1.1, or the
+    /// [`khr_external_memory`] extension must be enabled on the device.
     ///
     /// The default value is [`ExternalMemoryHandleTypes::empty()`].
+    ///
+    /// [`khr_external_memory`]: crate::device::DeviceExtensions::khr_external_memory
     pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
     pub _ne: crate::NonExhaustive,
@@ -1429,10 +1438,7 @@ mod tests {
             device.clone(),
             BufferCreateInfo {
                 size: 128,
-                usage: BufferUsage {
-                    transfer_dst: true,
-                    ..BufferUsage::empty()
-                },
+                usage: BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
         )
@@ -1453,10 +1459,7 @@ mod tests {
             BufferCreateInfo {
                 size: 128,
                 sparse: Some(BufferCreateFlags::empty()),
-                usage: BufferUsage {
-                    transfer_dst: true,
-                    ..BufferUsage::empty()
-                },
+                usage: BufferUsage::transfer_dst,
                 ..Default::default()
             },
         ) {
@@ -1480,10 +1483,7 @@ mod tests {
                     sparse_aliased: false,
                     ..Default::default()
                 }),
-                usage: BufferUsage {
-                    transfer_dst: true,
-                    ..BufferUsage::empty()
-                },
+                usage: BufferUsage::transfer_dst,
                 ..Default::default()
             },
         ) {
@@ -1507,10 +1507,7 @@ mod tests {
                     sparse_aliased: true,
                     ..Default::default()
                 }),
-                usage: BufferUsage {
-                    transfer_dst: true,
-                    ..BufferUsage::empty()
-                },
+                usage: BufferUsage::transfer_dst,
                 ..Default::default()
             },
         ) {
@@ -1532,10 +1529,7 @@ mod tests {
                 device,
                 BufferCreateInfo {
                     size: 0,
-                    usage: BufferUsage {
-                        transfer_dst: true,
-                        ..BufferUsage::empty()
-                    },
+                    usage: BufferUsage::TRANSFER_DST,
                     ..Default::default()
                 },
             )

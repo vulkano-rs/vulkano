@@ -37,6 +37,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFlags,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
@@ -108,7 +109,8 @@ fn main() {
                 .iter()
                 .enumerate()
                 .position(|(i, q)| {
-                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                        && p.surface_support(i as u32, &surface).unwrap_or(false)
                 })
                 .map(|i| (p, i as u32))
         })
@@ -164,13 +166,10 @@ fn main() {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent: window.inner_size().into(),
-                image_usage: ImageUsage {
-                    color_attachment: true,
-                    ..ImageUsage::empty()
-                },
+                image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
-                    .iter()
+                    .into_iter()
                     .next()
                     .unwrap(),
                 ..Default::default()
@@ -261,20 +260,12 @@ fn main() {
     // set the number of vertices to draw
     let indirect_args_pool: CpuBufferPool<DrawIndirectCommand> = CpuBufferPool::new(
         memory_allocator.clone(),
-        BufferUsage {
-            indirect_buffer: true,
-            storage_buffer: true,
-            ..BufferUsage::empty()
-        },
+        BufferUsage::INDIRECT_BUFFER | BufferUsage::STORAGE_BUFFER,
         MemoryUsage::Upload,
     );
     let vertex_pool: CpuBufferPool<Vertex> = CpuBufferPool::new(
         memory_allocator,
-        BufferUsage {
-            storage_buffer: true,
-            vertex_buffer: true,
-            ..BufferUsage::empty()
-        },
+        BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
         MemoryUsage::Upload,
     );
 

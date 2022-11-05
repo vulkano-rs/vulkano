@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::TypedBufferAccess,
+    buffer::{BufferUsage, TypedBufferAccess},
     command_buffer::{
         allocator::CommandBufferAllocator,
         auto::QueryState,
@@ -16,7 +16,7 @@ use crate::{
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
     },
-    device::DeviceOwned,
+    device::{DeviceOwned, QueueFlags},
     query::{
         QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags,
         QueryType,
@@ -80,8 +80,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
@@ -101,14 +102,19 @@ where
             QueryType::Occlusion => {
                 // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
                 // // VUID-vkCmdBeginQuery-queryType-00803
-                if !queue_family_properties.queue_flags.graphics {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::GRAPHICS)
+                {
                     return Err(QueryError::NotSupportedByQueueFamily);
                 }
 
                 // VUID-vkCmdBeginQuery-queryType-00800
-                if flags.precise && !device.enabled_features().occlusion_query_precise {
+                if flags.intersects(QueryControlFlags::PRECISE)
+                    && !device.enabled_features().occlusion_query_precise
+                {
                     return Err(QueryError::RequirementNotMet {
-                        required_for: "`flags.precise` is set",
+                        required_for: "`flags` contains `QueryControlFlags::PRECISE`",
                         requires_one_of: RequiresOneOf {
                             features: &["occlusion_query_precise"],
                             ..Default::default()
@@ -120,15 +126,20 @@ where
                 // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
                 // VUID-vkCmdBeginQuery-queryType-00804
                 // VUID-vkCmdBeginQuery-queryType-00805
-                if statistic_flags.is_compute() && !queue_family_properties.queue_flags.compute
+                if statistic_flags.is_compute()
+                    && !queue_family_properties
+                        .queue_flags
+                        .intersects(QueueFlags::COMPUTE)
                     || statistic_flags.is_graphics()
-                        && !queue_family_properties.queue_flags.graphics
+                        && !queue_family_properties
+                            .queue_flags
+                            .intersects(QueueFlags::GRAPHICS)
                 {
                     return Err(QueryError::NotSupportedByQueueFamily);
                 }
 
                 // VUID-vkCmdBeginQuery-queryType-00800
-                if flags.precise {
+                if flags.intersects(QueryControlFlags::PRECISE) {
                     return Err(QueryError::InvalidFlags);
                 }
             }
@@ -179,8 +190,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdEndQuery-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
@@ -243,7 +255,7 @@ where
 
         if !device.enabled_features().synchronization2 && PipelineStages::from(stage).is_2() {
             return Err(QueryError::RequirementNotMet {
-                required_for: "`stage` has bits set from `VkPipelineStageFlagBits2`",
+                required_for: "`stage` has flags set from `VkPipelineStageFlagBits2`",
                 requires_one_of: RequiresOneOf {
                     features: &["synchronization2"],
                     ..Default::default()
@@ -257,12 +269,13 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdWriteTimestamp2-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.transfer
-            || queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute
-            || queue_family_properties.queue_flags.video_decode
-            || queue_family_properties.queue_flags.video_encode)
-        {
+        if !queue_family_properties.queue_flags.intersects(
+            QueueFlags::TRANSFER
+                | QueueFlags::GRAPHICS
+                | QueueFlags::COMPUTE
+                | QueueFlags::VIDEO_DECODE
+                | QueueFlags::VIDEO_ENCODE,
+        ) {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 
@@ -294,7 +307,8 @@ where
                 // VUID-vkCmdWriteTimestamp2-stage-03930
                 if !device.enabled_features().tessellation_shader {
                     return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::TessellationControlShader` or `PipelineStage::TessellationEvaluationShader`",
+                        required_for: "`stage` is `PipelineStage::TessellationControlShader` or \
+                            `PipelineStage::TessellationEvaluationShader`",
                         requires_one_of: RequiresOneOf {
                             features: &["tessellation_shader"],
                             ..Default::default()
@@ -433,12 +447,15 @@ where
 
     /// Copies the results of a range of queries to a buffer on the GPU.
     ///
-    /// [`query_pool.ty().result_len()`](crate::query::QueryType::result_len) elements
-    /// will be written for each query in the range, plus 1 extra element per query if
-    /// [`QueryResultFlags::with_availability`] is enabled.
+    /// [`query_pool.ty().result_len()`] elements will be written for each query in the range, plus
+    /// 1 extra element per query if [`QueryResultFlags::WITH_AVAILABILITY`] is enabled.
     /// The provided buffer must be large enough to hold the data.
     ///
-    /// See also [`get_results`](crate::query::QueriesRange::get_results).
+    /// See also [`get_results`].
+    ///
+    /// [`query_pool.ty().result_len()`]: crate::query::QueryType::result_len
+    /// [`QueryResultFlags::WITH_AVAILABILITY`]: crate::query::QueryResultFlags::WITH_AVAILABILITY
+    /// [`get_results`]: crate::query::QueriesRange::get_results
     pub fn copy_query_pool_results<D, T>(
         &mut self,
         query_pool: Arc<QueryPool>,
@@ -458,8 +475,8 @@ where
         )?;
 
         unsafe {
-            let per_query_len =
-                query_pool.query_type().result_len() + flags.with_availability as DeviceSize;
+            let per_query_len = query_pool.query_type().result_len()
+                + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
             let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
             self.inner
                 .copy_query_pool_results(query_pool, queries, destination, stride, flags)?;
@@ -482,8 +499,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdCopyQueryPoolResults-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
@@ -513,8 +531,8 @@ where
             .ok_or(QueryError::OutOfRange)?;
 
         let count = queries.end - queries.start;
-        let per_query_len =
-            query_pool.query_type().result_len() + flags.with_availability as DeviceSize;
+        let per_query_len = query_pool.query_type().result_len()
+            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
         let required_len = per_query_len * count as DeviceSize;
 
         // VUID-vkCmdCopyQueryPoolResults-dstBuffer-00824
@@ -526,12 +544,18 @@ where
         }
 
         // VUID-vkCmdCopyQueryPoolResults-dstBuffer-00825
-        if !buffer_inner.buffer.usage().transfer_dst {
+        if !buffer_inner
+            .buffer
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
             return Err(QueryError::DestinationMissingUsage);
         }
 
         // VUID-vkCmdCopyQueryPoolResults-queryType-00827
-        if matches!(query_pool.query_type(), QueryType::Timestamp) && flags.partial {
+        if matches!(query_pool.query_type(), QueryType::Timestamp)
+            && flags.intersects(QueryResultFlags::PARTIAL)
+        {
             return Err(QueryError::InvalidFlags);
         }
 
@@ -571,8 +595,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdResetQueryPool-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
@@ -734,14 +759,8 @@ impl SyncCommandBufferBuilder {
                 buffer: destination.clone(),
                 range: 0..destination.size(), // TODO:
                 memory: PipelineMemoryAccess {
-                    stages: PipelineStages {
-                        all_transfer: true,
-                        ..PipelineStages::empty()
-                    },
-                    access: AccessFlags {
-                        transfer_write: true,
-                        ..AccessFlags::empty()
-                    },
+                    stages: PipelineStages::ALL_TRANSFER,
+                    access: AccessFlags::TRANSFER_WRITE,
                     exclusive: true,
                 },
             },
@@ -796,12 +815,12 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn begin_query(&mut self, query: Query<'_>, flags: QueryControlFlags) {
         let fns = self.device.fns();
-        let flags = if flags.precise {
-            ash::vk::QueryControlFlags::PRECISE
-        } else {
-            ash::vk::QueryControlFlags::empty()
-        };
-        (fns.v1_0.cmd_begin_query)(self.handle, query.pool().handle(), query.index(), flags);
+        (fns.v1_0.cmd_begin_query)(
+            self.handle,
+            query.pool().handle(),
+            query.index(),
+            flags.into(),
+        );
     }
 
     /// Calls `vkCmdEndQuery` on the builder.
@@ -857,7 +876,10 @@ impl UnsafeCommandBufferBuilder {
         let destination = destination.inner();
         let range = queries.range();
         debug_assert!(destination.offset < destination.buffer.size());
-        debug_assert!(destination.buffer.usage().transfer_dst);
+        debug_assert!(destination
+            .buffer
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST));
         debug_assert!(destination.offset % size_of::<T>() as DeviceSize == 0);
         debug_assert!(stride % size_of::<T>() as DeviceSize == 0);
 

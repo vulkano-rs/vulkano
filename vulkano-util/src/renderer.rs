@@ -124,13 +124,10 @@ impl VulkanoWindowRenderer {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent,
-                image_usage: ImageUsage {
-                    color_attachment: true,
-                    ..ImageUsage::empty()
-                },
+                image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
-                    .iter()
+                    .into_iter()
                     .next()
                     .unwrap(),
                 ..Default::default()
@@ -371,7 +368,7 @@ impl VulkanoWindowRenderer {
             .collect::<Vec<usize>>();
         for i in resizable_views {
             let format = self.get_additional_image_view(i).format().unwrap();
-            let usage = *self.get_additional_image_view(i).usage();
+            let usage = self.get_additional_image_view(i).usage();
             self.remove_additional_image_view(i);
             self.add_additional_image_view(i, format, usage);
         }

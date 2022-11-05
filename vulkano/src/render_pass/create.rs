@@ -13,7 +13,8 @@ use super::{
 };
 use crate::{
     device::Device,
-    image::{ImageLayout, SampleCount},
+    format::FormatFeatures,
+    image::{ImageAspects, ImageLayout, SampleCount},
     sync::PipelineStages,
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -98,7 +99,7 @@ impl RenderPass {
                 // VUID-VkAttachmentDescription2-finalLayout-parameter
                 layout.validate_device(device)?;
 
-                if aspects.depth || aspects.stencil {
+                if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
                     // VUID-VkAttachmentDescription2-format-03281
                     // VUID-VkAttachmentDescription2-format-03283
                     if matches!(layout, ImageLayout::ColorAttachmentOptimal) {
@@ -285,7 +286,7 @@ impl RenderPass {
                 let (atch, features, _first_use) = check_attachment(atch_ref)?;
 
                 // VUID-VkSubpassDescription2-pColorAttachments-02898
-                if !features.color_attachment {
+                if !features.intersects(FormatFeatures::COLOR_ATTACHMENT) {
                     return Err(
                         RenderPassCreationError::SubpassAttachmentFormatUsageNotSupported {
                             subpass: subpass_num,
@@ -348,7 +349,7 @@ impl RenderPass {
                 let (atch, features, _first_use) = check_attachment(atch_ref)?;
 
                 // VUID-VkSubpassDescription2-pDepthStencilAttachment-02900
-                if !features.depth_stencil_attachment {
+                if !features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT) {
                     return Err(
                         RenderPassCreationError::SubpassAttachmentFormatUsageNotSupported {
                             subpass: subpass_num,
@@ -420,7 +421,9 @@ impl RenderPass {
                 let (atch, features, first_use) = check_attachment(atch_ref)?;
 
                 // VUID-VkSubpassDescription2-pInputAttachments-02897
-                if !(features.color_attachment || features.depth_stencil_attachment) {
+                if !features.intersects(
+                    FormatFeatures::COLOR_ATTACHMENT | FormatFeatures::DEPTH_STENCIL_ATTACHMENT,
+                ) {
                     return Err(
                         RenderPassCreationError::SubpassAttachmentFormatUsageNotSupported {
                             subpass: subpass_num,
@@ -458,7 +461,10 @@ impl RenderPass {
                         || device.enabled_extensions().khr_maintenance2)
                     {
                         return Err(RenderPassCreationError::RequirementNotMet {
-                            required_for: "`create_info.subpasses` has an element, where `input_attachments` has an element that is `Some(atch_ref)`, where `atch_ref.aspects` does not match the aspects of the attachment itself",
+                            required_for: "`create_info.subpasses` has an element, where \
+                                `input_attachments` has an element that is `Some(atch_ref)`, \
+                                where `atch_ref.aspects` does not match the aspects of the \
+                                attachment itself",
                             requires_one_of: RequiresOneOf {
                                 api_version: Some(Version::V1_1),
                                 device_extensions: &["khr_create_renderpass2", "khr_maintenance2"],
@@ -470,7 +476,7 @@ impl RenderPass {
                     // VUID-VkSubpassDescription2-attachment-02801
                     // VUID-VkSubpassDescription2-attachment-04563
                     // VUID-VkRenderPassCreateInfo2-attachment-02525
-                    if !atch_aspects.contains(&atch_ref.aspects) {
+                    if !atch_aspects.contains(atch_ref.aspects) {
                         return Err(
                             RenderPassCreationError::SubpassInputAttachmentAspectsNotCompatible {
                                 subpass: subpass_num,
@@ -512,7 +518,7 @@ impl RenderPass {
                 let (atch, features, _first_use) = check_attachment(atch_ref)?;
 
                 // VUID-VkSubpassDescription2-pResolveAttachments-02899
-                if !features.color_attachment {
+                if !features.intersects(FormatFeatures::COLOR_ATTACHMENT) {
                     return Err(
                         RenderPassCreationError::SubpassAttachmentFormatUsageNotSupported {
                             subpass: subpass_num,
@@ -637,7 +643,9 @@ impl RenderPass {
                 if !device.enabled_features().synchronization2 {
                     if stages.is_2() {
                         return Err(RenderPassCreationError::RequirementNotMet {
-                            required_for: "`create_info.dependencies` has an element where `src_stages` or `dst_stages` has bits set from `VkPipelineStageFlagBits2`",
+                            required_for: "`create_info.dependencies` has an element where \
+                                `src_stages` or `dst_stages` contains flags from \
+                                `VkPipelineStageFlagBits2`",
                             requires_one_of: RequiresOneOf {
                                 features: &["synchronization2"],
                                 ..Default::default()
@@ -647,7 +655,9 @@ impl RenderPass {
 
                     if access.is_2() {
                         return Err(RenderPassCreationError::RequirementNotMet {
-                            required_for: "`create_info.dependencies` has an element where `src_access` or `dst_access` has bits set from `VkAccessFlagBits2`",
+                            required_for: "`create_info.dependencies` has an element where \
+                                `src_access` or `dst_access` contains flags from \
+                                `VkAccessFlagBits2`",
                             requires_one_of: RequiresOneOf {
                                 features: &["synchronization2"],
                                 ..Default::default()
@@ -663,7 +673,9 @@ impl RenderPass {
 
                     if stages.is_2() {
                         return Err(RenderPassCreationError::RequirementNotMet {
-                            required_for: "`create_info.dependencies` has an element where `src_stages` or `dst_stages` has bits set from `VkPipelineStageFlagBits2`",
+                            required_for: "`create_info.dependencies` has an element where \
+                                `src_stages` or `dst_stages` contains flags from \
+                                `VkPipelineStageFlagBits2`",
                             requires_one_of: RequiresOneOf {
                                 api_version: Some(Version::V1_2),
                                 device_extensions: &["khr_create_renderpass2"],
@@ -674,7 +686,9 @@ impl RenderPass {
 
                     if access.is_2() {
                         return Err(RenderPassCreationError::RequirementNotMet {
-                            required_for: "`create_info.dependencies` has an element where `src_access` or `dst_access` has bits set from `VkAccessFlagBits2`",
+                            required_for: "`create_info.dependencies` has an element where \
+                                `src_access` or `dst_access` contains flags from \
+                                `VkAccessFlagBits2`",
                             requires_one_of: RequiresOneOf {
                                 api_version: Some(Version::V1_2),
                                 device_extensions: &["khr_create_renderpass2"],
@@ -694,9 +708,12 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-srcStageMask-03929
                 // VUID-VkMemoryBarrier2-dstStageMask-03929
-                if stages.geometry_shader && !device.enabled_features().geometry_shader {
+                if stages.intersects(PipelineStages::GEOMETRY_SHADER)
+                    && !device.enabled_features().geometry_shader
+                {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.geometry_shader` is set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::GEOMETRY_SHADER`",
                         requires_one_of: RequiresOneOf {
                             features: &["geometry_shader"],
                             ..Default::default()
@@ -706,11 +723,15 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-srcStageMask-03930
                 // VUID-VkMemoryBarrier2-dstStageMask-03930
-                if (stages.tessellation_control_shader || stages.tessellation_evaluation_shader)
-                    && !device.enabled_features().tessellation_shader
+                if stages.intersects(
+                    PipelineStages::TESSELLATION_CONTROL_SHADER
+                        | PipelineStages::TESSELLATION_EVALUATION_SHADER,
+                ) && !device.enabled_features().tessellation_shader
                 {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.tessellation_control_shader` or `stages.tessellation_evaluation_shader` are set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
+                            `PipelineStages::TESSELLATION_EVALUATION_SHADER`",
                         requires_one_of: RequiresOneOf {
                             features: &["tessellation_shader"],
                             ..Default::default()
@@ -720,10 +741,12 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-srcStageMask-03931
                 // VUID-VkMemoryBarrier2-dstStageMask-03931
-                if stages.conditional_rendering && !device.enabled_features().conditional_rendering
+                if stages.intersects(PipelineStages::CONDITIONAL_RENDERING)
+                    && !device.enabled_features().conditional_rendering
                 {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.conditional_rendering` is set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::CONDITIONAL_RENDERING`",
                         requires_one_of: RequiresOneOf {
                             features: &["conditional_rendering"],
                             ..Default::default()
@@ -733,11 +756,12 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-srcStageMask-03932
                 // VUID-VkMemoryBarrier2-dstStageMask-03932
-                if stages.fragment_density_process
+                if stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS)
                     && !device.enabled_features().fragment_density_map
                 {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.fragment_density_process` is set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`",
                         requires_one_of: RequiresOneOf {
                             features: &["fragment_density_map"],
                             ..Default::default()
@@ -747,9 +771,12 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-srcStageMask-03933
                 // VUID-VkMemoryBarrier2-dstStageMask-03933
-                if stages.transform_feedback && !device.enabled_features().transform_feedback {
+                if stages.intersects(PipelineStages::TRANSFORM_FEEDBACK)
+                    && !device.enabled_features().transform_feedback
+                {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.transform_feedback` is set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::TRANSFORM_FEEDBACK`",
                         requires_one_of: RequiresOneOf {
                             features: &["transform_feedback"],
                             ..Default::default()
@@ -759,9 +786,12 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-srcStageMask-03934
                 // VUID-VkMemoryBarrier2-dstStageMask-03934
-                if stages.mesh_shader && !device.enabled_features().mesh_shader {
+                if stages.intersects(PipelineStages::MESH_SHADER)
+                    && !device.enabled_features().mesh_shader
+                {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.mesh_shader` is set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::MESH_SHADER`",
                         requires_one_of: RequiresOneOf {
                             features: &["mesh_shader"],
                             ..Default::default()
@@ -771,9 +801,12 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-srcStageMask-03935
                 // VUID-VkMemoryBarrier2-dstStageMask-03935
-                if stages.task_shader && !device.enabled_features().task_shader {
+                if stages.intersects(PipelineStages::TASK_SHADER)
+                    && !device.enabled_features().task_shader
+                {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.task_shader` is set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::TASK_SHADER`",
                         requires_one_of: RequiresOneOf {
                             features: &["task_shader"],
                             ..Default::default()
@@ -783,12 +816,13 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-shadingRateImage-07316
                 // VUID-VkMemoryBarrier2-shadingRateImage-07316
-                if stages.fragment_shading_rate_attachment
+                if stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT)
                     && !(device.enabled_features().attachment_fragment_shading_rate
                         || device.enabled_features().shading_rate_image)
                 {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.fragment_shading_rate_attachment` is set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`",
                         requires_one_of: RequiresOneOf {
                             features: &["attachment_fragment_shading_rate", "shading_rate_image"],
                             ..Default::default()
@@ -798,9 +832,12 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-srcStageMask-04957
                 // VUID-VkMemoryBarrier2-dstStageMask-04957
-                if stages.subpass_shading && !device.enabled_features().subpass_shading {
+                if stages.intersects(PipelineStages::SUBPASS_SHADING)
+                    && !device.enabled_features().subpass_shading
+                {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.subpass_shading` is set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::SUBPASS_SHADING`",
                         requires_one_of: RequiresOneOf {
                             features: &["subpass_shading"],
                             ..Default::default()
@@ -810,9 +847,12 @@ impl RenderPass {
 
                 // VUID-VkMemoryBarrier2-srcStageMask-04995
                 // VUID-VkMemoryBarrier2-dstStageMask-04995
-                if stages.invocation_mask && !device.enabled_features().invocation_mask {
+                if stages.intersects(PipelineStages::INVOCATION_MASK)
+                    && !device.enabled_features().invocation_mask
+                {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for: "`create_info.dependencies` has an element where `stages.invocation_mask` is set",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            contains `PipelineStages::INVOCATION_MASK`",
                         requires_one_of: RequiresOneOf {
                             features: &["invocation_mask"],
                             ..Default::default()
@@ -824,8 +864,8 @@ impl RenderPass {
                 // VUID-VkSubpassDependency2-dstStageMask-03937
                 if stages.is_empty() && !device.enabled_features().synchronization2 {
                     return Err(RenderPassCreationError::RequirementNotMet {
-                        required_for:
-                            "`create_info.dependencies` has an element where `stages` is empty",
+                        required_for: "`create_info.dependencies` has an element where `stages` \
+                            is empty",
                         requires_one_of: RequiresOneOf {
                             features: &["synchronization2"],
                             ..Default::default()
@@ -835,7 +875,7 @@ impl RenderPass {
 
                 // VUID-VkSubpassDependency2-srcAccessMask-03088
                 // VUID-VkSubpassDependency2-dstAccessMask-03089
-                if !stages.supported_access().contains(&access) {
+                if !stages.supported_access().contains(access) {
                     return Err(
                         RenderPassCreationError::DependencyAccessNotSupportedByStages {
                             dependency: dependency_num,
@@ -871,23 +911,21 @@ impl RenderPass {
                         });
                     }
 
-                    let remaining_stages = PipelineStages {
-                        draw_indirect: false,
-                        //index_input: false,
-                        //vertex_attribute_input: false,
-                        vertex_shader: false,
-                        tessellation_control_shader: false,
-                        tessellation_evaluation_shader: false,
-                        geometry_shader: false,
-                        //transform_feedback: false,
-                        //fragment_shading_rate_attachment: false,
-                        early_fragment_tests: false,
-                        fragment_shader: false,
-                        late_fragment_tests: false,
-                        color_attachment_output: false,
-                        all_graphics: false,
-                        ..stages
-                    };
+                    let remaining_stages = stages
+                        - (PipelineStages::DRAW_INDIRECT
+                            | PipelineStages::INDEX_INPUT
+                            | PipelineStages::VERTEX_ATTRIBUTE_INPUT
+                            | PipelineStages::VERTEX_SHADER
+                            | PipelineStages::TESSELLATION_CONTROL_SHADER
+                            | PipelineStages::TESSELLATION_EVALUATION_SHADER
+                            | PipelineStages::GEOMETRY_SHADER
+                            | PipelineStages::TRANSFORM_FEEDBACK
+                            | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
+                            | PipelineStages::EARLY_FRAGMENT_TESTS
+                            | PipelineStages::FRAGMENT_SHADER
+                            | PipelineStages::LATE_FRAGMENT_TESTS
+                            | PipelineStages::COLOR_ATTACHMENT_OUTPUT
+                            | PipelineStages::ALL_GRAPHICS);
 
                     // VUID-VkRenderPassCreateInfo2-pDependencies-03054
                     // VUID-VkRenderPassCreateInfo2-pDependencies-03055
@@ -920,16 +958,13 @@ impl RenderPass {
                 }
 
                 if src_subpass == dst_subpass {
-                    let framebuffer_stages = PipelineStages {
-                        early_fragment_tests: true,
-                        fragment_shader: true,
-                        late_fragment_tests: true,
-                        color_attachment_output: true,
-                        ..PipelineStages::empty()
-                    };
+                    let framebuffer_stages = PipelineStages::EARLY_FRAGMENT_TESTS
+                        | PipelineStages::FRAGMENT_SHADER
+                        | PipelineStages::LATE_FRAGMENT_TESTS
+                        | PipelineStages::COLOR_ATTACHMENT_OUTPUT;
 
                     // VUID-VkSubpassDependency2-srcSubpass-06810
-                    if src_stages.intersects(&framebuffer_stages)
+                    if src_stages.intersects(framebuffer_stages)
                         && !(dst_stages - framebuffer_stages).is_empty()
                     {
                         return Err(
@@ -940,8 +975,8 @@ impl RenderPass {
                     }
 
                     // VUID-VkSubpassDependency2-srcSubpass-02245
-                    if src_stages.intersects(&framebuffer_stages)
-                        && dst_stages.intersects(&framebuffer_stages)
+                    if src_stages.intersects(framebuffer_stages)
+                        && dst_stages.intersects(framebuffer_stages)
                         && !by_region
                     {
                         return Err(

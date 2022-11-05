@@ -20,6 +20,7 @@ use crate::{
         CommandBufferInheritanceRenderingInfo,
     },
     device::{Device, DeviceOwned},
+    query::QueryControlFlags,
     OomError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -104,7 +105,7 @@ impl UnsafeCommandBufferBuilder {
                 if let Some(flags) = occlusion_query {
                     inheritance_info_vk.occlusion_query_enable = ash::vk::TRUE;
 
-                    if flags.precise {
+                    if flags.intersects(QueryControlFlags::PRECISE) {
                         inheritance_info_vk.query_flags = ash::vk::QueryControlFlags::PRECISE;
                     }
                 }

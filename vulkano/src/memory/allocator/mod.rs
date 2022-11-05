@@ -353,17 +353,17 @@ impl From<MemoryUsage> for MemoryTypeFilter {
 
         match usage {
             MemoryUsage::GpuOnly => {
-                filter.preferred_flags.device_local = true;
-                filter.not_preferred_flags.host_visible = true;
+                filter.preferred_flags |= MemoryPropertyFlags::DEVICE_LOCAL;
+                filter.not_preferred_flags |= MemoryPropertyFlags::HOST_VISIBLE;
             }
             MemoryUsage::Upload => {
-                filter.required_flags.host_visible = true;
-                filter.preferred_flags.device_local = true;
-                filter.not_preferred_flags.host_cached = true;
+                filter.required_flags |= MemoryPropertyFlags::HOST_VISIBLE;
+                filter.preferred_flags |= MemoryPropertyFlags::DEVICE_LOCAL;
+                filter.not_preferred_flags |= MemoryPropertyFlags::HOST_CACHED;
             }
             MemoryUsage::Download => {
-                filter.required_flags.host_visible = true;
-                filter.preferred_flags.host_cached = true;
+                filter.required_flags |= MemoryPropertyFlags::HOST_VISIBLE;
+                filter.preferred_flags |= MemoryPropertyFlags::HOST_CACHED;
             }
         }
 
@@ -464,8 +464,8 @@ impl Default for AllocationCreateInfo<'_> {
 pub enum MemoryUsage {
     /// The memory is intended to only be used by the GPU.
     ///
-    /// Prefers picking a memory type with the [`device_local`] flag and without the
-    /// [`host_visible`] flag.
+    /// Prefers picking a memory type with the [`DEVICE_LOCAL`] flag and
+    /// without the [`HOST_VISIBLE`] flag.
     ///
     /// This option is what you will always want to use unless the memory needs to be accessed by
     /// the CPU, because a memory type that can only be accessed by the GPU is going to give the
@@ -473,37 +473,37 @@ pub enum MemoryUsage {
     /// once and then never again, or resources that are only written and read by the GPU, like
     /// render targets and intermediary buffers.
     ///
-    /// [`device_local`]: MemoryPropertyFlags::device_local
-    /// [`host_visible`]: MemoryPropertyFlags::host_visible
+    /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
+    /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
     GpuOnly,
 
     /// The memory is intended for upload to the GPU.
     ///
-    /// Guarantees picking a memory type with the [`host_visible`] flag. Prefers picking one
-    /// without the [`host_cached`] flag and with the [`device_local`] flag.
+    /// Guarantees picking a memory type with the [`HOST_VISIBLE`] flag. Prefers picking one
+    /// without the [`HOST_CACHED`] flag and with the [`DEVICE_LOCAL`] flag.
     ///
     /// This option is best suited for resources that need to be constantly updated by the CPU,
     /// like vertex and index buffers for example. It is also neccessary for *staging buffers*,
     /// whose only purpose in life it is to get data into `device_local` memory or texels into an
     /// optimal image.
     ///
-    /// [`host_visible`]: MemoryPropertyFlags::host_visible
-    /// [`host_cached`]: MemoryPropertyFlags::host_cached
-    /// [`device_local`]: MemoryPropertyFlags::device_local
+    /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
+    /// [`HOST_CACHED`]: MemoryPropertyFlags::HOST_CACHED
+    /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
     Upload,
 
     /// The memory is intended for download from the GPU.
     ///
-    /// Guarantees picking a memory type with the [`host_visible`] flag. Prefers picking one with
-    /// the [`host_cached`] flag and without the [`device_local`] flag.
+    /// Guarantees picking a memory type with the [`HOST_VISIBLE`] flag. Prefers picking one with
+    /// the [`HOST_CACHED`] flag and without the [`DEVICE_LOCAL`] flag.
     ///
     /// This option is best suited if you're using the GPU for things other than rendering and you
     /// need to get the results back to the CPU. That might be compute shading, or image or video
     /// manipulation, or screenshotting for example.
     ///
-    /// [`host_visible`]: MemoryPropertyFlags::host_visible
-    /// [`host_cached`]: MemoryPropertyFlags::host_cached
-    /// [`device_local`]: MemoryPropertyFlags::device_local
+    /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
+    /// [`HOST_CACHED`]: MemoryPropertyFlags::HOST_CACHED
+    /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
     Download,
 }
 
@@ -762,7 +762,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 && device.enabled_extensions().khr_external_memory)
             {
                 return Err(GenericMemoryAllocatorCreationError::RequirementNotMet {
-                    required_for: "`create_info.export_handle_types` was not empty",
+                    required_for: "`create_info.export_handle_types` is not empty",
                     requires_one_of: RequiresOneOf {
                         api_version: Some(Version::V1_1),
                         device_extensions: &["khr_external_memory"],
@@ -853,12 +853,13 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
 
         let mut memory_type_bits = u32::MAX;
         for (index, MemoryType { property_flags, .. }) in memory_types.iter().enumerate() {
-            if property_flags.lazily_allocated
-                || property_flags.protected
-                || property_flags.device_coherent
-                || property_flags.device_uncached
-                || property_flags.rdma_capable
-            {
+            if property_flags.intersects(
+                MemoryPropertyFlags::LAZILY_ALLOCATED
+                    | MemoryPropertyFlags::PROTECTED
+                    | MemoryPropertyFlags::DEVICE_COHERENT
+                    | MemoryPropertyFlags::DEVICE_UNCACHED
+                    | MemoryPropertyFlags::RDMA_CAPABLE,
+            ) {
                 // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
                 // VUID-vkAllocateMemory-deviceCoherentMemory-02790
                 // Lazily allocated memory would just cause problems for suballocation in general.
@@ -879,9 +880,10 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             allocation_type,
             dedicated_allocation,
             export_handle_types,
-            flags: MemoryAllocateFlags {
-                device_address,
-                ..Default::default()
+            flags: if device_address {
+                MemoryAllocateFlags::DEVICE_ADDRESS
+            } else {
+                MemoryAllocateFlags::empty()
             },
             memory_type_bits,
             max_allocations,
@@ -994,9 +996,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// # Panics
     ///
     /// - Panics if `memory_type_index` is not less than the number of available memory types.
-    /// - Panics if `memory_type_index` refers to a memory type which has the [`protected`] flag set
+    /// - Panics if `memory_type_index` refers to a memory type which has the [`PROTECTED`] flag set
     ///   and the [`protected_memory`] feature is not enabled on the device.
-    /// - Panics if `memory_type_index` refers to a memory type which has the [`device_coherent`]
+    /// - Panics if `memory_type_index` refers to a memory type which has the [`DEVICE_COHERENT`]
     ///   flag set and the [`device_coherent_memory`] feature is not enabled on the device.
     /// - Panics if `create_info.size` is zero.
     /// - Panics if `create_info.alignment` is zero.
@@ -1012,9 +1014,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
     ///   `create_info.size` is greater than `BLOCK_SIZE`.
     ///
-    /// [`protected`]: MemoryPropertyFlags::protected
+    /// [`PROTECTED`]: MemoryPropertyFlags::PROTECTED
     /// [`protected_memory`]: crate::device::Features::protected_memory
-    /// [`device_coherent`]: MemoryPropertyFlags::device_coherent
+    /// [`DEVICE_COHERENT`]: MemoryPropertyFlags::DEVICE_COHERENT
     /// [`device_coherent_memory`]: crate::device::Features::device_coherent_memory
     /// [`TooManyObjects`]: VulkanError::TooManyObjects
     /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
@@ -1235,13 +1237,11 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///   `create_info.size` is greater than `BLOCK_SIZE` and a dedicated allocation was not
     ///   created.
     ///
-    /// [`device_local`]: MemoryPropertyFlags::device_local
-    /// [`host_visible`]: MemoryPropertyFlags::host_visible
     /// [`TooManyObjects`]: VulkanError::TooManyObjects
-    /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     /// [`OutOfPoolMemory`]: AllocationCreationError::OutOfPoolMemory
     /// [`DedicatedAllocationRequired`]: AllocationCreationError::DedicatedAllocationRequired
     /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
+    /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     fn allocate(
         &self,
         create_info: AllocationCreateInfo<'_>,
@@ -1549,10 +1549,10 @@ pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
     pub export_handle_types: &'e [ExternalMemoryHandleTypes],
 
     /// Whether the allocator should allocate the [`DeviceMemory`] blocks with the
-    /// [`device_address`] flag set.
+    /// [`DEVICE_ADDRESS`] flag set.
     ///
     /// This is required if you want to allocate memory for buffers that have the
-    /// [`shader_device_address`] usage set. For this option too, there is no reason to disable it.
+    /// [`SHADER_DEVICE_ADDRESS`] usage set. For this option too, there is no reason to disable it.
     ///
     /// This option is silently ignored (treated as `false`) if the [`buffer_device_address`]
     /// feature is not enabled on the device or if the [`ext_buffer_device_address`] extension is
@@ -1561,8 +1561,8 @@ pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
     ///
     /// The default value is `true`.
     ///
-    /// [`device_address`]: MemoryAllocateFlags::device_address
-    /// [`shader_device_address`]: crate::buffer::BufferUsage::shader_device_address
+    /// [`DEVICE_ADDRESS`]: MemoryAllocateFlags::DEVICE_ADDRESS
+    /// [`SHADER_DEVICE_ADDRESS`]: crate::buffer::BufferUsage::SHADER_DEVICE_ADDRESS
     /// [`buffer_device_address`]: crate::device::Features::buffer_device_address
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
     /// [`khr_device_group`]: crate::device::DeviceExtensions::khr_device_group

@@ -491,10 +491,7 @@ mod tests {
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let data_buffer = CpuAccessibleBuffer::from_data(
             &memory_allocator,
-            BufferUsage {
-                storage_buffer: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::STORAGE_BUFFER,
             false,
             0,
         )

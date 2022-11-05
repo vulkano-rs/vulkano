@@ -108,11 +108,8 @@ where
                                     .into_iter()
                                     .map(|semaphore| {
                                         SemaphoreSubmitInfo {
-                                            stages: PipelineStages {
-                                                // TODO: correct stages ; hard
-                                                all_commands: true,
-                                                ..PipelineStages::empty()
-                                            },
+                                            // TODO: correct stages ; hard
+                                            stages: PipelineStages::ALL_COMMANDS,
                                             ..SemaphoreSubmitInfo::semaphore(semaphore)
                                         }
                                     })

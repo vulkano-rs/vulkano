@@ -65,7 +65,7 @@ pub fn entry_points(
                 name,
                 interface,
                 ..
-            } => (execution_model, *entry_point, name, interface),
+            } => (*execution_model, *entry_point, name, interface),
             _ => return None,
         };
 
@@ -101,7 +101,7 @@ pub fn entry_points(
 
         Some((
             entry_point_name.clone(),
-            *execution_model,
+            execution_model,
             EntryPointInfo {
                 execution,
                 descriptor_requirements,
@@ -117,7 +117,7 @@ pub fn entry_points(
 /// Extracts the `ShaderExecution` for the entry point `function_id` from `spirv`.
 fn shader_execution(
     spirv: &Spirv,
-    execution_model: &ExecutionModel,
+    execution_model: ExecutionModel,
     function_id: Id,
 ) -> ShaderExecution {
     match execution_model {

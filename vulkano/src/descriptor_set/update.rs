@@ -9,9 +9,9 @@
 
 use super::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorType};
 use crate::{
-    buffer::{view::BufferViewAbstract, BufferAccess, BufferInner},
+    buffer::{view::BufferViewAbstract, BufferAccess, BufferInner, BufferUsage},
     device::DeviceOwned,
-    image::{view::ImageViewType, ImageType, ImageViewAbstract},
+    image::{view::ImageViewType, ImageAspects, ImageType, ImageUsage, ImageViewAbstract},
     sampler::{Sampler, SamplerImageViewIncompatibleError},
     DeviceSize, RequiresOneOf, VulkanObject,
 };
@@ -425,7 +425,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     for (index, buffer) in elements.iter().enumerate() {
                         assert_eq!(device, buffer.device());
 
-                        if !buffer.inner().buffer.usage().storage_buffer {
+                        if !buffer.usage().intersects(BufferUsage::STORAGE_BUFFER) {
                             return Err(DescriptorSetUpdateError::MissingUsage {
                                 binding: write.binding(),
                                 index: descriptor_range_start + index as u32,
@@ -438,7 +438,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     for (index, buffer) in elements.iter().enumerate() {
                         assert_eq!(device, buffer.device());
 
-                        if !buffer.inner().buffer.usage().uniform_buffer {
+                        if !buffer.usage().intersects(BufferUsage::UNIFORM_BUFFER) {
                             return Err(DescriptorSetUpdateError::MissingUsage {
                                 binding: write.binding(),
                                 index: descriptor_range_start + index as u32,
@@ -474,10 +474,8 @@ pub(crate) fn check_descriptor_write<'a>(
                         // TODO: storage_texel_buffer_atomic
                         if !buffer_view
                             .buffer()
-                            .inner()
-                            .buffer
                             .usage()
-                            .storage_texel_buffer
+                            .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
                         {
                             return Err(DescriptorSetUpdateError::MissingUsage {
                                 binding: write.binding(),
@@ -493,10 +491,8 @@ pub(crate) fn check_descriptor_write<'a>(
 
                         if !buffer_view
                             .buffer()
-                            .inner()
-                            .buffer
                             .usage()
-                            .uniform_texel_buffer
+                            .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
                         {
                             return Err(DescriptorSetUpdateError::MissingUsage {
                                 binding: write.binding(),
@@ -526,7 +522,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     assert_eq!(device, image_view.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
-                    if !image_view.usage().sampled {
+                    if !image_view.usage().intersects(ImageUsage::SAMPLED) {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -548,8 +544,10 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.subresource_range().aspects.depth
-                        && image_view.subresource_range().aspects.stencil
+                    if image_view
+                        .subresource_range()
+                        .aspects
+                        .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
@@ -571,7 +569,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     assert_eq!(device, image_view.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
-                    if !image_view.usage().sampled {
+                    if !image_view.usage().intersects(ImageUsage::SAMPLED) {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -593,8 +591,10 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.subresource_range().aspects.depth
-                        && image_view.subresource_range().aspects.stencil
+                    if image_view
+                        .subresource_range()
+                        .aspects
+                        .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
@@ -618,7 +618,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     assert_eq!(device, image_view.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00339
-                    if !image_view.usage().storage {
+                    if !image_view.usage().intersects(ImageUsage::STORAGE) {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -640,8 +640,10 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.subresource_range().aspects.depth
-                        && image_view.subresource_range().aspects.stencil
+                    if image_view
+                        .subresource_range()
+                        .aspects
+                        .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
@@ -673,7 +675,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     assert_eq!(device, image_view.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00338
-                    if !image_view.usage().input_attachment {
+                    if !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT) {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -695,8 +697,10 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.subresource_range().aspects.depth
-                        && image_view.subresource_range().aspects.stencil
+                    if image_view
+                        .subresource_range()
+                        .aspects
+                        .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
@@ -752,7 +756,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     assert_eq!(device, sampler.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
-                    if !image_view.usage().sampled {
+                    if !image_view.usage().intersects(ImageUsage::SAMPLED) {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -774,8 +778,10 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.subresource_range().aspects.depth
-                        && image_view.subresource_range().aspects.stencil
+                    if image_view
+                        .subresource_range()
+                        .aspects
+                        .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),

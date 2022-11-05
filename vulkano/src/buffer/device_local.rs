@@ -83,7 +83,8 @@ use std::{
 /// // Create a CPU accessible buffer initialized with the data.
 /// let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
 ///     &memory_allocator,
-///     BufferUsage { transfer_src: true, ..BufferUsage::empty() }, // Specify this buffer will be used as a transfer source.
+///     // Specify this buffer will be used as a transfer source.
+///     BufferUsage::TRANSFER_SRC,
 ///     false,
 ///     data,
 /// )
@@ -93,11 +94,8 @@ use std::{
 /// let device_local_buffer = DeviceLocalBuffer::<[f32]>::array(
 ///     &memory_allocator,
 ///     10_000 as vulkano::DeviceSize,
-///     BufferUsage {
-///         storage_buffer: true,
-///         transfer_dst: true,
-///         ..BufferUsage::empty()
-///     }, // Specify use as a storage buffer and transfer destination.
+///     // Specify use as a storage buffer and transfer destination.
+///     BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
 ///     device.active_queue_family_indices().iter().copied(),
 /// )
 /// .unwrap();
@@ -182,10 +180,7 @@ where
     {
         unsafe {
             // We automatically set `transfer_dst` to true in order to avoid annoying errors.
-            let actual_usage = BufferUsage {
-                transfer_dst: true,
-                ..usage
-            };
+            let actual_usage = usage | BufferUsage::TRANSFER_DST;
 
             let buffer = DeviceLocalBuffer::raw(
                 allocator,
@@ -229,15 +224,8 @@ where
     where
         A: CommandBufferAllocator,
     {
-        let source = CpuAccessibleBuffer::from_data(
-            allocator,
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            },
-            false,
-            data,
-        )?;
+        let source =
+            CpuAccessibleBuffer::from_data(allocator, BufferUsage::TRANSFER_SRC, false, data)?;
         DeviceLocalBuffer::from_buffer(allocator, source, usage, command_buffer_builder)
     }
 }
@@ -267,15 +255,8 @@ where
         D::IntoIter: ExactSizeIterator,
         A: CommandBufferAllocator,
     {
-        let source = CpuAccessibleBuffer::from_iter(
-            allocator,
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            },
-            false,
-            data,
-        )?;
+        let source =
+            CpuAccessibleBuffer::from_iter(allocator, BufferUsage::TRANSFER_SRC, false, data)?;
         DeviceLocalBuffer::from_buffer(allocator, source, usage, command_buffer_builder)
     }
 }
@@ -407,10 +388,7 @@ where
         // VUID-VkMemoryAllocateInfo-pNext-00639
         // Guaranteed because we always create a dedicated allocation
 
-        let external_memory_handle_types = ExternalMemoryHandleTypes {
-            opaque_fd: true,
-            ..ExternalMemoryHandleTypes::empty()
-        };
+        let external_memory_handle_types = ExternalMemoryHandleTypes::OPAQUE_FD;
         let raw_buffer = RawBuffer::new(
             allocator.device().clone(),
             BufferCreateInfo {
@@ -570,24 +548,14 @@ mod tests {
         let buffer = DeviceLocalBuffer::from_data(
             &memory_allocator,
             12u32,
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_SRC,
             &mut command_buffer_builder,
         )
         .unwrap();
 
-        let destination = CpuAccessibleBuffer::from_data(
-            &memory_allocator,
-            BufferUsage {
-                transfer_dst: true,
-                ..BufferUsage::empty()
-            },
-            false,
-            0,
-        )
-        .unwrap();
+        let destination =
+            CpuAccessibleBuffer::from_data(&memory_allocator, BufferUsage::TRANSFER_DST, false, 0)
+                .unwrap();
 
         command_buffer_builder
             .copy_buffer(CopyBufferInfo::buffers(buffer, destination.clone()))
@@ -621,20 +589,14 @@ mod tests {
         let buffer = DeviceLocalBuffer::from_iter(
             &allocator,
             (0..512u32).map(|n| n * 2),
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_SRC,
             &mut command_buffer_builder,
         )
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_iter(
             &allocator,
-            BufferUsage {
-                transfer_dst: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_DST,
             false,
             (0..512).map(|_| 0u32),
         )
@@ -676,10 +638,7 @@ mod tests {
             DeviceLocalBuffer::from_data(
                 &allocator,
                 (),
-                BufferUsage {
-                    transfer_dst: true,
-                    ..BufferUsage::empty()
-                },
+                BufferUsage::TRANSFER_DST,
                 &mut command_buffer_builder,
             )
             .unwrap();

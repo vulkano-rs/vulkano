@@ -26,6 +26,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFlags,
     },
     format::Format,
     image::{view::ImageView, ImageDimensions, StorageImage},
@@ -65,7 +66,7 @@ fn main() {
         .filter_map(|p| {
             p.queue_family_properties()
                 .iter()
-                .position(|q| q.queue_flags.compute)
+                .position(|q| q.queue_flags.intersects(QueueFlags::COMPUTE))
                 .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
@@ -227,10 +228,7 @@ fn main() {
 
     let buf = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
-        BufferUsage {
-            transfer_dst: true,
-            ..BufferUsage::empty()
-        },
+        BufferUsage::TRANSFER_DST,
         false,
         (0..1024 * 1024 * 4).map(|_| 0u8),
     )

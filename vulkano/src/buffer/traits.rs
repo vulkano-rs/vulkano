@@ -81,7 +81,7 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
         // VUID-vkGetBufferDeviceAddress-bufferDeviceAddress-03324
         if !device.enabled_features().buffer_device_address {
             return Err(BufferDeviceAddressError::RequirementNotMet {
-                required_for: "`raw_device_address`",
+                required_for: "`BufferAccess::raw_device_address`",
                 requires_one_of: RequiresOneOf {
                     features: &["buffer_device_address"],
                     ..Default::default()
@@ -90,7 +90,11 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
         }
 
         // VUID-VkBufferDeviceAddressInfo-buffer-02601
-        if !inner.buffer.usage().shader_device_address {
+        if !inner
+            .buffer
+            .usage()
+            .intersects(BufferUsage::SHADER_DEVICE_ADDRESS)
+        {
             return Err(BufferDeviceAddressError::BufferMissingUsage);
         }
 

@@ -221,7 +221,8 @@ impl DescriptorSetLayout {
                     .descriptor_binding_variable_descriptor_count
                 {
                     return Err(DescriptorSetLayoutCreationError::RequirementNotMet {
-                        required_for: "`create_info.bindings` has an element where `variable_descriptor_count` is set",
+                        required_for: "`create_info.bindings` has an element where \
+                            `variable_descriptor_count` is set",
                         requires_one_of: RequiresOneOf {
                             features: &["descriptor_binding_variable_descriptor_count"],
                             ..Default::default()
@@ -756,7 +757,7 @@ impl DescriptorSetLayoutBinding {
             }
         }
 
-        if !self.stages.contains(&stages) {
+        if !self.stages.contains(stages) {
             return Err(DescriptorRequirementsNotMet::ShaderStages {
                 required: stages,
                 obtained: self.stages,
@@ -824,8 +825,9 @@ impl Display for DescriptorRequirementsNotMet {
 }
 
 vulkan_enum! {
-    /// Describes what kind of resource may later be bound to a descriptor.
     #[non_exhaustive]
+
+    /// Describes what kind of resource may later be bound to a descriptor.
     DescriptorType = DescriptorType(i32);
 
     /// Describes how a `SampledImage` descriptor should be read.
