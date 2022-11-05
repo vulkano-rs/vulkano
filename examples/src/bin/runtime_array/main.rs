@@ -348,7 +348,9 @@ fn main() {
 
     let pipeline_layout = {
         let mut layout_create_infos: Vec<_> = DescriptorSetLayoutCreateInfo::from_requirements(
-            fs.entry_point("main").unwrap().descriptor_requirements(),
+            fs.entry_point("main")
+                .unwrap()
+                .descriptor_binding_requirements(),
         );
 
         // Set 0, Binding 0

@@ -692,7 +692,7 @@ mod tests {
 
         let mut descriptors = Vec::new();
         for (_, _, info) in reflect::entry_points(&spirv) {
-            descriptors.push(info.descriptor_requirements);
+            descriptors.push(info.descriptor_binding_requirements);
         }
 
         // Check first entrypoint
@@ -764,7 +764,7 @@ mod tests {
 
         if let Some((_, _, info)) = reflect::entry_points(&spirv).next() {
             let mut bindings = Vec::new();
-            for (loc, _reqs) in info.descriptor_requirements {
+            for (loc, _reqs) in info.descriptor_binding_requirements {
                 bindings.push(loc);
             }
             assert_eq!(bindings.len(), 4);
