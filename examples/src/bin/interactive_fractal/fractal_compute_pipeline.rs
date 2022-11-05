@@ -57,10 +57,7 @@ impl FractalComputePipeline {
         let palette_size = colors.len() as i32;
         let palette = CpuAccessibleBuffer::from_iter(
             &memory_allocator,
-            BufferUsage {
-                storage_buffer: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::STORAGE_BUFFER,
             false,
             colors,
         )
@@ -103,10 +100,7 @@ impl FractalComputePipeline {
         }
         self.palette = CpuAccessibleBuffer::from_iter(
             &self.memory_allocator,
-            BufferUsage {
-                storage_buffer: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::STORAGE_BUFFER,
             false,
             colors.into_iter(),
         )

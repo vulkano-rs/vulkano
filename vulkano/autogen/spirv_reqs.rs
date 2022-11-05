@@ -63,7 +63,7 @@ enum Enable {
 #[derive(Clone, Debug, PartialEq)]
 enum PropertyValue {
     Bool,
-    BoolMember(Ident),
+    BoolMember(Vec<Ident>),
 }
 
 fn spirv_reqs_output(members: &[SpirvReqsMember], extension: bool) -> TokenStream {
@@ -97,7 +97,7 @@ fn spirv_reqs_output(members: &[SpirvReqsMember], extension: bool) -> TokenStrea
                     let access = match value {
                         PropertyValue::Bool => quote! {},
                         PropertyValue::BoolMember(member) => quote! {
-                            .map(|x| x.#member)
+                            .map(|x| x.intersects(#(#member)::*))
                         },
                     };
 
@@ -249,9 +249,14 @@ fn make_enable(enable: &vk_parse::Enable) -> Option<(Enable, String)> {
             let (value, description) = if property.value == "VK_TRUE" {
                 (PropertyValue::Bool, format!("property `{}`", property_name))
             } else if let Some(member) = property.value.strip_prefix("VK_SUBGROUP_FEATURE_") {
-                let member = BIT.replace(member, "").to_snake_case();
+                let member = BIT.replace(member, "");
                 (
-                    PropertyValue::BoolMember(format_ident!("{}", member)),
+                    PropertyValue::BoolMember(
+                        ["crate", "device", "physical", "SubgroupFeatures", &member]
+                            .into_iter()
+                            .map(|s| format_ident!("{}", s))
+                            .collect(),
+                    ),
                     format!("property `{}.{}`", property_name, member),
                 )
             } else {

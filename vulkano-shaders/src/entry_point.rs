@@ -165,38 +165,47 @@ fn write_descriptor_requirements(
             })
         };
         let stages = {
-            let ShaderStages {
-                vertex,
-                tessellation_control,
-                tessellation_evaluation,
-                geometry,
-                fragment,
-                compute,
-                raygen,
-                any_hit,
-                closest_hit,
-                miss,
-                intersection,
-                callable,
-                _ne: _,
-            } = stages;
+            let stages_items = [
+                stages.intersects(ShaderStages::VERTEX).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::VERTEX
+                }),
+                stages.intersects(ShaderStages::TESSELLATION_CONTROL).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::TESSELLATION_CONTROL
+                }),
+                stages.intersects(ShaderStages::TESSELLATION_EVALUATION).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::TESSELLATION_EVALUATION
+                }),
+                stages.intersects(ShaderStages::GEOMETRY).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::GEOMETRY
+                }),
+                stages.intersects(ShaderStages::FRAGMENT).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::FRAGMENT
+                }),
+                stages.intersects(ShaderStages::COMPUTE).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::COMPUTE
+                }),
+                stages.intersects(ShaderStages::RAYGEN).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::RAYGEN
+                }),
+                stages.intersects(ShaderStages::ANY_HIT).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::ANY_HIT
+                }),
+                stages.intersects(ShaderStages::CLOSEST_HIT).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::CLOSEST_HIT
+                }),
+                stages.intersects(ShaderStages::MISS).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::MISS
+                }),
+                stages.intersects(ShaderStages::INTERSECTION).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::INTERSECTION
+                }),
+                stages.intersects(ShaderStages::CALLABLE).then(|| quote! {
+                    ::vulkano::shader::ShaderStages::CALLABLE
+                }),
+            ].into_iter().flatten();
 
             quote! {
-                ::vulkano::shader::ShaderStages {
-                    vertex: #vertex,
-                    tessellation_control: #tessellation_control,
-                    tessellation_evaluation: #tessellation_evaluation,
-                    geometry: #geometry,
-                    fragment: #fragment,
-                    compute: #compute,
-                    raygen: #raygen,
-                    any_hit: #any_hit,
-                    closest_hit: #closest_hit,
-                    miss: #miss,
-                    intersection: #intersection,
-                    callable: #callable,
-                    ..::vulkano::shader::ShaderStages::empty()
-                }
+                #(#stages_items)|*
             }
         };
         let storage_image_atomic = storage_image_atomic.iter();
@@ -243,38 +252,77 @@ fn write_push_constant_requirements(
             stages,
         }) => {
             let stages = {
-                let ShaderStages {
-                    vertex,
-                    tessellation_control,
-                    tessellation_evaluation,
-                    geometry,
-                    fragment,
-                    compute,
-                    raygen,
-                    any_hit,
-                    closest_hit,
-                    miss,
-                    intersection,
-                    callable,
-                    _ne: _,
-                } = stages;
+                let stages_items = [
+                    stages.intersects(ShaderStages::VERTEX).then(|| {
+                        quote! {
+                            ::vulkano::shader::ShaderStages::VERTEX
+                        }
+                    }),
+                    stages
+                        .intersects(ShaderStages::TESSELLATION_CONTROL)
+                        .then(|| {
+                            quote! {
+                                ::vulkano::shader::ShaderStages::TESSELLATION_CONTROL
+                            }
+                        }),
+                    stages
+                        .intersects(ShaderStages::TESSELLATION_EVALUATION)
+                        .then(|| {
+                            quote! {
+                                ::vulkano::shader::ShaderStages::TESSELLATION_EVALUATION
+                            }
+                        }),
+                    stages.intersects(ShaderStages::GEOMETRY).then(|| {
+                        quote! {
+                            ::vulkano::shader::ShaderStages::GEOMETRY
+                        }
+                    }),
+                    stages.intersects(ShaderStages::FRAGMENT).then(|| {
+                        quote! {
+                            ::vulkano::shader::ShaderStages::FRAGMENT
+                        }
+                    }),
+                    stages.intersects(ShaderStages::COMPUTE).then(|| {
+                        quote! {
+                            ::vulkano::shader::ShaderStages::COMPUTE
+                        }
+                    }),
+                    stages.intersects(ShaderStages::RAYGEN).then(|| {
+                        quote! {
+                            ::vulkano::shader::ShaderStages::RAYGEN
+                        }
+                    }),
+                    stages.intersects(ShaderStages::ANY_HIT).then(|| {
+                        quote! {
+                            ::vulkano::shader::ShaderStages::ANY_HIT
+                        }
+                    }),
+                    stages.intersects(ShaderStages::CLOSEST_HIT).then(|| {
+                        quote! {
+                            ::vulkano::shader::ShaderStages::CLOSEST_HIT
+                        }
+                    }),
+                    stages.intersects(ShaderStages::MISS).then(|| {
+                        quote! {
+                            ::vulkano::shader::ShaderStages::MISS
+                        }
+                    }),
+                    stages.intersects(ShaderStages::INTERSECTION).then(|| {
+                        quote! {
+                                ::vulkano::shader::ShaderStages::INTERSECTION
+                        }
+                    }),
+                    stages.intersects(ShaderStages::CALLABLE).then(|| {
+                        quote! {
+                                ::vulkano::shader::ShaderStages::CALLABLE
+                        }
+                    }),
+                ]
+                .into_iter()
+                .flatten();
 
                 quote! {
-                    ::vulkano::shader::ShaderStages {
-                        vertex: #vertex,
-                        tessellation_control: #tessellation_control,
-                        tessellation_evaluation: #tessellation_evaluation,
-                        geometry: #geometry,
-                        fragment: #fragment,
-                        compute: #compute,
-                        raygen: #raygen,
-                        any_hit: #any_hit,
-                        closest_hit: #closest_hit,
-                        miss: #miss,
-                        intersection: #intersection,
-                        callable: #callable,
-                        ..::vulkano::shader::ShaderStages::empty()
-                    }
+                    #(#stages_items)|*
                 }
             };
 

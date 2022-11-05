@@ -11,7 +11,7 @@ use std::sync::Arc;
 use vulkano::{
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags,
     },
     instance::{
         debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
@@ -199,7 +199,7 @@ impl VulkanoContext {
             .iter()
             .enumerate()
             .map(|(i, q)| (i as u32, q))
-            .find(|(_i, q)| q.queue_flags.graphics)
+            .find(|(_i, q)| q.queue_flags.intersects(QueueFlags::GRAPHICS))
             .map(|(i, _)| i)
             .expect("Could not find a queue that supports graphics");
         // Try finding a separate queue for compute
@@ -208,7 +208,9 @@ impl VulkanoContext {
             .iter()
             .enumerate()
             .map(|(i, q)| (i as u32, q))
-            .find(|(i, q)| q.queue_flags.compute && *i != queue_family_graphics)
+            .find(|(i, q)| {
+                q.queue_flags.intersects(QueueFlags::COMPUTE) && *i != queue_family_graphics
+            })
             .map(|(i, _)| i);
         let is_separate_compute_queue = queue_family_compute.is_some();
 

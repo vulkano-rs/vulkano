@@ -54,9 +54,9 @@ pub enum VertexMemberTy {
 impl VertexMemberTy {
     /// Returns true if a combination of `(type, array_size)` matches a format.
     #[inline]
-    pub fn matches(&self, array_size: usize, format: Format, num_locs: u32) -> bool {
+    pub fn matches(self, array_size: usize, format: Format, num_locs: u32) -> bool {
         // TODO: implement correctly
-        let my_size = match *self {
+        let my_size = match self {
             VertexMemberTy::I8 => 1,
             VertexMemberTy::U8 => 1,
             VertexMemberTy::I16 => 2,

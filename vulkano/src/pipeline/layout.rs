@@ -227,49 +227,48 @@ impl PipelineLayout {
                 }
 
                 for layout_binding in set_layout.bindings().values() {
-                    num_resources
-                        .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                    num_resources.increment(layout_binding.descriptor_count, layout_binding.stages);
 
                     match layout_binding.descriptor_type {
                         DescriptorType::Sampler => {
                             num_samplers
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                         }
                         DescriptorType::CombinedImageSampler => {
                             num_samplers
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                             num_sampled_images
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                         }
                         DescriptorType::SampledImage | DescriptorType::UniformTexelBuffer => {
                             num_sampled_images
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                         }
                         DescriptorType::StorageImage | DescriptorType::StorageTexelBuffer => {
                             num_storage_images
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                         }
                         DescriptorType::UniformBuffer => {
                             num_uniform_buffers
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                         }
                         DescriptorType::UniformBufferDynamic => {
                             num_uniform_buffers
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                             num_uniform_buffers_dynamic += 1;
                         }
                         DescriptorType::StorageBuffer => {
                             num_storage_buffers
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                         }
                         DescriptorType::StorageBufferDynamic => {
                             num_storage_buffers
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                             num_storage_buffers_dynamic += 1;
                         }
                         DescriptorType::InputAttachment => {
                             num_input_attachments
-                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
                         }
                     }
                 }
@@ -651,7 +650,7 @@ impl PipelineLayout {
         // FIXME: check push constants
         if let Some(range) = push_constant_range {
             for own_range in self.push_constant_ranges.iter() {
-                if range.stages.intersects(&own_range.stages) &&       // check if it shares any stages
+                if range.stages.intersects(own_range.stages) &&       // check if it shares any stages
                     (range.offset < own_range.offset || // our range must start before and end after the given range
                         own_range.offset + own_range.size < range.offset + range.size)
                 {
@@ -1183,24 +1182,24 @@ struct Counter {
 }
 
 impl Counter {
-    fn increment(&mut self, num: u32, stages: &ShaderStages) {
+    fn increment(&mut self, num: u32, stages: ShaderStages) {
         self.total += num;
-        if stages.compute {
+        if stages.intersects(ShaderStages::COMPUTE) {
             self.compute += num;
         }
-        if stages.vertex {
+        if stages.intersects(ShaderStages::VERTEX) {
             self.vertex += num;
         }
-        if stages.tessellation_control {
+        if stages.intersects(ShaderStages::TESSELLATION_CONTROL) {
             self.tess_ctl += num;
         }
-        if stages.tessellation_evaluation {
+        if stages.intersects(ShaderStages::TESSELLATION_EVALUATION) {
             self.tess_eval += num;
         }
-        if stages.geometry {
+        if stages.intersects(ShaderStages::GEOMETRY) {
             self.geometry += num;
         }
-        if stages.fragment {
+        if stages.intersects(ShaderStages::FRAGMENT) {
             self.frag += num;
         }
     }
@@ -1242,37 +1241,24 @@ mod tests {
             (
                 &[
                     PushConstantRange {
-                        stages: ShaderStages {
-                            fragment: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::FRAGMENT,
                         offset: 0,
                         size: 12,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            vertex: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::VERTEX,
                         offset: 0,
                         size: 40,
                     },
                 ][..],
                 &[
                     PushConstantRange {
-                        stages: ShaderStages {
-                            vertex: true,
-                            fragment: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
                         offset: 0,
                         size: 12,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            vertex: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::VERTEX,
                         offset: 12,
                         size: 28,
                     },
@@ -1289,45 +1275,29 @@ mod tests {
             (
                 &[
                     PushConstantRange {
-                        stages: ShaderStages {
-                            fragment: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::FRAGMENT,
                         offset: 0,
                         size: 12,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            vertex: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::VERTEX,
                         offset: 4,
                         size: 36,
                     },
                 ][..],
                 &[
                     PushConstantRange {
-                        stages: ShaderStages {
-                            fragment: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::FRAGMENT,
                         offset: 0,
                         size: 4,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            fragment: true,
-                            vertex: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::FRAGMENT | ShaderStages::VERTEX,
                         offset: 4,
                         size: 8,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            vertex: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::VERTEX,
                         offset: 12,
                         size: 28,
                     },
@@ -1348,91 +1318,59 @@ mod tests {
             (
                 &[
                     PushConstantRange {
-                        stages: ShaderStages {
-                            fragment: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::FRAGMENT,
                         offset: 0,
                         size: 12,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            compute: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::COMPUTE,
                         offset: 8,
                         size: 12,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            vertex: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::VERTEX,
                         offset: 4,
                         size: 12,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            tessellation_control: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::TESSELLATION_CONTROL,
                         offset: 8,
                         size: 24,
                     },
                 ][..],
                 &[
                     PushConstantRange {
-                        stages: ShaderStages {
-                            fragment: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::FRAGMENT,
                         offset: 0,
                         size: 4,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            fragment: true,
-                            vertex: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::FRAGMENT | ShaderStages::VERTEX,
                         offset: 4,
                         size: 4,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            vertex: true,
-                            fragment: true,
-                            compute: true,
-                            tessellation_control: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::VERTEX
+                            | ShaderStages::FRAGMENT
+                            | ShaderStages::COMPUTE
+                            | ShaderStages::TESSELLATION_CONTROL,
                         offset: 8,
                         size: 4,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            vertex: true,
-                            compute: true,
-                            tessellation_control: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::VERTEX
+                            | ShaderStages::COMPUTE
+                            | ShaderStages::TESSELLATION_CONTROL,
                         offset: 12,
                         size: 4,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            compute: true,
-                            tessellation_control: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::COMPUTE | ShaderStages::TESSELLATION_CONTROL,
                         offset: 16,
                         size: 4,
                     },
                     PushConstantRange {
-                        stages: ShaderStages {
-                            tessellation_control: true,
-                            ..Default::default()
-                        },
+                        stages: ShaderStages::TESSELLATION_CONTROL,
                         offset: 20,
                         size: 12,
                     },

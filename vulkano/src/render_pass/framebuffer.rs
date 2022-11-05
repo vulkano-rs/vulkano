@@ -11,7 +11,7 @@ use super::RenderPass;
 use crate::{
     device::{Device, DeviceOwned},
     format::Format,
-    image::{view::ImageViewType, ImageDimensions, ImageViewAbstract, SampleCount},
+    image::{view::ImageViewType, ImageDimensions, ImageUsage, ImageViewAbstract, SampleCount},
     OomError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -131,7 +131,7 @@ impl Framebuffer {
                         .flatten()
                         .any(|atch_ref| atch_ref.attachment == attachment_num)
                     {
-                        if !image_view.usage().color_attachment {
+                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
                             return Err(FramebufferCreationError::AttachmentMissingUsage {
                                 attachment: attachment_num,
                                 usage: "color_attachment",
@@ -142,7 +142,10 @@ impl Framebuffer {
                     // VUID-VkFramebufferCreateInfo-pAttachments-02633
                     if let Some(atch_ref) = &subpass.depth_stencil_attachment {
                         if atch_ref.attachment == attachment_num {
-                            if !image_view.usage().depth_stencil_attachment {
+                            if !image_view
+                                .usage()
+                                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                            {
                                 return Err(FramebufferCreationError::AttachmentMissingUsage {
                                     attachment: attachment_num,
                                     usage: "depth_stencil",
@@ -158,7 +161,7 @@ impl Framebuffer {
                         .flatten()
                         .any(|atch_ref| atch_ref.attachment == attachment_num)
                     {
-                        if !image_view.usage().input_attachment {
+                        if !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT) {
                             return Err(FramebufferCreationError::AttachmentMissingUsage {
                                 attachment: attachment_num,
                                 usage: "input_attachment",

@@ -21,6 +21,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFlags,
     },
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SwapchainImage},
@@ -84,7 +85,8 @@ fn main() {
                 .iter()
                 .enumerate()
                 .position(|(i, q)| {
-                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                        && p.surface_support(i as u32, &surface).unwrap_or(false)
                 })
                 .map(|i| (p, i as u32))
         })
@@ -139,13 +141,10 @@ fn main() {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent: window.inner_size().into(),
-                image_usage: ImageUsage {
-                    color_attachment: true,
-                    ..ImageUsage::empty()
-                },
+                image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
-                    .iter()
+                    .into_iter()
                     .next()
                     .unwrap(),
                 ..Default::default()
@@ -212,10 +211,7 @@ fn main() {
     ];
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
-        BufferUsage {
-            vertex_buffer: true,
-            ..BufferUsage::empty()
-        },
+        BufferUsage::VERTEX_BUFFER,
         false,
         vertices,
     )
@@ -421,15 +417,13 @@ fn main() {
                     )
                     .unwrap()
                     // Begin query 0, then draw the red triangle.
-                    // Enabling the `precise` bit would give exact numeric results. This needs
-                    // the `occlusion_query_precise` feature to be enabled on the device.
+                    // Enabling the `QueryControlFlags::PRECISE` flag would give exact numeric
+                    // results. This needs the `occlusion_query_precise` feature to be enabled on
+                    // the device.
                     .begin_query(
                         query_pool.clone(),
                         0,
-                        QueryControlFlags {
-                            precise: false,
-                            ..QueryControlFlags::empty()
-                        },
+                        QueryControlFlags::empty(), // QueryControlFlags::PRECISE
                     )
                     .unwrap()
                     .bind_vertex_buffers(0, triangle1.clone())
@@ -439,14 +433,7 @@ fn main() {
                     .end_query(query_pool.clone(), 0)
                     .unwrap()
                     // Begin query 1 for the cyan triangle.
-                    .begin_query(
-                        query_pool.clone(),
-                        1,
-                        QueryControlFlags {
-                            precise: false,
-                            ..QueryControlFlags::empty()
-                        },
-                    )
+                    .begin_query(query_pool.clone(), 1, QueryControlFlags::empty())
                     .unwrap()
                     .bind_vertex_buffers(0, triangle2.clone())
                     .draw(triangle2.len() as u32, 1, 0, 0)
@@ -454,14 +441,7 @@ fn main() {
                     .end_query(query_pool.clone(), 1)
                     .unwrap()
                     // Finally, query 2 for the green triangle.
-                    .begin_query(
-                        query_pool.clone(),
-                        2,
-                        QueryControlFlags {
-                            precise: false,
-                            ..QueryControlFlags::empty()
-                        },
-                    )
+                    .begin_query(query_pool.clone(), 2, QueryControlFlags::empty())
                     .unwrap()
                     .bind_vertex_buffers(0, triangle3.clone())
                     .draw(triangle3.len() as u32, 1, 0, 0)
@@ -505,30 +485,29 @@ fn main() {
             // `copy_query_pool_results` function on a command buffer to write results to a
             // Vulkano buffer. This could then be used to influence draw operations further down
             // the line, either in the same frame or a future frame.
+            #[rustfmt::skip]
             query_pool
                 .queries_range(0..3)
                 .unwrap()
                 .get_results(
                     &mut query_results,
-                    QueryResultFlags {
-                        // Block the function call until the results are available.
-                        // Note: if not all the queries have actually been executed, then this
-                        // will wait forever for something that never happens!
-                        wait: true,
+                    // Block the function call until the results are available.
+                    // Note: if not all the queries have actually been executed, then this
+                    // will wait forever for something that never happens!
+                    QueryResultFlags::WAIT
 
-                        // Blocking and waiting will never give partial results.
-                        partial: false,
+                    // Enable this flag to give partial results if available, instead of waiting
+                    // for the full results.
+                    // | QueryResultFlags::PARTIAL
 
-                        // Blocking and waiting will ensure the results are always available after
-                        // the function returns.
-                        //
-                        // If you disable waiting, then this can be used to include the
-                        // availability of each query's results. You need one extra element per
-                        // query in your `query_results` buffer for this. This element will
-                        // be filled with a zero/nonzero value indicating availability.
-                        with_availability: false,
-                        ..QueryResultFlags::empty()
-                    },
+                    // Blocking and waiting will ensure the results are always available after
+                    // the function returns.
+                    //
+                    // If you disable waiting, then this flag can be enabled to include the
+                    // availability of each query's results. You need one extra element per
+                    // query in your `query_results` buffer for this. This element will
+                    // be filled with a zero/nonzero value indicating availability.
+                    // | QueryResultFlags::WITH_AVAILABILITY
                 )
                 .unwrap();
 
@@ -564,11 +543,7 @@ fn window_size_dependent_setup(
             memory_allocator,
             dimensions,
             Format::D16_UNORM,
-            ImageUsage {
-                depth_stencil_attachment: true,
-                transient_attachment: true,
-                ..ImageUsage::empty()
-            },
+            ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
         )
         .unwrap(),
     )

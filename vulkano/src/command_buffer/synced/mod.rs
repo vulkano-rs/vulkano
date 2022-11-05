@@ -427,10 +427,7 @@ mod tests {
             let buffer = DeviceLocalBuffer::from_data(
                 &memory_allocator,
                 0u32,
-                BufferUsage {
-                    transfer_dst: true,
-                    ..BufferUsage::empty()
-                },
+                BufferUsage::TRANSFER_DST,
                 &mut cbb,
             )
             .unwrap();
@@ -542,10 +539,7 @@ mod tests {
             let memory_allocator = StandardMemoryAllocator::new_default(device);
             let buf = CpuAccessibleBuffer::from_data(
                 &memory_allocator,
-                BufferUsage {
-                    vertex_buffer: true,
-                    ..BufferUsage::empty()
-                },
+                BufferUsage::VERTEX_BUFFER,
                 false,
                 0u32,
             )

@@ -52,7 +52,7 @@ macro_rules! gfx_dev_and_queue {
             })
             .filter_map(|p| {
                 p.queue_family_properties().iter()
-                    .position(|q| q.queue_flags.graphics)
+                    .position(|q| q.queue_flags.intersects(crate::device::QueueFlags::GRAPHICS))
                     .map(|i| (p, i as u32))
             })
             .min_by_key(|(p, _)| {

@@ -90,6 +90,8 @@ impl Default for InputAssemblyState {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// Describes how vertices must be grouped together to form primitives.
     ///
     /// When enabling primitive restart, "list" topologies require a feature to be enabled on the
@@ -100,8 +102,26 @@ vulkan_enum! {
     /// - All other "list" topologies require the
     ///   [`primitive_topology_list_restart`](crate::device::Features::primitive_topology_list_restart)
     ///   feature.
-    #[non_exhaustive]
-    PrimitiveTopology = PrimitiveTopology(i32);
+    PrimitiveTopology impl {
+        /// Returns the topology class of this topology.
+        #[inline]
+        pub fn class(self) -> PrimitiveTopologyClass {
+            match self {
+                Self::PointList => PrimitiveTopologyClass::Point,
+                Self::LineList
+                | Self::LineStrip
+                | Self::LineListWithAdjacency
+                | Self::LineStripWithAdjacency => PrimitiveTopologyClass::Line,
+                Self::TriangleList
+                | Self::TriangleStrip
+                | Self::TriangleFan
+                | Self::TriangleListWithAdjacency
+                | Self::TriangleStripWithAdjacency => PrimitiveTopologyClass::Triangle,
+                Self::PatchList => PrimitiveTopologyClass::Patch,
+            }
+        }
+    }
+    = PrimitiveTopology(i32);
 
     /// A series of separate point primitives.
     PointList = POINT_LIST,
@@ -156,26 +176,6 @@ impl Default for PrimitiveTopology {
     }
 }
 
-impl PrimitiveTopology {
-    /// Returns the topology class of this topology.
-    #[inline]
-    pub fn class(&self) -> PrimitiveTopologyClass {
-        match self {
-            Self::PointList => PrimitiveTopologyClass::Point,
-            Self::LineList
-            | Self::LineStrip
-            | Self::LineListWithAdjacency
-            | Self::LineStripWithAdjacency => PrimitiveTopologyClass::Line,
-            Self::TriangleList
-            | Self::TriangleStrip
-            | Self::TriangleFan
-            | Self::TriangleListWithAdjacency
-            | Self::TriangleStripWithAdjacency => PrimitiveTopologyClass::Triangle,
-            Self::PatchList => PrimitiveTopologyClass::Patch,
-        }
-    }
-}
-
 /// Describes the shape of a primitive topology.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PrimitiveTopologyClass {
@@ -187,7 +187,7 @@ pub enum PrimitiveTopologyClass {
 
 impl PrimitiveTopologyClass {
     /// Returns a representative example of this topology class.
-    pub(crate) fn example(&self) -> PrimitiveTopology {
+    pub(crate) fn example(self) -> PrimitiveTopology {
         match self {
             Self::Point => PrimitiveTopology::PointList,
             Self::Line => PrimitiveTopology::LineList,
@@ -225,8 +225,9 @@ unsafe impl Index for u32 {
 }
 
 vulkan_enum! {
-    /// An enumeration of all valid index types.
     #[non_exhaustive]
+
+    /// An enumeration of all valid index types.
     IndexType = IndexType(i32);
 
     // TODO: document
@@ -251,7 +252,7 @@ vulkan_enum! {
 impl IndexType {
     /// Returns the size in bytes of indices of this type.
     #[inline]
-    pub fn size(&self) -> DeviceSize {
+    pub fn size(self) -> DeviceSize {
         match self {
             IndexType::U8 => 1,
             IndexType::U16 => 2,

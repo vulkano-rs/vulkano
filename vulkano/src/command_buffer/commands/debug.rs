@@ -14,7 +14,7 @@ use crate::{
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
     },
-    device::DeviceOwned,
+    device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
     RequiresOneOf,
 };
@@ -26,9 +26,9 @@ use std::{
 
 /// # Commands for debugging.
 ///
-/// These commands all require the
-/// [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) to be enabled on the
-/// instance.
+/// These commands all require the [`ext_debug_utils`] extension to be enabled on the instance.
+///
+/// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
 impl<L, A> AutoCommandBufferBuilder<L, A>
 where
     A: CommandBufferAllocator,
@@ -58,7 +58,7 @@ where
             .ext_debug_utils
         {
             return Err(DebugUtilsError::RequirementNotMet {
-                required_for: "`begin_debug_utils_label`",
+                required_for: "`AutoCommandBufferBuilder::begin_debug_utils_label`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
@@ -69,8 +69,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBeginDebugUtilsLabelEXT-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(DebugUtilsError::NotSupportedByQueueFamily);
         }
@@ -101,7 +102,7 @@ where
             .ext_debug_utils
         {
             return Err(DebugUtilsError::RequirementNotMet {
-                required_for: "`end_debug_utils_label`",
+                required_for: "`AutoCommandBufferBuilder::end_debug_utils_label`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
@@ -112,8 +113,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdEndDebugUtilsLabelEXT-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(DebugUtilsError::NotSupportedByQueueFamily);
         }
@@ -152,7 +154,7 @@ where
             .ext_debug_utils
         {
             return Err(DebugUtilsError::RequirementNotMet {
-                required_for: "`insert_debug_utils_label`",
+                required_for: "`AutoCommandBufferBuilder::insert_debug_utils_label`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
@@ -163,8 +165,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdInsertDebugUtilsLabelEXT-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(DebugUtilsError::NotSupportedByQueueFamily);
         }

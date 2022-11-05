@@ -147,10 +147,10 @@ where
         let properties = memory_allocator.device().physical_device().properties();
         let buffer_alignment = [
             buffer_usage
-                .uniform_buffer
+                .contains(BufferUsage::UNIFORM_BUFFER)
                 .then_some(properties.min_uniform_buffer_offset_alignment),
             buffer_usage
-                .storage_buffer
+                .contains(BufferUsage::STORAGE_BUFFER)
                 .then_some(properties.min_storage_buffer_offset_alignment),
         ]
         .into_iter()
@@ -473,10 +473,7 @@ impl Default for CpuBufferAllocatorCreateInfo {
     fn default() -> Self {
         CpuBufferAllocatorCreateInfo {
             arena_size: 0,
-            buffer_usage: BufferUsage {
-                transfer_src: true,
-                ..Default::default()
-            },
+            buffer_usage: BufferUsage::TRANSFER_SRC,
             memory_usage: MemoryUsage::Upload,
             _ne: crate::NonExhaustive(()),
         }

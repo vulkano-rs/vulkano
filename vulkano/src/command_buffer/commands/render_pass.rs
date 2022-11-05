@@ -18,9 +18,9 @@ use crate::{
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, SubpassContents,
     },
-    device::DeviceOwned,
+    device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, Format, NumericType},
-    image::{ImageLayout, ImageViewAbstract, SampleCount},
+    image::{ImageAspects, ImageLayout, ImageUsage, ImageViewAbstract, SampleCount},
     render_pass::{
         AttachmentDescription, Framebuffer, LoadOp, RenderPass, ResolveMode, StoreOp,
         SubpassDescription,
@@ -103,7 +103,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBeginRenderPass2-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(RenderPassError::NotSupportedByQueueFamily);
         }
 
@@ -155,7 +158,7 @@ where
                 match layout {
                     ImageLayout::ColorAttachmentOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03094
-                        if !image_view.usage().color_attachment {
+                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index,
                                 usage: "color_attachment",
@@ -167,7 +170,10 @@ where
                     | ImageLayout::DepthStencilAttachmentOptimal
                     | ImageLayout::DepthStencilReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03096
-                        if !image_view.usage().depth_stencil_attachment {
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                        {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index,
                                 usage: "depth_stencil_attachment",
@@ -176,7 +182,10 @@ where
                     }
                     ImageLayout::ShaderReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03097
-                        if !(image_view.usage().sampled || image_view.usage().input_attachment) {
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                        {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index,
                                 usage: "sampled or input_attachment",
@@ -185,7 +194,7 @@ where
                     }
                     ImageLayout::TransferSrcOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03098
-                        if !image_view.usage().transfer_src {
+                        if !image_view.usage().intersects(ImageUsage::TRANSFER_SRC) {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index,
                                 usage: "transfer_src",
@@ -194,7 +203,7 @@ where
                     }
                     ImageLayout::TransferDstOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03099
-                        if !image_view.usage().transfer_dst {
+                        if !image_view.usage().intersects(ImageUsage::TRANSFER_DST) {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index,
                                 usage: "transfer_dst",
@@ -228,7 +237,7 @@ where
                 match atch_ref.layout {
                     ImageLayout::ColorAttachmentOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03094
-                        if !image_view.usage().color_attachment {
+                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index: atch_ref.attachment,
                                 usage: "color_attachment",
@@ -240,7 +249,10 @@ where
                     | ImageLayout::DepthStencilAttachmentOptimal
                     | ImageLayout::DepthStencilReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03096
-                        if !image_view.usage().depth_stencil_attachment {
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                        {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index: atch_ref.attachment,
                                 usage: "depth_stencil_attachment",
@@ -249,7 +261,10 @@ where
                     }
                     ImageLayout::ShaderReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03097
-                        if !(image_view.usage().sampled || image_view.usage().input_attachment) {
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                        {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index: atch_ref.attachment,
                                 usage: "sampled or input_attachment",
@@ -258,7 +273,7 @@ where
                     }
                     ImageLayout::TransferSrcOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03098
-                        if !image_view.usage().transfer_src {
+                        if !image_view.usage().intersects(ImageUsage::TRANSFER_SRC) {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index: atch_ref.attachment,
                                 usage: "transfer_src",
@@ -267,7 +282,7 @@ where
                     }
                     ImageLayout::TransferDstOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03099
-                        if !image_view.usage().transfer_dst {
+                        if !image_view.usage().intersects(ImageUsage::TRANSFER_DST) {
                             return Err(RenderPassError::AttachmentImageMissingUsage {
                                 attachment_index: atch_ref.attachment,
                                 usage: "transfer_dst",
@@ -344,9 +359,9 @@ where
                     }
                 } else {
                     let attachment_aspects = attachment_format.aspects();
-                    let need_depth =
-                        attachment_aspects.depth && attachment_desc.load_op == LoadOp::Clear;
-                    let need_stencil = attachment_aspects.stencil
+                    let need_depth = attachment_aspects.intersects(ImageAspects::DEPTH)
+                        && attachment_desc.load_op == LoadOp::Clear;
+                    let need_stencil = attachment_aspects.intersects(ImageAspects::STENCIL)
                         && attachment_desc.stencil_load_op == LoadOp::Clear;
 
                     if need_depth && need_stencil {
@@ -456,10 +471,10 @@ where
         }
 
         // VUID-vkCmdNextSubpass2-commandBuffer-cmdpool
-        debug_assert!({
-            let queue_family_properties = self.queue_family_properties();
-            queue_family_properties.queue_flags.graphics
-        });
+        debug_assert!(self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS));
 
         // VUID-vkCmdNextSubpass2-bufferlevel
         // Ensured by the type of the impl block
@@ -514,10 +529,10 @@ where
         }
 
         // VUID-vkCmdEndRenderPass2-commandBuffer-cmdpool
-        debug_assert!({
-            let queue_family_properties = self.queue_family_properties();
-            queue_family_properties.queue_flags.graphics
-        });
+        debug_assert!(self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS));
 
         // VUID-vkCmdEndRenderPass2-bufferlevel
         // Ensured by the type of the impl block
@@ -678,7 +693,7 @@ where
         // VUID-vkCmdBeginRendering-dynamicRendering-06446
         if !device.enabled_features().dynamic_rendering {
             return Err(RenderPassError::RequirementNotMet {
-                required_for: "`begin_rendering`",
+                required_for: "`AutoCommandBufferBuilder::begin_rendering`",
                 requires_one_of: RequiresOneOf {
                     features: &["dynamic_rendering"],
                     ..Default::default()
@@ -689,7 +704,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBeginRendering-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.graphics {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
             return Err(RenderPassError::NotSupportedByQueueFamily);
         }
 
@@ -785,7 +803,7 @@ where
             store_op.validate_device(device)?;
 
             // VUID-VkRenderingInfo-colorAttachmentCount-06087
-            if !image_view.usage().color_attachment {
+            if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
                 return Err(RenderPassError::ColorAttachmentMissingUsage { attachment_index });
             }
 
@@ -942,12 +960,15 @@ where
             let image_aspects = image_view.format().unwrap().aspects();
 
             // VUID-VkRenderingInfo-pDepthAttachment-06547
-            if !image_aspects.depth {
+            if !image_aspects.intersects(ImageAspects::DEPTH) {
                 return Err(RenderPassError::DepthAttachmentFormatUsageNotSupported);
             }
 
             // VUID-VkRenderingInfo-pDepthAttachment-06088
-            if !image_view.usage().depth_stencil_attachment {
+            if !image_view
+                .usage()
+                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            {
                 return Err(RenderPassError::DepthAttachmentMissingUsage);
             }
 
@@ -1003,7 +1024,7 @@ where
                 // VUID-VkRenderingInfo-pDepthAttachment-06102
                 if !properties
                     .supported_depth_resolve_modes
-                    .map_or(false, |modes| modes.contains_mode(mode))
+                    .map_or(false, |modes| modes.contains_enum(mode))
                 {
                     return Err(RenderPassError::DepthAttachmentResolveModeNotSupported);
                 }
@@ -1069,12 +1090,15 @@ where
             let image_aspects = image_view.format().unwrap().aspects();
 
             // VUID-VkRenderingInfo-pStencilAttachment-06548
-            if !image_aspects.stencil {
+            if !image_aspects.intersects(ImageAspects::STENCIL) {
                 return Err(RenderPassError::StencilAttachmentFormatUsageNotSupported);
             }
 
             // VUID-VkRenderingInfo-pStencilAttachment-06089
-            if !image_view.usage().depth_stencil_attachment {
+            if !image_view
+                .usage()
+                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            {
                 return Err(RenderPassError::StencilAttachmentMissingUsage);
             }
 
@@ -1130,7 +1154,7 @@ where
                 // VUID-VkRenderingInfo-pStencilAttachment-06103
                 if !properties
                     .supported_stencil_resolve_modes
-                    .map_or(false, |modes| modes.contains_mode(mode))
+                    .map_or(false, |modes| modes.contains_enum(mode))
                 {
                     return Err(RenderPassError::StencilAttachmentResolveModeNotSupported);
                 }
@@ -1251,10 +1275,10 @@ where
         }
 
         // VUID-vkCmdEndRendering-commandBuffer-cmdpool
-        debug_assert!({
-            let queue_family_properties = self.queue_family_properties();
-            queue_family_properties.queue_flags.graphics
-        });
+        debug_assert!(self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS));
 
         Ok(())
     }
@@ -1416,8 +1440,9 @@ where
                     if matches!(
                         clear_attachment,
                         ClearAttachment::Depth(_) | ClearAttachment::DepthStencil(_)
-                    ) && !depth_format.map_or(false, |format| format.aspects().depth)
-                    {
+                    ) && !depth_format.map_or(false, |format| {
+                        format.aspects().intersects(ImageAspects::DEPTH)
+                    }) {
                         return Err(RenderPassError::ClearAttachmentNotCompatible {
                             clear_attachment,
                             attachment_format: None,
@@ -1428,8 +1453,9 @@ where
                     if matches!(
                         clear_attachment,
                         ClearAttachment::Stencil(_) | ClearAttachment::DepthStencil(_)
-                    ) && !stencil_format.map_or(false, |format| format.aspects().stencil)
-                    {
+                    ) && !stencil_format.map_or(false, |format| {
+                        format.aspects().intersects(ImageAspects::STENCIL)
+                    }) {
                         return Err(RenderPassError::ClearAttachmentNotCompatible {
                             clear_attachment,
                             attachment_format: None,
@@ -1502,10 +1528,10 @@ where
         }
 
         // VUID-vkCmdClearAttachments-commandBuffer-cmdpool
-        debug_assert!({
-            let queue_family_properties = self.queue_family_properties();
-            queue_family_properties.queue_flags.graphics
-        });
+        debug_assert!(self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS));
 
         Ok(())
     }
@@ -1559,18 +1585,12 @@ impl SyncCommandBufferBuilder {
                         image: image_view.image(),
                         subresource_range: image_view.subresource_range().clone(),
                         memory: PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                all_commands: true,
-                                ..PipelineStages::empty()
-                            }, // TODO: wrong!
-                            access: AccessFlags {
-                                input_attachment_read: true,
-                                color_attachment_read: true,
-                                color_attachment_write: true,
-                                depth_stencil_attachment_read: true,
-                                depth_stencil_attachment_write: true,
-                                ..AccessFlags::empty()
-                            }, // TODO: suboptimal
+                            stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                            access: AccessFlags::INPUT_ATTACHMENT_READ
+                                | AccessFlags::COLOR_ATTACHMENT_READ
+                                | AccessFlags::COLOR_ATTACHMENT_WRITE
+                                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
                             exclusive: true, // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
                         },
                         start_layout: desc.initial_layout,
@@ -1696,16 +1716,10 @@ impl SyncCommandBufferBuilder {
                             image: image_view.image(),
                             subresource_range: image_view.subresource_range().clone(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_commands: true,
-                                    ..PipelineStages::empty()
-                                }, // TODO: wrong!
-                                access: AccessFlags {
-                                    color_attachment_read: true,
-                                    color_attachment_write: true,
-                                    ..AccessFlags::empty()
-                                }, // TODO: suboptimal
-                                exclusive: true, // TODO: suboptimal
+                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                access: AccessFlags::COLOR_ATTACHMENT_READ
+                                    | AccessFlags::COLOR_ATTACHMENT_WRITE, // TODO: suboptimal
+                                exclusive: true,                      // TODO: suboptimal
                             },
                             start_layout: image_layout,
                             end_layout: image_layout,
@@ -1724,16 +1738,10 @@ impl SyncCommandBufferBuilder {
                                 image: image_view.image(),
                                 subresource_range: image_view.subresource_range().clone(),
                                 memory: PipelineMemoryAccess {
-                                    stages: PipelineStages {
-                                        all_commands: true,
-                                        ..PipelineStages::empty()
-                                    }, // TODO: wrong!
-                                    access: AccessFlags {
-                                        color_attachment_read: true,
-                                        color_attachment_write: true,
-                                        ..AccessFlags::empty()
-                                    }, // TODO: suboptimal
-                                    exclusive: true, // TODO: suboptimal
+                                    stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                    access: AccessFlags::COLOR_ATTACHMENT_READ
+                                        | AccessFlags::COLOR_ATTACHMENT_WRITE, // TODO: suboptimal
+                                    exclusive: true,                      // TODO: suboptimal
                                 },
                                 start_layout: image_layout,
                                 end_layout: image_layout,
@@ -1762,16 +1770,10 @@ impl SyncCommandBufferBuilder {
                         image: image_view.image(),
                         subresource_range: image_view.subresource_range().clone(),
                         memory: PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                all_commands: true,
-                                ..PipelineStages::empty()
-                            }, // TODO: wrong!
-                            access: AccessFlags {
-                                depth_stencil_attachment_read: true,
-                                depth_stencil_attachment_write: true,
-                                ..AccessFlags::empty()
-                            }, // TODO: suboptimal
-                            exclusive: true, // TODO: suboptimal
+                            stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                            access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
+                            exclusive: true,                      // TODO: suboptimal
                         },
                         start_layout: image_layout,
                         end_layout: image_layout,
@@ -1790,15 +1792,9 @@ impl SyncCommandBufferBuilder {
                             image: image_view.image(),
                             subresource_range: image_view.subresource_range().clone(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_commands: true,
-                                    ..PipelineStages::empty()
-                                }, // TODO: wrong!
-                                access: AccessFlags {
-                                    depth_stencil_attachment_read: true,
-                                    depth_stencil_attachment_write: true,
-                                    ..AccessFlags::empty()
-                                }, // TODO: suboptimal
+                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
                                 exclusive: true, // TODO: suboptimal
                             },
                             start_layout: image_layout,
@@ -1828,16 +1824,10 @@ impl SyncCommandBufferBuilder {
                         image: image_view.image(),
                         subresource_range: image_view.subresource_range().clone(),
                         memory: PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                all_commands: true,
-                                ..PipelineStages::empty()
-                            }, // TODO: wrong!
-                            access: AccessFlags {
-                                depth_stencil_attachment_read: true,
-                                depth_stencil_attachment_write: true,
-                                ..AccessFlags::empty()
-                            }, // TODO: suboptimal
-                            exclusive: true, // TODO: suboptimal
+                            stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                            access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
+                            exclusive: true,                      // TODO: suboptimal
                         },
                         start_layout: image_layout,
                         end_layout: image_layout,
@@ -1856,15 +1846,9 @@ impl SyncCommandBufferBuilder {
                             image: image_view.image(),
                             subresource_range: image_view.subresource_range().clone(),
                             memory: PipelineMemoryAccess {
-                                stages: PipelineStages {
-                                    all_commands: true,
-                                    ..PipelineStages::empty()
-                                }, // TODO: wrong!
-                                access: AccessFlags {
-                                    depth_stencil_attachment_read: true,
-                                    depth_stencil_attachment_write: true,
-                                    ..AccessFlags::empty()
-                                }, // TODO: suboptimal
+                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
                                 exclusive: true, // TODO: suboptimal
                             },
                             start_layout: image_layout,
@@ -2429,7 +2413,7 @@ impl RenderingAttachmentInfo {
     #[inline]
     pub fn image_view(image_view: Arc<dyn ImageViewAbstract>) -> Self {
         let aspects = image_view.format().unwrap().aspects();
-        let image_layout = if aspects.depth || aspects.stencil {
+        let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal
         } else {
             ImageLayout::ColorAttachmentOptimal
@@ -2473,7 +2457,7 @@ impl RenderingAttachmentResolveInfo {
     #[inline]
     pub fn image_view(image_view: Arc<dyn ImageViewAbstract>) -> Self {
         let aspects = image_view.format().unwrap().aspects();
-        let image_layout = if aspects.depth || aspects.stencil {
+        let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal
         } else {
             ImageLayout::ColorAttachmentOptimal

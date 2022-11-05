@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::{view::BufferViewAbstract, BufferAccess, TypedBufferAccess},
+    buffer::{view::BufferViewAbstract, BufferAccess, BufferUsage, TypedBufferAccess},
     command_buffer::{
         allocator::CommandBufferAllocator,
         auto::{RenderPassState, RenderPassStateType},
@@ -18,10 +18,11 @@ use crate::{
         DrawIndirectCommand, SubpassContents,
     },
     descriptor_set::{layout::DescriptorType, DescriptorBindingResources},
-    device::DeviceOwned,
-    format::Format,
+    device::{DeviceOwned, QueueFlags},
+    format::{Format, FormatFeatures},
     image::{
-        view::ImageViewType, ImageAccess, ImageSubresourceRange, ImageViewAbstract, SampleCount,
+        view::ImageViewType, ImageAccess, ImageAspects, ImageSubresourceRange, ImageViewAbstract,
+        SampleCount,
     },
     pipeline::{
         graphics::{
@@ -76,7 +77,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdDispatch-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.compute {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE)
+        {
             return Err(PipelineExecutionError::NotSupportedByQueueFamily);
         }
 
@@ -142,7 +146,10 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdDispatchIndirect-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.compute {
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE)
+        {
             return Err(PipelineExecutionError::NotSupportedByQueueFamily);
         }
 
@@ -549,7 +556,7 @@ where
         assert_eq!(self.device(), buffer.device());
 
         // VUID-vkCmdDispatchIndirect-buffer-02709
-        if !buffer.inner().buffer.usage().indirect_buffer {
+        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
             return Err(PipelineExecutionError::IndirectBufferMissingUsage);
         }
 
@@ -650,7 +657,9 @@ where
                     // VUID-vkCmdDispatch-OpTypeImage-06423
                     if reqs.image_format.is_none()
                         && reqs.storage_write.contains(&index)
-                        && !buffer_view.format_features().storage_write_without_format
+                        && !buffer_view
+                            .format_features()
+                            .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
                     {
                         return Err(
                             DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported,
@@ -660,7 +669,9 @@ where
                     // VUID-vkCmdDispatch-OpTypeImage-06424
                     if reqs.image_format.is_none()
                         && reqs.storage_read.contains(&index)
-                        && !buffer_view.format_features().storage_read_without_format
+                        && !buffer_view
+                            .format_features()
+                            .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
                     {
                         return Err(
                             DescriptorResourceInvalidError::StorageReadWithoutFormatNotSupported,
@@ -674,7 +685,9 @@ where
             let check_image_view_common = |index: u32, image_view: &Arc<dyn ImageViewAbstract>| {
                 // VUID-vkCmdDispatch-None-02691
                 if reqs.storage_image_atomic.contains(&index)
-                    && !image_view.format_features().storage_image_atomic
+                    && !image_view
+                        .format_features()
+                        .intersects(FormatFeatures::STORAGE_IMAGE_ATOMIC)
                 {
                     return Err(DescriptorResourceInvalidError::StorageImageAtomicNotSupported);
                 }
@@ -683,7 +696,9 @@ where
                     // VUID-vkCmdDispatch-OpTypeImage-06423
                     if reqs.image_format.is_none()
                         && reqs.storage_write.contains(&index)
-                        && !image_view.format_features().storage_write_without_format
+                        && !image_view
+                            .format_features()
+                            .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
                     {
                         return Err(
                             DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported,
@@ -693,7 +708,9 @@ where
                     // VUID-vkCmdDispatch-OpTypeImage-06424
                     if reqs.image_format.is_none()
                         && reqs.storage_read.contains(&index)
-                        && !image_view.format_features().storage_read_without_format
+                        && !image_view
+                            .format_features()
+                            .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
                     {
                         return Err(
                             DescriptorResourceInvalidError::StorageReadWithoutFormatNotSupported,
@@ -748,11 +765,16 @@ where
                 if let Some(scalar_type) = reqs.image_scalar_type {
                     let aspects = image_view.subresource_range().aspects;
                     let view_scalar_type = ShaderScalarType::from(
-                        if aspects.color || aspects.plane0 || aspects.plane1 || aspects.plane2 {
+                        if aspects.intersects(
+                            ImageAspects::COLOR
+                                | ImageAspects::PLANE_0
+                                | ImageAspects::PLANE_1
+                                | ImageAspects::PLANE_2,
+                        ) {
                             image_view.format().unwrap().type_color().unwrap()
-                        } else if aspects.depth {
+                        } else if aspects.intersects(ImageAspects::DEPTH) {
                             image_view.format().unwrap().type_depth().unwrap()
-                        } else if aspects.stencil {
+                        } else if aspects.intersects(ImageAspects::STENCIL) {
                             image_view.format().unwrap().type_stencil().unwrap()
                         } else {
                             // Per `ImageViewBuilder::aspects` and
@@ -1125,7 +1147,10 @@ where
                                 // VUID?
                                 if !device.enabled_features().primitive_topology_list_restart {
                                     return Err(PipelineExecutionError::RequirementNotMet {
-                                        required_for: "The bound pipeline sets `DynamicState::PrimitiveRestartEnable` and the current primitive topology is `PrimitiveTopology::*List`",
+                                        required_for: "The bound pipeline sets \
+                                            `DynamicState::PrimitiveRestartEnable` and the \
+                                            current primitive topology is \
+                                            `PrimitiveTopology::*List`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["primitive_topology_list_restart"],
                                             ..Default::default()
@@ -1140,7 +1165,10 @@ where
                                     .primitive_topology_patch_list_restart
                                 {
                                     return Err(PipelineExecutionError::RequirementNotMet {
-                                        required_for: "The bound pipeline sets `DynamicState::PrimitiveRestartEnable` and the current primitive topology is `PrimitiveTopology::PatchList`",
+                                        required_for: "The bound pipeline sets \
+                                            `DynamicState::PrimitiveRestartEnable` and the \
+                                            current primitive topology is \
+                                            `PrimitiveTopology::PatchList`",
                                         requires_one_of: RequiresOneOf {
                                             features: &["primitive_topology_patch_list_restart"],
                                             ..Default::default()
@@ -1934,20 +1962,10 @@ impl SyncCommandBufferBuilder {
                     | DescriptorType::UniformTexelBuffer
                     | DescriptorType::StorageTexelBuffer
                     | DescriptorType::StorageBuffer
-                    | DescriptorType::StorageBufferDynamic => AccessFlags {
-                        shader_read: true,
-                        shader_write: false,
-                        ..AccessFlags::empty()
-                    },
-                    DescriptorType::InputAttachment => AccessFlags {
-                        input_attachment_read: true,
-                        ..AccessFlags::empty()
-                    },
+                    | DescriptorType::StorageBufferDynamic => AccessFlags::SHADER_READ,
+                    DescriptorType::InputAttachment => AccessFlags::INPUT_ATTACHMENT_READ,
                     DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
-                        AccessFlags {
-                            uniform_read: true,
-                            ..AccessFlags::empty()
-                        }
+                        AccessFlags::UNIFORM_READ
                     }
                 },
                 exclusive: false,
@@ -1956,8 +1974,12 @@ impl SyncCommandBufferBuilder {
             let access = (0..).map(|index| {
                 let mut access = access;
                 let mutable = reqs.storage_write.contains(&index);
-                access.access.shader_write = mutable;
                 access.exclusive = mutable;
+
+                if mutable {
+                    access.access |= AccessFlags::SHADER_WRITE;
+                }
+
                 access
             });
 
@@ -2080,14 +2102,8 @@ impl SyncCommandBufferBuilder {
                     buffer: vertex_buffer.clone(),
                     range: 0..vertex_buffer.size(), // TODO:
                     memory: PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            vertex_input: true,
-                            ..PipelineStages::empty()
-                        },
-                        access: AccessFlags {
-                            vertex_attribute_read: true,
-                            ..AccessFlags::empty()
-                        },
+                        stages: PipelineStages::VERTEX_INPUT,
+                        access: AccessFlags::VERTEX_ATTRIBUTE_READ,
                         exclusive: false,
                     },
                 },
@@ -2103,14 +2119,8 @@ impl SyncCommandBufferBuilder {
                 buffer: index_buffer.clone(),
                 range: 0..index_buffer.size(), // TODO:
                 memory: PipelineMemoryAccess {
-                    stages: PipelineStages {
-                        vertex_input: true,
-                        ..PipelineStages::empty()
-                    },
-                    access: AccessFlags {
-                        index_read: true,
-                        ..AccessFlags::empty()
-                    },
+                    stages: PipelineStages::VERTEX_INPUT,
+                    access: AccessFlags::INDEX_READ,
                     exclusive: false,
                 },
             },
@@ -2128,14 +2138,8 @@ impl SyncCommandBufferBuilder {
                 buffer: indirect_buffer.clone(),
                 range: 0..indirect_buffer.size(), // TODO:
                 memory: PipelineMemoryAccess {
-                    stages: PipelineStages {
-                        draw_indirect: true,
-                        ..PipelineStages::empty()
-                    }, // TODO: is draw_indirect correct for dispatch too?
-                    access: AccessFlags {
-                        indirect_command_read: true,
-                        ..AccessFlags::empty()
-                    },
+                    stages: PipelineStages::DRAW_INDIRECT, // TODO: is draw_indirect correct for dispatch too?
+                    access: AccessFlags::INDIRECT_COMMAND_READ,
                     exclusive: false,
                 },
             },
@@ -2174,7 +2178,10 @@ impl UnsafeCommandBufferBuilder {
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner.buffer.usage().indirect_buffer);
+        debug_assert!(inner
+            .buffer
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER));
         debug_assert_eq!(inner.offset % 4, 0);
 
         (fns.v1_0.cmd_dispatch_indirect)(self.handle, inner.buffer.handle(), inner.offset);
@@ -2238,7 +2245,10 @@ impl UnsafeCommandBufferBuilder {
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner.buffer.usage().indirect_buffer);
+        debug_assert!(inner
+            .buffer
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER));
 
         (fns.v1_0.cmd_draw_indirect)(
             self.handle,
@@ -2261,7 +2271,10 @@ impl UnsafeCommandBufferBuilder {
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner.buffer.usage().indirect_buffer);
+        debug_assert!(inner
+            .buffer
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER));
 
         (fns.v1_0.cmd_draw_indexed_indirect)(
             self.handle,

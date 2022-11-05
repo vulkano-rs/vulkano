@@ -22,6 +22,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFlags,
     },
     format::Format,
     image::{
@@ -91,7 +92,8 @@ fn main() {
                 .iter()
                 .enumerate()
                 .position(|(i, q)| {
-                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                        && p.surface_support(i as u32, &surface).unwrap_or(false)
                 })
                 .map(|i| (p, i as u32))
         })
@@ -146,13 +148,10 @@ fn main() {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent: window.inner_size().into(),
-                image_usage: ImageUsage {
-                    color_attachment: true,
-                    ..ImageUsage::empty()
-                },
+                image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
-                    .iter()
+                    .into_iter()
                     .next()
                     .unwrap(),
                 ..Default::default()
@@ -186,10 +185,7 @@ fn main() {
     ];
     let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
         &memory_allocator,
-        BufferUsage {
-            vertex_buffer: true,
-            ..BufferUsage::empty()
-        },
+        BufferUsage::VERTEX_BUFFER,
         false,
         vertices,
     )
@@ -250,10 +246,7 @@ fn main() {
 
         let buffer = CpuAccessibleBuffer::from_iter(
             &memory_allocator,
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            },
+            BufferUsage::TRANSFER_SRC,
             false,
             image_data,
         )

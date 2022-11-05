@@ -11,6 +11,20 @@
 
 ### Breaking changes
 
+Changes to all Vulkan bitflag types:
+- They are now implemented as wrappers around an integer, instead of as a struct of `bool`s.
+- The fields of the struct have been replaced with associated constants, using uppercase names as is the convention.
+- All functions that take or return one of these types now take them by value (copy).
+- Bitflag types that have a corresponding enum type now have the following additional items:
+  - A `contains_enum` method that takes a value of the enum, and returns whether the bitflags contain the flag corresponding to that enum.
+  - A `From` implementation to convert the enum to the bitflags type, with a single flag set.
+  - A `FromIterator` implementation that collects an iterator of enums into a single bitflag value.
+  - An `IntoIterator` implementation that does the reverse.
+
+Changes to two swapchain bitflag types:
+  - `SupportedSurfaceTransforms` is renamed to `SurfaceTransforms`.
+  - `SupportedCompositeAlpha` is renamed to `CompositeAlphas`.
+
 ### Additions
 
 ### Bugs fixed

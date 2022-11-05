@@ -126,8 +126,8 @@ impl UnsafeCommandBufferBuilder {
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(&src_access));
-                    debug_assert!(dst_stages.supported_access().contains(&dst_access));
+                    debug_assert!(src_stages.supported_access().contains(src_access));
+                    debug_assert!(dst_stages.supported_access().contains(dst_access));
 
                     ash::vk::MemoryBarrier2 {
                         src_stage_mask: src_stages.into(),
@@ -153,8 +153,8 @@ impl UnsafeCommandBufferBuilder {
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(&src_access));
-                    debug_assert!(dst_stages.supported_access().contains(&dst_access));
+                    debug_assert!(src_stages.supported_access().contains(src_access));
+                    debug_assert!(dst_stages.supported_access().contains(dst_access));
                     debug_assert!(!range.is_empty());
                     debug_assert!(range.end <= buffer.size());
 
@@ -195,8 +195,8 @@ impl UnsafeCommandBufferBuilder {
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(&src_access));
-                    debug_assert!(dst_stages.supported_access().contains(&dst_access));
+                    debug_assert!(src_stages.supported_access().contains(src_access));
+                    debug_assert!(dst_stages.supported_access().contains(dst_access));
                     debug_assert!(!matches!(
                         new_layout,
                         ImageLayout::Undefined | ImageLayout::Preinitialized
@@ -205,7 +205,7 @@ impl UnsafeCommandBufferBuilder {
                         .format()
                         .unwrap()
                         .aspects()
-                        .contains(&subresource_range.aspects));
+                        .contains(subresource_range.aspects));
                     debug_assert!(!subresource_range.mip_levels.is_empty());
                     debug_assert!(subresource_range.mip_levels.end <= image.mip_levels());
                     debug_assert!(!subresource_range.array_layers.is_empty());
@@ -272,8 +272,8 @@ impl UnsafeCommandBufferBuilder {
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(&src_access));
-                    debug_assert!(dst_stages.supported_access().contains(&dst_access));
+                    debug_assert!(src_stages.supported_access().contains(src_access));
+                    debug_assert!(dst_stages.supported_access().contains(dst_access));
 
                     src_stage_mask |= src_stages.into();
                     dst_stage_mask |= dst_stages.into();
@@ -300,8 +300,8 @@ impl UnsafeCommandBufferBuilder {
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(&src_access));
-                    debug_assert!(dst_stages.supported_access().contains(&dst_access));
+                    debug_assert!(src_stages.supported_access().contains(src_access));
+                    debug_assert!(dst_stages.supported_access().contains(dst_access));
                     debug_assert!(!range.is_empty());
                     debug_assert!(range.end <= buffer.size());
 
@@ -343,8 +343,8 @@ impl UnsafeCommandBufferBuilder {
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(&src_access));
-                    debug_assert!(dst_stages.supported_access().contains(&dst_access));
+                    debug_assert!(src_stages.supported_access().contains(src_access));
+                    debug_assert!(dst_stages.supported_access().contains(dst_access));
                     debug_assert!(!matches!(
                         new_layout,
                         ImageLayout::Undefined | ImageLayout::Preinitialized
@@ -353,7 +353,7 @@ impl UnsafeCommandBufferBuilder {
                         .format()
                         .unwrap()
                         .aspects()
-                        .contains(&subresource_range.aspects));
+                        .contains(subresource_range.aspects));
                     debug_assert!(!subresource_range.mip_levels.is_empty());
                     debug_assert!(subresource_range.mip_levels.end <= image.mip_levels());
                     debug_assert!(!subresource_range.array_layers.is_empty());
@@ -895,7 +895,7 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdResetEvent` on the builder.
     #[inline]
     pub unsafe fn reset_event(&mut self, event: &Event, stages: PipelineStages) {
-        debug_assert!(!stages.host);
+        debug_assert!(!stages.intersects(PipelineStages::HOST));
         debug_assert_ne!(stages, PipelineStages::empty());
 
         let fns = self.device.fns();

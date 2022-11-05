@@ -176,13 +176,14 @@ pub struct DepthBias {
 }
 
 vulkan_enum! {
+    #[non_exhaustive]
+
     /// Specifies the culling mode.
     ///
     /// This setting works in pair with `front_face`. The `front_face` setting tells the GPU whether
     /// clockwise or counter-clockwise correspond to the front and the back of each triangle. Then
     /// `cull_mode` lets you specify whether front faces should be discarded, back faces should be
     /// discarded, or none, or both.
-    #[non_exhaustive]
     CullMode = CullModeFlags(u32);
 
     /// No culling.
@@ -207,8 +208,9 @@ impl Default for CullMode {
 }
 
 vulkan_enum! {
-    /// Specifies which triangle orientation corresponds to the front or the triangle.
     #[non_exhaustive]
+
+    /// Specifies which triangle orientation corresponds to the front or the triangle.
     FrontFace = FrontFace(i32);
 
     /// Triangles whose vertices are oriented counter-clockwise on the screen will be considered
@@ -229,8 +231,9 @@ impl Default for FrontFace {
 }
 
 vulkan_enum! {
-    // TODO: document
     #[non_exhaustive]
+
+    // TODO: document
     PolygonMode = PolygonMode(i32);
 
     // TODO: document
@@ -262,8 +265,9 @@ impl Default for PolygonMode {
 }
 
 vulkan_enum! {
-    /// The rasterization mode to use for lines.
     #[non_exhaustive]
+
+    /// The rasterization mode to use for lines.
     LineRasterizationMode = LineRasterizationModeEXT(i32);
 
     /// If the [`strict_lines`](crate::device::Properties::strict_lines) device property is `true`,

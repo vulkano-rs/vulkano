@@ -276,7 +276,7 @@ impl CommandPool {
             || self.device.enabled_extensions().khr_maintenance1)
         {
             return Err(CommandPoolTrimError::RequirementNotMet {
-                required_for: "`trim`",
+                required_for: "`CommandPool::trim`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_1),
                     device_extensions: &["khr_maintenance1"],

@@ -62,7 +62,11 @@
 //!
 
 //#![warn(missing_docs)]        // TODO: activate
-#![warn(rust_2018_idioms, rust_2021_compatibility)]
+#![warn(
+    rust_2018_idioms,
+    rust_2021_compatibility,
+    clippy::trivially_copy_pass_by_ref
+)]
 // These lints are a bit too pedantic, so they're disabled here.
 #![allow(
     clippy::collapsible_else_if,
@@ -403,7 +407,10 @@ macro_rules! impl_id_counter {
 
                 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
-                NonZeroU64::new(COUNTER.fetch_add(1, Ordering::Relaxed)).expect("ID overflow")
+                NonZeroU64::new(COUNTER.fetch_add(1, Ordering::Relaxed)).unwrap_or_else(|| {
+                    println!("an ID counter has overflown ...somehow");
+                    std::process::abort();
+                })
             }
         }
 

@@ -16,7 +16,7 @@ use crate::{
         AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferInheritanceRenderPassType,
         CommandBufferUsage, SecondaryCommandBufferAbstract, SubpassContents,
     },
-    device::DeviceOwned,
+    device::{DeviceOwned, QueueFlags},
     format::Format,
     image::SampleCount,
     query::{QueryControlFlags, QueryPipelineStatisticFlags, QueryType},
@@ -119,9 +119,9 @@ where
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdExecuteCommands-commandBuffer-cmdpool
-        if !(queue_family_properties.queue_flags.transfer
-            || queue_family_properties.queue_flags.graphics
-            || queue_family_properties.queue_flags.compute)
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
         {
             return Err(ExecuteCommandsError::NotSupportedByQueueFamily);
         }
@@ -325,7 +325,7 @@ where
         // VUID-vkCmdExecuteCommands-commandBuffer-00101
         if !self.query_state.is_empty() && !self.device().enabled_features().inherited_queries {
             return Err(ExecuteCommandsError::RequirementNotMet {
-                required_for: "`execute_commands` when a query is active",
+                required_for: "`AutoCommandBufferBuilder::execute_commands` when a query is active",
                 requires_one_of: RequiresOneOf {
                     features: &["inherited_queries"],
                     ..Default::default()

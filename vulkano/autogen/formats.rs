@@ -63,78 +63,30 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
     let enum_items = members.iter().map(|FormatMember { name, ffi_name, .. }| {
         quote! { #name = ash::vk::Format::#ffi_name.as_raw(), }
     });
-    let aspects_color_items = members.iter().filter_map(
-        |FormatMember {
-             name, aspect_color, ..
-         }| {
-            if !aspect_color {
-                // Negated to reduce the length of the list
-                Some(name)
-            } else {
-                None
-            }
-        },
-    );
-    let aspects_depth_items = members.iter().filter_map(
-        |FormatMember {
-             name, aspect_depth, ..
-         }| {
-            if *aspect_depth {
-                Some(name)
-            } else {
-                None
-            }
-        },
-    );
-    let aspects_stencil_items = members.iter().filter_map(
+    let aspects_items = members.iter().map(
         |FormatMember {
              name,
+             aspect_color,
+             aspect_depth,
              aspect_stencil,
-             ..
-         }| {
-            if *aspect_stencil {
-                Some(name)
-            } else {
-                None
-            }
-        },
-    );
-    let aspects_plane0_items = members.iter().filter_map(
-        |FormatMember {
-             name,
              aspect_plane0,
-             ..
-         }| {
-            if *aspect_plane0 {
-                Some(name)
-            } else {
-                None
-            }
-        },
-    );
-    let aspects_plane1_items = members.iter().filter_map(
-        |FormatMember {
-             name,
              aspect_plane1,
-             ..
-         }| {
-            if *aspect_plane1 {
-                Some(name)
-            } else {
-                None
-            }
-        },
-    );
-    let aspects_plane2_items = members.iter().filter_map(
-        |FormatMember {
-             name,
              aspect_plane2,
              ..
          }| {
-            if *aspect_plane2 {
-                Some(name)
-            } else {
-                None
+            let aspect_items = [
+                aspect_color.then(|| quote! { crate::image::ImageAspects::COLOR }),
+                aspect_depth.then(|| quote! { crate::image::ImageAspects::DEPTH }),
+                aspect_stencil.then(|| quote! { crate::image::ImageAspects::STENCIL }),
+                aspect_plane0.then(|| quote! { crate::image::ImageAspects::PLANE_0 }),
+                aspect_plane1.then(|| quote! { crate::image::ImageAspects::PLANE_1 }),
+                aspect_plane2.then(|| quote! { crate::image::ImageAspects::PLANE_2 }),
+            ]
+            .into_iter()
+            .flatten();
+
+            quote! {
+                Self::#name => #(#aspect_items)|*,
             }
         },
     );
@@ -381,15 +333,9 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
 
         impl Format {
             /// Returns the aspects that images of this format have.
-            pub fn aspects(&self) -> ImageAspects {
-                ImageAspects {
-                    color: !matches!(self, #(Format::#aspects_color_items)|* ),
-                    depth: matches!(self, #(Format::#aspects_depth_items)|* ),
-                    stencil: matches!(self, #(Format::#aspects_stencil_items)|* ),
-                    plane0: matches!(self, #(Format::#aspects_plane0_items)|* ),
-                    plane1: matches!(self, #(Format::#aspects_plane1_items)|* ),
-                    plane2: matches!(self, #(Format::#aspects_plane2_items)|* ),
-                    ..ImageAspects::empty()
+            pub fn aspects(self) -> ImageAspects {
+                match self {
+                    #(#aspects_items)*
                 }
             }
 
@@ -403,7 +349,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             /// a single element. The 422 and 420 YCbCr formats have a block extent of [2, 1, 1] and
             /// [2, 2, 1] respectively, as the red and blue components are shared across multiple
             /// texels.
-            pub fn block_extent(&self) -> [u32; 3] {
+            pub fn block_extent(self) -> [u32; 3] {
                 match self {
                     #(#block_extent_items)*
                     _ => [1, 1, 1],
@@ -420,7 +366,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             /// not have a well-defined size. Multi-planar formats store the color components
             /// disjointly in memory, and therefore do not have a well-defined size for all
             /// components as a whole. The individual planes do have a well-defined size.
-            pub fn block_size(&self) -> Option<DeviceSize> {
+            pub fn block_size(self) -> Option<DeviceSize> {
                 match self {
                     #(#block_size_items)*
                     _ => None,
@@ -430,7 +376,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             /// Returns the an opaque object representing the compatibility class of the format.
             /// This can be used to determine whether two formats are compatible for the purposes
             /// of certain Vulkan operations, such as image copying.
-            pub fn compatibility(&self) -> FormatCompatibility {
+            pub fn compatibility(self) -> FormatCompatibility {
                 FormatCompatibility(match self {
                     #(#compatibility_items)*
                 })
@@ -445,7 +391,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             /// For block-compressed formats, the number of bits in individual components is not
             /// well-defined, and the return value is merely binary: 1 indicates a component
             /// that is present in the format, 0 indicates one that is absent.
-            pub fn components(&self) -> [u8; 4] {
+            pub fn components(self) -> [u8; 4] {
                 match self {
                     #(#components_items)*
                 }
@@ -453,7 +399,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the block compression scheme used for this format, if any. Returns `None` if
             /// the format does not use compression.
-            pub fn compression(&self) -> Option<CompressionType> {
+            pub fn compression(self) -> Option<CompressionType> {
                 match self {
                     #(#compression_items)*
                     _ => None,
@@ -464,7 +410,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             /// equivalent regular format of each plane.
             ///
             /// For non-planar formats, returns the empty slice.
-            pub fn planes(&self) -> &'static [Self] {
+            pub fn planes(self) -> &'static [Self] {
                 match self {
                     #(#planes_items)*
                     _ => &[],
@@ -473,7 +419,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the number of texels for a single texel block. For most formats, this is
             /// the product of the `block_extent` elements, but for some it differs.
-            pub fn texels_per_block(&self) -> u8 {
+            pub fn texels_per_block(self) -> u8 {
                 match self {
                     #(#texels_per_block_items)*
                     _ => 1,
@@ -482,7 +428,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the numeric data type of the color aspect of this format. Returns `None`
             /// for depth/stencil formats.
-            pub fn type_color(&self) -> Option<NumericType> {
+            pub fn type_color(self) -> Option<NumericType> {
                 match self {
                     #(#type_color_items)*
                     _ => None,
@@ -491,7 +437,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the numeric data type of the depth aspect of this format. Returns `None`
             /// color and stencil-only formats.
-            pub fn type_depth(&self) -> Option<NumericType> {
+            pub fn type_depth(self) -> Option<NumericType> {
                 match self {
                     #(#type_depth_items)*
                     _ => None,
@@ -500,7 +446,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the numeric data type of the stencil aspect of this format. Returns `None`
             /// for color and depth-only formats.
-            pub fn type_stencil(&self) -> Option<NumericType> {
+            pub fn type_stencil(self) -> Option<NumericType> {
                 match self {
                     #(#type_stencil_items)*
                     _ => None,
@@ -513,7 +459,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             /// If an image view is created for one of the formats for which this function returns
             /// `Some`, with the `color` aspect selected, then the view and any samplers that sample
             /// it must be created with an attached sampler YCbCr conversion object.
-            pub fn ycbcr_chroma_sampling(&self) -> Option<ChromaSampling> {
+            pub fn ycbcr_chroma_sampling(self) -> Option<ChromaSampling> {
                 match self {
                     #(#ycbcr_chroma_sampling_items)*
                     _ => None,

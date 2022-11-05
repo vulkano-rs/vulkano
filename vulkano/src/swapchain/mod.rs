@@ -189,12 +189,6 @@
 //! #     pre_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
 //! #     present_mode: PresentMode, full_screen_exclusive: FullScreenExclusive
 //! # ) -> Result<(), Box<dyn Error>> {
-//! // The created swapchain will be used as a color attachment for rendering.
-//! let image_usage = ImageUsage {
-//!     color_attachment: true,
-//!     .. ImageUsage::empty()
-//! };
-//!
 //! // Create the swapchain and its images.
 //! let (swapchain, images) = Swapchain::new(
 //!     // Create the swapchain in this `device`'s memory.
@@ -209,8 +203,8 @@
 //!         image_format: Some(image_format),
 //!         // The size of each image.
 //!         image_extent,
-//!         // What the images are going to be used for.
-//!         image_usage,
+//!         // The created swapchain images will be used as a color attachment for rendering.
+//!         image_usage: ImageUsage::COLOR_ATTACHMENT,
 //!         // What transformation to use with the surface.
 //!         pre_transform,
 //!         // How to handle the alpha channel.
@@ -329,9 +323,9 @@
 
 pub use self::{
     surface::{
-        ColorSpace, CompositeAlpha, PresentMode, SupportedCompositeAlpha,
-        SupportedSurfaceTransforms, Surface, SurfaceApi, SurfaceCapabilities, SurfaceCreationError,
-        SurfaceInfo, SurfaceTransform,
+        ColorSpace, CompositeAlpha, CompositeAlphas, PresentMode, Surface, SurfaceApi,
+        SurfaceCapabilities, SurfaceCreationError, SurfaceInfo, SurfaceTransform,
+        SurfaceTransforms,
     },
     swapchain::{
         acquire_next_image, acquire_next_image_raw, present, wait_for_present, AcquireError,

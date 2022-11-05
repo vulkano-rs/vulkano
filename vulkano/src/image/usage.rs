@@ -10,29 +10,30 @@
 use crate::macros::vulkan_bitflags;
 
 vulkan_bitflags! {
+    #[non_exhaustive]
+
     /// Describes how an image is going to be used. This is **not** just an optimization.
     ///
     /// If you try to use an image in a way that you didn't declare, an error will occur.
-    #[non_exhaustive]
     ImageUsage = ImageUsageFlags(u32);
 
     /// The image can be used as a source for transfer, blit, resolve and clear commands.
-    transfer_src = TRANSFER_SRC,
+    TRANSFER_SRC = TRANSFER_SRC,
 
     /// The image can be used as a destination for transfer, blit, resolve and clear commands.
-    transfer_dst = TRANSFER_DST,
+    TRANSFER_DST = TRANSFER_DST,
 
     /// The image can be used as a sampled image in a shader.
-    sampled = SAMPLED,
+    SAMPLED = SAMPLED,
 
     /// The image can be used as a storage image in a shader.
-    storage = STORAGE,
+    STORAGE = STORAGE,
 
     /// The image can be used as a color attachment in a render pass/framebuffer.
-    color_attachment = COLOR_ATTACHMENT,
+    COLOR_ATTACHMENT = COLOR_ATTACHMENT,
 
     /// The image can be used as a depth/stencil attachment in a render pass/framebuffer.
-    depth_stencil_attachment = DEPTH_STENCIL_ATTACHMENT,
+    DEPTH_STENCIL_ATTACHMENT = DEPTH_STENCIL_ATTACHMENT,
 
     /// The image will be used as an attachment, and will only ever be used temporarily.
     /// As soon as you leave a render pass, the content of transient images becomes undefined.
@@ -43,54 +44,54 @@ vulkan_bitflags! {
     /// If `transient_attachment` is true, then only `color_attachment`, `depth_stencil_attachment`
     /// and `input_attachment` can be true as well. The rest must be false or an error will be
     /// returned when creating the image.
-    transient_attachment = TRANSIENT_ATTACHMENT,
+    TRANSIENT_ATTACHMENT = TRANSIENT_ATTACHMENT,
 
     /// The image can be used as an input attachment in a render pass/framebuffer.
-    input_attachment = INPUT_ATTACHMENT,
+    INPUT_ATTACHMENT = INPUT_ATTACHMENT,
 
     /*
     // TODO: document
-    video_decode_dst = VIDEO_DECODE_DST_KHR {
+    VIDEO_DECODE_DST = VIDEO_DECODE_DST_KHR {
         device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
-    video_decode_src = VIDEO_DECODE_SRC_KHR {
+    VIDEO_DECODE_SRC = VIDEO_DECODE_SRC_KHR {
         device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
-    video_decode_dpb = VIDEO_DECODE_DPB_KHR {
+    VIDEO_DECODE_DPB = VIDEO_DECODE_DPB_KHR {
         device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
-    fragment_density_map = FRAGMENT_DENSITY_MAP_EXT {
+    FRAGMENT_DENSITY_MAP = FRAGMENT_DENSITY_MAP_EXT {
         device_extensions: [ext_fragment_density_map],
     },
 
     // TODO: document
-    fragment_shading_rate_attachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
+    FRAGMENT_SHADING_RATE_ATTACHMENT = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
         device_extensions: [khr_fragment_shading_rate],
     },
 
     // TODO: document
-    video_encode_dst = VIDEO_ENCODE_DST_KHR {
+    VIDEO_ENCODE_DST = VIDEO_ENCODE_DST_KHR {
         device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
-    video_encode_src = VIDEO_ENCODE_SRC_KHR {
+    VIDEO_ENCODE_SRC = VIDEO_ENCODE_SRC_KHR {
         device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
-    video_encode_dpb = VIDEO_ENCODE_DPB_KHR {
+    VIDEO_ENCODE_DPB = VIDEO_ENCODE_DPB_KHR {
         device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
-    invocation_mask = INVOCATION_MASK_HUAWEI {
+    INVOCATION_MASK = INVOCATION_MASK_HUAWEI {
         device_extensions: [huawei_invocation_mask],
     },
      */
