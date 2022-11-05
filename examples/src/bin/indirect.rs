@@ -27,7 +27,10 @@
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuBufferPool},
+    buffer::{
+        allocator::{CpuBufferAllocator, CpuBufferAllocatorCreateInfo},
+        BufferUsage,
+    },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         DrawIndirectCommand, RenderPassBeginInfo, SubpassContents,
@@ -42,7 +45,7 @@ use vulkano::{
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
-    memory::allocator::{MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -256,17 +259,21 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    // Each frame we generate a new set of vertices and each frame we need a new DrawIndirectCommand struct to
-    // set the number of vertices to draw
-    let indirect_args_pool: CpuBufferPool<DrawIndirectCommand> = CpuBufferPool::new(
+    // Each frame we generate a new set of vertices and each frame we need a new
+    // DrawIndirectCommand struct to set the number of vertices to draw.
+    let indirect_args_pool = CpuBufferAllocator::new(
         memory_allocator.clone(),
-        BufferUsage::INDIRECT_BUFFER | BufferUsage::STORAGE_BUFFER,
-        MemoryUsage::Upload,
+        CpuBufferAllocatorCreateInfo {
+            buffer_usage: BufferUsage::INDIRECT_BUFFER | BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
     );
-    let vertex_pool: CpuBufferPool<Vertex> = CpuBufferPool::new(
+    let vertex_pool = CpuBufferAllocator::new(
         memory_allocator,
-        BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
-        MemoryUsage::Upload,
+        CpuBufferAllocatorCreateInfo {
+            buffer_usage: BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
     );
 
     let compute_pipeline = ComputePipeline::new(

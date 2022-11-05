@@ -1624,6 +1624,16 @@ impl From<RequirementNotMet> for GenericMemoryAllocatorCreationError {
     }
 }
 
+pub(crate) fn align_up(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
+    align_down(val + alignment - 1, alignment)
+}
+
+pub(crate) fn align_down(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
+    debug_assert!(alignment.is_power_of_two());
+
+    val & !(alignment - 1)
+}
+
 mod array_vec {
     use std::ops::{Deref, DerefMut};
 

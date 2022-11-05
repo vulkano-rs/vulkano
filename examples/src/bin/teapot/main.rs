@@ -11,7 +11,10 @@ use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
 use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
 use std::{sync::Arc, time::Instant};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess},
+    buffer::{
+        allocator::{CpuBufferAllocator, CpuBufferAllocatorCreateInfo},
+        BufferUsage, CpuAccessibleBuffer, TypedBufferAccess,
+    },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -26,7 +29,7 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SwapchainImage},
     instance::{Instance, InstanceCreateInfo},
-    memory::allocator::{MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             depth_stencil::DepthStencilState,
@@ -180,10 +183,12 @@ fn main() {
     )
     .unwrap();
 
-    let uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(
+    let uniform_buffer = CpuBufferAllocator::new(
         memory_allocator.clone(),
-        BufferUsage::UNIFORM_BUFFER,
-        MemoryUsage::Upload,
+        CpuBufferAllocatorCreateInfo {
+            buffer_usage: BufferUsage::UNIFORM_BUFFER,
+            ..Default::default()
+        },
     );
 
     let vs = vs::load(device.clone()).unwrap();

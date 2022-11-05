@@ -14,11 +14,12 @@
 //! between a Vulkan buffer and a regular buffer is that the content of a Vulkan buffer is
 //! accessible from the GPU.
 //!
-//! Vulkano does not perform any specific marshalling of buffer data. The representation of the buffer in
-//! memory is identical between the CPU and GPU. Because the Rust compiler is allowed to reorder struct
-//! fields at will by default when using `#[repr(Rust)]`, it is advised to mark each struct requiring
-//! imput assembly as `#[repr(C)]`. This forces Rust to follow the standard C procedure. Each element is
-//! laid out in memory in the order of declaration and aligned to a multiple of their alignment.
+//! Vulkano does not perform any specific marshalling of buffer data. The representation of the
+//! buffer in memory is identical between the CPU and GPU. Because the Rust compiler is allowed to
+//! reorder struct fields at will by default when using `#[repr(Rust)]`, it is advised to mark each
+//! struct requiring imput assembly as `#[repr(C)]`. This forces Rust to follow the standard C
+//! procedure. Each element is laid out in memory in the order of declaration and aligned to a
+//! multiple of their alignment.
 //!
 //! # Various kinds of buffers
 //!
@@ -28,26 +29,24 @@
 //! Instead you are encouraged to use one of the high-level wrappers that vulkano provides. Which
 //! wrapper to use depends on the way you are going to use the buffer:
 //!
-//! - A [`DeviceLocalBuffer`](crate::buffer::device_local::DeviceLocalBuffer) designates a buffer
-//!   usually located in video memory and whose content can't be directly accessed by your
-//!   application. Accessing this buffer from the GPU is generally faster compared to accessing a
-//!   CPU-accessible buffer.
-//! - A [`CpuBufferPool`](crate::buffer::cpu_pool::CpuBufferPool) is a ring buffer that can be used to
-//!   transfer data between the CPU and the GPU at a high rate.
-//! - A [`CpuAccessibleBuffer`](crate::buffer::cpu_access::CpuAccessibleBuffer) is a simple buffer that
-//!   can be used to prototype.
+//! - A [`DeviceLocalBuffer`] designates a buffer usually located in video memory and whose content
+//!   can't be directly accessed by your application. Accessing this buffer from the GPU is
+//!   generally faster compared to accessing a CPU-accessible buffer.
+//! - A [`CpuBufferAllocator`] can be used to transfer data between the CPU and the GPU at a high
+//!   rate.
+//! - A [`CpuAccessibleBuffer`] is a simple buffer that can be used to prototype.
 //!
-//! Here is a quick way to choose which buffer to use. Do you often need to read or write
-//! the content of the buffer? If so, use a `CpuBufferPool`. Otherwise, do you need to have access
+//! Here is a quick way to choose which buffer to use. Do you often need to read or write the
+//! content of the buffer? If so, use a `CpuBufferAllocator`. Otherwise, do you need to have access
 //! to the buffer on the CPU? Then use `CpuAccessibleBuffer`. Otherwise, use a `DeviceLocalBuffer`.
 //!
-//! Another example: if a buffer is under constant access by the GPU but you need to
-//! read its content on the CPU from time to time, it may be a good idea to use a
-//! `DeviceLocalBuffer` as the main buffer and a `CpuBufferPool` for when you need to read it.
-//! Then whenever you need to read the main buffer, ask the GPU to copy from the device-local
-//! buffer to the CPU buffer pool, and read the CPU buffer pool instead.
+//! Another example: if a buffer is under constant access by the GPU but you need to read its
+//! content on the CPU from time to time, it may be a good idea to use a `DeviceLocalBuffer` as the
+//! main buffer and a `CpuAccessibleBuffer` for when you need to read it. Then whenever you need to
+//! read the main buffer, ask the GPU to copy from the device-local buffer to the CPU-accessible
+//! buffer, and read the CPU-accessible buffer instead.
 //!
-//! # Buffers usage
+//! # Buffer usage
 //!
 //! When you create a buffer object, you have to specify its *usage*. In other words, you have to
 //! specify the way it is going to be used. Trying to use a buffer in a way that wasn't specified
@@ -64,18 +63,18 @@
 //!
 //! - As a uniform buffer. Uniform buffers are read-only.
 //! - As a storage buffer. Storage buffers can be read and written.
-//! - As a uniform texel buffer. Contrary to a uniform buffer, the data is interpreted by the
-//!   GPU and can be for example normalized.
+//! - As a uniform texel buffer. Contrary to a uniform buffer, the data is interpreted by the GPU
+//!   and can be for example normalized.
 //! - As a storage texel buffer. Additionally, some data formats can be modified with atomic
 //!   operations.
 //!
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module
 //! for how to create a buffer view.
 //!
+//! [`CpuBufferAllocator`]: allocator::CpuBufferAllocator
 
 pub use self::{
     cpu_access::CpuAccessibleBuffer,
-    cpu_pool::CpuBufferPool,
     device_local::DeviceLocalBuffer,
     slice::BufferSlice,
     sys::BufferError,
@@ -95,8 +94,8 @@ use bytemuck::{
 };
 use std::mem::size_of;
 
+pub mod allocator;
 pub mod cpu_access;
-pub mod cpu_pool;
 pub mod device_local;
 pub mod sys;
 pub mod view;
@@ -164,7 +163,7 @@ pub unsafe trait BufferContents: Send + Sync + 'static {
     /// Converts an immutable reference to `Self` to an immutable byte slice.
     fn as_bytes(&self) -> &[u8];
 
-    /// Converts a mutable reference to `Self` to an mutable byte slice.
+    /// Converts a mutable reference to `Self` to a mutable byte slice.
     fn as_bytes_mut(&mut self) -> &mut [u8];
 
     /// Converts an immutable byte slice into an immutable reference to `Self`.
