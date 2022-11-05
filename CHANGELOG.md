@@ -25,10 +25,17 @@ Changes to two swapchain bitflag types:
   - `SupportedSurfaceTransforms` is renamed to `SurfaceTransforms`.
   - `SupportedCompositeAlpha` is renamed to `CompositeAlphas`.
 
+Changes to CPU buffer allocation:
+- Replaced `CpuBufferPool` with `CpuBufferAllocator`, which is now marked `!Sync` and no longer has a `T` type parameter. The type parameter was moved to the methods, to allow one allocator to allocate as many types of buffers as needed.
+- Merged `CpuBufferPoolChunk` and `CpuBufferPoolSubbuffer` into `CpuSubbuffer`.
+
 ### Additions
+- Added `CpuBufferAllocatorCreateInfo`.
 
 ### Bugs fixed
 - [#2074](https://github.com/vulkano-rs/vulkano/issues/2074): Fixed error on multiple draw calls using a texture that had a layout transition.
+- Fixed an issue with `CpuBufferPool<T>`, where the alignment of `T` was not being considered when allocating.
+- Fixed an issue with `CpuBufferPool`, where the allocated subbuffers did not respect the non-coherent atom size for non-host-coherent memory types.
 
 # Version 0.32.0 (2022-10-31)
 
