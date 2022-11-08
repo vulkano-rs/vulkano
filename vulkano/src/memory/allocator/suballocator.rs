@@ -343,6 +343,10 @@ impl MemoryAlloc {
         });
     }
 
+    pub(crate) fn atom_size(&self) -> Option<NonZeroU64> {
+        self.atom_size
+    }
+
     /// Returns the underlying block of [`DeviceMemory`].
     #[inline]
     pub fn device_memory(&self) -> &DeviceMemory {
@@ -2429,7 +2433,7 @@ impl Display for BumpAllocatorResetError {
     }
 }
 
-fn align_up(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
+pub(crate) fn align_up(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
     align_down(val + alignment - 1, alignment)
 }
 

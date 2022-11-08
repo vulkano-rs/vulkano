@@ -17,7 +17,7 @@ use crate::{
     device::{Device, DeviceOwned},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationCreationError, AllocationType,
+            suballocator::align_up, AllocationCreateInfo, AllocationCreationError, AllocationType,
             MemoryAllocatePreference, MemoryAllocator, MemoryUsage, StandardMemoryAllocator,
         },
         DedicatedAllocation,
@@ -27,7 +27,7 @@ use crate::{
 use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
-    mem::size_of,
+    mem::{align_of, size_of},
     ptr,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -528,6 +528,11 @@ where
             });
         }
 
+        let allocation = match current_buffer.inner.memory() {
+            BufferMemory::Normal(a) => a,
+            BufferMemory::Sparse => unreachable!(),
+        };
+
         // Find a suitable offset and len, or returns if none available.
         let (index, occupied_len, align_offset) = {
             let (tentative_index, tentative_len, tentative_align_offset) = {
@@ -554,7 +559,12 @@ where
                 } else {
                     1
                 };
-                let align_bytes = align_uniform.max(align_storage);
+                let mut align_bytes = align_uniform
+                    .max(align_storage)
+                    .max(align_of::<T>() as DeviceSize);
+                if let Some(atom_size) = allocation.atom_size() {
+                    align_bytes = DeviceSize::max(align_bytes, atom_size.get());
+                }
 
                 let tentative_align_offset = (align_bytes
                     - ((idx * size_of::<T>() as DeviceSize) % align_bytes))
@@ -591,13 +601,8 @@ where
 
         // Write `data` in the memory.
         unsafe {
-            let range = (index * size_of::<T>() as DeviceSize + align_offset)
+            let mut range = (index * size_of::<T>() as DeviceSize + align_offset)
                 ..((index + requested_len) * size_of::<T>() as DeviceSize + align_offset);
-
-            let allocation = match current_buffer.inner.memory() {
-                BufferMemory::Normal(a) => a,
-                BufferMemory::Sparse => unreachable!(),
-            };
 
             let bytes = allocation.write(range.clone()).unwrap();
             let mapping = <[T]>::from_bytes_mut(bytes).unwrap();
@@ -608,7 +613,11 @@ where
                 written += 1;
             }
 
-            allocation.flush_range(range).unwrap();
+            if let Some(atom_size) = allocation.atom_size() {
+                range.end =
+                    DeviceSize::min(align_up(range.end, atom_size.get()), allocation.size());
+                allocation.flush_range(range).unwrap();
+            }
 
             assert_eq!(
                 written, requested_len,
