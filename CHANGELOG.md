@@ -27,7 +27,14 @@ Changes to two swapchain bitflag types:
 
 Changes to CPU buffer allocation:
 - Replaced `CpuBufferPool` with `CpuBufferAllocator`, which is now marked `!Sync` and no longer has a `T` type parameter. The type parameter was moved to the methods, to allow one allocator to allocate as many types of buffers as needed.
-- Merged `CpuBufferPoolChunk` and `CpuBufferPoolSubbuffer` into `CpuSubbuffer`.
+- Merged `CpuBufferPoolChunk` and `CpuBufferPoolSubbuffer` into `CpuSubbuffer`.'
+
+Changes to `DescriptorRequirements`:
+- The struct has been split into two levels: the per-binding `DescriptorBindingRequirements`, and the per-descriptor-index `DescriptorRequirements`.
+- The `descriptor_requirements` method of various types has been renamed to `descriptor_binding_requirements` to match.
+- `DescriptorBindingRequirements` has a single `descriptors` member instead of multiple `HashSet` members. This member is a `HashMap` with `Option<u32>` as the key type. The key `None` holds requirements for non-constant indices, while requirements for constant indices are stored as `Some`.
+- Validation checks against the requirements, and pipeline barriers, now always include the requirements of the `None` key as well. This may result in false positives, but prevents false negatives.
+- `DescriptorRequirements` now has `memory_read` and `memory_write` members, which hold a `ShaderStages` value for the stages which read or write the resource. This is used for more fine-grained pipeline barriers.
 
 ### Additions
 - Added `CpuBufferAllocatorCreateInfo`.
