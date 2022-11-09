@@ -33,8 +33,7 @@ pub(super) fn write_structs<'a>(
         })
         .filter(|&(struct_id, _member_types)| has_defined_layout(spirv, struct_id))
         .filter_map(|(struct_id, member_types)| {
-            let (rust_members, is_sized) =
-                write_struct_members(shader, spirv, struct_id, member_types);
+            let (rust_members, is_sized) = write_struct_members(spirv, struct_id, member_types);
 
             let struct_name = spirv
                 .id(struct_id)
@@ -86,12 +85,7 @@ struct Member {
     signature: Cow<'static, str>,
 }
 
-fn write_struct_members<'a>(
-    shader: &'a str,
-    spirv: &Spirv,
-    struct_id: Id,
-    members: &[Id],
-) -> (Vec<Member>, bool) {
+fn write_struct_members(spirv: &Spirv, struct_id: Id, members: &[Id]) -> (Vec<Member>, bool) {
     let mut rust_members = Vec::with_capacity(members.len());
 
     // Dummy members will be named `_dummyN` where `N` is determined by this variable.
@@ -107,7 +101,7 @@ fn write_struct_members<'a>(
         .enumerate()
     {
         // Compute infos about the member.
-        let (ty, signature, rust_size, rust_align) = type_from_id(shader, spirv, member);
+        let (ty, signature, rust_size, rust_align) = type_from_id(spirv, member);
         let member_name = member_info
             .iter_name()
             .find_map(|instruction| match instruction {
@@ -404,7 +398,6 @@ fn struct_size_from_array_stride(spirv: &Spirv, type_id: Id) -> Option<u32> {
 ///
 /// The size can be `None` if it's only known at runtime.
 pub(super) fn type_from_id(
-    shader: &str,
     spirv: &Spirv,
     type_id: Id,
 ) -> (TokenStream, Cow<'static, str>, Option<usize>, usize) {
@@ -558,7 +551,7 @@ pub(super) fn type_from_id(
             ..
         } => {
             debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-            let (ty, item, t_size, t_align) = type_from_id(shader, spirv, component_type);
+            let (ty, item, t_size, t_align) = type_from_id(spirv, component_type);
             let array_length = component_count as usize;
             let size = t_size.map(|s| s * component_count as usize);
             (
@@ -575,7 +568,7 @@ pub(super) fn type_from_id(
         } => {
             // FIXME: row-major or column-major
             debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-            let (ty, item, t_size, t_align) = type_from_id(shader, spirv, column_type);
+            let (ty, item, t_size, t_align) = type_from_id(spirv, column_type);
             let array_length = column_count as usize;
             let size = t_size.map(|s| s * column_count as usize);
             (
@@ -593,7 +586,7 @@ pub(super) fn type_from_id(
             debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
 
             let (element_type, element_type_string, element_size, element_align) =
-                type_from_id(shader, spirv, element_type);
+                type_from_id(spirv, element_type);
 
             let element_size = element_size.expect("array components must be sized");
             let array_length = match spirv.id(length).instruction() {
@@ -631,7 +624,7 @@ pub(super) fn type_from_id(
             debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
 
             let (element_type, element_type_string, _, element_align) =
-                type_from_id(shader, spirv, element_type);
+                type_from_id(spirv, element_type);
 
             (
                 quote! { [#element_type] },
@@ -667,7 +660,7 @@ pub(super) fn type_from_id(
                                         _ => None,
                                     })
                                     .unwrap();
-                                let (_, _, rust_size, _) = type_from_id(shader, spirv, member);
+                                let (_, _, rust_size, _) = type_from_id(spirv, member);
                                 rust_size.map(|rust_size| spirv_offset + rust_size)
                             })
                     })
@@ -675,7 +668,7 @@ pub(super) fn type_from_id(
 
             let align = member_types
                 .iter()
-                .map(|&t| type_from_id(shader, spirv, t).3)
+                .map(|&t| type_from_id(spirv, t).3)
                 .max()
                 .unwrap_or(1);
 
@@ -764,7 +757,7 @@ pub(super) fn write_specialization_constants<'a>(
                     Some(mem::size_of::<u32>()),
                     mem::align_of::<u32>(),
                 ),
-                _ => type_from_id(shader, spirv, result_type_id),
+                _ => type_from_id(spirv, result_type_id),
             };
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 

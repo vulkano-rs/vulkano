@@ -47,8 +47,8 @@ use crate::{
         DynamicState, PartialStateMode, PipelineLayout, StateMode,
     },
     shader::{
-        DescriptorRequirements, EntryPoint, ShaderExecution, ShaderStage, SpecializationConstants,
-        SpecializationMapEntry,
+        DescriptorBindingRequirements, EntryPoint, ShaderExecution, ShaderStage,
+        SpecializationConstants, SpecializationMapEntry,
     },
     DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -183,22 +183,22 @@ where
             .flatten()
             .collect();
 
-            // Produce `DescriptorRequirements` for each binding, by iterating over all shaders
-            // and adding the requirements of each.
-            let mut descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements> =
-                HashMap::default();
+            // Produce `DescriptorBindingRequirements` for each binding, by iterating over all
+            // shaders and adding the requirements of each.
+            let mut descriptor_binding_requirements: HashMap<
+                (u32, u32),
+                DescriptorBindingRequirements,
+            > = HashMap::default();
 
             for (loc, reqs) in stages
                 .iter()
-                .flat_map(|shader| shader.descriptor_requirements())
+                .flat_map(|shader| shader.descriptor_binding_requirements())
             {
-                match descriptor_requirements.entry(loc) {
+                match descriptor_binding_requirements.entry(loc) {
                     Entry::Occupied(entry) => {
-                        // Previous shaders already added requirements, so we produce the
-                        // intersection of the previous requirements and those of the
-                        // current shader.
-                        let previous = entry.into_mut();
-                        *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                        // Previous shaders already added requirements, so we merge requirements of
+                        // the current shader into the requirements of the previous one.
+                        entry.into_mut().merge(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
                     }
                     Entry::Vacant(entry) => {
                         // No previous shader had this descriptor yet, so we just insert the
@@ -211,7 +211,7 @@ where
             // Build a description of a descriptor set layout from the shader requirements, then
             // feed it to the user-provided closure to allow tweaking.
             let mut set_layout_create_infos = DescriptorSetLayoutCreateInfo::from_requirements(
-                descriptor_requirements
+                descriptor_binding_requirements
                     .iter()
                     .map(|(&loc, reqs)| (loc, reqs)),
             );
@@ -399,7 +399,7 @@ where
             layout: pipeline_layout,
             render_pass: render_pass.take().expect("Missing render pass"),
             shaders,
-            descriptor_requirements,
+            descriptor_binding_requirements: descriptor_requirements,
             num_used_descriptor_sets,
             vertex_input_state, // Can be None if there's a mesh shader, but we don't support that yet
             input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet
@@ -2477,7 +2477,7 @@ where
         for stage_info in &shader_stages {
             // VUID-VkGraphicsPipelineCreateInfo-layout-00756
             pipeline_layout.ensure_compatible_with_shader(
-                stage_info.entry_point.descriptor_requirements(),
+                stage_info.entry_point.descriptor_binding_requirements(),
                 stage_info.entry_point.push_constant_requirements(),
             )?;
 
@@ -2537,7 +2537,7 @@ where
     ) -> Result<
         (
             ash::vk::Pipeline,
-            HashMap<(u32, u32), DescriptorRequirements>,
+            HashMap<(u32, u32), DescriptorBindingRequirements>,
             HashMap<DynamicState, bool>,
             HashMap<ShaderStage, ()>,
         ),
@@ -2565,8 +2565,10 @@ where
 
         let render_pass = render_pass.as_ref().unwrap();
 
-        let mut descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements> =
-            HashMap::default();
+        let mut descriptor_binding_requirements: HashMap<
+            (u32, u32),
+            DescriptorBindingRequirements,
+        > = HashMap::default();
         let mut dynamic_state: HashMap<DynamicState, bool> = HashMap::default();
         let mut stages = HashMap::default();
         let mut stages_vk: SmallVec<[_; 5]> = SmallVec::new();
@@ -2770,11 +2772,10 @@ where
                         p_data: specialization_data.as_ptr() as *const _,
                     });
 
-                for (loc, reqs) in entry_point.descriptor_requirements() {
-                    match descriptor_requirements.entry(loc) {
+                for (loc, reqs) in entry_point.descriptor_binding_requirements() {
+                    match descriptor_binding_requirements.entry(loc) {
                         Entry::Occupied(entry) => {
-                            let previous = entry.into_mut();
-                            *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                            entry.into_mut().merge(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
                         }
                         Entry::Vacant(entry) => {
                             entry.insert(reqs.clone());
@@ -2811,11 +2812,10 @@ where
                             p_data: specialization_data.as_ptr() as *const _,
                         });
 
-                    for (loc, reqs) in entry_point.descriptor_requirements() {
-                        match descriptor_requirements.entry(loc) {
+                    for (loc, reqs) in entry_point.descriptor_binding_requirements() {
+                        match descriptor_binding_requirements.entry(loc) {
                             Entry::Occupied(entry) => {
-                                let previous = entry.into_mut();
-                                *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                                entry.into_mut().merge(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
                             }
                             Entry::Vacant(entry) => {
                                 entry.insert(reqs.clone());
@@ -2850,11 +2850,10 @@ where
                             p_data: specialization_data.as_ptr() as *const _,
                         });
 
-                    for (loc, reqs) in entry_point.descriptor_requirements() {
-                        match descriptor_requirements.entry(loc) {
+                    for (loc, reqs) in entry_point.descriptor_binding_requirements() {
+                        match descriptor_binding_requirements.entry(loc) {
                             Entry::Occupied(entry) => {
-                                let previous = entry.into_mut();
-                                *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                                entry.into_mut().merge(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
                             }
                             Entry::Vacant(entry) => {
                                 entry.insert(reqs.clone());
@@ -2890,11 +2889,10 @@ where
                         p_data: specialization_data.as_ptr() as *const _,
                     });
 
-                for (loc, reqs) in entry_point.descriptor_requirements() {
-                    match descriptor_requirements.entry(loc) {
+                for (loc, reqs) in entry_point.descriptor_binding_requirements() {
+                    match descriptor_binding_requirements.entry(loc) {
                         Entry::Occupied(entry) => {
-                            let previous = entry.into_mut();
-                            *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                            entry.into_mut().merge(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
                         }
                         Entry::Vacant(entry) => {
                             entry.insert(reqs.clone());
@@ -3231,11 +3229,10 @@ where
                         p_data: specialization_data.as_ptr() as *const _,
                     });
 
-                for (loc, reqs) in entry_point.descriptor_requirements() {
-                    match descriptor_requirements.entry(loc) {
+                for (loc, reqs) in entry_point.descriptor_binding_requirements() {
+                    match descriptor_binding_requirements.entry(loc) {
                         Entry::Occupied(entry) => {
-                            let previous = entry.into_mut();
-                            *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                            entry.into_mut().merge(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
                         }
                         Entry::Vacant(entry) => {
                             entry.insert(reqs.clone());
@@ -3698,7 +3695,12 @@ where
             panic!("vkCreateGraphicsPipelines provided a NULL handle");
         }
 
-        Ok((handle, descriptor_requirements, dynamic_state, stages))
+        Ok((
+            handle,
+            descriptor_binding_requirements,
+            dynamic_state,
+            stages,
+        ))
     }
 
     // TODO: add build_with_cache method

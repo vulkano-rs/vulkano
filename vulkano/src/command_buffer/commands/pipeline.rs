@@ -34,7 +34,7 @@ use crate::{
         PipelineLayout,
     },
     sampler::{Sampler, SamplerImageViewIncompatibleError},
-    shader::{DescriptorRequirements, ShaderScalarType, ShaderStage},
+    shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage},
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     DeviceSize, RequiresOneOf, VulkanObject,
 };
@@ -95,7 +95,10 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_descriptor_sets(
+            pipeline,
+            pipeline.descriptor_binding_requirements(),
+        )?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
 
         let max = self
@@ -164,7 +167,10 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_descriptor_sets(
+            pipeline,
+            pipeline.descriptor_binding_requirements(),
+        )?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_indirect_buffer(indirect_buffer)?;
 
@@ -224,7 +230,10 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_descriptor_sets(
+            pipeline,
+            pipeline.descriptor_binding_requirements(),
+        )?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -295,7 +304,10 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_descriptor_sets(
+            pipeline,
+            pipeline.descriptor_binding_requirements(),
+        )?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -406,7 +418,10 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_descriptor_sets(
+            pipeline,
+            pipeline.descriptor_binding_requirements(),
+        )?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -484,7 +499,10 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_descriptor_sets(
+            pipeline,
+            pipeline.descriptor_binding_requirements(),
+        )?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -569,16 +587,18 @@ where
     fn validate_pipeline_descriptor_sets<'a, Pl: Pipeline>(
         &self,
         pipeline: &Pl,
-        descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
+        descriptor_binding_requirements: impl IntoIterator<
+            Item = ((u32, u32), &'a DescriptorBindingRequirements),
+        >,
     ) -> Result<(), PipelineExecutionError> {
         fn validate_resources<T>(
             set_num: u32,
             binding_num: u32,
-            reqs: &DescriptorRequirements,
+            binding_reqs: &DescriptorBindingRequirements,
             elements: &[Option<T>],
             mut extra_check: impl FnMut(u32, &T) -> Result<(), DescriptorResourceInvalidError>,
         ) -> Result<(), PipelineExecutionError> {
-            let elements_to_check = if let Some(descriptor_count) = reqs.descriptor_count {
+            let elements_to_check = if let Some(descriptor_count) = binding_reqs.descriptor_count {
                 // The shader has a fixed-sized array, so it will never access more than
                 // the first `descriptor_count` elements.
                 elements.get(..descriptor_count as usize).ok_or({
@@ -646,36 +666,36 @@ where
             return Err(PipelineExecutionError::PipelineLayoutNotCompatible);
         }
 
-        for ((set_num, binding_num), reqs) in descriptor_requirements {
+        for ((set_num, binding_num), binding_reqs) in descriptor_binding_requirements {
             let layout_binding =
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
             let check_buffer = |_index: u32, _buffer: &Arc<dyn BufferAccess>| Ok(());
 
             let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
-                if layout_binding.descriptor_type == DescriptorType::StorageTexelBuffer {
-                    // VUID-vkCmdDispatch-OpTypeImage-06423
-                    if reqs.image_format.is_none()
-                        && reqs.storage_write.contains(&index)
-                        && !buffer_view
-                            .format_features()
-                            .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
-                    {
-                        return Err(
-                            DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported,
-                        );
-                    }
+                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
+                    .chain(binding_reqs.descriptors.get(&None))
+                {
+                    if layout_binding.descriptor_type == DescriptorType::StorageTexelBuffer {
+                        // VUID-vkCmdDispatch-OpTypeImage-06423
+                        if binding_reqs.image_format.is_none()
+                            && !desc_reqs.memory_write.is_empty()
+                            && !buffer_view
+                                .format_features()
+                                .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
+                        {
+                            return Err(DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported);
+                        }
 
-                    // VUID-vkCmdDispatch-OpTypeImage-06424
-                    if reqs.image_format.is_none()
-                        && reqs.storage_read.contains(&index)
-                        && !buffer_view
-                            .format_features()
-                            .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
-                    {
-                        return Err(
-                            DescriptorResourceInvalidError::StorageReadWithoutFormatNotSupported,
-                        );
+                        // VUID-vkCmdDispatch-OpTypeImage-06424
+                        if binding_reqs.image_format.is_none()
+                            && !desc_reqs.memory_read.is_empty()
+                            && !buffer_view
+                                .format_features()
+                                .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
+                        {
+                            return Err(DescriptorResourceInvalidError::StorageReadWithoutFormatNotSupported);
+                        }
                     }
                 }
 
@@ -683,38 +703,42 @@ where
             };
 
             let check_image_view_common = |index: u32, image_view: &Arc<dyn ImageViewAbstract>| {
-                // VUID-vkCmdDispatch-None-02691
-                if reqs.storage_image_atomic.contains(&index)
-                    && !image_view
-                        .format_features()
-                        .intersects(FormatFeatures::STORAGE_IMAGE_ATOMIC)
+                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
+                    .chain(binding_reqs.descriptors.get(&None))
                 {
-                    return Err(DescriptorResourceInvalidError::StorageImageAtomicNotSupported);
-                }
-
-                if layout_binding.descriptor_type == DescriptorType::StorageImage {
-                    // VUID-vkCmdDispatch-OpTypeImage-06423
-                    if reqs.image_format.is_none()
-                        && reqs.storage_write.contains(&index)
+                    // VUID-vkCmdDispatch-None-02691
+                    if desc_reqs.storage_image_atomic
                         && !image_view
                             .format_features()
-                            .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
+                            .intersects(FormatFeatures::STORAGE_IMAGE_ATOMIC)
                     {
-                        return Err(
-                            DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported,
-                        );
+                        return Err(DescriptorResourceInvalidError::StorageImageAtomicNotSupported);
                     }
 
-                    // VUID-vkCmdDispatch-OpTypeImage-06424
-                    if reqs.image_format.is_none()
-                        && reqs.storage_read.contains(&index)
-                        && !image_view
-                            .format_features()
-                            .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
-                    {
-                        return Err(
+                    if layout_binding.descriptor_type == DescriptorType::StorageImage {
+                        // VUID-vkCmdDispatch-OpTypeImage-06423
+                        if binding_reqs.image_format.is_none()
+                            && !desc_reqs.memory_write.is_empty()
+                            && !image_view
+                                .format_features()
+                                .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
+                        {
+                            return Err(
+                            DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported,
+                        );
+                        }
+
+                        // VUID-vkCmdDispatch-OpTypeImage-06424
+                        if binding_reqs.image_format.is_none()
+                            && !desc_reqs.memory_read.is_empty()
+                            && !image_view
+                                .format_features()
+                                .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
+                        {
+                            return Err(
                             DescriptorResourceInvalidError::StorageReadWithoutFormatNotSupported,
                         );
+                        }
                     }
                 }
 
@@ -724,7 +748,7 @@ where
                 */
 
                 // The SPIR-V Image Format is not compatible with the image view’s format.
-                if let Some(format) = reqs.image_format {
+                if let Some(format) = binding_reqs.image_format {
                     if image_view.format() != Some(format) {
                         return Err(DescriptorResourceInvalidError::ImageViewFormatMismatch {
                             required: format,
@@ -734,7 +758,7 @@ where
                 }
 
                 // Rules for viewType
-                if let Some(image_view_type) = reqs.image_view_type {
+                if let Some(image_view_type) = binding_reqs.image_view_type {
                     if image_view.view_type() != image_view_type {
                         return Err(DescriptorResourceInvalidError::ImageViewTypeMismatch {
                             required: image_view_type,
@@ -747,11 +771,12 @@ where
                 //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 0.
                 // - If the image was created with VkImageCreateInfo::samples not equal to
                 //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 1.
-                if reqs.image_multisampled != (image_view.image().samples() != SampleCount::Sample1)
+                if binding_reqs.image_multisampled
+                    != (image_view.image().samples() != SampleCount::Sample1)
                 {
                     return Err(
                         DescriptorResourceInvalidError::ImageViewMultisampledMismatch {
-                            required: reqs.image_multisampled,
+                            required: binding_reqs.image_multisampled,
                             provided: image_view.image().samples() != SampleCount::Sample1,
                         },
                     );
@@ -762,7 +787,7 @@ where
                 //   Interpretation of Numeric Format table.
                 // - If the signedness of any read or sample operation does not match the signedness of
                 //   the image’s format.
-                if let Some(scalar_type) = reqs.image_scalar_type {
+                if let Some(scalar_type) = binding_reqs.image_scalar_type {
                     let aspects = image_view.subresource_range().aspects;
                     let view_scalar_type = ShaderScalarType::from(
                         if aspects.intersects(
@@ -797,40 +822,46 @@ where
             };
 
             let check_sampler_common = |index: u32, sampler: &Arc<Sampler>| {
-                // VUID-vkCmdDispatch-None-02703
-                // VUID-vkCmdDispatch-None-02704
-                if reqs.sampler_no_unnormalized_coordinates.contains(&index)
-                    && sampler.unnormalized_coordinates()
+                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
+                    .chain(binding_reqs.descriptors.get(&None))
                 {
-                    return Err(
+                    // VUID-vkCmdDispatch-None-02703
+                    // VUID-vkCmdDispatch-None-02704
+                    if desc_reqs.sampler_no_unnormalized_coordinates
+                        && sampler.unnormalized_coordinates()
+                    {
+                        return Err(
                         DescriptorResourceInvalidError::SamplerUnnormalizedCoordinatesNotAllowed,
                     );
-                }
+                    }
 
-                // - OpImageFetch, OpImageSparseFetch, OpImage*Gather, and OpImageSparse*Gather must not
-                //   be used with a sampler that enables sampler Y′CBCR conversion.
-                // - The ConstOffset and Offset operands must not be used with a sampler that enables
-                //   sampler Y′CBCR conversion.
-                if reqs.sampler_no_ycbcr_conversion.contains(&index)
-                    && sampler.sampler_ycbcr_conversion().is_some()
-                {
-                    return Err(DescriptorResourceInvalidError::SamplerYcbcrConversionNotAllowed);
-                }
+                    // - OpImageFetch, OpImageSparseFetch, OpImage*Gather, and OpImageSparse*Gather must not
+                    //   be used with a sampler that enables sampler Y′CBCR conversion.
+                    // - The ConstOffset and Offset operands must not be used with a sampler that enables
+                    //   sampler Y′CBCR conversion.
+                    if desc_reqs.sampler_no_ycbcr_conversion
+                        && sampler.sampler_ycbcr_conversion().is_some()
+                    {
+                        return Err(
+                            DescriptorResourceInvalidError::SamplerYcbcrConversionNotAllowed,
+                        );
+                    }
 
-                /*
-                    Instruction/Sampler/Image View Validation
-                    https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
-                */
+                    /*
+                        Instruction/Sampler/Image View Validation
+                        https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
+                    */
 
-                // - The SPIR-V instruction is one of the OpImage*Dref* instructions and the sampler
-                //   compareEnable is VK_FALSE
-                // - The SPIR-V instruction is not one of the OpImage*Dref* instructions and the sampler
-                //   compareEnable is VK_TRUE
-                if reqs.sampler_compare.contains(&index) != sampler.compare().is_some() {
-                    return Err(DescriptorResourceInvalidError::SamplerCompareMismatch {
-                        required: reqs.sampler_compare.contains(&index),
-                        provided: sampler.compare().is_some(),
-                    });
+                    // - The SPIR-V instruction is one of the OpImage*Dref* instructions and the sampler
+                    //   compareEnable is VK_FALSE
+                    // - The SPIR-V instruction is not one of the OpImage*Dref* instructions and the sampler
+                    //   compareEnable is VK_TRUE
+                    if desc_reqs.sampler_compare != sampler.compare().is_some() {
+                        return Err(DescriptorResourceInvalidError::SamplerCompareMismatch {
+                            required: desc_reqs.sampler_compare,
+                            provided: sampler.compare().is_some(),
+                        });
+                    }
                 }
 
                 Ok(())
@@ -857,12 +888,15 @@ where
             let check_sampler = |index: u32, sampler: &Arc<Sampler>| {
                 check_sampler_common(index, sampler)?;
 
-                // Check sampler-image compatibility. Only done for separate samplers; combined image
-                // samplers are checked when updating the descriptor set.
-                if let Some(with_images) = reqs.sampler_with_images.get(&index) {
+                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
+                    .chain(binding_reqs.descriptors.get(&None))
+                {
+                    // Check sampler-image compatibility. Only done for separate samplers;
+                    // combined image samplers are checked when updating the descriptor set.
+
                     // If the image view isn't actually present in the resources, then just skip it.
                     // It will be caught later by check_resources.
-                    let iter = with_images.iter().filter_map(|id| {
+                    let iter = desc_reqs.sampler_with_images.iter().filter_map(|id| {
                         current_state
                             .descriptor_set(pipeline.bind_point(), id.set)
                             .and_then(|set| set.resources().binding(id.binding))
@@ -908,28 +942,46 @@ where
 
             match binding_resources {
                 DescriptorBindingResources::None(elements) => {
-                    validate_resources(set_num, binding_num, reqs, elements, check_none)?;
+                    validate_resources(set_num, binding_num, binding_reqs, elements, check_none)?;
                 }
                 DescriptorBindingResources::Buffer(elements) => {
-                    validate_resources(set_num, binding_num, reqs, elements, check_buffer)?;
+                    validate_resources(set_num, binding_num, binding_reqs, elements, check_buffer)?;
                 }
                 DescriptorBindingResources::BufferView(elements) => {
-                    validate_resources(set_num, binding_num, reqs, elements, check_buffer_view)?;
+                    validate_resources(
+                        set_num,
+                        binding_num,
+                        binding_reqs,
+                        elements,
+                        check_buffer_view,
+                    )?;
                 }
                 DescriptorBindingResources::ImageView(elements) => {
-                    validate_resources(set_num, binding_num, reqs, elements, check_image_view)?;
+                    validate_resources(
+                        set_num,
+                        binding_num,
+                        binding_reqs,
+                        elements,
+                        check_image_view,
+                    )?;
                 }
                 DescriptorBindingResources::ImageViewSampler(elements) => {
                     validate_resources(
                         set_num,
                         binding_num,
-                        reqs,
+                        binding_reqs,
                         elements,
                         check_image_view_sampler,
                     )?;
                 }
                 DescriptorBindingResources::Sampler(elements) => {
-                    validate_resources(set_num, binding_num, reqs, elements, check_sampler)?;
+                    validate_resources(
+                        set_num,
+                        binding_num,
+                        binding_reqs,
+                        elements,
+                        check_sampler,
+                    )?;
                 }
             }
         }
@@ -1634,7 +1686,7 @@ impl SyncCommandBufferBuilder {
         self.add_descriptor_set_resources(
             &mut resources,
             PipelineBindPoint::Compute,
-            pipeline.descriptor_requirements(),
+            pipeline.descriptor_binding_requirements(),
         );
 
         for resource in &resources {
@@ -1676,7 +1728,7 @@ impl SyncCommandBufferBuilder {
         self.add_descriptor_set_resources(
             &mut resources,
             PipelineBindPoint::Compute,
-            pipeline.descriptor_requirements(),
+            pipeline.descriptor_binding_requirements(),
         );
         self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
@@ -1730,7 +1782,7 @@ impl SyncCommandBufferBuilder {
         self.add_descriptor_set_resources(
             &mut resources,
             PipelineBindPoint::Graphics,
-            pipeline.descriptor_requirements(),
+            pipeline.descriptor_binding_requirements(),
         );
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
 
@@ -1792,7 +1844,7 @@ impl SyncCommandBufferBuilder {
         self.add_descriptor_set_resources(
             &mut resources,
             PipelineBindPoint::Graphics,
-            pipeline.descriptor_requirements(),
+            pipeline.descriptor_binding_requirements(),
         );
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_index_buffer_resources(&mut resources);
@@ -1846,7 +1898,7 @@ impl SyncCommandBufferBuilder {
         self.add_descriptor_set_resources(
             &mut resources,
             PipelineBindPoint::Graphics,
-            pipeline.descriptor_requirements(),
+            pipeline.descriptor_binding_requirements(),
         );
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
@@ -1902,7 +1954,7 @@ impl SyncCommandBufferBuilder {
         self.add_descriptor_set_resources(
             &mut resources,
             PipelineBindPoint::Graphics,
-            pipeline.descriptor_requirements(),
+            pipeline.descriptor_binding_requirements(),
         );
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_index_buffer_resources(&mut resources);
@@ -1929,93 +1981,116 @@ impl SyncCommandBufferBuilder {
         &self,
         resources: &mut Vec<(Cow<'static, str>, Resource)>,
         pipeline_bind_point: PipelineBindPoint,
-        descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
+        descriptor_binding_requirements: impl IntoIterator<
+            Item = ((u32, u32), &'a DescriptorBindingRequirements),
+        >,
     ) {
         let state = match self.current_state.descriptor_sets.get(&pipeline_bind_point) {
             Some(x) => x,
             None => return,
         };
 
-        for ((set, binding), reqs) in descriptor_requirements {
+        for ((set, binding), binding_reqs) in descriptor_binding_requirements {
             // TODO: Can things be refactored so that the pipeline layout isn't needed at all?
             let descriptor_type = state.pipeline_layout.set_layouts()[set as usize].bindings()
                 [&binding]
                 .descriptor_type;
 
-            // FIXME: This is tricky. Since we read from the input attachment
-            // and this input attachment is being written in an earlier pass,
-            // vulkano will think that it needs to put a pipeline barrier and will
-            // return a `Conflict` error. For now as a work-around we simply ignore
-            // input attachments.
-            if descriptor_type == DescriptorType::InputAttachment {
-                continue;
-            }
-
-            // TODO: Maybe include this on DescriptorRequirements?
-            let access = PipelineMemoryAccess {
-                stages: reqs.stages.into(),
-                access: match descriptor_type {
-                    DescriptorType::Sampler => continue,
-                    DescriptorType::CombinedImageSampler
-                    | DescriptorType::SampledImage
-                    | DescriptorType::StorageImage
-                    | DescriptorType::UniformTexelBuffer
-                    | DescriptorType::StorageTexelBuffer
-                    | DescriptorType::StorageBuffer
-                    | DescriptorType::StorageBufferDynamic => AccessFlags::SHADER_READ,
-                    DescriptorType::InputAttachment => AccessFlags::INPUT_ATTACHMENT_READ,
-                    DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
-                        AccessFlags::UNIFORM_READ
-                    }
-                },
-                exclusive: false,
+            let (access_read, access_write) = match descriptor_type {
+                DescriptorType::Sampler => continue,
+                DescriptorType::InputAttachment => {
+                    // FIXME: This is tricky. Since we read from the input attachment
+                    // and this input attachment is being written in an earlier pass,
+                    // vulkano will think that it needs to put a pipeline barrier and will
+                    // return a `Conflict` error. For now as a work-around we simply ignore
+                    // input attachments.
+                    continue;
+                }
+                DescriptorType::CombinedImageSampler
+                | DescriptorType::SampledImage
+                | DescriptorType::UniformTexelBuffer => (Some(AccessFlags::SHADER_READ), None),
+                DescriptorType::StorageImage
+                | DescriptorType::StorageTexelBuffer
+                | DescriptorType::StorageBuffer
+                | DescriptorType::StorageBufferDynamic => (
+                    Some(AccessFlags::SHADER_READ),
+                    Some(AccessFlags::SHADER_WRITE),
+                ),
+                DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
+                    (Some(AccessFlags::UNIFORM_READ), None)
+                }
             };
 
-            let access = (0..).map(|index| {
-                let mut access = access;
-                let mutable = reqs.storage_write.contains(&index);
-                access.exclusive = mutable;
+            let memory_iter = move |index: usize| {
+                let mut stages_read = PipelineStages::empty();
+                let mut stages_write = PipelineStages::empty();
 
-                if mutable {
-                    access.access |= AccessFlags::SHADER_WRITE;
+                for desc_reqs in (binding_reqs
+                    .descriptors
+                    .get(&Some(index as u32))
+                    .into_iter())
+                .chain(binding_reqs.descriptors.get(&None))
+                {
+                    stages_read |= desc_reqs.memory_read.into();
+                    stages_write |= desc_reqs.memory_write.into();
                 }
 
-                access
-            });
+                let memory_read = (!stages_read.is_empty()).then(|| PipelineMemoryAccess {
+                    stages: stages_read,
+                    access: access_read.unwrap(),
+                    exclusive: false,
+                });
+                let memory_write = (!stages_write.is_empty()).then(|| PipelineMemoryAccess {
+                    stages: stages_write,
+                    access: access_write.unwrap(),
+                    exclusive: true,
+                });
 
-            let buffer_resource = move |(buffer, range, memory): (
-                Arc<dyn BufferAccess>,
-                Range<DeviceSize>,
-                PipelineMemoryAccess,
-            )| {
-                (
-                    format!("Buffer bound to set {} descriptor {}", set, binding).into(),
-                    Resource::Buffer {
-                        buffer,
-                        range,
-                        memory,
-                    },
-                )
+                [memory_read, memory_write].into_iter().flatten()
             };
-            let image_resource = move |(image, subresource_range, memory): (
+            let buffer_resource =
+                |(index, buffer, range): (usize, Arc<dyn BufferAccess>, Range<DeviceSize>)| {
+                    memory_iter(index).map(move |memory| {
+                        (
+                            format!(
+                                "Buffer bound to set {} descriptor {} index {}",
+                                set, binding, index
+                            )
+                            .into(),
+                            Resource::Buffer {
+                                buffer: buffer.clone(),
+                                range: range.clone(),
+                                memory,
+                            },
+                        )
+                    })
+                };
+            let image_resource = |(index, image, subresource_range): (
+                usize,
                 Arc<dyn ImageAccess>,
                 ImageSubresourceRange,
-                PipelineMemoryAccess,
             )| {
                 let layout = image
                     .descriptor_layouts()
                     .expect("descriptor_layouts must return Some when used in an image view")
                     .layout_for(descriptor_type);
-                (
-                    format!("Image bound to set {} descriptor {}", set, binding).into(),
-                    Resource::Image {
-                        image,
-                        subresource_range,
-                        memory,
-                        start_layout: layout,
-                        end_layout: layout,
-                    },
-                )
+
+                memory_iter(index).map(move |memory| {
+                    (
+                        format!(
+                            "Image bound to set {} descriptor {} index {}",
+                            set, binding, index
+                        )
+                        .into(),
+                        Resource::Image {
+                            image: image.clone(),
+                            subresource_range: subresource_range.clone(),
+                            memory,
+                            start_layout: layout,
+                            end_layout: layout,
+                        },
+                    )
+                })
             };
 
             match state.descriptor_sets[&set]
@@ -2026,62 +2101,58 @@ impl SyncCommandBufferBuilder {
                 DescriptorBindingResources::None(_) => continue,
                 DescriptorBindingResources::Buffer(elements) => {
                     resources.extend(
-                        access
-                            .zip(elements)
-                            .filter_map(|(access, element)| {
+                        (elements.iter().enumerate())
+                            .filter_map(|(index, element)| {
                                 element.as_ref().map(|buffer| {
                                     (
+                                        index,
                                         buffer.clone(),
                                         0..buffer.size(), // TODO:
-                                        access,
                                     )
                                 })
                             })
-                            .map(buffer_resource),
+                            .flat_map(buffer_resource),
                     );
                 }
                 DescriptorBindingResources::BufferView(elements) => {
                     resources.extend(
-                        access
-                            .zip(elements)
-                            .filter_map(|(access, element)| {
+                        (elements.iter().enumerate())
+                            .filter_map(|(index, element)| {
                                 element.as_ref().map(|buffer_view| {
-                                    (buffer_view.buffer(), buffer_view.range(), access)
+                                    (index, buffer_view.buffer(), buffer_view.range())
                                 })
                             })
-                            .map(buffer_resource),
+                            .flat_map(buffer_resource),
                     );
                 }
                 DescriptorBindingResources::ImageView(elements) => {
                     resources.extend(
-                        access
-                            .zip(elements)
-                            .filter_map(|(access, element)| {
+                        (elements.iter().enumerate())
+                            .filter_map(|(index, element)| {
                                 element.as_ref().map(|image_view| {
                                     (
+                                        index,
                                         image_view.image(),
                                         image_view.subresource_range().clone(),
-                                        access,
                                     )
                                 })
                             })
-                            .map(image_resource),
+                            .flat_map(image_resource),
                     );
                 }
                 DescriptorBindingResources::ImageViewSampler(elements) => {
                     resources.extend(
-                        access
-                            .zip(elements)
-                            .filter_map(|(access, element)| {
+                        (elements.iter().enumerate())
+                            .filter_map(|(index, element)| {
                                 element.as_ref().map(|(image_view, _)| {
                                     (
+                                        index,
                                         image_view.image(),
                                         image_view.subresource_range().clone(),
-                                        access,
                                     )
                                 })
                             })
-                            .map(image_resource),
+                            .flat_map(image_resource),
                     );
                 }
                 DescriptorBindingResources::Sampler(_) => (),
