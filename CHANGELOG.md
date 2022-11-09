@@ -14,6 +14,10 @@
 ### Additions
 
 ### Bugs fixed
+
+# Version 0.32.1 (2022-11-09)
+
+### Bugs fixed
 - [#2074](https://github.com/vulkano-rs/vulkano/issues/2074): Fixed error on multiple draw calls using a texture that had a layout transition.
 - Fixed an issue with `CpuBufferPool<T>`, where the alignment of `T` was not being considered when allocating.
 - Fixed an issue with `CpuBufferPool`, where the allocated subbuffers did not respect the non-coherent atom size for non-host-coherent memory types.
