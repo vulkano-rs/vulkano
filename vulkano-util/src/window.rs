@@ -168,7 +168,6 @@ impl VulkanoWindows {
                 winit_window,
                 window_descriptor,
                 swapchain_create_info_modify,
-                vulkano_context.memory_allocator().clone(),
             ),
         );
 

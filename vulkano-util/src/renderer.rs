@@ -66,7 +66,6 @@ impl VulkanoWindowRenderer {
         window: winit::window::Window,
         descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
-        memory_allocator: Arc<StandardMemoryAllocator>,
     ) -> VulkanoWindowRenderer {
         // Create rendering surface from window
         let surface =
@@ -89,7 +88,7 @@ impl VulkanoWindowRenderer {
             compute_queue: vulkano_context.compute_queue().clone(),
             swapchain: swap_chain,
             final_views,
-            memory_allocator,
+            memory_allocator: vulkano_context.memory_allocator().clone(),
             additional_image_views: HashMap::default(),
             recreate_swapchain: false,
             previous_frame_end,
