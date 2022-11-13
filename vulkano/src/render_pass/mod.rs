@@ -35,7 +35,7 @@ use crate::{
     image::{ImageAspects, ImageLayout, SampleCount},
     macros::{vulkan_bitflags_enum, vulkan_enum},
     shader::ShaderInterface,
-    sync::{AccessFlags, PipelineStages},
+    sync::{AccessFlags, DependencyFlags, PipelineStages},
     Version, VulkanObject,
 };
 use std::{cmp::max, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -1037,34 +1037,33 @@ pub struct SubpassDependency {
     /// The default value is [`AccessFlags::empty()`].
     pub dst_access: AccessFlags,
 
-    /// If false, then the source operations must be fully finished for the destination operations
-    /// to start. If true, then the implementation can start the destination operation for some
-    /// given pixels as long as the source operation is finished for these given pixels.
+    /// Dependency flags that modify behavior of the subpass dependency.
     ///
-    /// In other words, if the previous subpass has some side effects on other parts of an
-    /// attachment, then you should set it to false.
+    /// If a `src_subpass` equals `dst_subpass`, then:
+    /// - If `src_stages` and `dst_stages` both contain framebuffer-space stages,
+    ///   this must include [`BY_REGION`].
+    /// - If the subpass's `view_mask` has more than one view,
+    ///   this must include [`VIEW_LOCAL`].
     ///
-    /// Passing `false` is always safer than passing `true`, but in practice you rarely need to
-    /// pass `false`.
+    /// The default value is [`DependencyFlags::empty()`].
     ///
-    /// The default value is `false`.
-    pub by_region: bool,
+    /// [`BY_REGION`]: crate::sync::DependencyFlags::BY_REGION
+    /// [`VIEW_LOCAL`]: crate::sync::DependencyFlags::VIEW_LOCAL
+    pub dependency_flags: DependencyFlags,
 
-    /// If multiview rendering is being used (the subpasses have a nonzero `view_mask`), then
-    /// setting this to `Some` creates a view-local dependency, between views in `src_subpass`
-    /// and views in `dst_subpass`.
-    ///
-    /// The inner value specifies an offset relative to the view index of `dst_subpass`:
-    /// each view `d` in `dst_subpass` depends on view `d + view_offset` in
+    /// If multiview rendering is being used (the subpasses have a nonzero `view_mask`), and
+    /// `dependency_flags` includes [`VIEW_LOCAL`], specifies an offset relative to the view index
+    /// of `dst_subpass`: each view `d` in `dst_subpass` depends on view `d + view_offset` in
     /// `src_subpass`. If the source view index does not exist, the dependency is ignored for
     /// that view.
     ///
-    /// If multiview rendering is not being used, the value must be `None`. If `src_subpass`
-    /// and `dst_subpass` are the same, only `Some(0)` and `None` are allowed as values, and
-    /// if that subpass also has multiple bits set in its `view_mask`, the value must be `Some(0)`.
+    /// If `dependency_flags` does not include [`VIEW_LOCAL`], or if `src_subpass` and
+    /// `dst_subpass` are the same, the value must be `0`.
     ///
-    /// The default value is `None`.
-    pub view_local: Option<i32>,
+    /// The default value is `0`.
+    ///
+    /// [`VIEW_LOCAL`]: crate::sync::DependencyFlags::VIEW_LOCAL
+    pub view_offset: i32,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1079,8 +1078,8 @@ impl Default for SubpassDependency {
             dst_stages: PipelineStages::empty(),
             src_access: AccessFlags::empty(),
             dst_access: AccessFlags::empty(),
-            by_region: false,
-            view_local: None,
+            dependency_flags: DependencyFlags::empty(),
+            view_offset: 0,
             _ne: crate::NonExhaustive(()),
         }
     }

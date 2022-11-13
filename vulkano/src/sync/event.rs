@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! An event provides fine-grained synchronization within a single queue, or from the host to a
+//! queue.
+
 use crate::{
     device::{Device, DeviceOwned},
     OomError, RequiresOneOf, VulkanError, VulkanObject,
@@ -296,7 +299,7 @@ impl From<VulkanError> for EventError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{sync::Event, VulkanObject};
+    use crate::{sync::event::Event, VulkanObject};
 
     #[test]
     fn event_create() {

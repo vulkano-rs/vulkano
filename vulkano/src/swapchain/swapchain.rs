@@ -22,8 +22,10 @@ use crate::{
     macros::vulkan_enum,
     swapchain::{PresentInfo, SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
     sync::{
-        AccessCheckError, AccessError, AccessFlags, Fence, FenceError, FlushError, GpuFuture,
-        PipelineStages, Semaphore, SemaphoreError, Sharing, SubmitAnyBuilder,
+        fence::{Fence, FenceError},
+        future::{AccessCheckError, AccessError, FlushError, GpuFuture, SubmitAnyBuilder},
+        semaphore::{Semaphore, SemaphoreError},
+        AccessFlags, PipelineStages, Sharing,
     },
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };

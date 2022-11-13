@@ -205,7 +205,7 @@ impl SyncCommandBufferBuilder {
                 ref range,
                 ref memory,
             } => {
-                debug_assert!(memory.stages.supported_access().contains(memory.access));
+                debug_assert!(AccessFlags::from(memory.stages).contains(memory.access));
 
                 if let Some(conflicting_use) =
                     self.find_buffer_conflict(buffer, range.clone(), memory)
@@ -226,7 +226,7 @@ impl SyncCommandBufferBuilder {
                 end_layout,
             } => {
                 debug_assert!(memory.exclusive || start_layout == end_layout);
-                debug_assert!(memory.stages.supported_access().contains(memory.access));
+                debug_assert!(AccessFlags::from(memory.stages).contains(memory.access));
                 debug_assert!(end_layout != ImageLayout::Undefined);
                 debug_assert!(end_layout != ImageLayout::Preinitialized);
 

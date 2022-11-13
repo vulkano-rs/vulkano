@@ -2912,7 +2912,7 @@ impl UnsafeCommandBufferBuilder {
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
-enum SetDynamicStateError {
+pub(in super::super) enum SetDynamicStateError {
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,

@@ -552,88 +552,7 @@ where
         &mut self,
         mut rendering_info: RenderingInfo,
     ) -> Result<&mut Self, RenderPassError> {
-        {
-            let RenderingInfo {
-                render_area_offset,
-                ref mut render_area_extent,
-                ref mut layer_count,
-                view_mask,
-                ref color_attachments,
-                ref depth_attachment,
-                ref stencil_attachment,
-                contents: _,
-                _ne: _,
-            } = rendering_info;
-
-            let auto_extent = render_area_extent[0] == 0 || render_area_extent[1] == 0;
-            let auto_layers = *layer_count == 0;
-
-            // Set the values based on the attachment sizes.
-            if auto_extent || auto_layers {
-                if auto_extent {
-                    *render_area_extent = [u32::MAX, u32::MAX];
-                }
-
-                if auto_layers {
-                    if view_mask != 0 {
-                        *layer_count = 1;
-                    } else {
-                        *layer_count = u32::MAX;
-                    }
-                }
-
-                for image_view in (color_attachments.iter().flatten())
-                    .chain(depth_attachment.iter())
-                    .chain(stencil_attachment.iter())
-                    .flat_map(|attachment_info| {
-                        Some(&attachment_info.image_view).into_iter().chain(
-                            attachment_info
-                                .resolve_info
-                                .as_ref()
-                                .map(|resolve_info| &resolve_info.image_view),
-                        )
-                    })
-                {
-                    if auto_extent {
-                        let extent = image_view.dimensions().width_height();
-
-                        for i in 0..2 {
-                            render_area_extent[i] = min(render_area_extent[i], extent[i]);
-                        }
-                    }
-
-                    if auto_layers {
-                        let subresource_range = image_view.subresource_range();
-                        let array_layers = subresource_range.array_layers.end
-                            - subresource_range.array_layers.start;
-
-                        *layer_count = min(*layer_count, array_layers);
-                    }
-                }
-
-                if auto_extent {
-                    if *render_area_extent == [u32::MAX, u32::MAX] {
-                        return Err(RenderPassError::AutoExtentAttachmentsEmpty);
-                    }
-
-                    // Subtract the offset from the calculated max extent.
-                    // If there is an underflow, then the offset is too large, and validation should
-                    // catch that later.
-                    for i in 0..2 {
-                        render_area_extent[i] = render_area_extent[i]
-                            .checked_sub(render_area_offset[i])
-                            .unwrap_or(1);
-                    }
-                }
-
-                if auto_layers {
-                    if *layer_count == u32::MAX {
-                        return Err(RenderPassError::AutoLayersAttachmentsEmpty);
-                    }
-                }
-            }
-        }
-
+        rendering_info.set_extent_layers()?;
         self.validate_begin_rendering(&mut rendering_info)?;
 
         unsafe {
@@ -2364,6 +2283,92 @@ impl Default for RenderingInfo {
             contents: SubpassContents::Inline,
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+impl RenderingInfo {
+    pub(crate) fn set_extent_layers(&mut self) -> Result<(), RenderPassError> {
+        let &mut RenderingInfo {
+            render_area_offset,
+            ref mut render_area_extent,
+            ref mut layer_count,
+            view_mask,
+            ref color_attachments,
+            ref depth_attachment,
+            ref stencil_attachment,
+            contents: _,
+            _ne: _,
+        } = self;
+
+        let auto_extent = render_area_extent[0] == 0 || render_area_extent[1] == 0;
+        let auto_layers = *layer_count == 0;
+
+        // Set the values based on the attachment sizes.
+        if auto_extent || auto_layers {
+            if auto_extent {
+                *render_area_extent = [u32::MAX, u32::MAX];
+            }
+
+            if auto_layers {
+                if view_mask != 0 {
+                    *layer_count = 1;
+                } else {
+                    *layer_count = u32::MAX;
+                }
+            }
+
+            for image_view in (color_attachments.iter().flatten())
+                .chain(depth_attachment.iter())
+                .chain(stencil_attachment.iter())
+                .flat_map(|attachment_info| {
+                    Some(&attachment_info.image_view).into_iter().chain(
+                        attachment_info
+                            .resolve_info
+                            .as_ref()
+                            .map(|resolve_info| &resolve_info.image_view),
+                    )
+                })
+            {
+                if auto_extent {
+                    let extent = image_view.dimensions().width_height();
+
+                    for i in 0..2 {
+                        render_area_extent[i] = min(render_area_extent[i], extent[i]);
+                    }
+                }
+
+                if auto_layers {
+                    let subresource_range = image_view.subresource_range();
+                    let array_layers =
+                        subresource_range.array_layers.end - subresource_range.array_layers.start;
+
+                    *layer_count = min(*layer_count, array_layers);
+                }
+            }
+
+            if auto_extent {
+                if *render_area_extent == [u32::MAX, u32::MAX] {
+                    return Err(RenderPassError::AutoExtentAttachmentsEmpty);
+                }
+
+                // Subtract the offset from the calculated max extent.
+                // If there is an underflow, then the offset is too large, and validation should
+                // catch that later.
+                for i in 0..2 {
+                    render_area_extent[i] = render_area_extent[i]
+                        .checked_sub(render_area_offset[i])
+                        .unwrap_or(1);
+                }
+            }
+
+            if auto_layers {
+                if *layer_count == u32::MAX {
+                    return Err(RenderPassError::AutoLayersAttachmentsEmpty);
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

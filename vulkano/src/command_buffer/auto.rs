@@ -27,7 +27,7 @@ use crate::{
     image::{sys::Image, ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange},
     query::{QueryControlFlags, QueryType},
     render_pass::{Framebuffer, Subpass},
-    sync::{AccessCheckError, AccessFlags, PipelineMemoryAccess, PipelineStages},
+    sync::{future::AccessCheckError, AccessFlags, PipelineMemoryAccess, PipelineStages},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanObject,
 };
 use ahash::HashMap;

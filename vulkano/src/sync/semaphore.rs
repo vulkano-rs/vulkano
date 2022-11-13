@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! A semaphore provides synchronization between multiple queues, with non-command buffer
+//! commands on the same queue, or between the device and an external source.
+
 use crate::{
     device::{Device, DeviceOwned, Queue},
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
@@ -1572,10 +1575,12 @@ mod tests {
     use crate::{
         device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo},
         instance::{Instance, InstanceCreateInfo, InstanceExtensions},
-        sync::{ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, SemaphoreCreateInfo},
+        sync::semaphore::{
+            ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, SemaphoreCreateInfo,
+        },
         VulkanLibrary,
     };
-    use crate::{sync::Semaphore, VulkanObject};
+    use crate::{sync::semaphore::Semaphore, VulkanObject};
 
     #[test]
     fn semaphore_create() {
