@@ -96,11 +96,13 @@ pub use self::{
         SecondaryAutoCommandBuffer,
     },
     commands::{
-        debug::DebugUtilsError,
-        image::{
-            BlitImageInfo, ClearColorImageInfo, ClearDepthStencilImageInfo, ImageBlit,
-            ImageResolve, ResolveImageInfo,
+        clear::{ClearColorImageInfo, ClearDepthStencilImageInfo, ClearError, FillBufferInfo},
+        copy::{
+            BlitImageInfo, BufferCopy, BufferImageCopy, CopyBufferInfo, CopyBufferInfoTyped,
+            CopyBufferToImageInfo, CopyError, CopyErrorResource, CopyImageInfo,
+            CopyImageToBufferInfo, ImageBlit, ImageCopy, ImageResolve, ResolveImageInfo,
         },
+        debug::DebugUtilsError,
         pipeline::PipelineExecutionError,
         query::QueryError,
         render_pass::{
@@ -108,11 +110,6 @@ pub use self::{
             RenderingAttachmentInfo, RenderingAttachmentResolveInfo, RenderingInfo,
         },
         secondary::{ExecuteCommandsError, UnsafeCommandBufferBuilderExecuteCommands},
-        transfer::{
-            BufferCopy, BufferImageCopy, CopyBufferInfo, CopyBufferInfoTyped,
-            CopyBufferToImageInfo, CopyImageInfo, CopyImageToBufferInfo, FillBufferInfo, ImageCopy,
-        },
-        CopyError, CopyErrorResource,
     },
     traits::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
