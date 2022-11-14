@@ -128,31 +128,51 @@ unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, SurfaceCreationError> {
-    use winit::platform::unix::WindowExtUnix;
-
-    match (window.wayland_display(), window.wayland_surface()) {
-        (Some(display), Some(surface)) => {
-            Surface::from_wayland(instance, display, surface, Some(window))
-        }
-        _ => {
-            // No wayland display found, check if we can use xlib.
-            // If not, we use xcb.
-            if instance.enabled_extensions().khr_xlib_surface {
-                Surface::from_xlib(
-                    instance,
-                    window.xlib_display().unwrap(),
-                    window.xlib_window().unwrap() as _,
-                    Some(window),
-                )
-            } else {
-                Surface::from_xcb(
-                    instance,
-                    window.xcb_connection().unwrap(),
-                    window.xlib_window().unwrap() as _,
-                    Some(window),
-                )
+    #[cfg(feature = "wayland")]
+    {
+        use winit::platform::unix::WindowExtUnix;
+        match (window.wayland_display(), window.wayland_surface()) {
+            (Some(display), Some(surface)) => {
+                Surface::from_wayland(instance, display, surface, Some(window))
+            }
+            _ => {
+                // No wayland display found, check if we can use xlib.
+                // If not, we use xcb.
+                winit_to_surface_xlib(instance, window)
             }
         }
+    }
+
+    #[cfg(not(feature = "wayland"))]
+    winit_to_surface_xlib(instance, window)
+}
+
+#[cfg(all(
+    unix,
+    not(target_os = "android"),
+    not(target_os = "macos"),
+    not(target_os = "ios")
+))]
+unsafe fn winit_to_surface_xlib(
+    instance: Arc<Instance>,
+    window: Arc<Window>,
+) -> Result<Arc<Surface>, SurfaceCreationError> {
+    use winit::platform::unix::WindowExtUnix;
+
+    if instance.enabled_extensions().khr_xlib_surface {
+        Surface::from_xlib(
+            instance,
+            window.xlib_display().unwrap(),
+            window.xlib_window().unwrap() as _,
+            Some(window),
+        )
+    } else {
+        Surface::from_xcb(
+            instance,
+            window.xcb_connection().unwrap(),
+            window.xlib_window().unwrap() as _,
+            Some(window),
+        )
     }
 }
 
