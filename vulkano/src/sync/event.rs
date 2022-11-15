@@ -9,6 +9,20 @@
 
 //! An event provides fine-grained synchronization within a single queue, or from the host to a
 //! queue.
+//!
+//! When an event is signaled from a queue using the [`set_event`] command buffer command,
+//! an event acts similar to a [pipeline barrier], but the synchronization scopes are split:
+//! the source synchronization scope includes only commands before the `set_event` command,
+//! while the destination synchronization scope includes only commands after the
+//! [`wait_events`] command. Commands in between the two are not included.
+//!
+//! An event can also be signaled from the host, by calling the [`set`] method directly on the
+//! [`Event`].
+//!
+//! [`set_event`]: crate::command_buffer::CommandBufferBuilder::set_event
+//! [pipeline barrier]: crate::command_buffer::CommandBufferBuilder::pipeline_barrier
+//! [`wait_events`]: crate::command_buffer::CommandBufferBuilder::wait_events
+//! [`set`]: Event::set
 
 use crate::{
     device::{Device, DeviceOwned},

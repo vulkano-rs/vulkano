@@ -7,6 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Memory and resource pool for recording command buffers.
+//!
+//! A command pool holds and manages the memory of one or more command buffers. If you destroy a
+//! command pool, all command buffers recorded from it become invalid. This could lead to invalid
+//! usage and unsoundness, so to ensure safety you must use a [command buffer allocator].
+//!
+//! [command buffer allocator]: crate::command_buffer::allocator
+
 use crate::{
     command_buffer::CommandBufferLevel,
     device::{Device, DeviceOwned},

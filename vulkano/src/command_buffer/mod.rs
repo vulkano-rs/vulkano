@@ -7,43 +7,63 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Commands that the GPU will execute (includes draw commands).
+//! Recording commands to execute on the device.
 //!
-//! With Vulkan, before the GPU can do anything you must create a `CommandBuffer`. A command buffer
-//! is a list of commands that will executed by the GPU. Once a command buffer is created, you can
-//! execute it. A command buffer must always be created even for the most simple tasks.
+//! With Vulkan, to get the device to perform work, even relatively simple tasks, you must create a
+//! command buffer. A command buffer is a list of commands that will executed by the device.
+//! You must first record commands to a command buffer builder, then build it into an actual
+//! command buffer, and then it can be used. Depending on how a command buffer is created, it can
+//! be used only once, or reused many times.
 //!
-//! # Primary and secondary command buffers.
+//! # Command pools and allocators
 //!
-//! There are three types of command buffers:
+//! Command buffers are allocated from *command pools*. A command pool holds memory that is used to
+//! record the sequence of commands in a command buffer. Command pools are not thread-safe, and
+//! therefore commands cannot be recorded to a single command buffer from multiple threads at a
+//! time.
 //!
-//! - **Primary command buffers**. They can contain any command. They are the only type of command
-//!   buffer that can be submitted to a queue.
-//! - **Secondary "graphics" command buffers**. They can only contain draw and clear commands.
-//!   They can only be called from a primary command buffer when inside a render pass.
-//! - **Secondary "compute" command buffers**. They can only contain non-render-pass-related
-//!   commands (ie. everything but drawing, clearing, etc.) and cannot enter a render pass. They
-//!   can only be called from a primary command buffer outside of a render pass.
+//! Raw command pools are unsafe to use, so Vulkano uses [command buffer allocators] to manage
+//! command buffers and pools, to ensure their memory is used efficiently, and to protect against
+//! invalid usage. Vulkano provides the [`StandardCommandBufferAllocator`] for this purpose, but
+//! you can also create your own by implementing the [`CommandBufferAllocator`] trait.
 //!
-//! Using secondary command buffers leads to slightly lower performance on the GPU, but they have
-//! two advantages on the CPU side:
+//! # Primary and secondary command buffers
 //!
-//! - Building a command buffer is a single-threaded operation, but by using secondary command
-//!   buffers you can build multiple secondary command buffers in multiple threads simultaneously.
-//! - Secondary command buffers can be kept alive between frames. When you always repeat the same
-//!   operations, it might be a good idea to build a secondary command buffer once at
-//!   initialization and then reuse it afterwards.
+//! There are two levels of command buffers:
 //!
-//! # The `AutoCommandBufferBuilder`
+//! - [`PrimaryCommandBuffer`] can be executed on a queue, and is the main command buffer type.
+//!   It cannot be executed within another command buffer.
+//! - [`SecondaryCommandBuffer`] can only be executed within a primary command buffer, not directly
+//!   on a queue.
 //!
-//! The most basic (and recommended) way to create a command buffer is to create a
-//! [`AutoCommandBufferBuilder`], then record commands to it.
-//! When you are done adding commands, build it to obtain either a `PrimaryAutoCommandBuffer` or
-//! `SecondAutoCommandBuffer`.
+//! Using secondary command buffers, there is slightly more overhead than using primary command
+//! buffers alone, but there are also advantages. A single command buffer cannot be recorded
+//! from multiple threads at a time, so if you want to divide the recording work among several
+//! threads, each thread must record its own command buffer. While it is possible for these to be
+//! all primary command buffers, there are limitations: a render pass or query cannot span multiple
+//! primary command buffers, while secondary command buffers can [inherit] this state from their
+//! parent primary command buffer. Therefore, to have a single render pass or query that is shared
+//! across all the command buffers, you must record secondary command buffers.
 //!
-//! Once built, use the [`PrimaryCommandBufferAbstract`] trait to submit the command buffer.
-//! Submitting a command buffer returns an object that implements the `GpuFuture` trait
-//! and that represents the moment when the execution will end on the GPU.
+//! # Recording a command buffer
+//!
+//! To record a new command buffer, the most direct way is to create a new
+//! [`CommandBufferBuilder`]. You can then call methods on this object to record new commands to
+//! the command buffer. When you are done recording, you call [`build`] to finalise the command
+//! buffer and turn it into either a [`PrimaryCommandBuffer`] or a [`SecondaryCommandBuffer`].
+//!
+//! Using the standard `CommandBufferBuilder`, you must enter synchronization commands such as
+//! [pipeline barriers], to ensure that there are no races and memory access hazards. This can be
+//! difficult to do manually, so Vulkano also provides an alternative builder,
+//! [`AutoCommandBufferBuilder`]. Using this builder, you do not have to worry about managing
+//! synchronization, but the end result may not be quite as efficient.
+//!
+//! # Submitting a primary command buffer
+//!
+//! Once primary a command buffer is recorded and built, you can use the
+//! [`PrimaryCommandBufferAbstract`] trait to submit the command buffer to a queue. Submitting a
+//! command buffer returns an object that implements the [`GpuFuture`] trait and that represents
+//! the moment when the execution will end on the GPU.
 //!
 //! ```
 //! use vulkano::command_buffer::AutoCommandBufferBuilder;
@@ -77,19 +97,15 @@
 //! let _future = cb.execute(queue.clone());
 //! ```
 //!
-//! # Internal architecture of vulkano
-//!
-//! The `commands_raw` and `commands_extra` modules contain structs that correspond to various
-//! commands that can be added to command buffer builders. A command can be added to a command
-//! buffer builder by using the `AddCommand<C>` trait, where `C` is the command struct.
-//!
-//! The `AutoCommandBufferBuilder` internally uses a `UnsafeCommandBufferBuilder` wrapped around
-//! multiple layers. See the `cb` module for more information.
-//!
-//! Command pools are automatically handled by default, but vulkano also allows you to use
-//! alternative command pool implementations and use them. See the `pool` module for more
-//! information.
+//! [`StandardCommandBufferAllocator`]: self::allocator::StandardCommandBufferAllocator
+//! [`CommandBufferAllocator`]: self::allocator::CommandBufferAllocator
+//! [inherit]: CommandBufferInheritanceInfo
+//! [`build`]: CommandBufferBuilder::build
+//! [pipeline barriers]: CommandBufferBuilder::pipeline_barrier
+//! [`GpuFuture`]: crate::sync::GpuFuture
 
+#[doc(no_inline)]
+pub use self::standard::{CommandBufferBuilder, PrimaryCommandBuffer, SecondaryCommandBuffer};
 pub use self::{
     auto::{
         AutoCommandBufferBuilder, BuildError, CommandBufferBeginError, PrimaryAutoCommandBuffer,
@@ -109,7 +125,7 @@ pub use self::{
             ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError,
             RenderingAttachmentInfo, RenderingAttachmentResolveInfo, RenderingInfo,
         },
-        secondary::{ExecuteCommandsError, UnsafeCommandBufferBuilderExecuteCommands},
+        secondary::ExecuteCommandsError,
     },
     traits::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
@@ -134,6 +150,7 @@ pub mod allocator;
 mod auto;
 mod commands;
 pub mod pool;
+pub mod standard;
 pub mod synced;
 pub mod sys;
 mod traits;
