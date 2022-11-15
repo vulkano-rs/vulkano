@@ -910,7 +910,7 @@ impl UnsafeCommandBufferBuilder {
     }
 }
 
-/// Error that can happen when calling a query command.
+/// Error that can happen when recording a query command.
 #[derive(Clone, Debug)]
 pub enum QueryError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
