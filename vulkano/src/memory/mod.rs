@@ -99,7 +99,7 @@ use crate::{
     buffer::{sys::RawBuffer, BufferAccess},
     image::{sys::RawImage, ImageAccess, ImageAspects},
     macros::vulkan_bitflags,
-    sync::Semaphore,
+    sync::semaphore::Semaphore,
     DeviceSize,
 };
 use std::{num::NonZeroU64, sync::Arc};

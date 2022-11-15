@@ -14,7 +14,11 @@ use crate::{
     device::{Device, DeviceOwned, Queue, QueueFlags},
     image::{sys::Image, ImageLayout},
     swapchain::Swapchain,
-    sync::{AccessError, AccessFlags, Fence, PipelineStages, SubmitAnyBuilder},
+    sync::{
+        fence::Fence,
+        future::{AccessError, SubmitAnyBuilder},
+        AccessFlags, PipelineStages,
+    },
     DeviceSize, OomError,
 };
 use parking_lot::{Mutex, MutexGuard};

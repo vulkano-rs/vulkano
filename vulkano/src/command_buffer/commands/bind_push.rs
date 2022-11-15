@@ -328,6 +328,7 @@ where
         }
 
         // VUID-vkCmdBindPipeline-pipeline-00781
+        // TODO:
 
         Ok(())
     }
@@ -1218,7 +1219,7 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
 }
 
 #[derive(Clone, Debug)]
-enum BindPushError {
+pub(in super::super) enum BindPushError {
     DescriptorSetUpdateError(DescriptorSetUpdateError),
 
     RequirementNotMet {

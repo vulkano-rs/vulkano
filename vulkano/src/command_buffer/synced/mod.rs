@@ -78,7 +78,10 @@ use crate::{
     buffer::{sys::Buffer, BufferAccess},
     device::{Device, DeviceOwned, Queue},
     image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
-    sync::{AccessCheckError, AccessError, AccessFlags, PipelineMemoryAccess, PipelineStages},
+    sync::{
+        future::{AccessCheckError, AccessError},
+        AccessFlags, PipelineMemoryAccess, PipelineStages,
+    },
     DeviceSize,
 };
 use ahash::HashMap;

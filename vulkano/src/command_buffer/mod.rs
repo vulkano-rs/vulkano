@@ -127,7 +127,7 @@ use crate::{
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     range_map::RangeMap,
     render_pass::{Framebuffer, Subpass},
-    sync::{AccessFlags, PipelineStages, Semaphore},
+    sync::{semaphore::Semaphore, AccessFlags, PipelineStages},
     DeviceSize,
 };
 use bytemuck::{Pod, Zeroable};

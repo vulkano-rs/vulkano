@@ -17,8 +17,10 @@ use crate::{
     image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
     swapchain::Swapchain,
     sync::{
-        now, AccessCheckError, AccessError, AccessFlags, FlushError, GpuFuture, NowFuture,
-        PipelineMemoryAccess, PipelineStages, SubmitAnyBuilder,
+        future::{
+            now, AccessCheckError, AccessError, FlushError, GpuFuture, NowFuture, SubmitAnyBuilder,
+        },
+        AccessFlags, PipelineMemoryAccess, PipelineStages,
     },
     DeviceSize, SafeDeref, VulkanObject,
 };

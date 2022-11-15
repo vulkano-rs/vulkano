@@ -14,8 +14,8 @@ use crate::{
     },
     image::ImageLayout,
     sync::{
-        BufferMemoryBarrier, DependencyInfo, Event, ImageMemoryBarrier, MemoryBarrier,
-        PipelineStages,
+        event::Event, AccessFlags, BufferMemoryBarrier, DependencyFlags, DependencyInfo,
+        ImageMemoryBarrier, MemoryBarrier, PipelineStages,
     },
     Version, VulkanObject,
 };
@@ -106,13 +106,15 @@ impl UnsafeCommandBufferBuilder {
         }
 
         let DependencyInfo {
+            mut dependency_flags,
             memory_barriers,
             buffer_memory_barriers,
             image_memory_barriers,
             _ne: _,
         } = dependency_info;
 
-        let dependency_flags = ash::vk::DependencyFlags::BY_REGION;
+        // TODO: Is this needed?
+        dependency_flags |= DependencyFlags::BY_REGION;
 
         if self.device.enabled_features().synchronization2 {
             let memory_barriers_vk: SmallVec<[_; 2]> = memory_barriers
@@ -126,8 +128,8 @@ impl UnsafeCommandBufferBuilder {
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(src_access));
-                    debug_assert!(dst_stages.supported_access().contains(dst_access));
+                    debug_assert!(AccessFlags::from(src_stages).contains(src_access));
+                    debug_assert!(AccessFlags::from(dst_stages).contains(dst_access));
 
                     ash::vk::MemoryBarrier2 {
                         src_stage_mask: src_stages.into(),
@@ -147,30 +149,30 @@ impl UnsafeCommandBufferBuilder {
                         src_access,
                         dst_stages,
                         dst_access,
-                        queue_family_transfer,
+                        queue_family_ownership_transfer,
                         ref buffer,
                         ref range,
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(src_access));
-                    debug_assert!(dst_stages.supported_access().contains(dst_access));
+                    debug_assert!(AccessFlags::from(src_stages).contains(src_access));
+                    debug_assert!(AccessFlags::from(dst_stages).contains(dst_access));
                     debug_assert!(!range.is_empty());
                     debug_assert!(range.end <= buffer.size());
+
+                    let (src_queue_family_index, dst_queue_family_index) =
+                        queue_family_ownership_transfer.map_or(
+                            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                            Into::into,
+                        );
 
                     ash::vk::BufferMemoryBarrier2 {
                         src_stage_mask: src_stages.into(),
                         src_access_mask: src_access.into(),
                         dst_stage_mask: dst_stages.into(),
                         dst_access_mask: dst_access.into(),
-                        src_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.source_index
-                            }),
-                        dst_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.destination_index
-                            }),
+                        src_queue_family_index,
+                        dst_queue_family_index,
                         buffer: buffer.handle(),
                         offset: range.start,
                         size: range.end - range.start,
@@ -189,14 +191,14 @@ impl UnsafeCommandBufferBuilder {
                         dst_access,
                         old_layout,
                         new_layout,
-                        queue_family_transfer,
+                        queue_family_ownership_transfer,
                         ref image,
                         ref subresource_range,
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(src_access));
-                    debug_assert!(dst_stages.supported_access().contains(dst_access));
+                    debug_assert!(AccessFlags::from(src_stages).contains(src_access));
+                    debug_assert!(AccessFlags::from(dst_stages).contains(dst_access));
                     debug_assert!(!matches!(
                         new_layout,
                         ImageLayout::Undefined | ImageLayout::Preinitialized
@@ -213,6 +215,12 @@ impl UnsafeCommandBufferBuilder {
                         subresource_range.array_layers.end <= image.dimensions().array_layers()
                     );
 
+                    let (src_queue_family_index, dst_queue_family_index) =
+                        queue_family_ownership_transfer.map_or(
+                            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                            Into::into,
+                        );
+
                     ash::vk::ImageMemoryBarrier2 {
                         src_stage_mask: src_stages.into(),
                         src_access_mask: src_access.into(),
@@ -220,14 +228,8 @@ impl UnsafeCommandBufferBuilder {
                         dst_access_mask: dst_access.into(),
                         old_layout: old_layout.into(),
                         new_layout: new_layout.into(),
-                        src_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.source_index
-                            }),
-                        dst_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.destination_index
-                            }),
+                        src_queue_family_index,
+                        dst_queue_family_index,
                         image: image.handle(),
                         subresource_range: subresource_range.clone().into(),
                         ..Default::default()
@@ -236,7 +238,7 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let dependency_info_vk = ash::vk::DependencyInfo {
-                dependency_flags,
+                dependency_flags: dependency_flags.into(),
                 memory_barrier_count: memory_barriers_vk.len() as u32,
                 p_memory_barriers: memory_barriers_vk.as_ptr(),
                 buffer_memory_barrier_count: buffer_memory_barriers_vk.len() as u32,
@@ -272,8 +274,8 @@ impl UnsafeCommandBufferBuilder {
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(src_access));
-                    debug_assert!(dst_stages.supported_access().contains(dst_access));
+                    debug_assert!(AccessFlags::from(src_stages).contains(src_access));
+                    debug_assert!(AccessFlags::from(dst_stages).contains(dst_access));
 
                     src_stage_mask |= src_stages.into();
                     dst_stage_mask |= dst_stages.into();
@@ -294,31 +296,31 @@ impl UnsafeCommandBufferBuilder {
                         src_access,
                         dst_stages,
                         dst_access,
-                        queue_family_transfer,
+                        queue_family_ownership_transfer,
                         ref buffer,
                         ref range,
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(src_access));
-                    debug_assert!(dst_stages.supported_access().contains(dst_access));
+                    debug_assert!(AccessFlags::from(src_stages).contains(src_access));
+                    debug_assert!(AccessFlags::from(dst_stages).contains(dst_access));
                     debug_assert!(!range.is_empty());
                     debug_assert!(range.end <= buffer.size());
 
                     src_stage_mask |= src_stages.into();
                     dst_stage_mask |= dst_stages.into();
 
+                    let (src_queue_family_index, dst_queue_family_index) =
+                        queue_family_ownership_transfer.map_or(
+                            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                            Into::into,
+                        );
+
                     ash::vk::BufferMemoryBarrier {
                         src_access_mask: src_access.into(),
                         dst_access_mask: dst_access.into(),
-                        src_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.source_index
-                            }),
-                        dst_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.destination_index
-                            }),
+                        src_queue_family_index,
+                        dst_queue_family_index,
                         buffer: buffer.handle(),
                         offset: range.start,
                         size: range.end - range.start,
@@ -337,14 +339,14 @@ impl UnsafeCommandBufferBuilder {
                         dst_access,
                         old_layout,
                         new_layout,
-                        queue_family_transfer,
+                        queue_family_ownership_transfer,
                         ref image,
                         ref subresource_range,
                         _ne: _,
                     } = barrier;
 
-                    debug_assert!(src_stages.supported_access().contains(src_access));
-                    debug_assert!(dst_stages.supported_access().contains(dst_access));
+                    debug_assert!(AccessFlags::from(src_stages).contains(src_access));
+                    debug_assert!(AccessFlags::from(dst_stages).contains(dst_access));
                     debug_assert!(!matches!(
                         new_layout,
                         ImageLayout::Undefined | ImageLayout::Preinitialized
@@ -364,19 +366,19 @@ impl UnsafeCommandBufferBuilder {
                     src_stage_mask |= src_stages.into();
                     dst_stage_mask |= dst_stages.into();
 
+                    let (src_queue_family_index, dst_queue_family_index) =
+                        queue_family_ownership_transfer.map_or(
+                            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                            Into::into,
+                        );
+
                     ash::vk::ImageMemoryBarrier {
                         src_access_mask: src_access.into(),
                         dst_access_mask: dst_access.into(),
                         old_layout: old_layout.into(),
                         new_layout: new_layout.into(),
-                        src_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.source_index
-                            }),
-                        dst_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.destination_index
-                            }),
+                        src_queue_family_index,
+                        dst_queue_family_index,
                         image: image.handle(),
                         subresource_range: subresource_range.clone().into(),
                         ..Default::default()
@@ -401,7 +403,7 @@ impl UnsafeCommandBufferBuilder {
                 self.handle,
                 src_stage_mask,
                 dst_stage_mask,
-                dependency_flags,
+                dependency_flags.into(),
                 memory_barriers_vk.len() as u32,
                 memory_barriers_vk.as_ptr(),
                 buffer_memory_barriers_vk.len() as u32,
@@ -415,14 +417,16 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetEvent` on the builder.
     #[inline]
     pub unsafe fn set_event(&mut self, event: &Event, dependency_info: &DependencyInfo) {
-        let DependencyInfo {
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
+        let &DependencyInfo {
+            mut dependency_flags,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
             _ne: _,
         } = dependency_info;
 
-        let dependency_flags = ash::vk::DependencyFlags::BY_REGION;
+        // TODO: Is this needed?
+        dependency_flags |= DependencyFlags::BY_REGION;
 
         let fns = self.device.fns();
 
@@ -456,25 +460,25 @@ impl UnsafeCommandBufferBuilder {
                         src_access,
                         dst_stages,
                         dst_access,
-                        queue_family_transfer,
+                        queue_family_ownership_transfer,
                         ref buffer,
                         ref range,
                         _ne: _,
                     } = barrier;
+
+                    let (src_queue_family_index, dst_queue_family_index) =
+                        queue_family_ownership_transfer.map_or(
+                            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                            Into::into,
+                        );
 
                     ash::vk::BufferMemoryBarrier2 {
                         src_stage_mask: src_stages.into(),
                         src_access_mask: src_access.into(),
                         dst_stage_mask: dst_stages.into(),
                         dst_access_mask: dst_access.into(),
-                        src_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.source_index
-                            }),
-                        dst_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.destination_index
-                            }),
+                        src_queue_family_index,
+                        dst_queue_family_index,
                         buffer: buffer.handle(),
                         offset: range.start,
                         size: range.end - range.start,
@@ -493,11 +497,17 @@ impl UnsafeCommandBufferBuilder {
                         dst_access,
                         old_layout,
                         new_layout,
-                        queue_family_transfer,
+                        queue_family_ownership_transfer,
                         ref image,
                         ref subresource_range,
                         _ne: _,
                     } = barrier;
+
+                    let (src_queue_family_index, dst_queue_family_index) =
+                        queue_family_ownership_transfer.map_or(
+                            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                            Into::into,
+                        );
 
                     ash::vk::ImageMemoryBarrier2 {
                         src_stage_mask: src_stages.into(),
@@ -506,14 +516,8 @@ impl UnsafeCommandBufferBuilder {
                         dst_access_mask: dst_access.into(),
                         old_layout: old_layout.into(),
                         new_layout: new_layout.into(),
-                        src_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.source_index
-                            }),
-                        dst_queue_family_index: queue_family_transfer
-                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                transfer.destination_index
-                            }),
+                        src_queue_family_index,
+                        dst_queue_family_index,
                         image: image.handle(),
                         subresource_range: subresource_range.clone().into(),
                         ..Default::default()
@@ -522,7 +526,7 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let dependency_info_vk = ash::vk::DependencyInfo {
-                dependency_flags,
+                dependency_flags: dependency_flags.into(),
                 memory_barrier_count: memory_barriers_vk.len() as u32,
                 p_memory_barriers: memory_barriers_vk.as_ptr(),
                 buffer_memory_barrier_count: buffer_memory_barriers_vk.len() as u32,
@@ -590,14 +594,16 @@ impl UnsafeCommandBufferBuilder {
             let mut per_dependency_info_vk: SmallVec<[_; 4]> = SmallVec::new();
 
             for (event, dependency_info) in events {
-                let DependencyInfo {
-                    memory_barriers,
-                    buffer_memory_barriers,
-                    image_memory_barriers,
+                let &DependencyInfo {
+                    mut dependency_flags,
+                    ref memory_barriers,
+                    ref buffer_memory_barriers,
+                    ref image_memory_barriers,
                     _ne: _,
                 } = dependency_info;
 
-                let dependency_flags = ash::vk::DependencyFlags::BY_REGION;
+                // TODO: Is this needed?
+                dependency_flags |= DependencyFlags::BY_REGION;
 
                 let memory_barriers_vk: SmallVec<[_; 2]> = memory_barriers
                     .into_iter()
@@ -628,25 +634,25 @@ impl UnsafeCommandBufferBuilder {
                             src_access,
                             dst_stages,
                             dst_access,
-                            queue_family_transfer,
+                            queue_family_ownership_transfer,
                             ref buffer,
                             ref range,
                             _ne: _,
                         } = barrier;
+
+                        let (src_queue_family_index, dst_queue_family_index) =
+                            queue_family_ownership_transfer.map_or(
+                                (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                                Into::into,
+                            );
 
                         ash::vk::BufferMemoryBarrier2 {
                             src_stage_mask: src_stages.into(),
                             src_access_mask: src_access.into(),
                             dst_stage_mask: dst_stages.into(),
                             dst_access_mask: dst_access.into(),
-                            src_queue_family_index: queue_family_transfer
-                                .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                    transfer.source_index
-                                }),
-                            dst_queue_family_index: queue_family_transfer
-                                .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                    transfer.destination_index
-                                }),
+                            src_queue_family_index,
+                            dst_queue_family_index,
                             buffer: buffer.handle(),
                             offset: range.start,
                             size: range.end - range.start,
@@ -665,11 +671,17 @@ impl UnsafeCommandBufferBuilder {
                             dst_access,
                             old_layout,
                             new_layout,
-                            queue_family_transfer,
+                            queue_family_ownership_transfer,
                             ref image,
                             ref subresource_range,
                             _ne: _,
                         } = barrier;
+
+                        let (src_queue_family_index, dst_queue_family_index) =
+                            queue_family_ownership_transfer.map_or(
+                                (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                                Into::into,
+                            );
 
                         ash::vk::ImageMemoryBarrier2 {
                             src_stage_mask: src_stages.into(),
@@ -678,14 +690,8 @@ impl UnsafeCommandBufferBuilder {
                             dst_access_mask: dst_access.into(),
                             old_layout: old_layout.into(),
                             new_layout: new_layout.into(),
-                            src_queue_family_index: queue_family_transfer
-                                .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                    transfer.source_index
-                                }),
-                            dst_queue_family_index: queue_family_transfer
-                                .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                    transfer.destination_index
-                                }),
+                            src_queue_family_index,
+                            dst_queue_family_index,
                             image: image.handle(),
                             subresource_range: subresource_range.clone().into(),
                             ..Default::default()
@@ -695,7 +701,7 @@ impl UnsafeCommandBufferBuilder {
 
                 events_vk.push(event.handle());
                 dependency_infos_vk.push(ash::vk::DependencyInfo {
-                    dependency_flags,
+                    dependency_flags: dependency_flags.into(),
                     memory_barrier_count: 0,
                     p_memory_barriers: ptr::null(),
                     buffer_memory_barrier_count: 0,
@@ -756,10 +762,11 @@ impl UnsafeCommandBufferBuilder {
             for (event, dependency_info) in events {
                 let events_vk = [event.handle()];
 
-                let DependencyInfo {
-                    memory_barriers,
-                    buffer_memory_barriers,
-                    image_memory_barriers,
+                let &DependencyInfo {
+                    dependency_flags: _,
+                    ref memory_barriers,
+                    ref buffer_memory_barriers,
+                    ref image_memory_barriers,
                     _ne: _,
                 } = dependency_info;
 
@@ -796,7 +803,7 @@ impl UnsafeCommandBufferBuilder {
                             src_access,
                             dst_stages,
                             dst_access,
-                            queue_family_transfer,
+                            queue_family_ownership_transfer,
                             ref buffer,
                             ref range,
                             _ne: _,
@@ -805,17 +812,17 @@ impl UnsafeCommandBufferBuilder {
                         src_stage_mask |= src_stages.into();
                         dst_stage_mask |= dst_stages.into();
 
+                        let (src_queue_family_index, dst_queue_family_index) =
+                            queue_family_ownership_transfer.map_or(
+                                (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                                Into::into,
+                            );
+
                         ash::vk::BufferMemoryBarrier {
                             src_access_mask: src_access.into(),
                             dst_access_mask: dst_access.into(),
-                            src_queue_family_index: queue_family_transfer
-                                .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                    transfer.source_index
-                                }),
-                            dst_queue_family_index: queue_family_transfer
-                                .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                    transfer.destination_index
-                                }),
+                            src_queue_family_index,
+                            dst_queue_family_index,
                             buffer: buffer.handle(),
                             offset: range.start,
                             size: range.end - range.start,
@@ -834,7 +841,7 @@ impl UnsafeCommandBufferBuilder {
                             dst_access,
                             old_layout,
                             new_layout,
-                            queue_family_transfer,
+                            queue_family_ownership_transfer,
                             ref image,
                             ref subresource_range,
                             _ne: _,
@@ -843,19 +850,19 @@ impl UnsafeCommandBufferBuilder {
                         src_stage_mask |= src_stages.into();
                         dst_stage_mask |= dst_stages.into();
 
+                        let (src_queue_family_index, dst_queue_family_index) =
+                            queue_family_ownership_transfer.map_or(
+                                (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                                Into::into,
+                            );
+
                         ash::vk::ImageMemoryBarrier {
                             src_access_mask: src_access.into(),
                             dst_access_mask: dst_access.into(),
                             old_layout: old_layout.into(),
                             new_layout: new_layout.into(),
-                            src_queue_family_index: queue_family_transfer
-                                .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                    transfer.source_index
-                                }),
-                            dst_queue_family_index: queue_family_transfer
-                                .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
-                                    transfer.destination_index
-                                }),
+                            src_queue_family_index,
+                            dst_queue_family_index,
                             image: image.handle(),
                             subresource_range: subresource_range.clone().into(),
                             ..Default::default()

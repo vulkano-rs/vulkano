@@ -22,7 +22,9 @@ use crate::{
     },
     swapchain::{PresentInfo, SwapchainPresentInfo},
     sync::{
-        AccessCheckError, Fence, FenceState, FlushError, GpuFuture, PipelineStage, SemaphoreState,
+        fence::{Fence, FenceState},
+        future::{AccessCheckError, FlushError, GpuFuture},
+        semaphore::SemaphoreState,
     },
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -1588,14 +1590,6 @@ pub struct QueueFamilyProperties {
     pub min_image_transfer_granularity: [u32; 3],
 }
 
-impl QueueFamilyProperties {
-    /// Returns whether the queues of this family support a particular pipeline stage.
-    #[inline]
-    pub fn supports_stage(&self, stage: PipelineStage) -> bool {
-        self.queue_flags.contains(stage.required_queue_flags())
-    }
-}
-
 impl From<ash::vk::QueueFamilyProperties> for QueueFamilyProperties {
     #[inline]
     fn from(val: ash::vk::QueueFamilyProperties) -> Self {
@@ -1645,6 +1639,13 @@ vulkan_bitflags! {
     VIDEO_ENCODE = VIDEO_ENCODE_KHR {
         device_extensions: [khr_video_encode_queue],
     },
+
+    /*
+    /// Queues of this family can execute optical flow operations.
+    OPTICAL_FLOW = OPTICAL_FLOW_NV {
+        device_extensions: [nv_optical_flow],
+    },
+     */
 }
 
 /// Error that can happen when submitting work to a queue.
@@ -1700,7 +1701,7 @@ impl From<RequirementNotMet> for QueueError {
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::Fence;
+    use crate::sync::fence::Fence;
     use std::{sync::Arc, time::Duration};
 
     #[test]

@@ -9,10 +9,10 @@
 
 use crate::{
     buffer::sys::Buffer,
-    device::QueueFlags,
+    device::{Device, QueueFlags},
     image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
-    DeviceSize,
+    DeviceSize, RequirementNotMet, Version,
 };
 use smallvec::SmallVec;
 use std::{ops::Range, sync::Arc};
@@ -146,283 +146,10 @@ vulkan_bitflags_enum! {
 
             self
         }
-
-        /// Returns the access types that are supported with the given pipeline stages.
-        ///
-        /// Corresponds to the table
-        /// "[Supported access types](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported)"
-        /// in the Vulkan specification.
-        #[inline]
-        pub fn supported_access(mut self) -> AccessFlags {
-            if self.is_empty() {
-                return AccessFlags::empty();
-            }
-
-            self = self.normalize();
-            let mut result = AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE;
-
-            if self.intersects(PipelineStages::DRAW_INDIRECT) {
-                result |=
-                    AccessFlags::INDIRECT_COMMAND_READ | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ;
-            }
-
-            if self.intersects(PipelineStages::VERTEX_INPUT) {}
-
-            if self.intersects(PipelineStages::VERTEX_SHADER) {
-                result |= AccessFlags::SHADER_READ
-                    | AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_WRITE
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
-            }
-
-            if self.intersects(PipelineStages::TESSELLATION_CONTROL_SHADER) {
-                result |= AccessFlags::SHADER_READ
-                    | AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_WRITE
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
-            }
-
-            if self.intersects(PipelineStages::TESSELLATION_EVALUATION_SHADER) {
-                result |= AccessFlags::SHADER_READ
-                    | AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_WRITE
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
-            }
-
-            if self.intersects(PipelineStages::GEOMETRY_SHADER) {
-                result |= AccessFlags::SHADER_READ
-                    | AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_WRITE
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
-            }
-
-            if self.intersects(PipelineStages::FRAGMENT_SHADER) {
-                result |= AccessFlags::SHADER_READ
-                    | AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_WRITE
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ
-                    | AccessFlags::INPUT_ATTACHMENT_READ;
-            }
-
-            if self.intersects(PipelineStages::EARLY_FRAGMENT_TESTS) {
-                result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
-            }
-
-            if self.intersects(PipelineStages::LATE_FRAGMENT_TESTS) {
-                result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
-            }
-
-            if self.intersects(PipelineStages::COLOR_ATTACHMENT_OUTPUT) {
-                result |= AccessFlags::COLOR_ATTACHMENT_READ
-                    | AccessFlags::COLOR_ATTACHMENT_WRITE
-                    | AccessFlags::COLOR_ATTACHMENT_READ_NONCOHERENT;
-            }
-
-            if self.intersects(PipelineStages::COMPUTE_SHADER) {
-                result |= AccessFlags::SHADER_READ
-                    | AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_WRITE
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
-            }
-
-            if self.intersects(PipelineStages::ALL_TRANSFER) {}
-
-            if self.intersects(PipelineStages::BOTTOM_OF_PIPE) {}
-
-            if self.intersects(PipelineStages::HOST) {
-                result |= AccessFlags::HOST_READ | AccessFlags::HOST_WRITE;
-            }
-
-            if self.intersects(PipelineStages::ALL_GRAPHICS) {}
-
-            if self.intersects(PipelineStages::ALL_COMMANDS) {}
-
-            if self.intersects(PipelineStages::COPY) {
-                result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
-            }
-
-            if self.intersects(PipelineStages::RESOLVE) {
-                result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
-            }
-
-            if self.intersects(PipelineStages::BLIT) {
-                result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
-            }
-
-            if self.intersects(PipelineStages::CLEAR) {
-                result |= AccessFlags::TRANSFER_WRITE;
-            }
-
-            if self.intersects(PipelineStages::INDEX_INPUT) {
-                result |= AccessFlags::INDEX_READ;
-            }
-
-            if self.intersects(PipelineStages::VERTEX_ATTRIBUTE_INPUT) {
-                result |= AccessFlags::VERTEX_ATTRIBUTE_READ;
-            }
-
-            if self.intersects(PipelineStages::PRE_RASTERIZATION_SHADERS) {}
-
-            if self.intersects(PipelineStages::VIDEO_DECODE) {
-                result |= AccessFlags::VIDEO_DECODE_READ | AccessFlags::VIDEO_DECODE_WRITE;
-            }
-
-            if self.intersects(PipelineStages::VIDEO_ENCODE) {
-                result |= AccessFlags::VIDEO_ENCODE_READ | AccessFlags::VIDEO_ENCODE_WRITE;
-            }
-
-            if self.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
-                result |= AccessFlags::TRANSFORM_FEEDBACK_WRITE
-                    | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_WRITE
-                    | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ;
-            }
-
-            if self.intersects(PipelineStages::CONDITIONAL_RENDERING) {
-                result |= AccessFlags::CONDITIONAL_RENDERING_READ;
-            }
-
-            if self.intersects(PipelineStages::ACCELERATION_STRUCTURE_BUILD) {
-                result |= AccessFlags::INDIRECT_COMMAND_READ
-                    | AccessFlags::SHADER_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::TRANSFER_READ
-                    | AccessFlags::TRANSFER_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ
-                    | AccessFlags::ACCELERATION_STRUCTURE_WRITE;
-            }
-
-            if self.intersects(PipelineStages::RAY_TRACING_SHADER) {
-                result |= AccessFlags::SHADER_READ
-                    | AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_WRITE
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
-            }
-
-            if self.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
-                result |= AccessFlags::FRAGMENT_DENSITY_MAP_READ;
-            }
-
-            if self.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
-                result |= AccessFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_READ;
-            }
-
-            if self.intersects(PipelineStages::COMMAND_PREPROCESS) {
-                result |= AccessFlags::COMMAND_PREPROCESS_READ | AccessFlags::COMMAND_PREPROCESS_WRITE;
-            }
-
-            if self.intersects(PipelineStages::TASK_SHADER) {
-                result |= AccessFlags::SHADER_READ
-                    | AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_WRITE
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
-            }
-
-            if self.intersects(PipelineStages::MESH_SHADER) {
-                result |= AccessFlags::SHADER_READ
-                    | AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ
-                    | AccessFlags::SHADER_WRITE
-                    | AccessFlags::SHADER_STORAGE_WRITE
-                    | AccessFlags::ACCELERATION_STRUCTURE_READ;
-            }
-
-            if self.intersects(PipelineStages::SUBPASS_SHADING) {
-                result |= AccessFlags::INPUT_ATTACHMENT_READ;
-            }
-
-            if self.intersects(PipelineStages::INVOCATION_MASK) {
-                result |= AccessFlags::INVOCATION_MASK_READ;
-            }
-
-            result
-        }
     },
 
     /// A single stage in the device's processing pipeline.
-    PipelineStage impl {
-        #[inline]
-        pub fn required_queue_flags(self) -> QueueFlags {
-            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-stages-supported
-            match self {
-                Self::TopOfPipe => QueueFlags::empty(),
-                Self::DrawIndirect => QueueFlags::GRAPHICS | QueueFlags::COMPUTE,
-                Self::VertexInput => QueueFlags::GRAPHICS,
-                Self::VertexShader => QueueFlags::GRAPHICS,
-                Self::TessellationControlShader => QueueFlags::GRAPHICS,
-                Self::TessellationEvaluationShader => QueueFlags::GRAPHICS,
-                Self::GeometryShader => QueueFlags::GRAPHICS,
-                Self::FragmentShader => QueueFlags::GRAPHICS,
-                Self::EarlyFragmentTests => QueueFlags::GRAPHICS,
-                Self::LateFragmentTests => QueueFlags::GRAPHICS,
-                Self::ColorAttachmentOutput => QueueFlags::GRAPHICS,
-                Self::ComputeShader => QueueFlags::COMPUTE,
-                Self::AllTransfer => QueueFlags::GRAPHICS | QueueFlags::COMPUTE | QueueFlags::TRANSFER,
-                Self::BottomOfPipe => QueueFlags::empty(),
-                Self::Host => QueueFlags::empty(),
-                Self::AllGraphics => QueueFlags::GRAPHICS,
-                Self::AllCommands => QueueFlags::empty(),
-                Self::Copy => todo!(
-                    "The spec doesn't currently say which queue flags support this pipeline stage"
-                ),
-                Self::Resolve => todo!(
-                    "The spec doesn't currently say which queue flags support this pipeline stage"
-                ),
-                Self::Blit => todo!(
-                    "The spec doesn't currently say which queue flags support this pipeline stage"
-                ),
-                Self::Clear => todo!(
-                    "The spec doesn't currently say which queue flags support this pipeline stage"
-                ),
-                Self::IndexInput => QueueFlags::GRAPHICS,
-                Self::VertexAttributeInput => QueueFlags::GRAPHICS,
-                Self::PreRasterizationShaders => QueueFlags::GRAPHICS,
-                Self::VideoDecode => QueueFlags::VIDEO_DECODE,
-                Self::VideoEncode => QueueFlags::VIDEO_ENCODE,
-                Self::ConditionalRendering => QueueFlags::GRAPHICS | QueueFlags::COMPUTE,
-                Self::TransformFeedback => QueueFlags::GRAPHICS,
-                Self::CommandPreprocess => QueueFlags::GRAPHICS | QueueFlags::COMPUTE,
-                Self::FragmentShadingRateAttachment => QueueFlags::GRAPHICS,
-                Self::TaskShader => QueueFlags::GRAPHICS,
-                Self::MeshShader => QueueFlags::GRAPHICS,
-                Self::AccelerationStructureBuild => QueueFlags::COMPUTE,
-                Self::RayTracingShader => QueueFlags::COMPUTE,
-                Self::FragmentDensityProcess => QueueFlags::GRAPHICS,
-                Self::SubpassShading => QueueFlags::GRAPHICS,
-                Self::InvocationMask => todo!(
-                    "The spec doesn't currently say which queue flags support this pipeline stage"
-                ),
-            }
-        }
-    },
+    PipelineStage,
 
     = PipelineStageFlags2(u64);
 
@@ -657,6 +384,78 @@ vulkan_bitflags_enum! {
         device_extensions: [nv_optical_flow],
     },
      */
+}
+
+impl From<QueueFlags> for PipelineStages {
+    /// Corresponds to the table "[Supported pipeline stage flags]" in the Vulkan specification.
+    ///
+    /// [Supported pipeline stage flags]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-stages-supported
+    #[inline]
+    fn from(val: QueueFlags) -> Self {
+        let mut result = PipelineStages::TOP_OF_PIPE
+            | PipelineStages::BOTTOM_OF_PIPE
+            | PipelineStages::HOST
+            | PipelineStages::ALL_COMMANDS;
+
+        if val.intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE | QueueFlags::TRANSFER) {
+            result |= PipelineStages::ALL_TRANSFER
+                | PipelineStages::COPY
+                | PipelineStages::RESOLVE
+                | PipelineStages::BLIT
+                | PipelineStages::CLEAR;
+            //| PipelineStages::ACCELERATION_STRUCTURE_COPY;
+        }
+
+        if val.intersects(QueueFlags::GRAPHICS) {
+            result |= PipelineStages::DRAW_INDIRECT
+                | PipelineStages::VERTEX_INPUT
+                | PipelineStages::VERTEX_SHADER
+                | PipelineStages::TESSELLATION_CONTROL_SHADER
+                | PipelineStages::TESSELLATION_EVALUATION_SHADER
+                | PipelineStages::GEOMETRY_SHADER
+                | PipelineStages::FRAGMENT_SHADER
+                | PipelineStages::EARLY_FRAGMENT_TESTS
+                | PipelineStages::LATE_FRAGMENT_TESTS
+                | PipelineStages::COLOR_ATTACHMENT_OUTPUT
+                | PipelineStages::ALL_GRAPHICS
+                | PipelineStages::INDEX_INPUT
+                | PipelineStages::VERTEX_ATTRIBUTE_INPUT
+                | PipelineStages::PRE_RASTERIZATION_SHADERS
+                | PipelineStages::CONDITIONAL_RENDERING
+                | PipelineStages::TRANSFORM_FEEDBACK
+                | PipelineStages::COMMAND_PREPROCESS
+                | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
+                | PipelineStages::TASK_SHADER
+                | PipelineStages::MESH_SHADER
+                | PipelineStages::FRAGMENT_DENSITY_PROCESS
+                | PipelineStages::SUBPASS_SHADING
+                | PipelineStages::INVOCATION_MASK;
+        }
+
+        if val.intersects(QueueFlags::COMPUTE) {
+            result |= PipelineStages::DRAW_INDIRECT
+                | PipelineStages::COMPUTE_SHADER
+                | PipelineStages::CONDITIONAL_RENDERING
+                | PipelineStages::COMMAND_PREPROCESS
+                | PipelineStages::ACCELERATION_STRUCTURE_BUILD
+                | PipelineStages::RAY_TRACING_SHADER;
+            //| PipelineStages::MICROMAP_BUILD;
+        }
+
+        if val.intersects(QueueFlags::VIDEO_DECODE) {
+            result |= PipelineStages::VIDEO_DECODE;
+        }
+
+        if val.intersects(QueueFlags::VIDEO_ENCODE) {
+            result |= PipelineStages::VIDEO_ENCODE;
+        }
+
+        /*if val.intersects(QueueFlags::OPTICAL_FLOW) {
+            result |= PipelineStages::OPTICAL_FLOW;
+        }*/
+
+        result
+    }
 }
 
 impl From<PipelineStage> for ash::vk::PipelineStageFlags {
@@ -937,6 +736,213 @@ vulkan_bitflags! {
     */
 }
 
+impl From<PipelineStages> for AccessFlags {
+    /// Corresponds to the table "[Supported access types]" in the Vulkan specification.
+    ///
+    /// [Supported access types]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported
+    #[inline]
+    fn from(mut val: PipelineStages) -> Self {
+        if val.is_empty() {
+            return AccessFlags::empty();
+        }
+
+        val = val.normalize();
+        let mut result = AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE;
+
+        if val.intersects(PipelineStages::DRAW_INDIRECT) {
+            result |=
+                AccessFlags::INDIRECT_COMMAND_READ | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ;
+        }
+
+        if val.intersects(PipelineStages::VERTEX_SHADER) {
+            result |= AccessFlags::SHADER_READ
+                | AccessFlags::UNIFORM_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_WRITE
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ;
+        }
+
+        if val.intersects(PipelineStages::TESSELLATION_CONTROL_SHADER) {
+            result |= AccessFlags::SHADER_READ
+                | AccessFlags::UNIFORM_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_WRITE
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ;
+        }
+
+        if val.intersects(PipelineStages::TESSELLATION_EVALUATION_SHADER) {
+            result |= AccessFlags::SHADER_READ
+                | AccessFlags::UNIFORM_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_WRITE
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ;
+        }
+
+        if val.intersects(PipelineStages::GEOMETRY_SHADER) {
+            result |= AccessFlags::SHADER_READ
+                | AccessFlags::UNIFORM_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_WRITE
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ;
+        }
+
+        if val.intersects(PipelineStages::FRAGMENT_SHADER) {
+            result |= AccessFlags::SHADER_READ
+                | AccessFlags::UNIFORM_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_WRITE
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ
+                | AccessFlags::INPUT_ATTACHMENT_READ;
+        }
+
+        if val.intersects(PipelineStages::EARLY_FRAGMENT_TESTS) {
+            result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
+        }
+
+        if val.intersects(PipelineStages::LATE_FRAGMENT_TESTS) {
+            result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
+        }
+
+        if val.intersects(PipelineStages::COLOR_ATTACHMENT_OUTPUT) {
+            result |= AccessFlags::COLOR_ATTACHMENT_READ
+                | AccessFlags::COLOR_ATTACHMENT_WRITE
+                | AccessFlags::COLOR_ATTACHMENT_READ_NONCOHERENT;
+        }
+
+        if val.intersects(PipelineStages::COMPUTE_SHADER) {
+            result |= AccessFlags::SHADER_READ
+                | AccessFlags::UNIFORM_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_WRITE
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ;
+        }
+
+        if val.intersects(PipelineStages::HOST) {
+            result |= AccessFlags::HOST_READ | AccessFlags::HOST_WRITE;
+        }
+
+        if val.intersects(PipelineStages::COPY) {
+            result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
+        }
+
+        if val.intersects(PipelineStages::RESOLVE) {
+            result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
+        }
+
+        if val.intersects(PipelineStages::BLIT) {
+            result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
+        }
+
+        if val.intersects(PipelineStages::CLEAR) {
+            result |= AccessFlags::TRANSFER_WRITE;
+        }
+
+        if val.intersects(PipelineStages::INDEX_INPUT) {
+            result |= AccessFlags::INDEX_READ;
+        }
+
+        if val.intersects(PipelineStages::VERTEX_ATTRIBUTE_INPUT) {
+            result |= AccessFlags::VERTEX_ATTRIBUTE_READ;
+        }
+
+        if val.intersects(PipelineStages::VIDEO_DECODE) {
+            result |= AccessFlags::VIDEO_DECODE_READ | AccessFlags::VIDEO_DECODE_WRITE;
+        }
+
+        if val.intersects(PipelineStages::VIDEO_ENCODE) {
+            result |= AccessFlags::VIDEO_ENCODE_READ | AccessFlags::VIDEO_ENCODE_WRITE;
+        }
+
+        if val.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
+            result |= AccessFlags::TRANSFORM_FEEDBACK_WRITE
+                | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_WRITE
+                | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ;
+        }
+
+        if val.intersects(PipelineStages::CONDITIONAL_RENDERING) {
+            result |= AccessFlags::CONDITIONAL_RENDERING_READ;
+        }
+
+        if val.intersects(PipelineStages::ACCELERATION_STRUCTURE_BUILD) {
+            result |= AccessFlags::INDIRECT_COMMAND_READ
+                | AccessFlags::SHADER_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::TRANSFER_READ
+                | AccessFlags::TRANSFER_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ
+                | AccessFlags::ACCELERATION_STRUCTURE_WRITE;
+        }
+
+        if val.intersects(PipelineStages::RAY_TRACING_SHADER) {
+            result |= AccessFlags::SHADER_READ
+                | AccessFlags::UNIFORM_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_WRITE
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ;
+        }
+
+        if val.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
+            result |= AccessFlags::FRAGMENT_DENSITY_MAP_READ;
+        }
+
+        if val.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
+            result |= AccessFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_READ;
+        }
+
+        if val.intersects(PipelineStages::COMMAND_PREPROCESS) {
+            result |= AccessFlags::COMMAND_PREPROCESS_READ | AccessFlags::COMMAND_PREPROCESS_WRITE;
+        }
+
+        if val.intersects(PipelineStages::TASK_SHADER) {
+            result |= AccessFlags::SHADER_READ
+                | AccessFlags::UNIFORM_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_WRITE
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ;
+        }
+
+        if val.intersects(PipelineStages::MESH_SHADER) {
+            result |= AccessFlags::SHADER_READ
+                | AccessFlags::UNIFORM_READ
+                | AccessFlags::SHADER_SAMPLED_READ
+                | AccessFlags::SHADER_STORAGE_READ
+                | AccessFlags::SHADER_WRITE
+                | AccessFlags::SHADER_STORAGE_WRITE
+                | AccessFlags::ACCELERATION_STRUCTURE_READ;
+        }
+
+        if val.intersects(PipelineStages::SUBPASS_SHADING) {
+            result |= AccessFlags::INPUT_ATTACHMENT_READ;
+        }
+
+        if val.intersects(PipelineStages::INVOCATION_MASK) {
+            result |= AccessFlags::INVOCATION_MASK_READ;
+        }
+
+        result
+    }
+}
+
 impl From<AccessFlags> for ash::vk::AccessFlags {
     #[inline]
     fn from(val: AccessFlags) -> Self {
@@ -955,12 +961,13 @@ pub struct PipelineMemoryAccess {
     pub exclusive: bool,
 }
 
-/// Dependency info for a pipeline barrier.
+/// Dependency info for barriers in a pipeline barrier or event command.
 ///
 /// A pipeline barrier creates a dependency between commands submitted before the barrier (the
-/// source scope) and commands submitted after it (the destination scope). A pipeline barrier
-/// consists of multiple individual barriers that concern a either single resource or
-/// operate globally.
+/// source scope) and commands submitted after it (the destination scope). An event command acts
+/// like a split pipeline barrier: the source scope and destination scope are defined
+/// relative to different commands. Each `DependencyInfo` consists of multiple individual barriers
+/// that concern a either single resource or operate globally.
 ///
 /// Each barrier has a set of source/destination pipeline stages and source/destination memory
 /// access types. The pipeline stages create an *execution dependency*: the `src_stages` of
@@ -971,13 +978,24 @@ pub struct PipelineMemoryAccess {
 /// are made after the barrier.
 #[derive(Clone, Debug)]
 pub struct DependencyInfo {
+    /// Flags to modify how the execution and memory dependencies are formed.
+    ///
+    /// The default value is empty.
+    pub dependency_flags: DependencyFlags,
+
     /// Memory barriers for global operations and accesses, not limited to a single resource.
+    ///
+    /// The default value is empty.
     pub memory_barriers: SmallVec<[MemoryBarrier; 2]>,
 
     /// Memory barriers for individual buffers.
+    ///
+    /// The default value is empty.
     pub buffer_memory_barriers: SmallVec<[BufferMemoryBarrier; 8]>,
 
     /// Memory barriers for individual images.
+    ///
+    /// The default value is empty.
     pub image_memory_barriers: SmallVec<[ImageMemoryBarrier; 8]>,
 
     pub _ne: crate::NonExhaustive,
@@ -1005,12 +1023,57 @@ impl Default for DependencyInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            dependency_flags: DependencyFlags::empty(),
             memory_barriers: SmallVec::new(),
             buffer_memory_barriers: SmallVec::new(),
             image_memory_barriers: SmallVec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags that modify how execution and memory dependencies are formed.
+    DependencyFlags = DependencyFlags(u32);
+
+    /// For framebuffer-space pipeline stages, specifies that the dependency is framebuffer-local.
+    /// The implementation can start the destination operation for some given pixels as long as the
+    /// source operation is finished for these given pixels.
+    ///
+    /// Framebuffer-local dependencies are usually more efficient, especially on tile-based
+    /// architectures.
+    BY_REGION = BY_REGION,
+
+    /// For devices that consist of multiple physical devices, specifies that the dependency is
+    /// device-local. The dependency will only apply to the operations on each physical device
+    /// individually, rather than applying to all physical devices as a whole. This allows each
+    /// physical device to operate independently of the others.
+    ///
+    /// The device API version must be at least 1.1, or the [`khr_device_group`] extension must be
+    /// enabled on the device.
+    ///
+    /// [`khr_device_group`]: crate::device::DeviceExtensions::khr_device_group
+    DEVICE_GROUP = DEVICE_GROUP {
+        api_version: V1_1,
+        device_extensions: [khr_device_group],
+    },
+
+
+    /// For subpass dependencies, and pipeline barriers executing within a render pass instance,
+    /// if the render pass uses multiview rendering, specifies that the dependency is view-local.
+    /// Each view in the destination subpass will only depend on a single view in the destination
+    /// subpass, instead of all views.
+    ///
+    /// The device API version must be at least 1.1, or the [`khr_multiview`] extension must be
+    /// enabled on the device.
+    ///
+    /// [`khr_multiview`]: crate::device::DeviceExtensions::khr_multiview
+    VIEW_LOCAL = VIEW_LOCAL {
+        api_version: V1_1,
+        device_extensions: [khr_multiview],
+    },
 }
 
 /// A memory barrier that is applied globally.
@@ -1075,7 +1138,7 @@ pub struct BufferMemoryBarrier {
 
     /// For resources created with [`Sharing::Exclusive`](crate::sync::Sharing), transfers
     /// ownership of a resource from one queue family to another.
-    pub queue_family_transfer: Option<QueueFamilyTransfer>,
+    pub queue_family_ownership_transfer: Option<QueueFamilyOwnershipTransfer>,
 
     /// The buffer to apply the barrier to.
     pub buffer: Arc<Buffer>,
@@ -1094,7 +1157,7 @@ impl BufferMemoryBarrier {
             src_access: AccessFlags::empty(),
             dst_stages: PipelineStages::empty(),
             dst_access: AccessFlags::empty(),
-            queue_family_transfer: None,
+            queue_family_ownership_transfer: None,
             buffer,
             range: 0..0,
             _ne: crate::NonExhaustive(()),
@@ -1134,7 +1197,7 @@ pub struct ImageMemoryBarrier {
 
     /// For resources created with [`Sharing::Exclusive`](crate::sync::Sharing), transfers
     /// ownership of a resource from one queue family to another.
-    pub queue_family_transfer: Option<QueueFamilyTransfer>,
+    pub queue_family_ownership_transfer: Option<QueueFamilyOwnershipTransfer>,
 
     /// The image to apply the barrier to.
     pub image: Arc<Image>,
@@ -1155,7 +1218,7 @@ impl ImageMemoryBarrier {
             dst_access: AccessFlags::empty(),
             old_layout: ImageLayout::Undefined,
             new_layout: ImageLayout::Undefined,
-            queue_family_transfer: None,
+            queue_family_ownership_transfer: None,
             image,
             subresource_range: ImageSubresourceRange {
                 aspects: ImageAspects::empty(), // Can't use image format aspects because `color` can't be specified with `planeN`.
@@ -1168,11 +1231,265 @@ impl ImageMemoryBarrier {
 }
 
 /// Specifies a queue family ownership transfer for a resource.
+///
+/// There are three classes of queues that can be used in an ownership transfer:
+/// - A **local** queue exists on the current [`Instance`] and [`Device`].
+/// - An **external** queue does not exist on the current [`Instance`], but has the same
+///   [`device_uuid`] and [`driver_uuid`] as the current [`Device`].
+/// - A **foreign** queue can be an external queue, or any queue on another device for which the
+///   mentioned parameters do not match.
+///
+/// [`Instance`]: crate::instance::Instance
+/// [`Device`]: crate::device::Device
+/// [`device_uuid`]: crate::device::Properties::device_uuid
+/// [`driver_uuid`]: crate::device::Properties::driver_uuid
 #[derive(Clone, Copy, Debug)]
-pub struct QueueFamilyTransfer {
-    /// The queue family that currently owns the resource.
-    pub source_index: u32,
+pub enum QueueFamilyOwnershipTransfer {
+    /// For a resource with [`Sharing::Exclusive`], transfers ownership between two local queues.
+    ///
+    /// [`Sharing::Exclusive`]: crate::sync::Sharing::Exclusive
+    ExclusiveBetweenLocal {
+        /// The queue family that currently owns the resource.
+        src_index: u32,
 
-    /// The queue family to transfer ownership to.
-    pub destination_index: u32,
+        /// The queue family to transfer ownership to.
+        dst_index: u32,
+    },
+
+    /// For a resource with [`Sharing::Exclusive`], transfers ownership from a local queue to an
+    /// external queue.
+    ///
+    /// The device API version must be at least 1.1, or the [`khr_external_memory`] extension must
+    /// be enabled on the device.
+    ///
+    /// [`Sharing::Exclusive`]: crate::sync::Sharing::Exclusive
+    /// [`khr_external_memory`]: crate::device::DeviceExtensions::khr_external_memory
+    ExclusiveToExternal {
+        /// The queue family that currently owns the resource.
+        src_index: u32,
+    },
+
+    /// For a resource with [`Sharing::Exclusive`], transfers ownership from an external queue to a
+    /// local queue.
+    ///
+    /// The device API version must be at least 1.1, or the [`khr_external_memory`] extension must
+    /// be enabled on the device.
+    ///
+    /// [`Sharing::Exclusive`]: crate::sync::Sharing::Exclusive
+    /// [`khr_external_memory`]: crate::device::DeviceExtensions::khr_external_memory
+    ExclusiveFromExternal {
+        /// The queue family to transfer ownership to.
+        dst_index: u32,
+    },
+
+    /// For a resource with [`Sharing::Exclusive`], transfers ownership from a local queue to a
+    /// foreign queue.
+    ///
+    /// The [`ext_queue_family_foreign`] extension must be enabled on the device.
+    ///
+    /// [`Sharing::Exclusive`]: crate::sync::Sharing::Exclusive
+    /// [`ext_queue_family_foreign`]: crate::device::DeviceExtensions::ext_queue_family_foreign
+    ExclusiveToForeign {
+        /// The queue family that currently owns the resource.
+        src_index: u32,
+    },
+
+    /// For a resource with [`Sharing::Exclusive`], transfers ownership from a foreign queue to a
+    /// local queue.
+    ///
+    /// The [`ext_queue_family_foreign`] extension must be enabled on the device.
+    ///
+    /// [`Sharing::Exclusive`]: crate::sync::Sharing::Exclusive
+    /// [`ext_queue_family_foreign`]: crate::device::DeviceExtensions::ext_queue_family_foreign
+    ExclusiveFromForeign {
+        /// The queue family to transfer ownership to.
+        dst_index: u32,
+    },
+
+    /// For a resource with [`Sharing::Concurrent`], transfers ownership from its local queues to
+    /// an external queue.
+    ///
+    /// The device API version must be at least 1.1, or the [`khr_external_memory`] extension must
+    /// be enabled on the device.
+    ///
+    /// [`Sharing::Concurrent`]: crate::sync::Sharing::Concurrent
+    /// [`khr_external_memory`]: crate::device::DeviceExtensions::khr_external_memory
+    ConcurrentToExternal,
+
+    /// For a resource with [`Sharing::Concurrent`], transfers ownership from an external queue to
+    /// its local queues.
+    ///
+    /// The device API version must be at least 1.1, or the [`khr_external_memory`] extension must
+    /// be enabled on the device.
+    ///
+    /// [`Sharing::Concurrent`]: crate::sync::Sharing::Concurrent
+    /// [`khr_external_memory`]: crate::device::DeviceExtensions::khr_external_memory
+    ConcurrentFromExternal,
+
+    /// For a resource with [`Sharing::Concurrent`], transfers ownership from its local queues to
+    /// a foreign queue.
+    ///
+    /// The [`ext_queue_family_foreign`] extension must be enabled on the device.
+    ///
+    /// [`Sharing::Concurrent`]: crate::sync::Sharing::Concurrent
+    /// [`ext_queue_family_foreign`]: crate::device::DeviceExtensions::ext_queue_family_foreign
+    ConcurrentToForeign,
+
+    /// For a resource with [`Sharing::Concurrent`], transfers ownership from a foreign queue to
+    /// its local queues.
+    ///
+    /// The [`ext_queue_family_foreign`] extension must be enabled on the device.
+    ///
+    /// [`Sharing::Concurrent`]: crate::sync::Sharing::Concurrent
+    /// [`ext_queue_family_foreign`]: crate::device::DeviceExtensions::ext_queue_family_foreign
+    ConcurrentFromForeign,
+}
+
+impl QueueFamilyOwnershipTransfer {
+    pub(crate) fn validate_device(self, device: &Device) -> Result<(), RequirementNotMet> {
+        match self {
+            QueueFamilyOwnershipTransfer::ExclusiveToExternal { .. } => {
+                if !(device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_external_memory)
+                {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "`QueueFamilyOwnershipTransfer::ExclusiveToExternal",
+                        requires_one_of: crate::RequiresOneOf {
+                            api_version: Some(Version::V1_1),
+                            device_extensions: &["khr_external_memory"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueueFamilyOwnershipTransfer::ExclusiveFromExternal { .. } => {
+                if !(device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_external_memory)
+                {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "`QueueFamilyOwnershipTransfer::ExclusiveFromExternal",
+                        requires_one_of: crate::RequiresOneOf {
+                            api_version: Some(Version::V1_1),
+                            device_extensions: &["khr_external_memory"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueueFamilyOwnershipTransfer::ExclusiveToForeign { .. } => {
+                if !device.enabled_extensions().ext_queue_family_foreign {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "`QueueFamilyOwnershipTransfer::ExclusiveToForeign",
+                        requires_one_of: crate::RequiresOneOf {
+                            device_extensions: &["ext_queue_family_foreign"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueueFamilyOwnershipTransfer::ExclusiveFromForeign { .. } => {
+                if !device.enabled_extensions().ext_queue_family_foreign {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "`QueueFamilyOwnershipTransfer::ExclusiveFromForeign",
+                        requires_one_of: crate::RequiresOneOf {
+                            device_extensions: &["ext_queue_family_foreign"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueueFamilyOwnershipTransfer::ConcurrentToExternal => {
+                if !(device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_external_memory)
+                {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "`QueueFamilyOwnershipTransfer::ConcurrentToExternal",
+                        requires_one_of: crate::RequiresOneOf {
+                            api_version: Some(Version::V1_1),
+                            device_extensions: &["khr_external_memory"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueueFamilyOwnershipTransfer::ConcurrentFromExternal => {
+                if !(device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_external_memory)
+                {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "`QueueFamilyOwnershipTransfer::ConcurrentFromExternal",
+                        requires_one_of: crate::RequiresOneOf {
+                            api_version: Some(Version::V1_1),
+                            device_extensions: &["khr_external_memory"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueueFamilyOwnershipTransfer::ConcurrentToForeign => {
+                if !device.enabled_extensions().ext_queue_family_foreign {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "`QueueFamilyOwnershipTransfer::ConcurrentToForeign",
+                        requires_one_of: crate::RequiresOneOf {
+                            device_extensions: &["ext_queue_family_foreign"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueueFamilyOwnershipTransfer::ConcurrentFromForeign => {
+                if !device.enabled_extensions().ext_queue_family_foreign {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "`QueueFamilyOwnershipTransfer::ConcurrentFromForeign",
+                        requires_one_of: crate::RequiresOneOf {
+                            device_extensions: &["ext_queue_family_foreign"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            _ => (),
+        }
+
+        Ok(())
+    }
+}
+
+impl From<QueueFamilyOwnershipTransfer> for (u32, u32) {
+    fn from(val: QueueFamilyOwnershipTransfer) -> Self {
+        match val {
+            QueueFamilyOwnershipTransfer::ExclusiveBetweenLocal {
+                src_index,
+                dst_index,
+            } => (src_index, dst_index),
+            QueueFamilyOwnershipTransfer::ExclusiveToExternal { src_index } => {
+                (src_index, ash::vk::QUEUE_FAMILY_EXTERNAL)
+            }
+            QueueFamilyOwnershipTransfer::ExclusiveFromExternal { dst_index } => {
+                (ash::vk::QUEUE_FAMILY_EXTERNAL, dst_index)
+            }
+            QueueFamilyOwnershipTransfer::ExclusiveToForeign { src_index } => {
+                (src_index, ash::vk::QUEUE_FAMILY_FOREIGN_EXT)
+            }
+            QueueFamilyOwnershipTransfer::ExclusiveFromForeign { dst_index } => {
+                (ash::vk::QUEUE_FAMILY_FOREIGN_EXT, dst_index)
+            }
+            QueueFamilyOwnershipTransfer::ConcurrentToExternal => (
+                ash::vk::QUEUE_FAMILY_IGNORED,
+                ash::vk::QUEUE_FAMILY_EXTERNAL,
+            ),
+            QueueFamilyOwnershipTransfer::ConcurrentFromExternal => (
+                ash::vk::QUEUE_FAMILY_EXTERNAL,
+                ash::vk::QUEUE_FAMILY_IGNORED,
+            ),
+            QueueFamilyOwnershipTransfer::ConcurrentToForeign => (
+                ash::vk::QUEUE_FAMILY_IGNORED,
+                ash::vk::QUEUE_FAMILY_FOREIGN_EXT,
+            ),
+            QueueFamilyOwnershipTransfer::ConcurrentFromForeign => (
+                ash::vk::QUEUE_FAMILY_FOREIGN_EXT,
+                ash::vk::QUEUE_FAMILY_IGNORED,
+            ),
+        }
+    }
 }

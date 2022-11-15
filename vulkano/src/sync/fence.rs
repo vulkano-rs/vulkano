@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! A fence provides synchronization between the device and the host, or between an external source
+//! and the host.
+
 use crate::{
     device::{Device, DeviceOwned, Queue},
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
@@ -1608,7 +1611,7 @@ impl From<RequirementNotMet> for FenceError {
 #[cfg(test)]
 mod tests {
     use crate::{
-        sync::{fence::FenceCreateInfo, Fence},
+        sync::fence::{Fence, FenceCreateInfo},
         VulkanObject,
     };
     use std::time::Duration;

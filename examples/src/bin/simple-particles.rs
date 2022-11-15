@@ -42,7 +42,7 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
     swapchain::{PresentMode, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
-    sync::{FenceSignalFuture, GpuFuture},
+    sync::{future::FenceSignalFuture, GpuFuture},
     VulkanLibrary,
 };
 use vulkano_win::VkSurfaceBuild;

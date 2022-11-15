@@ -25,8 +25,8 @@ use crate::{
         SurfaceInfo, SurfaceTransforms,
     },
     sync::{
-        ExternalFenceInfo, ExternalFenceProperties, ExternalSemaphoreInfo,
-        ExternalSemaphoreProperties,
+        fence::{ExternalFenceInfo, ExternalFenceProperties},
+        semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
     },
     ExtensionProperties, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };

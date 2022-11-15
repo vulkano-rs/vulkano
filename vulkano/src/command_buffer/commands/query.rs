@@ -285,7 +285,7 @@ where
         assert_eq!(device, query_pool.device());
 
         // VUID-vkCmdWriteTimestamp2-stage-03860
-        if !queue_family_properties.supports_stage(stage) {
+        if !PipelineStages::from(queue_family_properties.queue_flags).contains_enum(stage) {
             return Err(QueryError::StageNotSupported);
         }
 
