@@ -36,6 +36,11 @@ Changes to `DescriptorRequirements`:
 - Validation checks against the requirements, and pipeline barriers, now always include the requirements of the `None` key as well. This may result in false positives, but prevents false negatives.
 - `DescriptorRequirements` now has `memory_read` and `memory_write` members, which hold a `ShaderStages` value for the stages which read or write the resource. This is used for more fine-grained pipeline barriers.
 
+Changes to the `sync` module and types:
+- Split the module into several submodules: `event`, `fence`, `future`, `semaphore`.
+- Added the `DependencyFlags` type, which is now used by `DependencyInfo` and `SubpassDependency`.
+- Renamed `QueueFamilyTransfer` to `QueueFamilyOwnershipTransfer` and made it into an enum to prevent invalid usage.
+
 ### Additions
 - Added `CpuBufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
