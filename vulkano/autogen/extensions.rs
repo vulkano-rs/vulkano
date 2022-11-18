@@ -450,7 +450,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
 
             /// Returns the list of extensions as an array.
             #[inline]
-            pub const fn as_arr(&self) -> [(&str, bool); #arr_len] {
+            pub const fn as_arr(&self) -> [(&'static str, bool); #arr_len] {
                [#(#arr_items)*]
             }
         }
