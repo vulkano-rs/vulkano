@@ -425,7 +425,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
 
             /// Returns the list of extensions as an array.
             #[inline]
-            pub fn as_arr(&self) -> [(&str, bool); #arr_len] {
+            pub const fn as_arr(&self) -> [(&str, bool); #arr_len] {
                [#(#arr_items)*]
             }
         }
