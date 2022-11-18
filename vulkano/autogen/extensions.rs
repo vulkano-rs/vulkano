@@ -447,12 +447,6 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                     _ne: crate::NonExhaustive(()),
                 }
             }
-
-            /// Returns the list of extensions as an array.
-            #[inline]
-            pub const fn as_arr(&self) -> [(&'static str, bool); #arr_len] {
-               [#(#arr_items)*]
-            }
         }
 
         impl std::ops::BitAnd for #struct_name {
@@ -551,6 +545,16 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                 let mut data = Self::new();
                 #(#from_extensions_for_vec_cstring_items)*
                 data
+            }
+        }
+
+        impl IntoIterator for #struct_name {
+            type Item = (&'static str, bool);
+            type IntoIter = std::array::IntoIter<Self::Item, #arr_len>;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                [#(#arr_items)*].into_iter()
             }
         }
     }

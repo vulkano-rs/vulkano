@@ -72,12 +72,12 @@ mod tests {
     use super::Features;
 
     #[test]
-    fn as_arr() {
+    fn into_iter() {
         let features = Features {
             tessellation_shader: true,
             ..Features::empty()
         };
-        for (name, enabled) in features.as_arr() {
+        for (name, enabled) in features {
             if name == "tessellationShader" {
                 assert!(enabled);
             } else {

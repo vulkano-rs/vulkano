@@ -24,12 +24,12 @@ mod tests {
     }
 
     #[test]
-    fn as_arr() {
+    fn into_iter() {
         let extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
         };
-        for (name, enabled) in extensions.as_arr() {
+        for (name, enabled) in extensions {
             if name == "VK_KHR_swapchain" {
                 assert!(enabled);
             } else {

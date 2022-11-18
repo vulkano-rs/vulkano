@@ -24,12 +24,12 @@ mod tests {
     }
 
     #[test]
-    fn as_arr() {
+    fn into_iter() {
         let extensions = InstanceExtensions {
             khr_display: true,
             ..InstanceExtensions::empty()
         };
-        for (name, enabled) in extensions.as_arr() {
+        for (name, enabled) in extensions {
             if name == "VK_KHR_display" {
                 assert!(enabled);
             } else {
