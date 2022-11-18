@@ -338,6 +338,13 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         }
     });
 
+    let arr_items = members.iter().map(|ExtensionsMember { name, raw, .. }| {
+        quote! {
+            (#raw, self.#name),
+        }
+    });
+    let arr_len = members.len();
+
     let from_str_for_extensions_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
             let raw = Literal::string(raw);
@@ -439,6 +446,12 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                     #(#symmetric_difference_items)*
                     _ne: crate::NonExhaustive(()),
                 }
+            }
+
+            /// Returns the list of extensions as an array.
+            #[inline]
+            pub fn as_arr(&self) -> [(&str, bool); #arr_len] {
+               [#(#arr_items)*]
             }
         }
 

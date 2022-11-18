@@ -216,6 +216,13 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
     });
 
+    let arr_items = members.iter().map(|FeaturesMember { name, raw, .. }| {
+        quote! {
+            (#raw, self.#name),
+        }
+    });
+    let arr_len = members.len();
+
     let write_items = members.iter().map(
         |FeaturesMember {
              name,
@@ -414,6 +421,12 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                     #(#symmetric_difference_items)*
                     _ne: crate::NonExhaustive(()),
                 }
+            }
+
+            /// Returns the list of extensions as an array.
+            #[inline]
+            pub fn as_arr(&self) -> [(&str, bool); #arr_len] {
+               [#(#arr_items)*]
             }
         }
 
