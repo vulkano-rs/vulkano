@@ -22,4 +22,19 @@ mod tests {
         let d: Vec<CString> = (&DeviceExtensions::empty()).into();
         assert!(d.get(0).is_none());
     }
+
+    #[test]
+    fn as_arr() {
+        let extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::empty()
+        };
+        for (name, enabled) in extensions.as_arr() {
+            if name == "VK_KHR_swapchain" {
+                assert!(enabled);
+            } else {
+                assert!(!enabled);
+            }
+        }
+    }
 }
