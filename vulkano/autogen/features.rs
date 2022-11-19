@@ -216,6 +216,13 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
     });
 
+    let arr_items = members.iter().map(|FeaturesMember { name, raw, .. }| {
+        quote! {
+            (#raw, self.#name),
+        }
+    });
+    let arr_len = members.len();
+
     let write_items = members.iter().map(
         |FeaturesMember {
              name,
@@ -508,6 +515,15 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
+        impl IntoIterator for Features {
+            type Item = (&'static str, bool);
+            type IntoIter = std::array::IntoIter<Self::Item, #arr_len>;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                [#(#arr_items)*].into_iter()
+            }
+        }
     }
 }
 
