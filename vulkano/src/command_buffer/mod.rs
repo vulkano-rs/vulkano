@@ -133,18 +133,19 @@ pub use self::{
     },
 };
 use crate::{
-    buffer::sys::Buffer,
+    buffer::{sys::Buffer, BufferAccess},
     format::Format,
-    image::{sys::Image, ImageLayout, SampleCount},
+    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange, SampleCount},
     macros::vulkan_enum,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     range_map::RangeMap,
     render_pass::{Framebuffer, Subpass},
-    sync::{semaphore::Semaphore, AccessFlags, PipelineStages},
+    sync::{semaphore::Semaphore, PipelineMemoryAccess, PipelineStages},
     DeviceSize,
 };
+use ahash::HashMap;
 use bytemuck::{Pod, Zeroable};
-use std::{borrow::Cow, sync::Arc};
+use std::{ops::Range, sync::Arc};
 
 pub mod allocator;
 mod auto;
@@ -516,10 +517,13 @@ impl CommandBufferState {
     }
 }
 
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct CommandBufferResourcesUsage {
     pub(crate) buffers: Vec<CommandBufferBufferUsage>,
     pub(crate) images: Vec<CommandBufferImageUsage>,
+    pub(crate) buffer_indices: HashMap<Arc<Buffer>, usize>,
+    pub(crate) image_indices: HashMap<Arc<Image>, usize>,
 }
 
 #[derive(Debug)]
@@ -530,10 +534,8 @@ pub(crate) struct CommandBufferBufferUsage {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CommandBufferBufferRangeUsage {
-    pub(crate) first_use: FirstResourceUse,
+    pub(crate) first_use: ResourceUseRef,
     pub(crate) mutable: bool,
-    pub(crate) final_stages: PipelineStages,
-    pub(crate) final_access: AccessFlags,
 }
 
 #[derive(Debug)]
@@ -544,17 +546,87 @@ pub(crate) struct CommandBufferImageUsage {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CommandBufferImageRangeUsage {
-    pub(crate) first_use: FirstResourceUse,
+    pub(crate) first_use: ResourceUseRef,
     pub(crate) mutable: bool,
-    pub(crate) final_stages: PipelineStages,
-    pub(crate) final_access: AccessFlags,
     pub(crate) expected_layout: ImageLayout,
     pub(crate) final_layout: ImageLayout,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FirstResourceUse {
-    pub(crate) command_index: usize,
-    pub(crate) command_name: &'static str,
-    pub(crate) description: Cow<'static, str>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ResourceUseRef {
+    pub command_index: usize,
+    pub command_name: &'static str,
+    pub resource_in_command: ResourceInCommand,
+    pub secondary_use_ref: Option<SecondaryResourceUseRef>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SecondaryResourceUseRef {
+    pub command_index: usize,
+    pub command_name: &'static str,
+    pub resource_in_command: ResourceInCommand,
+}
+
+impl From<ResourceUseRef> for SecondaryResourceUseRef {
+    #[inline]
+    fn from(val: ResourceUseRef) -> Self {
+        let ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command,
+            secondary_use_ref,
+        } = val;
+
+        debug_assert!(secondary_use_ref.is_none());
+
+        SecondaryResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ResourceInCommand {
+    ColorAttachment { index: u32 },
+    ColorResolveAttachment { index: u32 },
+    DepthAttachment,
+    DepthResolveAttachment,
+    DescriptorSet { set: u32, binding: u32, index: u32 },
+    Destination,
+    FramebufferAttachment { index: u32 },
+    IndexBuffer,
+    IndirectBuffer,
+    SecondaryCommandBuffer { index: u32 },
+    Source,
+    StencilAttachment,
+    StencilResolveAttachment,
+    VertexBuffer { binding: u32 },
+}
+
+#[doc(hidden)]
+#[derive(Debug, Default)]
+pub struct SecondaryCommandBufferResourcesUsage {
+    pub(crate) buffers: Vec<SecondaryCommandBufferBufferUsage>,
+    pub(crate) images: Vec<SecondaryCommandBufferImageUsage>,
+}
+
+#[derive(Debug)]
+pub(crate) struct SecondaryCommandBufferBufferUsage {
+    pub(crate) use_ref: ResourceUseRef,
+    pub(crate) buffer: Arc<dyn BufferAccess>,
+    pub(crate) range: Range<DeviceSize>,
+    pub(crate) memory: PipelineMemoryAccess,
+}
+
+#[derive(Debug)]
+pub(crate) struct SecondaryCommandBufferImageUsage {
+    pub(crate) use_ref: ResourceUseRef,
+    pub(crate) image: Arc<dyn ImageAccess>,
+    pub(crate) subresource_range: ImageSubresourceRange,
+    pub(crate) memory: PipelineMemoryAccess,
+    pub(crate) start_layout: ImageLayout,
+    pub(crate) end_layout: ImageLayout,
 }

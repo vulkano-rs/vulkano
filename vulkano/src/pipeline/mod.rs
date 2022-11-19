@@ -18,7 +18,8 @@
 //! initialization or during a loading screen.
 
 pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::PipelineLayout};
-use crate::{device::DeviceOwned, macros::vulkan_enum};
+use crate::{device::DeviceOwned, macros::vulkan_enum, shader::DescriptorBindingRequirements};
+use ahash::HashMap;
 use std::sync::Arc;
 
 pub mod cache;
@@ -37,6 +38,11 @@ pub trait Pipeline: DeviceOwned {
     /// Returns the number of descriptor sets actually accessed by this pipeline. This may be less
     /// than the number of sets in the pipeline layout.
     fn num_used_descriptor_sets(&self) -> u32;
+
+    /// Returns a reference to the descriptor binding requirements for this pipeline.
+    fn descriptor_binding_requirements(
+        &self,
+    ) -> &HashMap<(u32, u32), DescriptorBindingRequirements>;
 }
 
 vulkan_enum! {

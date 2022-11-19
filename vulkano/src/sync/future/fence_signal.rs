@@ -17,7 +17,7 @@ use crate::{
     sync::{
         fence::Fence,
         future::{AccessError, SubmitAnyBuilder},
-        AccessFlags, PipelineStages,
+        PipelineStages,
     },
     DeviceSize, OomError,
 };
@@ -469,7 +469,7 @@ where
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         let state = self.state.lock();
         if let Some(previous) = state.get_prev() {
             previous.check_buffer_access(buffer, range, exclusive, queue)
@@ -485,7 +485,7 @@ where
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         let state = self.state.lock();
         if let Some(previous) = state.get_prev() {
             previous.check_image_access(image, range, exclusive, expected_layout, queue)
@@ -588,7 +588,7 @@ where
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         (**self).check_buffer_access(buffer, range, exclusive, queue)
     }
 
@@ -599,7 +599,7 @@ where
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         (**self).check_image_access(image, range, exclusive, expected_layout, queue)
     }
 

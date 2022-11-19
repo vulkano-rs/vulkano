@@ -14,7 +14,7 @@ use crate::{
         auto::QueryState,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder,
+        AutoCommandBufferBuilder, ResourceInCommand, ResourceUseRef,
     },
     device::{DeviceOwned, QueueFlags},
     query::{
@@ -753,8 +753,15 @@ impl SyncCommandBufferBuilder {
             }
         }
 
+        let command_index = self.commands.len();
+        let command_name = "copy_query_pool_results";
         let resources = [(
-            "destination".into(),
+            ResourceUseRef {
+                command_index,
+                command_name,
+                resource_in_command: ResourceInCommand::Destination,
+                secondary_use_ref: None,
+            },
             Resource::Buffer {
                 buffer: destination.clone(),
                 range: 0..destination.size(), // TODO:

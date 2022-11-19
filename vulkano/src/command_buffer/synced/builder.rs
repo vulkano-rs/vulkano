@@ -18,11 +18,11 @@ use crate::{
     buffer::{sys::Buffer, BufferAccess},
     command_buffer::{
         pool::CommandPoolAlloc,
-        synced::{BufferUse, ImageUse},
         sys::{CommandBufferBeginInfo, UnsafeCommandBufferBuilder},
         CommandBufferBufferRangeUsage, CommandBufferBufferUsage, CommandBufferExecError,
         CommandBufferImageRangeUsage, CommandBufferImageUsage, CommandBufferLevel,
-        CommandBufferResourcesUsage, FirstResourceUse,
+        CommandBufferResourcesUsage, ResourceUseRef, SecondaryCommandBufferBufferUsage,
+        SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned},
@@ -48,7 +48,6 @@ use crate::{
 use ahash::HashMap;
 use smallvec::SmallVec;
 use std::{
-    borrow::Cow,
     collections::hash_map::Entry,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
@@ -97,18 +96,7 @@ pub struct SyncCommandBufferBuilder {
     images2: HashMap<Arc<Image>, RangeMap<DeviceSize, ImageState>>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
-    buffers: Vec<(
-        Arc<dyn BufferAccess>,
-        Range<DeviceSize>,
-        PipelineMemoryAccess,
-    )>,
-    images: Vec<(
-        Arc<dyn ImageAccess>,
-        ImageSubresourceRange,
-        PipelineMemoryAccess,
-        ImageLayout,
-        ImageLayout,
-    )>,
+    secondary_resources_usage: SecondaryCommandBufferResourcesUsage,
 
     // Current binding/setting state.
     pub(in crate::command_buffer) current_state: CurrentState,
@@ -170,8 +158,7 @@ impl SyncCommandBufferBuilder {
             latest_render_pass_enter,
             buffers2: HashMap::default(),
             images2: HashMap::default(),
-            buffers: Vec::new(),
-            images: Vec::new(),
+            secondary_resources_usage: Default::default(),
             current_state: Default::default(),
         }
     }
@@ -195,9 +182,9 @@ impl SyncCommandBufferBuilder {
 
     pub(in crate::command_buffer) fn check_resource_conflicts(
         &self,
-        resource: &(Cow<'static, str>, Resource),
+        resource: &(ResourceUseRef, Resource),
     ) -> Result<(), SyncCommandBufferBuilderError> {
-        let (resource_name, resource) = resource;
+        let &(current_use_ref, ref resource) = resource;
 
         match *resource {
             Resource::Buffer {
@@ -207,14 +194,12 @@ impl SyncCommandBufferBuilder {
             } => {
                 debug_assert!(AccessFlags::from(memory.stages).contains(memory.access));
 
-                if let Some(conflicting_use) =
+                if let Some(previous_use_ref) =
                     self.find_buffer_conflict(buffer, range.clone(), memory)
                 {
                     return Err(SyncCommandBufferBuilderError::Conflict {
-                        command_param: resource_name.clone(),
-                        previous_command_name: self.commands[conflicting_use.command_index].name(),
-                        previous_command_offset: conflicting_use.command_index,
-                        previous_command_param: conflicting_use.name.clone(),
+                        current_use_ref,
+                        previous_use_ref,
                     });
                 }
             }
@@ -230,7 +215,7 @@ impl SyncCommandBufferBuilder {
                 debug_assert!(end_layout != ImageLayout::Undefined);
                 debug_assert!(end_layout != ImageLayout::Preinitialized);
 
-                if let Some(conflicting_use) = self.find_image_conflict(
+                if let Some(previous_use) = self.find_image_conflict(
                     image,
                     subresource_range.clone(),
                     memory,
@@ -238,10 +223,8 @@ impl SyncCommandBufferBuilder {
                     end_layout,
                 ) {
                     return Err(SyncCommandBufferBuilderError::Conflict {
-                        command_param: resource_name.clone(),
-                        previous_command_name: self.commands[conflicting_use.command_index].name(),
-                        previous_command_offset: conflicting_use.command_index,
-                        previous_command_param: conflicting_use.name.clone(),
+                        current_use_ref,
+                        previous_use_ref: previous_use,
                     });
                 }
             }
@@ -255,7 +238,7 @@ impl SyncCommandBufferBuilder {
         buffer: &dyn BufferAccess,
         mut range: Range<DeviceSize>,
         memory: &PipelineMemoryAccess,
-    ) -> Option<&BufferUse> {
+    ) -> Option<ResourceUseRef> {
         // Barriers work differently in render passes, so if we're in one, we can only insert a
         // barrier before the start of the render pass.
         let last_allowed_barrier_index =
@@ -279,12 +262,12 @@ impl SyncCommandBufferBuilder {
             if memory.exclusive || state.memory.exclusive {
                 // If there is a resource use at a position beyond where we can insert a
                 // barrier, then there is an unsolvable conflict.
-                if let Some(conflicting_use) = state
+                if let Some(&use_ref) = state
                     .resource_uses
                     .iter()
                     .find(|resource_use| resource_use.command_index >= last_allowed_barrier_index)
                 {
-                    return Some(conflicting_use);
+                    return Some(use_ref);
                 }
             }
         }
@@ -299,7 +282,7 @@ impl SyncCommandBufferBuilder {
         memory: &PipelineMemoryAccess,
         start_layout: ImageLayout,
         _end_layout: ImageLayout,
-    ) -> Option<&ImageUse> {
+    ) -> Option<ResourceUseRef> {
         // Barriers work differently in render passes, so if we're in one, we can only insert a
         // barrier before the start of the render pass.
         let last_allowed_barrier_index =
@@ -337,10 +320,10 @@ impl SyncCommandBufferBuilder {
                 {
                     // If there is a resource use at a position beyond where we can insert a
                     // barrier, then there is an unsolvable conflict.
-                    if let Some(conflicting_use) = state.resource_uses.iter().find(|resource_use| {
+                    if let Some(&use_ref) = state.resource_uses.iter().find(|resource_use| {
                         resource_use.command_index >= last_allowed_barrier_index
                     }) {
-                        return Some(conflicting_use);
+                        return Some(use_ref);
                     }
                 }
             }
@@ -360,11 +343,8 @@ impl SyncCommandBufferBuilder {
     /// - `start_layout` and `end_layout` designate the image layout that the image is expected to
     ///   be in when the command starts, and the image layout that the image will be transitioned to
     ///   during the command. When it comes to buffers, you should pass `Undefined` for both.
-    pub(in crate::command_buffer) fn add_resource(
-        &mut self,
-        resource: (Cow<'static, str>, Resource),
-    ) {
-        let (resource_name, resource) = resource;
+    pub(in crate::command_buffer) fn add_resource(&mut self, resource: (ResourceUseRef, Resource)) {
+        let (use_ref, resource) = resource;
 
         match resource {
             Resource::Buffer {
@@ -372,7 +352,7 @@ impl SyncCommandBufferBuilder {
                 range,
                 memory,
             } => {
-                self.add_buffer(resource_name, buffer, range, memory);
+                self.add_buffer(use_ref, buffer, range, memory);
             }
             Resource::Image {
                 image,
@@ -382,7 +362,7 @@ impl SyncCommandBufferBuilder {
                 end_layout,
             } => {
                 self.add_image(
-                    resource_name,
+                    use_ref,
                     image,
                     subresource_range,
                     memory,
@@ -395,12 +375,19 @@ impl SyncCommandBufferBuilder {
 
     fn add_buffer(
         &mut self,
-        resource_name: Cow<'static, str>,
+        use_ref: ResourceUseRef,
         buffer: Arc<dyn BufferAccess>,
         mut range: Range<DeviceSize>,
         memory: PipelineMemoryAccess,
     ) {
-        self.buffers.push((buffer.clone(), range.clone(), memory));
+        self.secondary_resources_usage
+            .buffers
+            .push(SecondaryCommandBufferBufferUsage {
+                use_ref,
+                buffer: buffer.clone(),
+                range: range.clone(),
+                memory,
+            });
 
         // Barriers work differently in render passes, so if we're in one, we can only insert a
         // barrier before the start of the render pass.
@@ -433,10 +420,7 @@ impl SyncCommandBufferBuilder {
         for (range, state) in range_map.range_mut(&range) {
             if state.resource_uses.is_empty() {
                 // This is the first time we use this resource range in this command buffer.
-                state.resource_uses.push(BufferUse {
-                    command_index: self.commands.len() - 1,
-                    name: resource_name.clone(),
-                });
+                state.resource_uses.push(use_ref);
                 state.memory = PipelineMemoryAccess {
                     stages: memory.stages,
                     access: memory.access,
@@ -518,30 +502,30 @@ impl SyncCommandBufferBuilder {
                     state.memory.access |= memory.access;
                 }
 
-                state.resource_uses.push(BufferUse {
-                    command_index: self.commands.len() - 1,
-                    name: resource_name.clone(),
-                });
+                state.resource_uses.push(use_ref);
             }
         }
     }
 
     fn add_image(
         &mut self,
-        resource_name: Cow<'static, str>,
+        use_ref: ResourceUseRef,
         image: Arc<dyn ImageAccess>,
         mut subresource_range: ImageSubresourceRange,
         memory: PipelineMemoryAccess,
         start_layout: ImageLayout,
         end_layout: ImageLayout,
     ) {
-        self.images.push((
-            image.clone(),
-            subresource_range.clone(),
-            memory,
-            start_layout,
-            end_layout,
-        ));
+        self.secondary_resources_usage
+            .images
+            .push(SecondaryCommandBufferImageUsage {
+                use_ref,
+                image: image.clone(),
+                subresource_range: subresource_range.clone(),
+                memory,
+                start_layout,
+                end_layout,
+            });
 
         // Barriers work differently in render passes, so if we're in one, we can only insert a
         // barrier before the start of the render pass.
@@ -609,10 +593,7 @@ impl SyncCommandBufferBuilder {
 
                     debug_assert_eq!(state.initial_layout, state.current_layout);
 
-                    state.resource_uses.push(ImageUse {
-                        command_index: self.commands.len() - 1,
-                        name: resource_name.clone(),
-                    });
+                    state.resource_uses.push(use_ref);
                     state.memory = PipelineMemoryAccess {
                         stages: memory.stages,
                         access: memory.access,
@@ -745,10 +726,7 @@ impl SyncCommandBufferBuilder {
                         state.memory.access |= memory.access;
                     }
 
-                    state.resource_uses.push(ImageUse {
-                        command_index: self.commands.len() - 1,
-                        name: resource_name.clone(),
-                    });
+                    state.resource_uses.push(use_ref);
                 }
             }
         }
@@ -800,7 +778,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let resource_usage = CommandBufferResourcesUsage {
+        let mut resource_usage = CommandBufferResourcesUsage {
             buffers: self
                 .buffers2
                 .into_iter()
@@ -814,14 +792,8 @@ impl SyncCommandBufferBuilder {
                             (
                                 range,
                                 CommandBufferBufferRangeUsage {
-                                    first_use: FirstResourceUse {
-                                        command_index: first_use.command_index,
-                                        command_name: self.commands[first_use.command_index].name(),
-                                        description: first_use.name,
-                                    },
+                                    first_use,
                                     mutable: state.exclusive_any,
-                                    final_stages: state.memory.stages,
-                                    final_access: state.memory.access,
                                 },
                             )
                         })
@@ -849,14 +821,8 @@ impl SyncCommandBufferBuilder {
                             (
                                 range,
                                 CommandBufferImageRangeUsage {
-                                    first_use: FirstResourceUse {
-                                        command_index: first_use.command_index,
-                                        command_name: self.commands[first_use.command_index].name(),
-                                        description: first_use.name,
-                                    },
+                                    first_use,
                                     mutable: state.exclusive_any,
-                                    final_stages: state.memory.stages,
-                                    final_access: state.memory.access,
                                     expected_layout: state.initial_layout,
                                     final_layout: state.current_layout,
                                 },
@@ -865,15 +831,17 @@ impl SyncCommandBufferBuilder {
                         .collect(),
                 })
                 .collect(),
+            buffer_indices: Default::default(),
+            image_indices: Default::default(),
         };
 
-        let buffer_indices: HashMap<_, _> = resource_usage
+        resource_usage.buffer_indices = resource_usage
             .buffers
             .iter()
             .enumerate()
             .map(|(index, usage)| (usage.buffer.clone(), index))
             .collect();
-        let image_indices: HashMap<_, _> = resource_usage
+        resource_usage.image_indices = resource_usage
             .images
             .iter()
             .enumerate()
@@ -882,11 +850,8 @@ impl SyncCommandBufferBuilder {
 
         Ok(SyncCommandBuffer {
             inner: self.inner.build()?,
-            buffers: self.buffers,
-            images: self.images,
             resources_usage: resource_usage,
-            buffer_indices,
-            image_indices,
+            secondary_resources_usage: self.secondary_resources_usage,
             _commands: self.commands,
             _barriers: self.barriers,
         })
@@ -911,10 +876,8 @@ impl Debug for SyncCommandBufferBuilder {
 pub enum SyncCommandBufferBuilderError {
     /// Unsolvable conflict.
     Conflict {
-        command_param: Cow<'static, str>,
-        previous_command_name: &'static str,
-        previous_command_offset: usize,
-        previous_command_param: Cow<'static, str>,
+        current_use_ref: ResourceUseRef,
+        previous_use_ref: ResourceUseRef,
     },
 
     ExecError(CommandBufferExecError),
@@ -941,7 +904,7 @@ impl From<CommandBufferExecError> for SyncCommandBufferBuilderError {
 #[derive(Clone, PartialEq, Eq)]
 struct BufferState {
     // Lists every use of the resource.
-    resource_uses: Vec<BufferUse>,
+    resource_uses: Vec<ResourceUseRef>,
 
     // Memory access of the command that last used this resource.
     memory: PipelineMemoryAccess,
@@ -955,7 +918,7 @@ struct BufferState {
 #[derive(Clone, PartialEq, Eq)]
 struct ImageState {
     // Lists every use of the resource.
-    resource_uses: Vec<ImageUse>,
+    resource_uses: Vec<ResourceUseRef>,
 
     // Memory access of the command that last used this resource.
     memory: PipelineMemoryAccess,

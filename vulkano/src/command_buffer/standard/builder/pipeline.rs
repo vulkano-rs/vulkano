@@ -81,10 +81,7 @@ where
             .ok_or(PipelineExecutionError::PipelineNotBound)?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
 
         let max = self
@@ -173,10 +170,7 @@ where
             .ok_or(PipelineExecutionError::PipelineNotBound)?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_indirect_buffer(indirect_buffer)?;
 
@@ -261,10 +255,7 @@ where
             .ok_or(PipelineExecutionError::PipelineNotBound)?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -362,10 +353,7 @@ where
             .ok_or(PipelineExecutionError::PipelineNotBound)?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -512,10 +500,7 @@ where
             .ok_or(PipelineExecutionError::PipelineNotBound)?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -624,10 +609,7 @@ where
             .ok_or(PipelineExecutionError::PipelineNotBound)?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -741,12 +723,9 @@ where
         Ok(())
     }
 
-    fn validate_pipeline_descriptor_sets<'a>(
+    fn validate_pipeline_descriptor_sets(
         &self,
         pipeline: &impl Pipeline,
-        descriptor_binding_requirements: impl IntoIterator<
-            Item = ((u32, u32), &'a DescriptorBindingRequirements),
-        >,
     ) -> Result<(), PipelineExecutionError> {
         fn validate_resources<T>(
             set_num: u32,
@@ -821,7 +800,7 @@ where
             return Err(PipelineExecutionError::PipelineLayoutNotCompatible);
         }
 
-        for ((set_num, binding_num), binding_reqs) in descriptor_binding_requirements {
+        for (&(set_num, binding_num), binding_reqs) in pipeline.descriptor_binding_requirements() {
             let layout_binding =
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 

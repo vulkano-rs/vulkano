@@ -13,7 +13,7 @@ use crate::{
         allocator::CommandBufferAllocator,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder,
+        AutoCommandBufferBuilder, ResourceInCommand, ResourceUseRef,
     },
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures, NumericType},
@@ -2600,6 +2600,8 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &copy_buffer_info;
 
+        let command_index = self.commands.len();
+        let command_name = "copy_buffer";
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .flat_map(|region| {
@@ -2612,7 +2614,12 @@ impl SyncCommandBufferBuilder {
 
                 [
                     (
-                        "src_buffer".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Source,
+                            secondary_use_ref: None,
+                        },
                         Resource::Buffer {
                             buffer: src_buffer.clone(),
                             range: src_offset..src_offset + size,
@@ -2624,7 +2631,12 @@ impl SyncCommandBufferBuilder {
                         },
                     ),
                     (
-                        "dst_buffer".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Destination,
+                            secondary_use_ref: None,
+                        },
                         Resource::Buffer {
                             buffer: dst_buffer.clone(),
                             range: dst_offset..dst_offset + size,
@@ -2684,6 +2696,8 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &copy_image_info;
 
+        let command_index = self.commands.len();
+        let command_name = "copy_image";
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .flat_map(|region| {
@@ -2698,7 +2712,12 @@ impl SyncCommandBufferBuilder {
 
                 [
                     (
-                        "src_image".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Source,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: src_image.clone(),
                             subresource_range: src_subresource.clone().into(),
@@ -2712,7 +2731,12 @@ impl SyncCommandBufferBuilder {
                         },
                     ),
                     (
-                        "dst_image".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Destination,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: dst_image.clone(),
                             subresource_range: dst_subresource.clone().into(),
@@ -2773,6 +2797,8 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &copy_buffer_to_image_info;
 
+        let command_index = self.commands.len();
+        let command_name = "copy_buffer_to_image";
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .flat_map(|region| {
@@ -2788,7 +2814,12 @@ impl SyncCommandBufferBuilder {
 
                 [
                     (
-                        "src_buffer".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Source,
+                            secondary_use_ref: None,
+                        },
                         Resource::Buffer {
                             buffer: src_buffer.clone(),
                             range: buffer_offset
@@ -2801,7 +2832,12 @@ impl SyncCommandBufferBuilder {
                         },
                     ),
                     (
-                        "dst_image".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Destination,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: dst_image.clone(),
                             subresource_range: image_subresource.clone().into(),
@@ -2864,6 +2900,8 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &copy_image_to_buffer_info;
 
+        let command_index = self.commands.len();
+        let command_name = "copy_image_to_buffer";
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .flat_map(|region| {
@@ -2879,7 +2917,12 @@ impl SyncCommandBufferBuilder {
 
                 [
                     (
-                        "src_image".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Source,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: src_image.clone(),
                             subresource_range: image_subresource.clone().into(),
@@ -2893,7 +2936,12 @@ impl SyncCommandBufferBuilder {
                         },
                     ),
                     (
-                        "dst_buffer".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Destination,
+                            secondary_use_ref: None,
+                        },
                         Resource::Buffer {
                             buffer: dst_buffer.clone(),
                             range: buffer_offset
@@ -2957,6 +3005,8 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &blit_image_info;
 
+        let command_index = self.commands.len();
+        let command_name = "blit_image";
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .flat_map(|region| {
@@ -2970,7 +3020,12 @@ impl SyncCommandBufferBuilder {
 
                 [
                     (
-                        "src_image".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Source,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: src_image.clone(),
                             subresource_range: src_subresource.clone().into(),
@@ -2984,7 +3039,12 @@ impl SyncCommandBufferBuilder {
                         },
                     ),
                     (
-                        "dst_image".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Destination,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: dst_image.clone(),
                             subresource_range: dst_subresource.clone().into(),
@@ -3046,6 +3106,8 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &resolve_image_info;
 
+        let command_index = self.commands.len();
+        let command_name = "resolve_image";
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .flat_map(|region| {
@@ -3060,7 +3122,12 @@ impl SyncCommandBufferBuilder {
 
                 [
                     (
-                        "src_image".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Source,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: src_image.clone(),
                             subresource_range: src_subresource.clone().into(),
@@ -3074,7 +3141,12 @@ impl SyncCommandBufferBuilder {
                         },
                     ),
                     (
-                        "dst_image".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::Destination,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: dst_image.clone(),
                             subresource_range: dst_subresource.clone().into(),

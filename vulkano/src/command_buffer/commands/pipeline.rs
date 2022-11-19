@@ -15,7 +15,7 @@ use crate::{
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
-        DrawIndirectCommand, SubpassContents,
+        DrawIndirectCommand, ResourceInCommand, ResourceUseRef, SubpassContents,
     },
     descriptor_set::{layout::DescriptorType, DescriptorBindingResources},
     device::{DeviceOwned, QueueFlags},
@@ -28,10 +28,9 @@ use crate::{
         graphics::{
             input_assembly::{PrimitiveTopology, PrimitiveTopologyClass},
             render_pass::PipelineRenderPassType,
-            vertex_input::{VertexInputRate, VertexInputState},
+            vertex_input::VertexInputRate,
         },
-        DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineBindPoint,
-        PipelineLayout,
+        DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineLayout,
     },
     sampler::{Sampler, SamplerImageViewIncompatibleError},
     shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage},
@@ -39,7 +38,6 @@ use crate::{
     DeviceSize, RequiresOneOf, VulkanObject,
 };
 use std::{
-    borrow::Cow,
     cmp::min,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
@@ -95,10 +93,7 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
 
         let max = self
@@ -167,10 +162,7 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_indirect_buffer(indirect_buffer)?;
 
@@ -230,10 +222,7 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -304,10 +293,7 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -418,10 +404,7 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -499,10 +482,7 @@ where
             None => return Err(PipelineExecutionError::PipelineNotBound),
         };
 
-        self.validate_pipeline_descriptor_sets(
-            pipeline,
-            pipeline.descriptor_binding_requirements(),
-        )?;
+        self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_pipeline_graphics_dynamic_state(pipeline)?;
         self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
@@ -584,12 +564,9 @@ where
         Ok(())
     }
 
-    fn validate_pipeline_descriptor_sets<'a, Pl: Pipeline>(
+    fn validate_pipeline_descriptor_sets<Pl: Pipeline>(
         &self,
         pipeline: &Pl,
-        descriptor_binding_requirements: impl IntoIterator<
-            Item = ((u32, u32), &'a DescriptorBindingRequirements),
-        >,
     ) -> Result<(), PipelineExecutionError> {
         fn validate_resources<T>(
             set_num: u32,
@@ -666,7 +643,7 @@ where
             return Err(PipelineExecutionError::PipelineLayoutNotCompatible);
         }
 
-        for ((set_num, binding_num), binding_reqs) in descriptor_binding_requirements {
+        for (&(set_num, binding_num), binding_reqs) in pipeline.descriptor_binding_requirements() {
             let layout_binding =
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
@@ -1680,14 +1657,17 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let pipeline = self.current_state.pipeline_compute.as_ref().unwrap();
+        let command_index = self.commands.len();
+        let command_name = "dispatch";
+        let pipeline = self
+            .current_state
+            .pipeline_compute
+            .as_ref()
+            .unwrap()
+            .as_ref();
 
         let mut resources = Vec::new();
-        self.add_descriptor_set_resources(
-            &mut resources,
-            PipelineBindPoint::Compute,
-            pipeline.descriptor_binding_requirements(),
-        );
+        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
 
         for resource in &resources {
             self.check_resource_conflicts(resource)?;
@@ -1722,15 +1702,23 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let pipeline = self.current_state.pipeline_compute.as_ref().unwrap();
+        let command_index = self.commands.len();
+        let command_name = "dispatch_indirect";
+        let pipeline = self
+            .current_state
+            .pipeline_compute
+            .as_ref()
+            .unwrap()
+            .as_ref();
 
         let mut resources = Vec::new();
-        self.add_descriptor_set_resources(
+        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
+        self.add_indirect_buffer(
             &mut resources,
-            PipelineBindPoint::Compute,
-            pipeline.descriptor_binding_requirements(),
+            command_index,
+            command_name,
+            &indirect_buffer,
         );
-        self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
         for resource in &resources {
             self.check_resource_conflicts(resource)?;
@@ -1776,15 +1764,18 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let pipeline = self.current_state.pipeline_graphics.as_ref().unwrap();
+        let command_index = self.commands.len();
+        let command_name = "draw";
+        let pipeline = self
+            .current_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
 
         let mut resources = Vec::new();
-        self.add_descriptor_set_resources(
-            &mut resources,
-            PipelineBindPoint::Graphics,
-            pipeline.descriptor_binding_requirements(),
-        );
-        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
+        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
+        self.add_vertex_buffers(&mut resources, command_index, command_name, pipeline);
 
         for resource in &resources {
             self.check_resource_conflicts(resource)?;
@@ -1838,16 +1829,19 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let pipeline = self.current_state.pipeline_graphics.as_ref().unwrap();
+        let command_index = self.commands.len();
+        let command_name = "draw_indexed";
+        let pipeline = self
+            .current_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
 
         let mut resources = Vec::new();
-        self.add_descriptor_set_resources(
-            &mut resources,
-            PipelineBindPoint::Graphics,
-            pipeline.descriptor_binding_requirements(),
-        );
-        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
-        self.add_index_buffer_resources(&mut resources);
+        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
+        self.add_vertex_buffers(&mut resources, command_index, command_name, pipeline);
+        self.add_index_buffer(&mut resources, command_index, command_name);
 
         for resource in &resources {
             self.check_resource_conflicts(resource)?;
@@ -1892,16 +1886,24 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let pipeline = self.current_state.pipeline_graphics.as_ref().unwrap();
+        let command_index = self.commands.len();
+        let command_name = "draw_indirect";
+        let pipeline = self
+            .current_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
 
         let mut resources = Vec::new();
-        self.add_descriptor_set_resources(
+        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
+        self.add_vertex_buffers(&mut resources, command_index, command_name, pipeline);
+        self.add_indirect_buffer(
             &mut resources,
-            PipelineBindPoint::Graphics,
-            pipeline.descriptor_binding_requirements(),
+            command_index,
+            command_name,
+            &indirect_buffer,
         );
-        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
-        self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
         for resource in &resources {
             self.check_resource_conflicts(resource)?;
@@ -1948,17 +1950,25 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let pipeline = self.current_state.pipeline_graphics.as_ref().unwrap();
+        let command_index = self.commands.len();
+        let command_name = "draw_indexed_indirect";
+        let pipeline = self
+            .current_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
 
         let mut resources = Vec::new();
-        self.add_descriptor_set_resources(
+        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
+        self.add_vertex_buffers(&mut resources, command_index, command_name, pipeline);
+        self.add_index_buffer(&mut resources, command_index, command_name);
+        self.add_indirect_buffer(
             &mut resources,
-            PipelineBindPoint::Graphics,
-            pipeline.descriptor_binding_requirements(),
+            command_index,
+            command_name,
+            &indirect_buffer,
         );
-        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
-        self.add_index_buffer_resources(&mut resources);
-        self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
         for resource in &resources {
             self.check_resource_conflicts(resource)?;
@@ -1977,23 +1987,26 @@ impl SyncCommandBufferBuilder {
         Ok(())
     }
 
-    fn add_descriptor_set_resources<'a>(
+    fn add_descriptor_sets<Pl: Pipeline>(
         &self,
-        resources: &mut Vec<(Cow<'static, str>, Resource)>,
-        pipeline_bind_point: PipelineBindPoint,
-        descriptor_binding_requirements: impl IntoIterator<
-            Item = ((u32, u32), &'a DescriptorBindingRequirements),
-        >,
+        resources: &mut Vec<(ResourceUseRef, Resource)>,
+        command_index: usize,
+        command_name: &'static str,
+        pipeline: &Pl,
     ) {
-        let state = match self.current_state.descriptor_sets.get(&pipeline_bind_point) {
+        let descriptor_sets_state = match self
+            .current_state
+            .descriptor_sets
+            .get(&pipeline.bind_point())
+        {
             Some(x) => x,
             None => return,
         };
 
-        for ((set, binding), binding_reqs) in descriptor_binding_requirements {
+        for (&(set, binding), binding_reqs) in pipeline.descriptor_binding_requirements() {
             // TODO: Can things be refactored so that the pipeline layout isn't needed at all?
-            let descriptor_type = state.pipeline_layout.set_layouts()[set as usize].bindings()
-                [&binding]
+            let descriptor_type = descriptor_sets_state.pipeline_layout.set_layouts()[set as usize]
+                .bindings()[&binding]
                 .descriptor_type;
 
             let (access_read, access_write) = match descriptor_type {
@@ -2021,15 +2034,12 @@ impl SyncCommandBufferBuilder {
                 }
             };
 
-            let memory_iter = move |index: usize| {
+            let memory_iter = move |index: u32| {
                 let mut stages_read = PipelineStages::empty();
                 let mut stages_write = PipelineStages::empty();
 
-                for desc_reqs in (binding_reqs
-                    .descriptors
-                    .get(&Some(index as u32))
-                    .into_iter())
-                .chain(binding_reqs.descriptors.get(&None))
+                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
+                    .chain(binding_reqs.descriptors.get(&None))
                 {
                     stages_read |= desc_reqs.memory_read.into();
                     stages_write |= desc_reqs.memory_write.into();
@@ -2049,14 +2059,19 @@ impl SyncCommandBufferBuilder {
                 [memory_read, memory_write].into_iter().flatten()
             };
             let buffer_resource =
-                |(index, buffer, range): (usize, Arc<dyn BufferAccess>, Range<DeviceSize>)| {
+                |(index, buffer, range): (u32, Arc<dyn BufferAccess>, Range<DeviceSize>)| {
                     memory_iter(index).map(move |memory| {
                         (
-                            format!(
-                                "Buffer bound to set {} descriptor {} index {}",
-                                set, binding, index
-                            )
-                            .into(),
+                            ResourceUseRef {
+                                command_index,
+                                command_name,
+                                resource_in_command: ResourceInCommand::DescriptorSet {
+                                    set,
+                                    binding,
+                                    index,
+                                },
+                                secondary_use_ref: None,
+                            },
                             Resource::Buffer {
                                 buffer: buffer.clone(),
                                 range: range.clone(),
@@ -2066,7 +2081,7 @@ impl SyncCommandBufferBuilder {
                     })
                 };
             let image_resource = |(index, image, subresource_range): (
-                usize,
+                u32,
                 Arc<dyn ImageAccess>,
                 ImageSubresourceRange,
             )| {
@@ -2077,11 +2092,16 @@ impl SyncCommandBufferBuilder {
 
                 memory_iter(index).map(move |memory| {
                     (
-                        format!(
-                            "Image bound to set {} descriptor {} index {}",
-                            set, binding, index
-                        )
-                        .into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::DescriptorSet {
+                                set,
+                                binding,
+                                index,
+                            },
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: image.clone(),
                             subresource_range: subresource_range.clone(),
@@ -2093,7 +2113,7 @@ impl SyncCommandBufferBuilder {
                 })
             };
 
-            match state.descriptor_sets[&set]
+            match descriptor_sets_state.descriptor_sets[&set]
                 .resources()
                 .binding(binding)
                 .unwrap()
@@ -2105,7 +2125,7 @@ impl SyncCommandBufferBuilder {
                             .filter_map(|(index, element)| {
                                 element.as_ref().map(|buffer| {
                                     (
-                                        index,
+                                        index as u32,
                                         buffer.clone(),
                                         0..buffer.size(), // TODO:
                                     )
@@ -2119,7 +2139,7 @@ impl SyncCommandBufferBuilder {
                         (elements.iter().enumerate())
                             .filter_map(|(index, element)| {
                                 element.as_ref().map(|buffer_view| {
-                                    (index, buffer_view.buffer(), buffer_view.range())
+                                    (index as u32, buffer_view.buffer(), buffer_view.range())
                                 })
                             })
                             .flat_map(buffer_resource),
@@ -2131,7 +2151,7 @@ impl SyncCommandBufferBuilder {
                             .filter_map(|(index, element)| {
                                 element.as_ref().map(|image_view| {
                                     (
-                                        index,
+                                        index as u32,
                                         image_view.image(),
                                         image_view.subresource_range().clone(),
                                     )
@@ -2146,7 +2166,7 @@ impl SyncCommandBufferBuilder {
                             .filter_map(|(index, element)| {
                                 element.as_ref().map(|(image_view, _)| {
                                     (
-                                        index,
+                                        index as u32,
                                         image_view.image(),
                                         image_view.subresource_range().clone(),
                                     )
@@ -2160,32 +2180,55 @@ impl SyncCommandBufferBuilder {
         }
     }
 
-    fn add_vertex_buffer_resources(
+    fn add_vertex_buffers(
         &self,
-        resources: &mut Vec<(Cow<'static, str>, Resource)>,
-        vertex_input: &VertexInputState,
+        resources: &mut Vec<(ResourceUseRef, Resource)>,
+        command_index: usize,
+        command_name: &'static str,
+        pipeline: &GraphicsPipeline,
     ) {
-        resources.extend(vertex_input.bindings.iter().map(|(&binding_num, _)| {
-            let vertex_buffer = &self.current_state.vertex_buffers[&binding_num];
-            (
-                format!("Vertex buffer binding {}", binding_num).into(),
-                Resource::Buffer {
-                    buffer: vertex_buffer.clone(),
-                    range: 0..vertex_buffer.size(), // TODO:
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages::VERTEX_INPUT,
-                        access: AccessFlags::VERTEX_ATTRIBUTE_READ,
-                        exclusive: false,
-                    },
-                },
-            )
-        }));
+        resources.extend(
+            pipeline
+                .vertex_input_state()
+                .bindings
+                .iter()
+                .map(|(&binding, _)| {
+                    let vertex_buffer = &self.current_state.vertex_buffers[&binding];
+                    (
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::VertexBuffer { binding },
+                            secondary_use_ref: None,
+                        },
+                        Resource::Buffer {
+                            buffer: vertex_buffer.clone(),
+                            range: 0..vertex_buffer.size(), // TODO:
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages::VERTEX_INPUT,
+                                access: AccessFlags::VERTEX_ATTRIBUTE_READ,
+                                exclusive: false,
+                            },
+                        },
+                    )
+                }),
+        );
     }
 
-    fn add_index_buffer_resources(&self, resources: &mut Vec<(Cow<'static, str>, Resource)>) {
+    fn add_index_buffer(
+        &self,
+        resources: &mut Vec<(ResourceUseRef, Resource)>,
+        command_index: usize,
+        command_name: &'static str,
+    ) {
         let index_buffer = &self.current_state.index_buffer.as_ref().unwrap().0;
         resources.push((
-            "index buffer".into(),
+            ResourceUseRef {
+                command_index,
+                command_name,
+                resource_in_command: ResourceInCommand::IndexBuffer,
+                secondary_use_ref: None,
+            },
             Resource::Buffer {
                 buffer: index_buffer.clone(),
                 range: 0..index_buffer.size(), // TODO:
@@ -2198,18 +2241,25 @@ impl SyncCommandBufferBuilder {
         ));
     }
 
-    fn add_indirect_buffer_resources(
+    fn add_indirect_buffer(
         &self,
-        resources: &mut Vec<(Cow<'static, str>, Resource)>,
+        resources: &mut Vec<(ResourceUseRef, Resource)>,
+        command_index: usize,
+        command_name: &'static str,
         indirect_buffer: &Arc<dyn BufferAccess>,
     ) {
         resources.push((
-            "indirect buffer".into(),
+            ResourceUseRef {
+                command_index,
+                command_name,
+                resource_in_command: ResourceInCommand::IndirectBuffer,
+                secondary_use_ref: None,
+            },
             Resource::Buffer {
                 buffer: indirect_buffer.clone(),
                 range: 0..indirect_buffer.size(), // TODO:
                 memory: PipelineMemoryAccess {
-                    stages: PipelineStages::DRAW_INDIRECT, // TODO: is draw_indirect correct for dispatch too?
+                    stages: PipelineStages::DRAW_INDIRECT,
                     access: AccessFlags::INDIRECT_COMMAND_READ,
                     exclusive: false,
                 },
