@@ -45,6 +45,8 @@ Changes to the `sync` module and types:
 - Added `CpuBufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
 - Implement `IntoIterator` for `Features`, `DeviceExtensions` and `InstanceExtensions`.
+- A new `CommandBufferBuilder` type, that provides validation and keeps resources alive, but requires manual synchronization commands.
+- The `PrimaryCommandBuffer` and `SecondaryCommandBuffer` types.
 
 ### Bugs fixed
 
