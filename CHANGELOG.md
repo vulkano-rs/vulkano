@@ -44,6 +44,7 @@ Changes to the `sync` module and types:
 ### Additions
 - Added `CpuBufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
+- Implement `IntoIterator` for `Features`, `DeviceExtensions` and `InstanceExtensions`.
 
 ### Bugs fixed
 
