@@ -9,7 +9,7 @@
 
 use super::{extensions::RequiresOneOf, write_file, IndexMap, VkRegistryData};
 use heck::ToSnakeCase;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
@@ -541,9 +541,8 @@ fn formats_members(
     features: &IndexMap<&str, &Feature>,
     extensions: &IndexMap<&str, &Extension>,
 ) -> Vec<FormatMember> {
-    lazy_static! {
-        static ref BLOCK_EXTENT_REGEX: Regex = Regex::new(r"^(\d+),(\d+),(\d+)$").unwrap();
-    }
+    static BLOCK_EXTENT_REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^(\d+),(\d+),(\d+)$").unwrap());
 
     formats
         .iter()

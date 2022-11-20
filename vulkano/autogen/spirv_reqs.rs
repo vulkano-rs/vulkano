@@ -13,7 +13,7 @@ use super::{
 };
 use heck::ToSnakeCase;
 use indexmap::map::Entry;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
@@ -206,11 +206,9 @@ fn spirv_extensions_members(extensions: &[&SpirvExtOrCap]) -> Vec<SpirvReqsMembe
 }
 
 fn make_enable(enable: &vk_parse::Enable) -> Option<(Enable, String)> {
-    lazy_static! {
-        static ref VK_API_VERSION: Regex =
-            Regex::new(r"^VK_(?:API_)?VERSION_(\d+)_(\d+)$").unwrap();
-        static ref BIT: Regex = Regex::new(r"_BIT(?:_NV)?$").unwrap();
-    }
+    static VK_API_VERSION: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^VK_(?:API_)?VERSION_(\d+)_(\d+)$").unwrap());
+    static BIT: Lazy<Regex> = Lazy::new(|| Regex::new(r"_BIT(?:_NV)?$").unwrap());
 
     if matches!(enable, vk_parse::Enable::Version(version) if version == "VK_VERSION_1_0") {
         return None;
