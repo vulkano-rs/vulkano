@@ -13,7 +13,7 @@ use crate::{
         allocator::CommandBufferAllocator,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder,
+        AutoCommandBufferBuilder, ResourceInCommand, ResourceUseRef,
     },
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, Format, FormatFeatures},
@@ -583,12 +583,19 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &clear_info;
 
+        let command_index = self.commands.len();
+        let command_name = "clear_color_image";
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .cloned()
             .flat_map(|subresource_range| {
                 [(
-                    "image".into(),
+                    ResourceUseRef {
+                        command_index,
+                        command_name,
+                        resource_in_command: ResourceInCommand::Destination,
+                        secondary_use_ref: None,
+                    },
                     Resource::Image {
                         image: image.clone(),
                         subresource_range,
@@ -648,12 +655,19 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &clear_info;
 
+        let command_index = self.commands.len();
+        let command_name = "clear_depth_stencil_image";
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .cloned()
             .flat_map(|subresource_range| {
                 [(
-                    "image".into(),
+                    ResourceUseRef {
+                        command_index,
+                        command_name,
+                        resource_in_command: ResourceInCommand::Destination,
+                        secondary_use_ref: None,
+                    },
                     Resource::Image {
                         image: image.clone(),
                         subresource_range,
@@ -710,8 +724,15 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &fill_buffer_info;
 
+        let command_index = self.commands.len();
+        let command_name = "fill_buffer";
         let resources = [(
-            "dst_buffer".into(),
+            ResourceUseRef {
+                command_index,
+                command_name,
+                resource_in_command: ResourceInCommand::Destination,
+                secondary_use_ref: None,
+            },
             Resource::Buffer {
                 buffer: dst_buffer.clone(),
                 range: dst_offset..dst_offset + size,
@@ -767,8 +788,15 @@ impl SyncCommandBufferBuilder {
             }
         }
 
+        let command_index = self.commands.len();
+        let command_name = "update_buffer";
         let resources = [(
-            "dst_buffer".into(),
+            ResourceUseRef {
+                command_index,
+                command_name,
+                resource_in_command: ResourceInCommand::Destination,
+                secondary_use_ref: None,
+            },
             Resource::Buffer {
                 buffer: dst_buffer.clone(),
                 range: dst_offset..dst_offset + size_of_val(data.deref()) as DeviceSize,

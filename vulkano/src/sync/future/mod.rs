@@ -99,12 +99,12 @@ pub use self::{
 use super::{
     fence::{Fence, FenceError},
     semaphore::Semaphore,
-    AccessFlags, PipelineStages,
 };
 use crate::{
     buffer::sys::Buffer,
     command_buffer::{
-        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract, SubmitInfo,
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
+        ResourceUseRef, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
     image::{sys::Image, ImageLayout},
@@ -114,7 +114,6 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::{
-    borrow::Cow,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     ops::Range,
@@ -194,9 +193,6 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given buffer on the given queue.
     ///
-    /// If the access is granted, returns the pipeline stage and access flags of the latest usage
-    /// of this resource, or `None` if irrelevant.
-    ///
     /// > **Note**: Returning `Ok` means "access granted", while returning `Err` means
     /// > "don't know". Therefore returning `Err` is never unsafe.
     fn check_buffer_access(
@@ -205,13 +201,10 @@ pub unsafe trait GpuFuture: DeviceOwned {
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
+    ) -> Result<(), AccessCheckError>;
 
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given image on the given queue.
-    ///
-    /// If the access is granted, returns the pipeline stage and access flags of the latest usage
-    /// of this resource, or `None` if irrelevant.
     ///
     /// Implementations must ensure that the image is in the given layout. However if the `layout`
     /// is `Undefined` then the implementation should accept any actual layout.
@@ -228,7 +221,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
+    ) -> Result<(), AccessCheckError>;
 
     /// Checks whether accessing a swapchain image is permitted.
     ///
@@ -443,7 +436,7 @@ where
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         (**self).check_buffer_access(buffer, range, exclusive, queue)
     }
 
@@ -454,7 +447,7 @@ where
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         (**self).check_image_access(image, range, exclusive, expected_layout, queue)
     }
 
@@ -609,9 +602,7 @@ pub enum FlushError {
     /// Access to a resource has been denied.
     ResourceAccessError {
         error: AccessError,
-        command_name: Cow<'static, str>,
-        command_param: Cow<'static, str>,
-        command_offset: usize,
+        use_ref: ResourceUseRef,
     },
 
     /// The command buffer or one of the secondary command buffers it executes was created with the

@@ -14,7 +14,9 @@ use crate::{
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferInheritanceRenderPassType,
-        CommandBufferUsage, SecondaryCommandBufferAbstract, SubpassContents,
+        CommandBufferUsage, ResourceInCommand, ResourceUseRef, SecondaryCommandBufferAbstract,
+        SecondaryCommandBufferBufferUsage, SecondaryCommandBufferImageUsage,
+        SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     device::{DeviceOwned, QueueFlags},
     format::Format,
@@ -453,25 +455,60 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
             }
         }
 
-        let resources = {
-            let mut resources = Vec::new();
-            for (cbuf_num, cbuf) in self.inner.iter().enumerate() {
-                for buf_num in 0..cbuf.num_buffers() {
-                    let (buffer, range, memory) = cbuf.buffer(buf_num).unwrap();
-                    resources.push((
-                        format!("Buffer bound to secondary command buffer {}", cbuf_num).into(),
+        let command_index = self.builder.commands.len();
+        let command_name = "execute_commands";
+        let resources: Vec<_> = self
+            .inner
+            .iter()
+            .enumerate()
+            .flat_map(|(index, cbuf)| {
+                let index = index as u32;
+                let SecondaryCommandBufferResourcesUsage { buffers, images } =
+                    cbuf.resources_usage();
+
+                (buffers.iter().map(move |usage| {
+                    let &SecondaryCommandBufferBufferUsage {
+                        use_ref,
+                        ref buffer,
+                        ref range,
+                        memory,
+                    } = usage;
+
+                    (
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::SecondaryCommandBuffer {
+                                index,
+                            },
+                            secondary_use_ref: Some(use_ref.into()),
+                        },
                         Resource::Buffer {
                             buffer: buffer.clone(),
-                            range,
+                            range: range.clone(),
                             memory,
                         },
-                    ));
-                }
-                for img_num in 0..cbuf.num_images() {
-                    let (image, subresource_range, memory, start_layout, end_layout) =
-                        cbuf.image(img_num).unwrap();
-                    resources.push((
-                        format!("Image bound to secondary command buffer {}", cbuf_num).into(),
+                    )
+                }))
+                .chain(images.iter().map(move |usage| {
+                    let &SecondaryCommandBufferImageUsage {
+                        use_ref,
+                        ref image,
+                        ref subresource_range,
+                        memory,
+                        start_layout,
+                        end_layout,
+                    } = usage;
+
+                    (
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::SecondaryCommandBuffer {
+                                index,
+                            },
+                            secondary_use_ref: Some(use_ref.into()),
+                        },
                         Resource::Image {
                             image: image.clone(),
                             subresource_range: subresource_range.clone(),
@@ -479,11 +516,10 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                             start_layout,
                             end_layout,
                         },
-                    ));
-                }
-            }
-            resources
-        };
+                    )
+                }))
+            })
+            .collect();
 
         for resource in &resources {
             self.builder.check_resource_conflicts(resource)?;

@@ -16,7 +16,7 @@ use crate::{
         },
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, SubpassContents,
+        AutoCommandBufferBuilder, ResourceInCommand, ResourceUseRef, SubpassContents,
     },
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, Format, NumericType},
@@ -1491,15 +1491,23 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &render_pass_begin_info;
 
+        let command_index = self.commands.len();
+        let command_name = "begin_render_pass";
         let resources = render_pass
             .attachments()
             .iter()
             .enumerate()
-            .map(|(num, desc)| {
-                let image_view = &framebuffer.attachments()[num];
+            .map(|(index, desc)| {
+                let image_view = &framebuffer.attachments()[index];
+                let index = index as u32;
 
                 (
-                    format!("attachment {}", num).into(),
+                    ResourceUseRef {
+                        command_index,
+                        command_name,
+                        resource_in_command: ResourceInCommand::FramebufferAttachment { index },
+                        secondary_use_ref: None,
+                    },
                     Resource::Image {
                         image: image_view.image(),
                         subresource_range: image_view.subresource_range().clone(),
@@ -1609,13 +1617,15 @@ impl SyncCommandBufferBuilder {
             _ne,
         } = &rendering_info;
 
+        let command_index = self.commands.len();
+        let command_name = "begin_rendering";
         let resources = (color_attachments
             .iter()
             .enumerate()
             .filter_map(|(index, attachment_info)| {
                 attachment_info
                     .as_ref()
-                    .map(|attachment_info| (index, attachment_info))
+                    .map(|attachment_info| (index as u32, attachment_info))
             })
             .flat_map(|(index, attachment_info)| {
                 let &RenderingAttachmentInfo {
@@ -1630,7 +1640,12 @@ impl SyncCommandBufferBuilder {
 
                 [
                     Some((
-                        format!("color attachment {}", index).into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::ColorAttachment { index },
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: image_view.image(),
                             subresource_range: image_view.subresource_range().clone(),
@@ -1652,7 +1667,14 @@ impl SyncCommandBufferBuilder {
                         } = resolve_info;
 
                         (
-                            format!("color resolve attachment {}", index).into(),
+                            ResourceUseRef {
+                                command_index,
+                                command_name,
+                                resource_in_command: ResourceInCommand::ColorResolveAttachment {
+                                    index,
+                                },
+                                secondary_use_ref: None,
+                            },
                             Resource::Image {
                                 image: image_view.image(),
                                 subresource_range: image_view.subresource_range().clone(),
@@ -1684,7 +1706,12 @@ impl SyncCommandBufferBuilder {
 
             [
                 Some((
-                    "depth attachment".into(),
+                    ResourceUseRef {
+                        command_index,
+                        command_name,
+                        resource_in_command: ResourceInCommand::DepthAttachment,
+                        secondary_use_ref: None,
+                    },
                     Resource::Image {
                         image: image_view.image(),
                         subresource_range: image_view.subresource_range().clone(),
@@ -1706,7 +1733,12 @@ impl SyncCommandBufferBuilder {
                     } = resolve_info;
 
                     (
-                        "depth resolve attachment".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::DepthResolveAttachment,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: image_view.image(),
                             subresource_range: image_view.subresource_range().clone(),
@@ -1738,7 +1770,12 @@ impl SyncCommandBufferBuilder {
 
             [
                 Some((
-                    "stencil attachment".into(),
+                    ResourceUseRef {
+                        command_index,
+                        command_name,
+                        resource_in_command: ResourceInCommand::StencilAttachment,
+                        secondary_use_ref: None,
+                    },
                     Resource::Image {
                         image: image_view.image(),
                         subresource_range: image_view.subresource_range().clone(),
@@ -1760,7 +1797,12 @@ impl SyncCommandBufferBuilder {
                     } = resolve_info;
 
                     (
-                        "stencil resolve attachment".into(),
+                        ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::StencilResolveAttachment,
+                            secondary_use_ref: None,
+                        },
                         Resource::Image {
                             image: image_view.image(),
                             subresource_range: image_view.subresource_range().clone(),

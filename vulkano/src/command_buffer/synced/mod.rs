@@ -72,21 +72,16 @@ pub use self::builder::{
 };
 use super::{
     sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
-    CommandBufferResourcesUsage,
+    CommandBufferResourcesUsage, SecondaryCommandBufferResourcesUsage,
 };
 use crate::{
-    buffer::{sys::Buffer, BufferAccess},
-    device::{Device, DeviceOwned, Queue},
-    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
-    sync::{
-        future::{AccessCheckError, AccessError},
-        AccessFlags, PipelineMemoryAccess, PipelineStages,
-    },
+    buffer::BufferAccess,
+    device::{Device, DeviceOwned},
+    image::{ImageAccess, ImageLayout, ImageSubresourceRange},
+    sync::PipelineMemoryAccess,
     DeviceSize,
 };
-use ahash::HashMap;
 use std::{
-    borrow::Cow,
     fmt::{Debug, Error as FmtError, Formatter},
     ops::Range,
     sync::Arc,
@@ -110,22 +105,9 @@ pub struct SyncCommandBuffer {
 
     // Resources accessed by this command buffer.
     resources_usage: CommandBufferResourcesUsage,
-    buffer_indices: HashMap<Arc<Buffer>, usize>,
-    image_indices: HashMap<Arc<Image>, usize>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
-    buffers: Vec<(
-        Arc<dyn BufferAccess>,
-        Range<DeviceSize>,
-        PipelineMemoryAccess,
-    )>,
-    images: Vec<(
-        Arc<dyn ImageAccess>,
-        ImageSubresourceRange,
-        PipelineMemoryAccess,
-        ImageLayout,
-        ImageLayout,
-    )>,
+    secondary_resources_usage: SecondaryCommandBufferResourcesUsage,
 }
 
 impl SyncCommandBuffer {
@@ -134,132 +116,9 @@ impl SyncCommandBuffer {
         &self.resources_usage
     }
 
-    /// Checks whether this command buffer has access to a buffer.
-    ///
-    /// > **Note**: Suitable when implementing the `CommandBuffer` trait.
     #[inline]
-    pub fn check_buffer_access(
-        &self,
-        buffer: &Buffer,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        _queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let usage = match self.buffer_indices.get(buffer) {
-            Some(&index) => &self.resources_usage.buffers[index],
-            None => return Err(AccessCheckError::Unknown),
-        };
-
-        // TODO: check the queue family
-
-        usage
-            .ranges
-            .range(&range)
-            .try_fold(
-                (PipelineStages::empty(), AccessFlags::empty()),
-                |(stages, access), (_range, range_usage)| {
-                    if !range_usage.mutable && exclusive {
-                        Err(AccessCheckError::Unknown)
-                    } else {
-                        Ok((
-                            stages | range_usage.final_stages,
-                            access | range_usage.final_access,
-                        ))
-                    }
-                },
-            )
-            .map(Some)
-    }
-
-    /// Checks whether this command buffer has access to an image.
-    ///
-    /// > **Note**: Suitable when implementing the `CommandBuffer` trait.
-    #[inline]
-    pub fn check_image_access(
-        &self,
-        image: &Image,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        expected_layout: ImageLayout,
-        _queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let usage = match self.image_indices.get(image) {
-            Some(&index) => &self.resources_usage.images[index],
-            None => return Err(AccessCheckError::Unknown),
-        };
-
-        // TODO: check the queue family
-
-        usage
-            .ranges
-            .range(&range)
-            .try_fold(
-                (PipelineStages::empty(), AccessFlags::empty()),
-                |(stages, access), (_range, range_usage)| {
-                    if expected_layout != ImageLayout::Undefined
-                        && range_usage.final_layout != expected_layout
-                    {
-                        return Err(AccessCheckError::Denied(
-                            AccessError::UnexpectedImageLayout {
-                                allowed: range_usage.final_layout,
-                                requested: expected_layout,
-                            },
-                        ));
-                    }
-
-                    if !range_usage.mutable && exclusive {
-                        Err(AccessCheckError::Unknown)
-                    } else {
-                        Ok((
-                            stages | range_usage.final_stages,
-                            access | range_usage.final_access,
-                        ))
-                    }
-                },
-            )
-            .map(Some)
-    }
-
-    #[inline]
-    pub fn num_buffers(&self) -> usize {
-        self.buffers.len()
-    }
-
-    #[inline]
-    pub fn buffer(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &Arc<dyn BufferAccess>,
-        Range<DeviceSize>,
-        PipelineMemoryAccess,
-    )> {
-        self.buffers
-            .get(index)
-            .map(|(buffer, range, memory)| (buffer, range.clone(), *memory))
-    }
-
-    #[inline]
-    pub fn num_images(&self) -> usize {
-        self.images.len()
-    }
-
-    #[inline]
-    pub fn image(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &Arc<dyn ImageAccess>,
-        &ImageSubresourceRange,
-        PipelineMemoryAccess,
-        ImageLayout,
-        ImageLayout,
-    )> {
-        self.images
-            .get(index)
-            .map(|(image, range, memory, start_layout, end_layout)| {
-                (image, range, *memory, *start_layout, *end_layout)
-            })
+    pub(super) fn secondary_resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
+        &self.secondary_resources_usage
     }
 }
 
@@ -275,55 +134,6 @@ unsafe impl DeviceOwned for SyncCommandBuffer {
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
-}
-
-// Usage of a resource in a finished command buffer.
-#[derive(Clone, PartialEq, Eq)]
-struct BufferFinalState {
-    // Lists every use of the resource.
-    resource_uses: Vec<BufferUse>,
-
-    // Stages of the last command that uses the resource.
-    final_stages: PipelineStages,
-    // Access for the last command that uses the resource.
-    final_access: AccessFlags,
-
-    // True if the resource is used in exclusive mode.
-    exclusive: bool,
-}
-
-// Usage of a resource in a finished command buffer.
-#[derive(Clone, PartialEq, Eq)]
-struct ImageFinalState {
-    // Lists every use of the resource.
-    resource_uses: Vec<ImageUse>,
-
-    // Stages of the last command that uses the resource.
-    final_stages: PipelineStages,
-    // Access for the last command that uses the resource.
-    final_access: AccessFlags,
-
-    // True if the resource is used in exclusive mode.
-    exclusive: bool,
-
-    // Layout that an image must be in at the start of the command buffer. Can be `Undefined` if we
-    // don't care.
-    initial_layout: ImageLayout,
-
-    // Layout the image will be in at the end of the command buffer.
-    final_layout: ImageLayout, // TODO: maybe wrap in an Option to mean that the layout doesn't change? because of buffers?
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct BufferUse {
-    command_index: usize,
-    name: Cow<'static, str>,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct ImageUse {
-    command_index: usize,
-    name: Cow<'static, str>,
 }
 
 /// Type of resource whose state is to be tracked.

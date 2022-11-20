@@ -1333,7 +1333,6 @@ impl RawImage {
     /// - If `self.flags().disjoint` is set, then `allocations` must contain exactly
     ///   `self.format().unwrap().planes().len()` elements. These elements must not be dedicated
     ///   allocations.
-    #[allow(clippy::result_large_err)]
     pub fn bind_memory(
         self,
         allocations: impl IntoIterator<Item = MemoryAlloc>,
@@ -1498,7 +1497,6 @@ impl RawImage {
     /// - If `self.flags().disjoint` is set, then `allocations` must contain exactly
     ///   `self.format().unwrap().planes().len()` elements.
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[allow(clippy::result_large_err)]
     pub unsafe fn bind_memory_unchecked(
         self,
         allocations: impl IntoIterator<Item = MemoryAlloc>,

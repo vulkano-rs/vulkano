@@ -25,7 +25,7 @@ use crate::{
         fence::{Fence, FenceError},
         future::{AccessCheckError, AccessError, FlushError, GpuFuture, SubmitAnyBuilder},
         semaphore::{Semaphore, SemaphoreError},
-        AccessFlags, PipelineStages, Sharing,
+        Sharing,
     },
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
@@ -1684,7 +1684,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
         _range: Range<DeviceSize>,
         _exclusive: bool,
         _queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
@@ -1695,7 +1695,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
         _exclusive: bool,
         expected_layout: ImageLayout,
         _queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         if self.swapchain.index_of_image(image) != Some(self.image_index) {
             return Err(AccessCheckError::Unknown);
         }
@@ -1719,7 +1719,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
             ));
         }
 
-        Ok(None)
+        Ok(())
     }
 
     #[inline]
@@ -2122,7 +2122,7 @@ where
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         self.previous
             .check_buffer_access(buffer, range, exclusive, queue)
     }
@@ -2134,7 +2134,7 @@ where
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         if self.swapchain_info.swapchain.index_of_image(image)
             == Some(self.swapchain_info.image_index)
         {

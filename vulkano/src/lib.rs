@@ -79,6 +79,7 @@
     clippy::new_without_default,
     clippy::nonminimal_bool,
     clippy::op_ref, // Seems to be bugged, the fixed code triggers a compile error
+    clippy::result_large_err,
     clippy::too_many_arguments,
     clippy::type_complexity,
     clippy::vec_box,

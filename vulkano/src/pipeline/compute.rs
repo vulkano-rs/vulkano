@@ -247,16 +247,6 @@ impl ComputePipeline {
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
-
-    /// Returns an iterator over the descriptor requirements for this pipeline.
-    #[inline]
-    pub fn descriptor_binding_requirements(
-        &self,
-    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorBindingRequirements)> {
-        self.descriptor_binding_requirements
-            .iter()
-            .map(|(loc, reqs)| (*loc, reqs))
-    }
 }
 
 impl Pipeline for ComputePipeline {
@@ -273,6 +263,13 @@ impl Pipeline for ComputePipeline {
     #[inline]
     fn num_used_descriptor_sets(&self) -> u32 {
         self.num_used_descriptor_sets
+    }
+
+    #[inline]
+    fn descriptor_binding_requirements(
+        &self,
+    ) -> &HashMap<(u32, u32), DescriptorBindingRequirements> {
+        &self.descriptor_binding_requirements
     }
 }
 
