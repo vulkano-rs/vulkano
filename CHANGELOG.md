@@ -41,6 +41,12 @@ Changes to the `sync` module and types:
 - Added the `DependencyFlags` type, which is now used by `DependencyInfo` and `SubpassDependency`.
 - Renamed `QueueFamilyTransfer` to `QueueFamilyOwnershipTransfer` and made it into an enum to prevent invalid usage.
 
+Changes to `GpuFuture`:
+- The `check_buffer_access` and `check_image_access` methods now return nothing on success.
+
+Changes to pipelines:
+- The `descriptor_binding_requirements` method is moved to the `Pipeline` trait, and returns a reference to the hashmap directly.
+
 ### Additions
 - Added `CpuBufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
