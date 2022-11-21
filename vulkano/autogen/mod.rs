@@ -9,7 +9,7 @@
 
 use self::spirv_grammar::SpirvGrammar;
 use ahash::HashMap;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::{
     env,
@@ -122,12 +122,11 @@ impl<'r> VkRegistryData<'r> {
     }
 
     fn get_header_version(registry: &Registry) -> (u16, u16, u16) {
-        lazy_static! {
-            static ref VK_HEADER_VERSION: Regex =
-                Regex::new(r"#define\s+VK_HEADER_VERSION\s+(\d+)\s*$").unwrap();
-            static ref VK_HEADER_VERSION_COMPLETE: Regex =
-                Regex::new(r"#define\s+VK_HEADER_VERSION_COMPLETE\s+VK_MAKE_API_VERSION\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*VK_HEADER_VERSION\s*\)").unwrap();
-        }
+        static VK_HEADER_VERSION: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r"#define\s+VK_HEADER_VERSION\s+(\d+)\s*$").unwrap());
+        static VK_HEADER_VERSION_COMPLETE: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"#define\s+VK_HEADER_VERSION_COMPLETE\s+VK_MAKE_API_VERSION\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*VK_HEADER_VERSION\s*\)").unwrap()
+        });
 
         let mut major = None;
         let mut minor = None;
@@ -428,9 +427,8 @@ pub fn get_spirv_grammar<P: AsRef<Path> + ?Sized>(path: &P) -> SpirvGrammar {
 }
 
 fn suffix_key(name: &str) -> u32 {
-    lazy_static! {
-        static ref VENDOR_SUFFIXES: Regex = Regex::new(r"(?:AMD|GOOGLE|INTEL|NV)$").unwrap();
-    }
+    static VENDOR_SUFFIXES: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?:AMD|GOOGLE|INTEL|NV)$").unwrap());
 
     #[allow(clippy::bool_to_int_with_if)]
     if VENDOR_SUFFIXES.is_match(name) {
