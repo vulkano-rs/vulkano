@@ -1113,12 +1113,11 @@ vulkan_enum! {
     /// instead.
     DontCare = DONT_CARE,
 
-    /*
+    /* TODO: enable
     // TODO: document
     None = NONE_EXT {
         device_extensions: [ext_load_store_op_none],
-    },
-     */
+    },*/
 }
 
 vulkan_enum! {
@@ -1144,13 +1143,12 @@ vulkan_enum! {
     /// image will be undefined.
     DontCare = DONT_CARE,
 
-    /*
+    /* TODO: enable
     // TODO: document
     None = NONE {
         api_version: V1_3,
         device_extensions: [ext_load_store_op_none],
-    },
-     */
+    },*/
 }
 
 vulkan_bitflags_enum! {

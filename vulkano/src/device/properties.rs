@@ -1,10 +1,14 @@
+use super::physical::{
+    MemoryDecompressionMethods, OpticalFlowGridSizes, PipelineRobustnessBufferBehavior,
+    PipelineRobustnessImageBehavior, RayTracingInvocationReorderMode,
+};
 use crate::{
     device::{
         physical::{
             ConformanceVersion, DriverId, PhysicalDeviceType, PointClippingBehavior,
             ShaderCoreProperties, ShaderFloatControlsIndependence, SubgroupFeatures,
         },
-        DeviceExtensions,
+        DeviceExtensions, QueueFlags,
     },
     image::{SampleCount, SampleCounts},
     instance::InstanceExtensions,
@@ -138,6 +142,20 @@ impl FromVulkan<ash::vk::Extent2D> for [u32; 2] {
     }
 }
 
+impl FromVulkan<ash::vk::MemoryDecompressionMethodFlagsNV> for MemoryDecompressionMethods {
+    #[inline]
+    fn from_vulkan(val: ash::vk::MemoryDecompressionMethodFlagsNV) -> Option<Self> {
+        Some(val.into())
+    }
+}
+
+impl FromVulkan<ash::vk::OpticalFlowGridSizeFlagsNV> for OpticalFlowGridSizes {
+    #[inline]
+    fn from_vulkan(val: ash::vk::OpticalFlowGridSizeFlagsNV) -> Option<Self> {
+        Some(val.into())
+    }
+}
+
 impl FromVulkan<ash::vk::PhysicalDeviceType> for PhysicalDeviceType {
     #[inline]
     fn from_vulkan(val: ash::vk::PhysicalDeviceType) -> Option<Self> {
@@ -145,9 +163,37 @@ impl FromVulkan<ash::vk::PhysicalDeviceType> for PhysicalDeviceType {
     }
 }
 
+impl FromVulkan<ash::vk::PipelineRobustnessBufferBehaviorEXT> for PipelineRobustnessBufferBehavior {
+    #[inline]
+    fn from_vulkan(val: ash::vk::PipelineRobustnessBufferBehaviorEXT) -> Option<Self> {
+        val.try_into().ok()
+    }
+}
+
+impl FromVulkan<ash::vk::PipelineRobustnessImageBehaviorEXT> for PipelineRobustnessImageBehavior {
+    #[inline]
+    fn from_vulkan(val: ash::vk::PipelineRobustnessImageBehaviorEXT) -> Option<Self> {
+        val.try_into().ok()
+    }
+}
+
 impl FromVulkan<ash::vk::PointClippingBehavior> for PointClippingBehavior {
     #[inline]
     fn from_vulkan(val: ash::vk::PointClippingBehavior) -> Option<Self> {
+        val.try_into().ok()
+    }
+}
+
+impl FromVulkan<ash::vk::QueueFlags> for QueueFlags {
+    #[inline]
+    fn from_vulkan(val: ash::vk::QueueFlags) -> Option<Self> {
+        Some(val.into())
+    }
+}
+
+impl FromVulkan<ash::vk::RayTracingInvocationReorderModeNV> for RayTracingInvocationReorderMode {
+    #[inline]
+    fn from_vulkan(val: ash::vk::RayTracingInvocationReorderModeNV) -> Option<Self> {
         val.try_into().ok()
     }
 }

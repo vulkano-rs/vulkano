@@ -2533,6 +2533,33 @@ vulkan_enum! {
 
     // TODO: document
     MoltenVK = MOLTENVK,
+
+    // TODO: document
+    CoreAVIProprietary = COREAVI_PROPRIETARY,
+
+    // TODO: document
+    JuiceProprietary = JUICE_PROPRIETARY,
+
+    // TODO: document
+    VerisiliconPropertary = VERISILICON_PROPRIETARY,
+
+    // TODO: document
+    MesaTurnip = MESA_TURNIP,
+
+    // TODO: document
+    MesaV3DV = MESA_V3DV,
+
+    // TODO: document
+    MesaPanVK = MESA_PANVK,
+
+    // TODO: document
+    SamsungProprietary = SAMSUNG_PROPRIETARY,
+
+    // TODO: document
+    MesaVenus = MESA_VENUS,
+
+    // TODO: document
+    MesaDozen = MESA_DOZEN,
 }
 
 /// Information provided about an active tool.
@@ -2666,6 +2693,86 @@ impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     fn from(_val: ash::vk::ShaderCorePropertiesFlagsAMD) -> Self {
         Self {}
     }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    // TODO: document
+    MemoryDecompressionMethods = MemoryDecompressionMethodFlagsNV(u64);
+
+    // TODO: document
+    GDEFLATE_1_0 = GDEFLATE_1_0,
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    // TODO: document
+    OpticalFlowGridSizes = OpticalFlowGridSizeFlagsNV(u32);
+
+    // TODO: document
+    SIZE_1X1 = TYPE_1X1,
+
+    // TODO: document
+    SIZE_2X2 = TYPE_2X2,
+
+    // TODO: document
+    SIZE_4X4 = TYPE_4X4,
+
+    // TODO: document
+    SIZE_8X8 = TYPE_8X8,
+}
+
+vulkan_enum! {
+    #[non_exhaustive]
+
+    // TODO: document
+    PipelineRobustnessBufferBehavior = PipelineRobustnessBufferBehaviorEXT(i32);
+
+    // TODO: document
+    DeviceDefault = DEVICE_DEFAULT,
+
+    // TODO: document
+    Disabled = DISABLED,
+
+    // TODO: document
+    RobustBufferAccess = ROBUST_BUFFER_ACCESS,
+
+    // TODO: document
+    RobustBufferAccess2 = ROBUST_BUFFER_ACCESS_2,
+}
+
+vulkan_enum! {
+    #[non_exhaustive]
+
+    // TODO: document
+    PipelineRobustnessImageBehavior = PipelineRobustnessImageBehaviorEXT(i32);
+
+    // TODO: document
+    DeviceDefault = DEVICE_DEFAULT,
+
+    // TODO: document
+    Disabled = DISABLED,
+
+    // TODO: document
+    RobustImageAccess = ROBUST_IMAGE_ACCESS,
+
+    // TODO: document
+    RobustImageAccess2 = ROBUST_IMAGE_ACCESS_2,
+}
+
+vulkan_enum! {
+    #[non_exhaustive]
+
+    // TODO: document
+    RayTracingInvocationReorderMode = RayTracingInvocationReorderModeNV(i32);
+
+    // TODO: document
+    None = NONE,
+
+    // TODO: document
+    Reorder = REORDER,
 }
 
 /// Error that can happen when using a physical device.

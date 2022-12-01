@@ -371,19 +371,23 @@ vulkan_bitflags_enum! {
         device_extensions: [huawei_invocation_mask],
     },
 
-    /*
+    /* TODO: enable
+    // TODO: document
     ACCELERATION_STRUCTURE_COPY, AccelerationStructureCopy = ACCELERATION_STRUCTURE_COPY_KHR {
         device_extensions: [khr_ray_tracing_maintenance1],
-    },
+    },*/
 
+    /* TODO: enable
+    // TODO: document
     MICROMAP_BUILD, MicromapBuild = MICROMAP_BUILD_EXT {
         device_extensions: [ext_opacity_micromap],
-    },
+    },*/
 
+    /* TODO: enable
+    // TODO: document
     OPTICAL_FLOW, OpticalFlow = OPTICAL_FLOW_NV {
         device_extensions: [nv_optical_flow],
-    },
-     */
+    },*/
 }
 
 impl From<QueueFlags> for PipelineStages {
@@ -713,27 +717,35 @@ vulkan_bitflags! {
         device_extensions: [huawei_invocation_mask],
     },
 
-    /*
+    /* TODO: enable
+    // TODO: document
     SHADER_BINDING_TABLE_READ = SHADER_BINDING_TABLE_READ_KHR {
         device_extensions: [khr_ray_tracing_maintenance1],
-    },
+    },*/
 
+    /* TODO: enable
+    // TODO: document
     MICROMAP_READ = MICROMAP_READ_EXT {
         device_extensions: [ext_opacity_micromap],
-    },
+    },*/
 
+    /* TODO: enable
+    // TODO: document
     MICROMAP_WRITE = MICROMAP_WRITE_EXT {
         device_extensions: [ext_opacity_micromap],
-    },
+    },*/
 
+    /* TODO: enable
+    // TODO: document
     OPTICAL_FLOW_READ = OPTICAL_FLOW_READ_NV {
         device_extensions: [nv_optical_flow],
-    },
+    },*/
 
+    /* TODO: enable
+    // TODO: document
     OPTICAL_FLOW_WRITE = OPTICAL_FLOW_WRITE_NV {
         device_extensions: [nv_optical_flow],
-    },
-    */
+    },*/
 }
 
 impl From<PipelineStages> for AccessFlags {

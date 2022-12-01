@@ -866,28 +866,42 @@ vulkan_enum! {
     /// pixel that is currently being processed by the fragment shader.
     InputAttachment = INPUT_ATTACHMENT,
 
-    /*
+    /* TODO: enable
     // TODO: document
     InlineUniformBlock = INLINE_UNIFORM_BLOCK {
         api_version: V1_3,
         device_extensions: [ext_inline_uniform_block],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     AccelerationStructure = ACCELERATION_STRUCTURE_KHR {
         device_extensions: [khr_acceleration_structure],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     AccelerationStructureNV = ACCELERATION_STRUCTURE_NV {
         device_extensions: [nv_ray_tracing],
-    },
+    },*/
 
+    /* TODO: enable
+    // TODO: document
+    SampleWeightImage = SAMPLE_WEIGHT_IMAGE_QCOM {
+        device_extensions: [qcom_image_processing],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    BlockMatchImage = BLOCK_MATCH_IMAGE_QCOM {
+        device_extensions: [qcom_image_processing],
+    },*/
+
+    /* TODO: enable
     // TODO: document
     Mutable = MUTABLE_VALVE {
         device_extensions: [valve_mutable_descriptor_type],
-    },
-     */
+    },*/
 }
 
 #[cfg(test)]
