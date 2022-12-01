@@ -472,10 +472,10 @@ vulkan_bitflags! {
 
         /// Replaces and unsets flags that are equivalent to multiple other flags.
         ///
-        /// This may set flags that are not supported by the device, so this is for internal use only
-        /// and should not be passed on to Vulkan.
+        /// This may set flags that are not supported by the device, so this is for internal use
+        /// only and should not be passed on to Vulkan.
         #[allow(dead_code)] // TODO: use this function
-        pub(crate) fn normalize(mut self) -> Self {
+        pub(crate) fn expand(mut self) -> Self {
             if self.intersects(AccessFlags::SHADER_READ) {
                 self -= AccessFlags::SHADER_READ;
                 self |= AccessFlags::UNIFORM_READ
