@@ -475,6 +475,9 @@ pub enum ShaderExecution {
     Miss,
     Intersection,
     Callable,
+    Task,
+    Mesh,
+    SubpassShading,
 }
 
 /*#[derive(Clone, Copy, Debug)]
@@ -1194,6 +1197,9 @@ impl From<ShaderExecution> for ShaderStage {
             ShaderExecution::Miss => Self::Miss,
             ShaderExecution::Intersection => Self::Intersection,
             ShaderExecution::Callable => Self::Callable,
+            ShaderExecution::Task => Self::Task,
+            ShaderExecution::Mesh => Self::Mesh,
+            ShaderExecution::SubpassShading => Self::SubpassShading,
         }
     }
 }
@@ -1236,6 +1242,18 @@ impl From<ShaderStages> for PipelineStages {
                 | ShaderStages::CALLABLE,
         ) {
             result |= PipelineStages::RAY_TRACING_SHADER
+        }
+
+        if stages.intersects(ShaderStages::TASK) {
+            result |= PipelineStages::TASK_SHADER;
+        }
+
+        if stages.intersects(ShaderStages::MESH) {
+            result |= PipelineStages::MESH_SHADER;
+        }
+
+        if stages.intersects(ShaderStages::SUBPASS_SHADING) {
+            result |= PipelineStages::SUBPASS_SHADING;
         }
 
         result

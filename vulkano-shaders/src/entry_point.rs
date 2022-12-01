@@ -77,13 +77,20 @@ fn write_shader_execution(execution: &ShaderExecution) -> TokenStream {
         ShaderExecution::Fragment => quote! { ::vulkano::shader::ShaderExecution::Fragment },
         ShaderExecution::Compute => quote! { ::vulkano::shader::ShaderExecution::Compute },
         ShaderExecution::RayGeneration => {
-            quote! { ::vulkano::shader::ShaderExecution::RayGeneration}
+            quote! { ::vulkano::shader::ShaderExecution::RayGeneration }
         }
-        ShaderExecution::AnyHit => quote! { ::vulkano::shader::ShaderExecution::AnyHit},
-        ShaderExecution::ClosestHit => quote! { ::vulkano::shader::ShaderExecution::ClosestHit},
-        ShaderExecution::Miss => quote! { ::vulkano::shader::ShaderExecution::Miss},
-        ShaderExecution::Intersection => quote! { ::vulkano::shader::ShaderExecution::Intersection},
-        ShaderExecution::Callable => quote! { ::vulkano::shader::ShaderExecution::Callable},
+        ShaderExecution::AnyHit => quote! { ::vulkano::shader::ShaderExecution::AnyHit },
+        ShaderExecution::ClosestHit => quote! { ::vulkano::shader::ShaderExecution::ClosestHit },
+        ShaderExecution::Miss => quote! { ::vulkano::shader::ShaderExecution::Miss },
+        ShaderExecution::Intersection => {
+            quote! { ::vulkano::shader::ShaderExecution::Intersection }
+        }
+        ShaderExecution::Callable => quote! { ::vulkano::shader::ShaderExecution::Callable },
+        ShaderExecution::Task => quote! { ::vulkano::shader::ShaderExecution::Task },
+        ShaderExecution::Mesh => quote! { ::vulkano::shader::ShaderExecution::Mesh },
+        ShaderExecution::SubpassShading => {
+            quote! { ::vulkano::shader::ShaderExecution::SubpassShading }
+        }
     }
 }
 
