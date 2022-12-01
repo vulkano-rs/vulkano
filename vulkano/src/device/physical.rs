@@ -2541,7 +2541,7 @@ vulkan_enum! {
     JuiceProprietary = JUICE_PROPRIETARY,
 
     // TODO: document
-    VerisiliconPropertary = VERISILICON_PROPRIETARY,
+    VeriSiliconPropertary = VERISILICON_PROPRIETARY,
 
     // TODO: document
     MesaTurnip = MESA_TURNIP,
