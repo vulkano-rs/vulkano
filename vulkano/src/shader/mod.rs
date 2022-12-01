@@ -1162,23 +1162,20 @@ vulkan_bitflags_enum! {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
-    /* TODO: enable
     // TODO: document
-    TASK, Task = TASK_NV {
-        device_extensions: [nv_mesh_shader],
-    },*/
+    TASK, Task = TASK_EXT {
+        device_extensions: [ext_mesh_shader, nv_mesh_shader],
+    },
 
-    /* TODO: enable
     // TODO: document
-    MESH, Mesh = MESH_NV {
-        device_extensions: [nv_mesh_shader],
-    },*/
+    MESH, Mesh = MESH_EXT {
+        device_extensions: [ext_mesh_shader, nv_mesh_shader],
+    },
 
-    /* TODO: enable
     // TODO: document
     SUBPASS_SHADING, SubpassShading = SUBPASS_SHADING_HUAWEI {
         device_extensions: [huawei_subpass_shading],
-    },*/
+    },
 }
 
 impl From<ShaderExecution> for ShaderStage {
