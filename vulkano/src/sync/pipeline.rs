@@ -58,66 +58,15 @@ vulkan_bitflags_enum! {
         ///
         /// This may set flags that are not supported by the device, so this is for internal use only
         /// and should not be passed on to Vulkan.
-        pub(crate) fn normalize(mut self) -> Self {
+        pub(crate) fn expand(mut self, queue_flags: QueueFlags) -> Self {
             if self.intersects(PipelineStages::ALL_COMMANDS) {
                 self -= PipelineStages::ALL_COMMANDS;
-                self |= PipelineStages::TOP_OF_PIPE
-                    | PipelineStages::DRAW_INDIRECT
-                    | PipelineStages::VERTEX_INPUT
-                    | PipelineStages::VERTEX_SHADER
-                    | PipelineStages::TESSELLATION_CONTROL_SHADER
-                    | PipelineStages::TESSELLATION_EVALUATION_SHADER
-                    | PipelineStages::GEOMETRY_SHADER
-                    | PipelineStages::FRAGMENT_SHADER
-                    | PipelineStages::EARLY_FRAGMENT_TESTS
-                    | PipelineStages::LATE_FRAGMENT_TESTS
-                    | PipelineStages::COLOR_ATTACHMENT_OUTPUT
-                    | PipelineStages::COMPUTE_SHADER
-                    | PipelineStages::ALL_TRANSFER
-                    | PipelineStages::BOTTOM_OF_PIPE
-                    | PipelineStages::HOST
-                    | PipelineStages::ALL_GRAPHICS
-                    | PipelineStages::COPY
-                    | PipelineStages::RESOLVE
-                    | PipelineStages::BLIT
-                    | PipelineStages::CLEAR
-                    | PipelineStages::INDEX_INPUT
-                    | PipelineStages::VERTEX_ATTRIBUTE_INPUT
-                    | PipelineStages::PRE_RASTERIZATION_SHADERS
-                    | PipelineStages::VIDEO_DECODE
-                    | PipelineStages::VIDEO_ENCODE
-                    | PipelineStages::TRANSFORM_FEEDBACK
-                    | PipelineStages::CONDITIONAL_RENDERING
-                    | PipelineStages::ACCELERATION_STRUCTURE_BUILD
-                    | PipelineStages::RAY_TRACING_SHADER
-                    | PipelineStages::FRAGMENT_DENSITY_PROCESS
-                    | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
-                    | PipelineStages::COMMAND_PREPROCESS
-                    | PipelineStages::TASK_SHADER
-                    | PipelineStages::MESH_SHADER
-                    | PipelineStages::SUBPASS_SHADING
-                    | PipelineStages::INVOCATION_MASK;
+                self |= queue_flags.into();
             }
 
             if self.intersects(PipelineStages::ALL_GRAPHICS) {
                 self -= PipelineStages::ALL_GRAPHICS;
-                self |= PipelineStages::DRAW_INDIRECT
-                    | PipelineStages::TASK_SHADER
-                    | PipelineStages::MESH_SHADER
-                    | PipelineStages::VERTEX_INPUT
-                    | PipelineStages::VERTEX_SHADER
-                    | PipelineStages::TESSELLATION_CONTROL_SHADER
-                    | PipelineStages::TESSELLATION_EVALUATION_SHADER
-                    | PipelineStages::GEOMETRY_SHADER
-                    | PipelineStages::FRAGMENT_SHADER
-                    | PipelineStages::EARLY_FRAGMENT_TESTS
-                    | PipelineStages::LATE_FRAGMENT_TESTS
-                    | PipelineStages::COLOR_ATTACHMENT_OUTPUT
-                    | PipelineStages::TRANSFORM_FEEDBACK
-                    | PipelineStages::CONDITIONAL_RENDERING
-                    | PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT
-                    | PipelineStages::FRAGMENT_DENSITY_PROCESS
-                    | PipelineStages::INVOCATION_MASK;
+                self |= QueueFlags::GRAPHICS.into();
             }
 
             if self.intersects(PipelineStages::VERTEX_INPUT) {
@@ -140,8 +89,8 @@ vulkan_bitflags_enum! {
                 self |= PipelineStages::COPY
                     | PipelineStages::RESOLVE
                     | PipelineStages::BLIT
-                    | PipelineStages::CLEAR;
-                //PipelineStages::ACCELERATION_STRUCTURE_COPY;
+                    | PipelineStages::CLEAR
+                    | PipelineStages::ACCELERATION_STRUCTURE_COPY;
             }
 
             self
@@ -352,13 +301,13 @@ vulkan_bitflags_enum! {
     },
 
     /// Task shaders are executed.
-    TASK_SHADER, TaskShader = TASK_SHADER_NV {
-        device_extensions: [nv_mesh_shader],
+    TASK_SHADER, TaskShader = TASK_SHADER_EXT {
+        device_extensions: [ext_mesh_shader, nv_mesh_shader],
     },
 
     /// Mesh shaders are executed.
-    MESH_SHADER, MeshShader = MESH_SHADER_NV {
-        device_extensions: [nv_mesh_shader],
+    MESH_SHADER, MeshShader = MESH_SHADER_EXT {
+        device_extensions: [ext_mesh_shader, nv_mesh_shader],
     },
 
     /// Subpass shading shaders are executed.
@@ -371,19 +320,20 @@ vulkan_bitflags_enum! {
         device_extensions: [huawei_invocation_mask],
     },
 
-    /*
+    /// The `copy_acceleration_structure` command is executed.
     ACCELERATION_STRUCTURE_COPY, AccelerationStructureCopy = ACCELERATION_STRUCTURE_COPY_KHR {
         device_extensions: [khr_ray_tracing_maintenance1],
     },
 
+    /// Micromap commands are executed.
     MICROMAP_BUILD, MicromapBuild = MICROMAP_BUILD_EXT {
         device_extensions: [ext_opacity_micromap],
     },
 
+    /// Optical flow operations are performed.
     OPTICAL_FLOW, OpticalFlow = OPTICAL_FLOW_NV {
         device_extensions: [nv_optical_flow],
     },
-     */
 }
 
 impl From<QueueFlags> for PipelineStages {
@@ -402,8 +352,8 @@ impl From<QueueFlags> for PipelineStages {
                 | PipelineStages::COPY
                 | PipelineStages::RESOLVE
                 | PipelineStages::BLIT
-                | PipelineStages::CLEAR;
-            //| PipelineStages::ACCELERATION_STRUCTURE_COPY;
+                | PipelineStages::CLEAR
+                | PipelineStages::ACCELERATION_STRUCTURE_COPY;
         }
 
         if val.intersects(QueueFlags::GRAPHICS) {
@@ -438,8 +388,8 @@ impl From<QueueFlags> for PipelineStages {
                 | PipelineStages::CONDITIONAL_RENDERING
                 | PipelineStages::COMMAND_PREPROCESS
                 | PipelineStages::ACCELERATION_STRUCTURE_BUILD
-                | PipelineStages::RAY_TRACING_SHADER;
-            //| PipelineStages::MICROMAP_BUILD;
+                | PipelineStages::RAY_TRACING_SHADER
+                | PipelineStages::MICROMAP_BUILD;
         }
 
         if val.intersects(QueueFlags::VIDEO_DECODE) {
@@ -450,9 +400,9 @@ impl From<QueueFlags> for PipelineStages {
             result |= PipelineStages::VIDEO_ENCODE;
         }
 
-        /*if val.intersects(QueueFlags::OPTICAL_FLOW) {
+        if val.intersects(QueueFlags::OPTICAL_FLOW) {
             result |= PipelineStages::OPTICAL_FLOW;
-        }*/
+        }
 
         result
     }
@@ -522,15 +472,16 @@ vulkan_bitflags! {
 
         /// Replaces and unsets flags that are equivalent to multiple other flags.
         ///
-        /// This may set flags that are not supported by the device, so this is for internal use only
-        /// and should not be passed on to Vulkan.
+        /// This may set flags that are not supported by the device, so this is for internal use
+        /// only and should not be passed on to Vulkan.
         #[allow(dead_code)] // TODO: use this function
-        pub(crate) fn normalize(mut self) -> Self {
+        pub(crate) fn expand(mut self) -> Self {
             if self.intersects(AccessFlags::SHADER_READ) {
                 self -= AccessFlags::SHADER_READ;
                 self |= AccessFlags::UNIFORM_READ
                     | AccessFlags::SHADER_SAMPLED_READ
-                    | AccessFlags::SHADER_STORAGE_READ;
+                    | AccessFlags::SHADER_STORAGE_READ
+                    | AccessFlags::SHADER_BINDING_TABLE_READ;
             }
 
             if self.intersects(AccessFlags::SHADER_WRITE) {
@@ -566,6 +517,7 @@ vulkan_bitflags! {
     /// - `uniform_read`
     /// - `shader_sampled_read`
     /// - `shader_storage_read`
+    /// - `shader_binding_table_read`
     SHADER_READ = SHADER_READ,
 
     /// Write access to a buffer or image in a shader.
@@ -713,27 +665,30 @@ vulkan_bitflags! {
         device_extensions: [huawei_invocation_mask],
     },
 
-    /*
+    /// Read access to a shader binding table.
     SHADER_BINDING_TABLE_READ = SHADER_BINDING_TABLE_READ_KHR {
         device_extensions: [khr_ray_tracing_maintenance1],
     },
 
+    /// Read access to a micromap object.
     MICROMAP_READ = MICROMAP_READ_EXT {
         device_extensions: [ext_opacity_micromap],
     },
 
+    /// Write access to a micromap object.
     MICROMAP_WRITE = MICROMAP_WRITE_EXT {
         device_extensions: [ext_opacity_micromap],
     },
 
+    /// Read access to a buffer or image during optical flow operations.
     OPTICAL_FLOW_READ = OPTICAL_FLOW_READ_NV {
         device_extensions: [nv_optical_flow],
     },
 
+    /// Write access to a buffer or image during optical flow operations.
     OPTICAL_FLOW_WRITE = OPTICAL_FLOW_WRITE_NV {
         device_extensions: [nv_optical_flow],
     },
-    */
 }
 
 impl From<PipelineStages> for AccessFlags {
@@ -746,7 +701,7 @@ impl From<PipelineStages> for AccessFlags {
             return AccessFlags::empty();
         }
 
-        val = val.normalize();
+        val = val.expand(QueueFlags::GRAPHICS | QueueFlags::COMPUTE | QueueFlags::TRANSFER);
         let mut result = AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE;
 
         if val.intersects(PipelineStages::DRAW_INDIRECT) {
@@ -754,47 +709,17 @@ impl From<PipelineStages> for AccessFlags {
                 AccessFlags::INDIRECT_COMMAND_READ | AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ;
         }
 
-        if val.intersects(PipelineStages::VERTEX_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if val.intersects(PipelineStages::TESSELLATION_CONTROL_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if val.intersects(PipelineStages::TESSELLATION_EVALUATION_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if val.intersects(PipelineStages::GEOMETRY_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if val.intersects(PipelineStages::FRAGMENT_SHADER) {
+        if val.intersects(
+            PipelineStages::VERTEX_SHADER
+                | PipelineStages::TESSELLATION_CONTROL_SHADER
+                | PipelineStages::TESSELLATION_EVALUATION_SHADER
+                | PipelineStages::GEOMETRY_SHADER
+                | PipelineStages::FRAGMENT_SHADER
+                | PipelineStages::COMPUTE_SHADER
+                | PipelineStages::RAY_TRACING_SHADER
+                | PipelineStages::TASK_SHADER
+                | PipelineStages::MESH_SHADER,
+        ) {
             result |= AccessFlags::SHADER_READ
                 | AccessFlags::UNIFORM_READ
                 | AccessFlags::SHADER_SAMPLED_READ
@@ -802,15 +727,16 @@ impl From<PipelineStages> for AccessFlags {
                 | AccessFlags::SHADER_WRITE
                 | AccessFlags::SHADER_STORAGE_WRITE
                 | AccessFlags::ACCELERATION_STRUCTURE_READ
-                | AccessFlags::INPUT_ATTACHMENT_READ;
+                | AccessFlags::SHADER_BINDING_TABLE_READ;
         }
 
-        if val.intersects(PipelineStages::EARLY_FRAGMENT_TESTS) {
-            result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
+        if val.intersects(PipelineStages::FRAGMENT_SHADER | PipelineStages::SUBPASS_SHADING) {
+            result |= AccessFlags::INPUT_ATTACHMENT_READ;
         }
 
-        if val.intersects(PipelineStages::LATE_FRAGMENT_TESTS) {
+        if val
+            .intersects(PipelineStages::EARLY_FRAGMENT_TESTS | PipelineStages::LATE_FRAGMENT_TESTS)
+        {
             result |= AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
                 | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
         }
@@ -821,29 +747,16 @@ impl From<PipelineStages> for AccessFlags {
                 | AccessFlags::COLOR_ATTACHMENT_READ_NONCOHERENT;
         }
 
-        if val.intersects(PipelineStages::COMPUTE_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
         if val.intersects(PipelineStages::HOST) {
             result |= AccessFlags::HOST_READ | AccessFlags::HOST_WRITE;
         }
 
-        if val.intersects(PipelineStages::COPY) {
-            result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
-        }
-
-        if val.intersects(PipelineStages::RESOLVE) {
-            result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
-        }
-
-        if val.intersects(PipelineStages::BLIT) {
+        if val.intersects(
+            PipelineStages::COPY
+                | PipelineStages::RESOLVE
+                | PipelineStages::BLIT
+                | PipelineStages::ACCELERATION_STRUCTURE_COPY,
+        ) {
             result |= AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
         }
 
@@ -886,17 +799,13 @@ impl From<PipelineStages> for AccessFlags {
                 | AccessFlags::TRANSFER_READ
                 | AccessFlags::TRANSFER_WRITE
                 | AccessFlags::ACCELERATION_STRUCTURE_READ
-                | AccessFlags::ACCELERATION_STRUCTURE_WRITE;
+                | AccessFlags::ACCELERATION_STRUCTURE_WRITE
+                | AccessFlags::SHADER_BINDING_TABLE_READ
+                | AccessFlags::MICROMAP_READ;
         }
 
         if val.intersects(PipelineStages::RAY_TRACING_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
+            result |= AccessFlags::SHADER_BINDING_TABLE_READ;
         }
 
         if val.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
@@ -911,32 +820,16 @@ impl From<PipelineStages> for AccessFlags {
             result |= AccessFlags::COMMAND_PREPROCESS_READ | AccessFlags::COMMAND_PREPROCESS_WRITE;
         }
 
-        if val.intersects(PipelineStages::TASK_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if val.intersects(PipelineStages::MESH_SHADER) {
-            result |= AccessFlags::SHADER_READ
-                | AccessFlags::UNIFORM_READ
-                | AccessFlags::SHADER_SAMPLED_READ
-                | AccessFlags::SHADER_STORAGE_READ
-                | AccessFlags::SHADER_WRITE
-                | AccessFlags::SHADER_STORAGE_WRITE
-                | AccessFlags::ACCELERATION_STRUCTURE_READ;
-        }
-
-        if val.intersects(PipelineStages::SUBPASS_SHADING) {
-            result |= AccessFlags::INPUT_ATTACHMENT_READ;
-        }
-
         if val.intersects(PipelineStages::INVOCATION_MASK) {
             result |= AccessFlags::INVOCATION_MASK_READ;
+        }
+
+        if val.intersects(PipelineStages::MICROMAP_BUILD) {
+            result |= AccessFlags::MICROMAP_READ | AccessFlags::MICROMAP_WRITE;
+        }
+
+        if val.intersects(PipelineStages::OPTICAL_FLOW) {
+            result |= AccessFlags::OPTICAL_FLOW_READ | AccessFlags::OPTICAL_FLOW_WRITE;
         }
 
         result

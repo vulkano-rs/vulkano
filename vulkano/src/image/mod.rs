@@ -83,7 +83,7 @@ vulkan_bitflags! {
     /// Flags that can be set when creating a new image.
     ImageCreateFlags = ImageCreateFlags(u32);
 
-    /*
+    /* TODO: enable
     /// The image will be backed by sparse memory binding (through queue commands) instead of
     /// regular binding (through [`bind_memory`]).
     ///
@@ -91,8 +91,9 @@ vulkan_bitflags! {
     ///
     /// [`bind_memory`]: sys::RawImage::bind_memory
     /// [`sparse_binding`]: crate::device::Features::sparse_binding
-    SPARSE_BINDING = SPARSE_BINDING,
+    SPARSE_BINDING = SPARSE_BINDING,*/
 
+    /* TODO: enable
     /// The image can be used without being fully resident in memory at the time of use.
     ///
     /// This requires the `sparse_binding` flag as well.
@@ -111,8 +112,9 @@ vulkan_bitflags! {
     /// [`sparse_residency4_samples`]: crate::device::Features::sparse_residency4_samples
     /// [`sparse_residency8_samples`]: crate::device::Features::sparse_residency8_samples
     /// [`sparse_residency16_samples`]: crate::device::Features::sparse_residency16_samples
-    SPARSE_RESIDENCY = SPARSE_RESIDENCY,
+    SPARSE_RESIDENCY = SPARSE_RESIDENCY,*/
 
+    /* TODO: enable
     /// The buffer's memory can alias with another image or a different part of the same image.
     ///
     /// This requires the `sparse_binding` flag as well.
@@ -120,8 +122,7 @@ vulkan_bitflags! {
     /// The [`sparse_residency_aliased`] feature must be enabled on the device.
     ///
     /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
-    SPARSE_ALIASED = SPARSE_ALIASED,
-     */
+    SPARSE_ALIASED = SPARSE_ALIASED,*/
 
     /// For non-multi-planar formats, whether an image view wrapping the image can have a
     /// different format.
@@ -137,19 +138,19 @@ vulkan_bitflags! {
     /// [`ImageViewType::CubeArray`]: crate::image::view::ImageViewType::CubeArray
     CUBE_COMPATIBLE = CUBE_COMPATIBLE,
 
-    /*
+    /* TODO: enable
     // TODO: document
     ALIAS = ALIAS {
         api_version: V1_1,
         device_extensions: [khr_bind_memory2],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SPLIT_INSTANCE_BIND_REGIONS = SPLIT_INSTANCE_BIND_REGIONS {
         api_version: V1_1,
         device_extensions: [khr_device_group],
-    },
-    */
+    },*/
 
     /// For 3D images, whether an image view of type [`ImageViewType::Dim2d`] or
     /// [`ImageViewType::Dim2dArray`] can be created from the image.
@@ -176,18 +177,18 @@ vulkan_bitflags! {
         device_extensions: [khr_maintenance2],
     },
 
-    /*
+    /* TODO: enable
     // TODO: document
     EXTENDED_USAGE = EXTENDED_USAGE {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     PROTECTED = PROTECTED {
         api_version: V1_1,
-    },
-     */
+    },*/
 
     /// For images with a multi-planar format, whether each plane will have its memory bound
     /// separately, rather than having a single memory binding for the whole image.
@@ -196,37 +197,41 @@ vulkan_bitflags! {
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
-    /*
+    /* TODO: enable
     // TODO: document
     CORNER_SAMPLED = CORNER_SAMPLED_NV {
         device_extensions: [nv_corner_sampled_image],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SAMPLE_LOCATIONS_COMPATIBLE_DEPTH = SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_EXT {
         device_extensions: [ext_sample_locations],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SUBSAMPLED = SUBSAMPLED_EXT {
         device_extensions: [ext_fragment_density_map],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED = MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_EXT {
         device_extensions: [ext_multisampled_render_to_single_sampled],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     TYPE_2D_VIEW_COMPATIBLE = TYPE_2D_VIEW_COMPATIBLE_EXT {
         device_extensions: [ext_image_2d_view_of_3d],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     FRAGMENT_DENSITY_MAP_OFFSET = FRAGMENT_DENSITY_MAP_OFFSET_QCOM {
         device_extensions: [qcom_fragment_density_map_offset],
-    },
-     */
+    },*/
 }
 
 vulkan_bitflags_enum! {
@@ -355,12 +360,11 @@ vulkan_enum! {
     // TODO: document
     Linear = LINEAR,
 
-    /*
+    /* TODO: enable
     // TODO: document
     DrmFormatModifier = DRM_FORMAT_MODIFIER_EXT {
         device_extensions: [ext_image_drm_format_modifier],
-    },
-     */
+    },*/
 }
 
 /// The dimensions of an image.

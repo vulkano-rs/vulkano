@@ -1529,6 +1529,38 @@ where
                     // vkCmdSetViewportWithCountEXT must be 1
                 }
                 DynamicState::ViewportWScaling => todo!(),
+                DynamicState::TessellationDomainOrigin => todo!(),
+                DynamicState::DepthClampEnable => todo!(),
+                DynamicState::PolygonMode => todo!(),
+                DynamicState::RasterizationSamples => todo!(),
+                DynamicState::SampleMask => todo!(),
+                DynamicState::AlphaToCoverageEnable => todo!(),
+                DynamicState::AlphaToOneEnable => todo!(),
+                DynamicState::LogicOpEnable => todo!(),
+                DynamicState::ColorBlendEnable => todo!(),
+                DynamicState::ColorBlendEquation => todo!(),
+                DynamicState::ColorWriteMask => todo!(),
+                DynamicState::RasterizationStream => todo!(),
+                DynamicState::ConservativeRasterizationMode => todo!(),
+                DynamicState::ExtraPrimitiveOverestimationSize => todo!(),
+                DynamicState::DepthClipEnable => todo!(),
+                DynamicState::SampleLocationsEnable => todo!(),
+                DynamicState::ColorBlendAdvanced => todo!(),
+                DynamicState::ProvokingVertexMode => todo!(),
+                DynamicState::LineRasterizationMode => todo!(),
+                DynamicState::LineStippleEnable => todo!(),
+                DynamicState::DepthClipNegativeOneToOne => todo!(),
+                DynamicState::ViewportWScalingEnable => todo!(),
+                DynamicState::ViewportSwizzle => todo!(),
+                DynamicState::CoverageToColorEnable => todo!(),
+                DynamicState::CoverageToColorLocation => todo!(),
+                DynamicState::CoverageModulationMode => todo!(),
+                DynamicState::CoverageModulationTableEnable => todo!(),
+                DynamicState::CoverageModulationTable => todo!(),
+                DynamicState::ShadingRateImageEnable => todo!(),
+                DynamicState::RepresentativeFragmentTestEnable => todo!(),
+                DynamicState::CoverageReductionMode => todo!(),
+                
             }
         }
 

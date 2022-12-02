@@ -938,8 +938,8 @@ vulkan_bitflags! {
     /// A mask specifying flags for device memory allocation.
     MemoryAllocateFlags = MemoryAllocateFlags(u32);
 
-    // TODO: implement
-    // device_mask = DEVICE_MASK,
+    /* TODO: enable
+    DEVICE_MASK = DEVICE_MASK,*/
 
     /// Specifies that the allocated device memory can be bound to a buffer created with the
     /// [`SHADER_DEVICE_ADDRESS`] usage. This requires that the [`buffer_device_address`] feature
@@ -951,8 +951,8 @@ vulkan_bitflags! {
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
     DEVICE_ADDRESS = DEVICE_ADDRESS,
 
-    // TODO: implement
-    // device_address_capture_replay = DEVICE_ADDRESS_CAPTURE_REPLAY,
+    /* TODO: enable
+    DEVICE_ADDRESS_CAPTURE_REPLAY = DEVICE_ADDRESS_CAPTURE_REPLAY,*/
 }
 
 /// Error type returned by functions related to `DeviceMemory`.

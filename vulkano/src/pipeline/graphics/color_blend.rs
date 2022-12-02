@@ -422,237 +422,281 @@ vulkan_enum! {
     /// `max(source, destination)`.
     Max = MAX,
 
-    /*
+    /* TODO: enable
     // TODO: document
     Zero = ZERO_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Src = SRC_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Dst = DST_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SrcOver = SRC_OVER_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     DstOver = DST_OVER_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SrcIn = SRC_IN_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     DstIn = DST_IN_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SrcOut = SRC_OUT_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     DstOut = DST_OUT_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SrcAtop = SRC_ATOP_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     DstAtop = DST_ATOP_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Xor = XOR_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Multiply = MULTIPLY_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Screen = SCREEN_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Overlay = OVERLAY_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Darken = DARKEN_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Lighten = LIGHTEN_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Colordodge = COLORDODGE_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Colorburn = COLORBURN_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Hardlight = HARDLIGHT_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Softlight = SOFTLIGHT_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Difference = DIFFERENCE_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Exclusion = EXCLUSION_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Invert = INVERT_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     InvertRgb = INVERT_RGB_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Lineardodge = LINEARDODGE_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Linearburn = LINEARBURN_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Vividlight = VIVIDLIGHT_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Linearlight = LINEARLIGHT_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Pinlight = PINLIGHT_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Hardmix = HARDMIX_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     HslHue = HSL_HUE_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     HslSaturation = HSL_SATURATION_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     HslColor = HSL_COLOR_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     HslLuminosity = HSL_LUMINOSITY_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Plus = PLUS_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     PlusClamped = PLUS_CLAMPED_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     PlusClampedAlpha = PLUS_CLAMPED_ALPHA_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     PlusDarker = PLUS_DARKER_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Minus = MINUS_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     MinusClamped = MINUS_CLAMPED_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Contrast = CONTRAST_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     InvertOvg = INVERT_OVG_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Red = RED_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Green = GREEN_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     Blue = BLUE_EXT {
         device_extensions: [ext_blend_operation_advanced],
-    },
-     */
+    },*/
 }
 
 vulkan_bitflags! {

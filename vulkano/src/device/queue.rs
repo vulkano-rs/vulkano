@@ -1640,12 +1640,10 @@ vulkan_bitflags! {
         device_extensions: [khr_video_encode_queue],
     },
 
-    /*
     /// Queues of this family can execute optical flow operations.
     OPTICAL_FLOW = OPTICAL_FLOW_NV {
         device_extensions: [nv_optical_flow],
     },
-     */
 }
 
 /// Error that can happen when submitting work to a queue.

@@ -156,10 +156,14 @@ fn spirv_capabilities_members(
 
         // Find the capability in the list of enumerants, then go backwards through the list to find
         // the first enumerant with the same value.
-        let enumerant_pos = grammar_enumerants
+        let enumerant_pos = match grammar_enumerants
             .iter()
             .position(|enumerant| enumerant.enumerant == ext_or_cap.name)
-            .unwrap();
+        {
+            Some(pos) => pos,
+            // This can happen if the grammar file is behind on the vk.xml file.
+            None => continue,
+        };
         let enumerant_value = &grammar_enumerants[enumerant_pos].value;
 
         let name = if let Some(enumerant) = grammar_enumerants[..enumerant_pos]

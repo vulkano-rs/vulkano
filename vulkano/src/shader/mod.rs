@@ -475,6 +475,9 @@ pub enum ShaderExecution {
     Miss,
     Intersection,
     Callable,
+    Task,
+    Mesh,
+    SubpassShading,
 }
 
 /*#[derive(Clone, Copy, Debug)]
@@ -1162,22 +1165,20 @@ vulkan_bitflags_enum! {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
-    /*
     // TODO: document
-    TASK, Task = TASK_NV {
-        device_extensions: [nv_mesh_shader],
+    TASK, Task = TASK_EXT {
+        device_extensions: [ext_mesh_shader, nv_mesh_shader],
     },
 
     // TODO: document
-    MESH, Mesh = MESH_NV {
-        device_extensions: [nv_mesh_shader],
+    MESH, Mesh = MESH_EXT {
+        device_extensions: [ext_mesh_shader, nv_mesh_shader],
     },
 
     // TODO: document
     SUBPASS_SHADING, SubpassShading = SUBPASS_SHADING_HUAWEI {
         device_extensions: [huawei_subpass_shading],
     },
-     */
 }
 
 impl From<ShaderExecution> for ShaderStage {
@@ -1196,6 +1197,9 @@ impl From<ShaderExecution> for ShaderStage {
             ShaderExecution::Miss => Self::Miss,
             ShaderExecution::Intersection => Self::Intersection,
             ShaderExecution::Callable => Self::Callable,
+            ShaderExecution::Task => Self::Task,
+            ShaderExecution::Mesh => Self::Mesh,
+            ShaderExecution::SubpassShading => Self::SubpassShading,
         }
     }
 }
@@ -1238,6 +1242,18 @@ impl From<ShaderStages> for PipelineStages {
                 | ShaderStages::CALLABLE,
         ) {
             result |= PipelineStages::RAY_TRACING_SHADER
+        }
+
+        if stages.intersects(ShaderStages::TASK) {
+            result |= PipelineStages::TASK_SHADER;
+        }
+
+        if stages.intersects(ShaderStages::MESH) {
+            result |= PipelineStages::MESH_SHADER;
+        }
+
+        if stages.intersects(ShaderStages::SUBPASS_SHADING) {
+            result |= PipelineStages::SUBPASS_SHADING;
         }
 
         result

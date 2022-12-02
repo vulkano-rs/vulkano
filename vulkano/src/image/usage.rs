@@ -49,50 +49,75 @@ vulkan_bitflags! {
     /// The image can be used as an input attachment in a render pass/framebuffer.
     INPUT_ATTACHMENT = INPUT_ATTACHMENT,
 
-    /*
+    /* TODO: enable
     // TODO: document
     VIDEO_DECODE_DST = VIDEO_DECODE_DST_KHR {
         device_extensions: [khr_video_decode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VIDEO_DECODE_SRC = VIDEO_DECODE_SRC_KHR {
         device_extensions: [khr_video_decode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VIDEO_DECODE_DPB = VIDEO_DECODE_DPB_KHR {
         device_extensions: [khr_video_decode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     FRAGMENT_DENSITY_MAP = FRAGMENT_DENSITY_MAP_EXT {
         device_extensions: [ext_fragment_density_map],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     FRAGMENT_SHADING_RATE_ATTACHMENT = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
         device_extensions: [khr_fragment_shading_rate],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VIDEO_ENCODE_DST = VIDEO_ENCODE_DST_KHR {
         device_extensions: [khr_video_encode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VIDEO_ENCODE_SRC = VIDEO_ENCODE_SRC_KHR {
         device_extensions: [khr_video_encode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VIDEO_ENCODE_DPB = VIDEO_ENCODE_DPB_KHR {
         device_extensions: [khr_video_encode_queue],
-    },
+    },*/
 
+    /* TODO: enable
+    // TODO: document
+    ATTACHMENT_FEEDBACK_LOOP = ATTACHMENT_FEEDBACK_LOOP_EXT {
+        device_extensions: [ext_attachment_feedback_loop_layout],
+    },*/
+
+    /* TODO: enable
     // TODO: document
     INVOCATION_MASK = INVOCATION_MASK_HUAWEI {
         device_extensions: [huawei_invocation_mask],
-    },
-     */
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    SAMPLE_WEIGHT = SAMPLE_WEIGHT_QCOM {
+        device_extensions: [qcom_image_processing],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    SAMPLE_BLOCK_MATCH = SAMPLE_BLOCK_MATCH_QCOM {
+        device_extensions: [qcom_image_processing],
+    },*/
 }
