@@ -9,6 +9,8 @@
 
 ### Public dependency updates
 
+- [ash](https://crates.io/crates/ash) 0.37.1
+
 ### Breaking changes
 
 Changes to all Vulkan bitflag types:
