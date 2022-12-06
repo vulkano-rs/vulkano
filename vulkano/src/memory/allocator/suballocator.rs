@@ -462,7 +462,7 @@ impl MemoryAlloc {
     pub fn shift(&mut self, amount: DeviceSize) {
         assert!(amount <= self.size);
 
-        self.offset += amount;
+        unsafe { self.set_offset(self.offset + amount) };
         self.size -= amount;
     }
 
@@ -492,6 +492,12 @@ impl MemoryAlloc {
     /// [`shift`]: Self::shift
     #[inline]
     pub unsafe fn set_offset(&mut self, new_offset: DeviceSize) {
+        self.mapped_ptr.as_mut().map(|ptr| {
+            *ptr = NonNull::new_unchecked(
+                ptr.as_ptr()
+                    .offset(new_offset as isize - self.offset as isize),
+            );
+        });
         self.offset = new_offset;
     }
 
@@ -2582,6 +2588,7 @@ mod host {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::memory::MemoryAllocateInfo;
     use std::thread;
 
     const DUMMY_INFO: SuballocationCreateInfo = SuballocationCreateInfo {
@@ -2595,6 +2602,43 @@ mod tests {
         allocation_type: AllocationType::Linear,
         ..DUMMY_INFO
     };
+
+    #[test]
+    fn memory_alloc_set_offset() {
+        let (device, _) = gfx_dev_and_queue!();
+        let memory_type_index = device
+            .physical_device()
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .find_map(|(index, memory_type)| {
+                memory_type.property_flags.host_visible.then_some(index)
+            })
+            .unwrap() as u32;
+        let mut alloc = MemoryAlloc::new(
+            DeviceMemory::allocate(
+                device,
+                MemoryAllocateInfo {
+                    memory_type_index,
+                    allocation_size: 1024,
+                    ..Default::default()
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let ptr = alloc.mapped_ptr().unwrap().as_ptr();
+
+        unsafe {
+            alloc.set_offset(16);
+            assert_eq!(alloc.mapped_ptr().unwrap().as_ptr(), ptr.offset(16));
+            alloc.set_offset(0);
+            assert_eq!(alloc.mapped_ptr().unwrap().as_ptr(), ptr.offset(0));
+            alloc.set_offset(32);
+            assert_eq!(alloc.mapped_ptr().unwrap().as_ptr(), ptr.offset(32));
+        }
+    }
 
     #[test]
     fn free_list_allocator_capacity() {
@@ -3084,6 +3128,5 @@ mod tests {
         }};
     }
 
-    use crate::memory::MemoryAllocateInfo;
     pub(self) use dummy_allocator;
 }
