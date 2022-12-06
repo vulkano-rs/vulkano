@@ -15,6 +15,11 @@
 
 ### Bugs fixed
 
+# Version 0.32.2 (2022-12-06)
+
+### Bugs fixed
+- Fixed another issue with `CpuBufferPool<T>`, where the alignment of `T` was not being considered when allocating.
+
 # Version 0.32.1 (2022-11-09)
 
 ### Bugs fixed

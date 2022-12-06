@@ -443,7 +443,8 @@ where
             // We don't use sparse-binding, therefore the other errors can't happen.
             _ => unreachable!(),
         })?;
-        let requirements = *raw_buffer.memory_requirements();
+        let mut requirements = *raw_buffer.memory_requirements();
+	requirements.alignment = DeviceSize::max(requirements.alignment, align_of::<T>() as DeviceSize);
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::Linear,
