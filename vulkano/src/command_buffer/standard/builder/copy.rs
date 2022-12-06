@@ -14,14 +14,18 @@ use super::{
 };
 use crate::{
     buffer::{BufferAccess, BufferUsage},
-    command_buffer::{allocator::CommandBufferAllocator, ImageBlit, ImageResolve},
+    command_buffer::{
+        allocator::CommandBufferAllocator, ImageBlit, ImageResolve, ResourceInCommand,
+        ResourceUseRef,
+    },
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures, NumericType},
     image::{
-        ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageType,
-        ImageUsage, SampleCount, SampleCounts,
+        ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers,
+        ImageSubresourceRange, ImageType, ImageUsage, SampleCount, SampleCounts,
     },
     sampler::Filter,
+    sync::PipelineStageAccess,
     DeviceSize, Version, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -57,7 +61,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdCopyBuffer2-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -257,11 +261,54 @@ where
             );
         }
 
+        let command_index = self.next_command_index;
+        let command_name = "copy_buffer";
+        let src_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Source,
+            secondary_use_ref: None,
+        };
+        let dst_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        for region in regions {
+            let BufferCopy {
+                src_offset,
+                dst_offset,
+                size,
+                _ne: _,
+            } = region;
+
+            let mut src_range = src_offset..src_offset + size;
+            src_range.start += src_buffer_inner.offset;
+            src_range.end += src_buffer_inner.offset;
+            self.resources_usage_state.record_buffer_access(
+                &src_use_ref,
+                src_buffer_inner.buffer,
+                src_range,
+                PipelineStageAccess::Copy_TransferRead,
+            );
+
+            let mut dst_range = dst_offset..dst_offset + size;
+            dst_range.start += dst_buffer_inner.offset;
+            dst_range.end += dst_buffer_inner.offset;
+            self.resources_usage_state.record_buffer_access(
+                &dst_use_ref,
+                dst_buffer_inner.buffer,
+                dst_range,
+                PipelineStageAccess::Copy_TransferWrite,
+            );
+        }
+
         self.resources.push(Box::new(src_buffer));
         self.resources.push(Box::new(dst_buffer));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -305,7 +352,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdCopyImage2-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -1127,11 +1174,62 @@ where
             );
         }
 
+        let command_index = self.next_command_index;
+        let command_name = "copy_image";
+        let src_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Source,
+            secondary_use_ref: None,
+        };
+        let dst_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        for region in regions {
+            let ImageCopy {
+                src_subresource,
+                src_offset: _,
+                dst_subresource,
+                dst_offset: _,
+                extent: _,
+                _ne: _,
+            } = region;
+
+            let mut src_subresource_range = ImageSubresourceRange::from(src_subresource);
+            src_subresource_range.array_layers.start += src_image_inner.first_layer;
+            src_subresource_range.array_layers.end += src_image_inner.first_layer;
+            src_subresource_range.mip_levels.start += src_image_inner.first_mipmap_level;
+            src_subresource_range.mip_levels.end += src_image_inner.first_mipmap_level;
+            self.resources_usage_state.record_image_access(
+                &src_use_ref,
+                src_image_inner.image,
+                src_subresource_range,
+                PipelineStageAccess::Copy_TransferRead,
+                src_image_layout,
+            );
+
+            let mut dst_subresource_range = ImageSubresourceRange::from(dst_subresource);
+            dst_subresource_range.array_layers.start += dst_image_inner.first_layer;
+            dst_subresource_range.array_layers.end += dst_image_inner.first_layer;
+            dst_subresource_range.mip_levels.start += dst_image_inner.first_mipmap_level;
+            dst_subresource_range.mip_levels.end += dst_image_inner.first_mipmap_level;
+            self.resources_usage_state.record_image_access(
+                &dst_use_ref,
+                dst_image_inner.image,
+                dst_subresource_range,
+                PipelineStageAccess::Copy_TransferWrite,
+                dst_image_layout,
+            );
+        }
+
         self.resources.push(Box::new(src_image));
         self.resources.push(Box::new(dst_image));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -1159,7 +1257,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdCopyBufferToImage2-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -1705,11 +1803,62 @@ where
             );
         }
 
+        let command_index = self.next_command_index;
+        let command_name = "copy_buffer_to_image";
+        let src_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Source,
+            secondary_use_ref: None,
+        };
+        let dst_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        for region in regions {
+            let buffer_copy_size = region.buffer_copy_size(dst_image.format());
+
+            let BufferImageCopy {
+                buffer_offset,
+                buffer_row_length: _,
+                buffer_image_height: _,
+                image_subresource,
+                image_offset: _,
+                image_extent: _,
+                _ne: _,
+            } = region;
+
+            let mut src_range = buffer_offset..buffer_offset + buffer_copy_size;
+            src_range.start += src_buffer_inner.offset;
+            src_range.end += src_buffer_inner.offset;
+            self.resources_usage_state.record_buffer_access(
+                &src_use_ref,
+                src_buffer_inner.buffer,
+                src_range,
+                PipelineStageAccess::Copy_TransferRead,
+            );
+
+            let mut dst_subresource_range = ImageSubresourceRange::from(image_subresource);
+            dst_subresource_range.array_layers.start += dst_image_inner.first_layer;
+            dst_subresource_range.array_layers.end += dst_image_inner.first_layer;
+            dst_subresource_range.mip_levels.start += dst_image_inner.first_mipmap_level;
+            dst_subresource_range.mip_levels.end += dst_image_inner.first_mipmap_level;
+            self.resources_usage_state.record_image_access(
+                &dst_use_ref,
+                dst_image_inner.image,
+                dst_subresource_range,
+                PipelineStageAccess::Copy_TransferWrite,
+                dst_image_layout,
+            );
+        }
+
         self.resources.push(Box::new(src_buffer));
         self.resources.push(Box::new(dst_image));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -1737,7 +1886,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdCopyImageToBuffer2-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -2273,11 +2422,62 @@ where
             );
         }
 
+        let command_index = self.next_command_index;
+        let command_name = "copy_image_to_buffer";
+        let src_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Source,
+            secondary_use_ref: None,
+        };
+        let dst_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        for region in regions {
+            let buffer_copy_size = region.buffer_copy_size(src_image.format());
+
+            let BufferImageCopy {
+                buffer_offset,
+                buffer_row_length: _,
+                buffer_image_height: _,
+                image_subresource,
+                image_offset: _,
+                image_extent: _,
+                _ne: _,
+            } = region;
+
+            let mut src_subresource_range = ImageSubresourceRange::from(image_subresource);
+            src_subresource_range.array_layers.start += src_image_inner.first_layer;
+            src_subresource_range.array_layers.end += src_image_inner.first_layer;
+            src_subresource_range.mip_levels.start += src_image_inner.first_mipmap_level;
+            src_subresource_range.mip_levels.end += src_image_inner.first_mipmap_level;
+            self.resources_usage_state.record_image_access(
+                &src_use_ref,
+                src_image_inner.image,
+                src_subresource_range,
+                PipelineStageAccess::Copy_TransferRead,
+                src_image_layout,
+            );
+
+            let mut dst_range = buffer_offset..buffer_offset + buffer_copy_size;
+            dst_range.start += dst_buffer_inner.offset;
+            dst_range.end += dst_buffer_inner.offset;
+            self.resources_usage_state.record_buffer_access(
+                &dst_use_ref,
+                dst_buffer_inner.buffer,
+                dst_range,
+                PipelineStageAccess::Copy_TransferWrite,
+            );
+        }
+
         self.resources.push(Box::new(src_image));
         self.resources.push(Box::new(dst_buffer));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -2331,7 +2531,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdBlitImage2-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -2983,11 +3183,61 @@ where
             );
         }
 
+        let command_index = self.next_command_index;
+        let command_name = "blit_image";
+        let src_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Source,
+            secondary_use_ref: None,
+        };
+        let dst_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        for region in regions {
+            let ImageBlit {
+                src_subresource,
+                src_offsets: _,
+                dst_subresource,
+                dst_offsets: _,
+                _ne: _,
+            } = region;
+
+            let mut src_subresource_range = ImageSubresourceRange::from(src_subresource);
+            src_subresource_range.array_layers.start += src_image_inner.first_layer;
+            src_subresource_range.array_layers.end += src_image_inner.first_layer;
+            src_subresource_range.mip_levels.start += src_image_inner.first_mipmap_level;
+            src_subresource_range.mip_levels.end += src_image_inner.first_mipmap_level;
+            self.resources_usage_state.record_image_access(
+                &src_use_ref,
+                src_image_inner.image,
+                src_subresource_range,
+                PipelineStageAccess::Blit_TransferRead,
+                src_image_layout,
+            );
+
+            let mut dst_subresource_range = ImageSubresourceRange::from(dst_subresource);
+            dst_subresource_range.array_layers.start += dst_image_inner.first_layer;
+            dst_subresource_range.array_layers.end += dst_image_inner.first_layer;
+            dst_subresource_range.mip_levels.start += dst_image_inner.first_mipmap_level;
+            dst_subresource_range.mip_levels.end += dst_image_inner.first_mipmap_level;
+            self.resources_usage_state.record_image_access(
+                &dst_use_ref,
+                dst_image_inner.image,
+                dst_subresource_range,
+                PipelineStageAccess::Blit_TransferWrite,
+                dst_image_layout,
+            );
+        }
+
         self.resources.push(Box::new(src_image));
         self.resources.push(Box::new(dst_image));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -3020,7 +3270,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdResolveImage2-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -3412,11 +3662,62 @@ where
             );
         }
 
+        let command_index = self.next_command_index;
+        let command_name = "resolve_image";
+        let src_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Source,
+            secondary_use_ref: None,
+        };
+        let dst_use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        for region in regions {
+            let ImageResolve {
+                src_subresource,
+                src_offset: _,
+                dst_subresource,
+                dst_offset: _,
+                extent: _,
+                _ne: _,
+            } = region;
+
+            let mut src_subresource_range = ImageSubresourceRange::from(src_subresource);
+            src_subresource_range.array_layers.start += src_image_inner.first_layer;
+            src_subresource_range.array_layers.end += src_image_inner.first_layer;
+            src_subresource_range.mip_levels.start += src_image_inner.first_mipmap_level;
+            src_subresource_range.mip_levels.end += src_image_inner.first_mipmap_level;
+            self.resources_usage_state.record_image_access(
+                &src_use_ref,
+                src_image_inner.image,
+                src_subresource_range,
+                PipelineStageAccess::Resolve_TransferRead,
+                src_image_layout,
+            );
+
+            let mut dst_subresource_range = ImageSubresourceRange::from(dst_subresource);
+            dst_subresource_range.array_layers.start += dst_image_inner.first_layer;
+            dst_subresource_range.array_layers.end += dst_image_inner.first_layer;
+            dst_subresource_range.mip_levels.start += dst_image_inner.first_mipmap_level;
+            dst_subresource_range.mip_levels.end += dst_image_inner.first_mipmap_level;
+            self.resources_usage_state.record_image_access(
+                &dst_use_ref,
+                dst_image_inner.image,
+                dst_subresource_range,
+                PipelineStageAccess::Resolve_TransferWrite,
+                dst_image_layout,
+            );
+        }
+
         self.resources.push(Box::new(src_image));
         self.resources.push(Box::new(dst_image));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 }

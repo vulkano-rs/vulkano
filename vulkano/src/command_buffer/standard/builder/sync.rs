@@ -999,7 +999,7 @@ where
             Checks for current render pass
         */
 
-        if let Some(render_pass_state) = self.current_state.render_pass.as_ref() {
+        if let Some(render_pass_state) = self.builder_state.render_pass.as_ref() {
             // VUID-vkCmdPipelineBarrier2-None-06191
             let begin_render_pass_state = match &render_pass_state.render_pass {
                 RenderPassStateType::BeginRenderPass(x) => x,
@@ -1088,13 +1088,13 @@ where
             return self;
         }
 
-        let DependencyInfo {
+        let &DependencyInfo {
             dependency_flags,
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
             _ne: _,
-        } = dependency_info;
+        } = &dependency_info;
 
         if self.device().enabled_features().synchronization2 {
             let memory_barriers_vk: SmallVec<[_; 2]> = memory_barriers
@@ -1341,43 +1341,27 @@ where
             );
         }
 
+        let command_index = self.next_command_index;
+        let command_name = "pipeline_barrier";
+        self.resources_usage_state.record_pipeline_barrier(
+            command_index,
+            command_name,
+            &dependency_info,
+            self.queue_family_properties().queue_flags,
+        );
+
         self.resources
             .reserve(buffer_memory_barriers.len() + image_memory_barriers.len());
 
-        for barrier in buffer_memory_barriers {
-            let BufferMemoryBarrier {
-                src_stages: _,
-                src_access: _,
-                dst_stages: _,
-                dst_access: _,
-                queue_family_ownership_transfer: _, // TODO:
-                buffer,
-                range: _,
-                _ne: _,
-            } = barrier;
-
-            self.resources.push(Box::new(buffer));
+        for barrier in dependency_info.buffer_memory_barriers {
+            self.resources.push(Box::new(barrier.buffer));
         }
 
-        for barrier in image_memory_barriers {
-            let ImageMemoryBarrier {
-                src_stages: _,
-                src_access: _,
-                dst_stages: _,
-                dst_access: _,
-                old_layout: _,                      // TODO:
-                new_layout: _,                      // TODO:
-                queue_family_ownership_transfer: _, // TODO:
-                image,
-                subresource_range: _,
-                _ne: _,
-            } = barrier;
-
-            self.resources.push(Box::new(image));
+        for barrier in dependency_info.image_memory_barriers {
+            self.resources.push(Box::new(barrier.image));
         }
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -1406,7 +1390,7 @@ where
         dependency_info: &DependencyInfo,
     ) -> Result<(), SynchronizationError> {
         // VUID-vkCmdSetEvent2-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(SynchronizationError::ForbiddenInsideRenderPass);
         }
 
@@ -2508,6 +2492,7 @@ where
 
         // TODO: sync state update
 
+        self.next_command_index += 1;
         self
     }
 
@@ -2981,7 +2966,7 @@ where
                 }
 
                 // VUID-vkCmdWaitEvents2-dependencyFlags-03844
-                if self.current_state.render_pass.is_some()
+                if self.builder_state.render_pass.is_some()
                     && src_stages.intersects(PipelineStages::HOST)
                 {
                     todo!()
@@ -3830,6 +3815,7 @@ where
 
         // TODO: sync state update
 
+        self.next_command_index += 1;
         self
     }
 
@@ -3859,7 +3845,7 @@ where
         stages: PipelineStages,
     ) -> Result<(), SynchronizationError> {
         // VUID-vkCmdResetEvent2-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(SynchronizationError::ForbiddenInsideRenderPass);
         }
 
@@ -4081,6 +4067,7 @@ where
 
         // TODO: sync state update
 
+        self.next_command_index += 1;
         self
     }
 }

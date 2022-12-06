@@ -71,7 +71,7 @@ where
         }
 
         // VUID-vkCmdBeginRenderPass2-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(RenderPassError::ForbiddenInsideRenderPass);
         }
 
@@ -446,7 +446,7 @@ where
         let subpass = render_pass.clone().first_subpass();
         let view_mask = subpass.subpass_desc().view_mask;
 
-        self.current_state.render_pass = Some(RenderPassState {
+        self.builder_state.render_pass = Some(RenderPassState {
             contents,
             render_area_offset,
             render_area_extent,
@@ -463,6 +463,7 @@ where
 
         // TODO: sync state update
 
+        self.next_command_index += 1;
         self
     }
 
@@ -491,7 +492,7 @@ where
 
         // VUID-vkCmdNextSubpass2-renderpass
         let render_pass_state = self
-            .current_state
+            .builder_state
             .render_pass
             .as_ref()
             .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
@@ -512,7 +513,7 @@ where
 
         // VUID?
         if self
-            .current_state
+            .builder_state
             .queries
             .values()
             .any(|state| state.in_subpass)
@@ -561,7 +562,7 @@ where
             (fns.v1_0.cmd_next_subpass)(self.handle(), subpass_begin_info.contents);
         }
 
-        let render_pass_state = self.current_state.render_pass.as_mut().unwrap();
+        let render_pass_state = self.builder_state.render_pass.as_mut().unwrap();
         let begin_render_pass_state = match &mut render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(x) => x,
             _ => unreachable!(),
@@ -574,11 +575,12 @@ where
         if render_pass_state.view_mask != 0 {
             // When multiview is enabled, at the beginning of each subpass, all
             // non-render pass state is undefined.
-            self.current_state = Default::default();
+            self.builder_state = Default::default();
         }
 
         // TODO: sync state update
 
+        self.next_command_index += 1;
         self
     }
 
@@ -601,7 +603,7 @@ where
     fn validate_end_render_pass(&self) -> Result<(), RenderPassError> {
         // VUID-vkCmdEndRenderPass2-renderpass
         let render_pass_state = self
-            .current_state
+            .builder_state
             .render_pass
             .as_ref()
             .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
@@ -628,7 +630,7 @@ where
 
         // VUID?
         if self
-            .current_state
+            .builder_state
             .queries
             .values()
             .any(|state| state.in_subpass)
@@ -671,10 +673,11 @@ where
             (fns.v1_0.cmd_end_render_pass)(self.handle());
         }
 
-        self.current_state.render_pass = None;
+        self.builder_state.render_pass = None;
 
         // TODO: sync state update
 
+        self.next_command_index += 1;
         self
     }
 }
@@ -732,7 +735,7 @@ where
         }
 
         // VUID-vkCmdBeginRendering-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(RenderPassError::ForbiddenInsideRenderPass);
         }
 
@@ -1360,7 +1363,7 @@ where
             (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(self.handle(), &rendering_info);
         }
 
-        self.current_state.render_pass = Some(RenderPassState {
+        self.builder_state.render_pass = Some(RenderPassState {
             contents,
             render_area_offset,
             render_area_extent,
@@ -1460,6 +1463,7 @@ where
 
         // TODO: sync state update
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1480,7 +1484,7 @@ where
     fn validate_end_rendering(&self) -> Result<(), RenderPassError> {
         // VUID-vkCmdEndRendering-renderpass
         let render_pass_state = self
-            .current_state
+            .builder_state
             .render_pass
             .as_ref()
             .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
@@ -1521,10 +1525,11 @@ where
             (fns.khr_dynamic_rendering.cmd_end_rendering_khr)(self.handle());
         }
 
-        self.current_state.render_pass = None;
+        self.builder_state.render_pass = None;
 
         // TODO: sync state update
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1569,7 +1574,7 @@ where
     ) -> Result<(), RenderPassError> {
         // VUID-vkCmdClearAttachments-renderpass
         let render_pass_state = self
-            .current_state
+            .builder_state
             .render_pass
             .as_ref()
             .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
@@ -1829,6 +1834,7 @@ where
 
         // TODO: sync state update
 
+        self.next_command_index += 1;
         self
     }
 }

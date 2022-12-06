@@ -40,7 +40,7 @@ where
     ) -> Result<(), SetDynamicStateError> {
         // VUID-vkCmdDispatch-None-02859
         if self
-            .current_state
+            .builder_state
             .pipeline_graphics
             .as_ref()
             .map_or(false, |pipeline| {
@@ -90,8 +90,9 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_set_blend_constants)(self.handle(), &constants);
 
-        self.current_state.blend_constants = Some(constants);
+        self.builder_state.blend_constants = Some(constants);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -148,7 +149,7 @@ where
         }
 
         if let Some(color_blend_state) = self
-            .current_state
+            .builder_state
             .pipeline_graphics
             .as_ref()
             .and_then(|pipeline| pipeline.color_blend_state())
@@ -193,8 +194,9 @@ where
             enables_vk.as_ptr(),
         );
 
-        self.current_state.color_write_enable = Some(enables);
+        self.builder_state.color_write_enable = Some(enables);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -263,8 +265,9 @@ where
             (fns.ext_extended_dynamic_state.cmd_set_cull_mode_ext)(self.handle(), cull_mode.into());
         }
 
-        self.current_state.cull_mode = Some(cull_mode);
+        self.builder_state.cull_mode = Some(cull_mode);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -333,12 +336,13 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_set_depth_bias)(self.handle(), constant_factor, clamp, slope_factor);
 
-        self.current_state.depth_bias = Some(DepthBias {
+        self.builder_state.depth_bias = Some(DepthBias {
             constant_factor,
             clamp,
             slope_factor,
         });
 
+        self.next_command_index += 1;
         self
     }
 
@@ -405,8 +409,9 @@ where
                 .cmd_set_depth_bias_enable_ext)(self.handle(), enable.into());
         }
 
-        self.current_state.depth_bias_enable = Some(enable);
+        self.builder_state.depth_bias_enable = Some(enable);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -467,8 +472,9 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_set_depth_bounds)(self.handle(), *bounds.start(), *bounds.end());
 
-        self.current_state.depth_bounds = Some(bounds);
+        self.builder_state.depth_bounds = Some(bounds);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -538,8 +544,9 @@ where
                 .cmd_set_depth_bounds_test_enable_ext)(self.handle(), enable.into());
         }
 
-        self.current_state.depth_bounds_test_enable = Some(enable);
+        self.builder_state.depth_bounds_test_enable = Some(enable);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -613,8 +620,9 @@ where
             );
         }
 
-        self.current_state.depth_compare_op = Some(compare_op);
+        self.builder_state.depth_compare_op = Some(compare_op);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -682,8 +690,9 @@ where
             );
         }
 
-        self.current_state.depth_test_enable = Some(enable);
+        self.builder_state.depth_test_enable = Some(enable);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -749,8 +758,9 @@ where
                 .cmd_set_depth_write_enable_ext)(self.handle(), enable.into());
         }
 
-        self.current_state.depth_write_enable = Some(enable);
+        self.builder_state.depth_write_enable = Some(enable);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -775,11 +785,7 @@ where
         self.validate_set_discard_rectangle(first_rectangle, &rectangles)
             .unwrap();
 
-        unsafe {
-            self.set_discard_rectangle_unchecked(first_rectangle, rectangles);
-        }
-
-        self
+        unsafe { self.set_discard_rectangle_unchecked(first_rectangle, rectangles) }
     }
 
     fn validate_set_discard_rectangle(
@@ -872,9 +878,10 @@ where
 
         for (num, rectangle) in rectangles.iter().enumerate() {
             let num = num as u32 + first_rectangle;
-            self.current_state.discard_rectangle.insert(num, *rectangle);
+            self.builder_state.discard_rectangle.insert(num, *rectangle);
         }
 
+        self.next_command_index += 1;
         self
     }
 
@@ -942,8 +949,9 @@ where
             (fns.ext_extended_dynamic_state.cmd_set_front_face_ext)(self.handle(), face.into());
         }
 
-        self.current_state.front_face = Some(face);
+        self.builder_state.front_face = Some(face);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1004,8 +1012,9 @@ where
         let fns = self.device().fns();
         (fns.ext_line_rasterization.cmd_set_line_stipple_ext)(self.handle(), factor, pattern);
 
-        self.current_state.line_stipple = Some(LineStipple { factor, pattern });
+        self.builder_state.line_stipple = Some(LineStipple { factor, pattern });
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1055,8 +1064,9 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_set_line_width)(self.handle(), line_width);
 
-        self.current_state.line_width = Some(line_width);
+        self.builder_state.line_width = Some(line_width);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1125,8 +1135,9 @@ where
         let fns = self.device().fns();
         (fns.ext_extended_dynamic_state2.cmd_set_logic_op_ext)(self.handle(), logic_op.into());
 
-        self.current_state.logic_op = Some(logic_op);
+        self.builder_state.logic_op = Some(logic_op);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1213,8 +1224,9 @@ where
         (fns.ext_extended_dynamic_state2
             .cmd_set_patch_control_points_ext)(self.handle(), num);
 
-        self.current_state.patch_control_points = Some(num);
+        self.builder_state.patch_control_points = Some(num);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1283,8 +1295,9 @@ where
                 .cmd_set_primitive_restart_enable_ext)(self.handle(), enable.into());
         }
 
-        self.current_state.primitive_restart_enable = Some(enable);
+        self.builder_state.primitive_restart_enable = Some(enable);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1409,8 +1422,9 @@ where
                 .cmd_set_primitive_topology_ext)(self.handle(), topology.into());
         }
 
-        self.current_state.primitive_topology = Some(topology);
+        self.builder_state.primitive_topology = Some(topology);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1479,8 +1493,9 @@ where
                 .cmd_set_rasterizer_discard_enable_ext)(self.handle(), enable.into());
         }
 
-        self.current_state.rasterizer_discard_enable = Some(enable);
+        self.builder_state.rasterizer_discard_enable = Some(enable);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1588,9 +1603,10 @@ where
 
         for (num, scissor) in scissors.iter().enumerate() {
             let num = num as u32 + first_scissor;
-            self.current_state.scissor.insert(num, *scissor);
+            self.builder_state.scissor.insert(num, *scissor);
         }
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1709,8 +1725,9 @@ where
             );
         }
 
-        self.current_state.scissor_with_count = Some(scissors);
+        self.builder_state.scissor_with_count = Some(scissors);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1766,13 +1783,14 @@ where
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
         if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
-            self.current_state.stencil_compare_mask.front = Some(compare_mask);
+            self.builder_state.stencil_compare_mask.front = Some(compare_mask);
         }
 
         if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
-            self.current_state.stencil_compare_mask.back = Some(compare_mask);
+            self.builder_state.stencil_compare_mask.back = Some(compare_mask);
         }
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1891,7 +1909,7 @@ where
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
         if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
-            self.current_state.stencil_op.front = Some(StencilOps {
+            self.builder_state.stencil_op.front = Some(StencilOps {
                 fail_op,
                 pass_op,
                 depth_fail_op,
@@ -1900,7 +1918,7 @@ where
         }
 
         if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
-            self.current_state.stencil_op.back = Some(StencilOps {
+            self.builder_state.stencil_op.back = Some(StencilOps {
                 fail_op,
                 pass_op,
                 depth_fail_op,
@@ -1908,6 +1926,7 @@ where
             });
         }
 
+        self.next_command_index += 1;
         self
     }
 
@@ -1959,13 +1978,14 @@ where
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
         if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
-            self.current_state.stencil_reference.front = Some(reference);
+            self.builder_state.stencil_reference.front = Some(reference);
         }
 
         if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
-            self.current_state.stencil_reference.back = Some(reference);
+            self.builder_state.stencil_reference.back = Some(reference);
         }
 
+        self.next_command_index += 1;
         self
     }
 
@@ -2031,8 +2051,9 @@ where
                 .cmd_set_stencil_test_enable_ext)(self.handle(), enable.into());
         }
 
-        self.current_state.stencil_test_enable = Some(enable);
+        self.builder_state.stencil_test_enable = Some(enable);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -2084,13 +2105,14 @@ where
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
         if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
-            self.current_state.stencil_write_mask.front = Some(write_mask);
+            self.builder_state.stencil_write_mask.front = Some(write_mask);
         }
 
         if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
-            self.current_state.stencil_write_mask.back = Some(write_mask);
+            self.builder_state.stencil_write_mask.back = Some(write_mask);
         }
 
+        self.next_command_index += 1;
         self
     }
 
@@ -2198,9 +2220,10 @@ where
 
         for (num, viewport) in viewports.iter().enumerate() {
             let num = num as u32 + first_viewport;
-            self.current_state.viewport.insert(num, viewport.clone());
+            self.builder_state.viewport.insert(num, viewport.clone());
         }
 
+        self.next_command_index += 1;
         self
     }
 
@@ -2319,8 +2342,9 @@ where
             );
         }
 
-        self.current_state.viewport_with_count = Some(viewports);
+        self.builder_state.viewport_with_count = Some(viewports);
 
+        self.next_command_index += 1;
         self
     }
 }

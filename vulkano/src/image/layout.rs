@@ -199,6 +199,13 @@ vulkan_enum! {
     },*/
 }
 
+impl Default for ImageLayout {
+    #[inline]
+    fn default() -> Self {
+        ImageLayout::Undefined
+    }
+}
+
 /// The set of layouts to use for an image when used in descriptor of various kinds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ImageDescriptorLayouts {

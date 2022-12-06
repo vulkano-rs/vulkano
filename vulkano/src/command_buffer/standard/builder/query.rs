@@ -9,11 +9,11 @@
 
 use super::{CommandBufferBuilder, QueryError, QueryState};
 use crate::{
-    buffer::{BufferUsage, TypedBufferAccess},
-    command_buffer::allocator::CommandBufferAllocator,
+    buffer::{BufferAccess, BufferUsage, TypedBufferAccess},
+    command_buffer::{allocator::CommandBufferAllocator, ResourceInCommand, ResourceUseRef},
     device::{DeviceOwned, QueueFlags},
     query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags, QueryType},
-    sync::{PipelineStage, PipelineStages},
+    sync::{PipelineStage, PipelineStageAccess, PipelineStages},
     DeviceSize, RequiresOneOf, Version, VulkanObject,
 };
 use std::{ops::Range, sync::Arc};
@@ -122,14 +122,14 @@ where
 
         // VUID-vkCmdBeginQuery-queryPool-01922
         if self
-            .current_state
+            .builder_state
             .queries
             .contains_key(&query_pool.query_type().into())
         {
             return Err(QueryError::QueryIsActive);
         }
 
-        if let Some(render_pass_state) = &self.current_state.render_pass {
+        if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdBeginQuery-query-00808
             if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
                 return Err(QueryError::OutOfRangeMultiview);
@@ -154,19 +154,20 @@ where
         (fns.v1_0.cmd_begin_query)(self.handle(), query_pool.handle(), query, flags.into());
 
         let ty = query_pool.query_type();
-        self.current_state.queries.insert(
+        self.builder_state.queries.insert(
             ty.into(),
             QueryState {
                 query_pool: query_pool.handle(),
                 query,
                 ty,
                 flags,
-                in_subpass: self.current_state.render_pass.is_some(),
+                in_subpass: self.builder_state.render_pass.is_some(),
             },
         );
 
         self.resources.push(Box::new(query_pool));
 
+        self.next_command_index += 1;
         self
     }
 
@@ -200,7 +201,7 @@ where
 
         // VUID-vkCmdEndQuery-None-01923
         if !self
-            .current_state
+            .builder_state
             .queries
             .get(&query_pool.query_type().into())
             .map_or(false, |state| {
@@ -213,7 +214,7 @@ where
         // VUID-vkCmdEndQuery-query-00810
         query_pool.query(query).ok_or(QueryError::OutOfRange)?;
 
-        if let Some(render_pass_state) = &self.current_state.render_pass {
+        if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdEndQuery-query-00812
             if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
                 return Err(QueryError::OutOfRangeMultiview);
@@ -232,12 +233,13 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_end_query)(self.handle(), query_pool.handle(), query);
 
-        self.current_state
+        self.builder_state
             .queries
             .remove(&query_pool.query_type().into());
 
         self.resources.push(Box::new(query_pool));
 
+        self.next_command_index += 1;
         self
     }
 
@@ -444,7 +446,7 @@ where
         // VUID-vkCmdWriteTimestamp2-query-04903
         query_pool.query(query).ok_or(QueryError::OutOfRange)?;
 
-        if let Some(render_pass_state) = &self.current_state.render_pass {
+        if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdWriteTimestamp2-query-03865
             if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
                 return Err(QueryError::OutOfRangeMultiview);
@@ -491,6 +493,7 @@ where
 
         self.resources.push(Box::new(query_pool));
 
+        self.next_command_index += 1;
         self
     }
 
@@ -514,7 +517,7 @@ where
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-        destination: Arc<D>,
+        dst_buffer: Arc<D>,
         flags: QueryResultFlags,
     ) -> Result<&mut Self, QueryError>
     where
@@ -524,7 +527,7 @@ where
         self.validate_copy_query_pool_results(
             &query_pool,
             queries.clone(),
-            destination.as_ref(),
+            dst_buffer.as_ref(),
             flags,
         )?;
 
@@ -532,13 +535,8 @@ where
             let per_query_len = query_pool.query_type().result_len()
                 + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
             let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
-            Ok(self.copy_query_pool_results_unchecked(
-                query_pool,
-                queries,
-                destination,
-                stride,
-                flags,
-            ))
+            Ok(self
+                .copy_query_pool_results_unchecked(query_pool, queries, dst_buffer, stride, flags))
         }
     }
 
@@ -546,7 +544,7 @@ where
         &self,
         query_pool: &QueryPool,
         queries: Range<u32>,
-        destination: &D,
+        dst_buffer: &D,
         flags: QueryResultFlags,
     ) -> Result<(), QueryError>
     where
@@ -564,18 +562,18 @@ where
         }
 
         // VUID-vkCmdCopyQueryPoolResults-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(QueryError::ForbiddenInsideRenderPass);
         }
 
         let device = self.device();
-        let buffer_inner = destination.inner();
+        let buffer_inner = dst_buffer.inner();
 
         // VUID-vkCmdCopyQueryPoolResults-commonparent
         assert_eq!(device, buffer_inner.buffer.device());
         assert_eq!(device, query_pool.device());
 
-        assert!(destination.len() > 0);
+        assert!(dst_buffer.len() > 0);
 
         // VUID-vkCmdCopyQueryPoolResults-flags-00822
         // VUID-vkCmdCopyQueryPoolResults-flags-00823
@@ -593,10 +591,10 @@ where
         let required_len = per_query_len * count as DeviceSize;
 
         // VUID-vkCmdCopyQueryPoolResults-dstBuffer-00824
-        if destination.len() < required_len {
+        if dst_buffer.len() < required_len {
             return Err(QueryError::BufferTooSmall {
                 required_len,
-                actual_len: destination.len(),
+                actual_len: dst_buffer.len(),
             });
         }
 
@@ -626,7 +624,7 @@ where
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-        destination: Arc<D>,
+        dst_buffer: Arc<D>,
         stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> &mut Self
@@ -634,7 +632,7 @@ where
         D: TypedBufferAccess<Content = [T]> + 'static,
         T: QueryResultElement,
     {
-        let destination_inner = destination.inner();
+        let dst_buffer_inner = dst_buffer.inner();
 
         let fns = self.device().fns();
         (fns.v1_0.cmd_copy_query_pool_results)(
@@ -642,17 +640,35 @@ where
             query_pool.handle(),
             queries.start,
             queries.end - queries.start,
-            destination_inner.buffer.handle(),
-            destination_inner.offset,
+            dst_buffer_inner.buffer.handle(),
+            dst_buffer_inner.offset,
             stride,
             ash::vk::QueryResultFlags::from(flags) | T::FLAG,
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "copy_query_pool_results";
+        let use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        let mut dst_range = 0..dst_buffer.size(); // TODO:
+        dst_range.start += dst_buffer_inner.offset;
+        dst_range.end += dst_buffer_inner.offset;
+        self.resources_usage_state.record_buffer_access(
+            &use_ref,
+            dst_buffer_inner.buffer,
+            dst_range,
+            PipelineStageAccess::Copy_TransferWrite,
+        );
+
         self.resources.push(Box::new(query_pool));
-        self.resources.push(Box::new(destination));
+        self.resources.push(Box::new(dst_buffer));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -680,7 +696,7 @@ where
         queries: Range<u32>,
     ) -> Result<(), QueryError> {
         // VUID-vkCmdResetQueryPool-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(QueryError::ForbiddenInsideRenderPass);
         }
 
@@ -707,7 +723,7 @@ where
 
         // VUID-vkCmdResetQueryPool-None-02841
         if self
-            .current_state
+            .builder_state
             .queries
             .values()
             .any(|state| state.query_pool == query_pool.handle() && queries.contains(&state.query))
@@ -734,6 +750,7 @@ where
 
         self.resources.push(Box::new(query_pool));
 
+        self.next_command_index += 1;
         self
     }
 }

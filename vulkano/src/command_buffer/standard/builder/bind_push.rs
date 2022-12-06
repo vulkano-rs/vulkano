@@ -166,7 +166,7 @@ where
             dynamic_offsets.as_ptr(),
         );
 
-        let state = self.current_state.invalidate_descriptor_sets(
+        let state = self.builder_state.invalidate_descriptor_sets(
             pipeline_bind_point,
             pipeline_layout.clone(),
             first_set,
@@ -189,6 +189,7 @@ where
 
         self.resources.push(Box::new(pipeline_layout));
 
+        self.next_command_index += 1;
         self
     }
 
@@ -271,9 +272,10 @@ where
             index_type.into(),
         );
 
-        self.current_state.index_buffer = Some((buffer.clone(), index_type));
+        self.builder_state.index_buffer = Some((buffer.clone(), index_type));
         self.resources.push(Box::new(buffer));
 
+        self.next_command_index += 1;
         self
     }
 
@@ -321,9 +323,10 @@ where
             pipeline.handle(),
         );
 
-        self.current_state.pipeline_compute = Some(pipeline.clone());
+        self.builder_state.pipeline_compute = Some(pipeline.clone());
         self.resources.push(Box::new(pipeline));
 
+        self.next_command_index += 1;
         self
     }
 
@@ -357,12 +360,12 @@ where
         assert_eq!(self.device(), pipeline.device());
 
         if let Some(last_pipeline) =
-            self.current_state
+            self.builder_state
                 .render_pass
                 .as_ref()
                 .and_then(|render_pass_state| match &render_pass_state.render_pass {
                     RenderPassStateType::BeginRendering(state) if state.pipeline_used => {
-                        self.current_state.pipeline_graphics.as_ref()
+                        self.builder_state.pipeline_graphics.as_ref()
                     }
                     _ => None,
                 })
@@ -416,15 +419,16 @@ where
 
         // Reset any states that are fixed in the new pipeline. The pipeline bind command will
         // overwrite these states.
-        self.current_state.reset_dynamic_states(
+        self.builder_state.reset_dynamic_states(
             pipeline
                 .dynamic_states()
                 .filter(|(_, d)| !d) // not dynamic
                 .map(|(s, _)| s),
         );
-        self.current_state.pipeline_graphics = Some(pipeline.clone());
+        self.builder_state.pipeline_graphics = Some(pipeline.clone());
         self.resources.push(Box::new(pipeline));
 
+        self.next_command_index += 1;
         self
     }
 
@@ -532,12 +536,13 @@ where
         self.resources.reserve(buffers.len());
 
         for (i, buffer) in buffers.into_iter().enumerate() {
-            self.current_state
+            self.builder_state
                 .vertex_buffers
                 .insert(first_binding + i as u32, buffer.clone());
             self.resources.push(Box::new(buffer));
         }
 
+        self.next_command_index += 1;
         self
     }
 
@@ -667,13 +672,13 @@ where
         // push constants as set, and never unsets them. See:
         // https://github.com/KhronosGroup/Vulkan-Docs/issues/1485
         // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2711
-        self.current_state
+        self.builder_state
             .push_constants
             .insert(offset..offset + push_constants.len() as u32);
-        self.current_state.push_constants_pipeline_layout = Some(pipeline_layout.clone());
-
+        self.builder_state.push_constants_pipeline_layout = Some(pipeline_layout.clone());
         self.resources.push(Box::new(pipeline_layout));
 
+        self.next_command_index += 1;
         self
     }
 
@@ -841,7 +846,7 @@ where
             writes.as_ptr(),
         );
 
-        let state = self.current_state.invalidate_descriptor_sets(
+        let state = self.builder_state.invalidate_descriptor_sets(
             pipeline_bind_point,
             pipeline_layout.clone(),
             set_num,
@@ -863,6 +868,7 @@ where
 
         self.resources.push(Box::new(pipeline_layout));
 
+        self.next_command_index += 1;
         self
     }
 }
