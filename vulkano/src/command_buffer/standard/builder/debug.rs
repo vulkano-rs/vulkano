@@ -84,6 +84,7 @@ where
         let fns = self.device().instance().fns();
         (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info);
 
+        self.next_command_index += 1;
         self
     }
 
@@ -141,6 +142,7 @@ where
         let fns = self.device().instance().fns();
         (fns.ext_debug_utils.cmd_end_debug_utils_label_ext)(self.handle());
 
+        self.next_command_index += 1;
         self
     }
 
@@ -208,6 +210,7 @@ where
         let fns = self.device().instance().fns();
         (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info);
 
+        self.next_command_index += 1;
         self
     }
 }

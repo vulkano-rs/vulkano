@@ -67,7 +67,7 @@ where
         // TODO:
         // VUID-vkCmdExecuteCommands-pCommandBuffers-00094
 
-        if let Some(render_pass_state) = &self.current_state.render_pass {
+        if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdExecuteCommands-contents-06018
             // VUID-vkCmdExecuteCommands-flags-06024
             if render_pass_state.contents != SubpassContents::SecondaryCommandBuffers {
@@ -261,7 +261,7 @@ where
         }
 
         // VUID-vkCmdExecuteCommands-commandBuffer-00101
-        if !self.current_state.queries.is_empty()
+        if !self.builder_state.queries.is_empty()
             && !self.device().enabled_features().inherited_queries
         {
             return Err(ExecuteCommandsError::RequirementNotMet {
@@ -273,7 +273,7 @@ where
             });
         }
 
-        for state in self.current_state.queries.values() {
+        for state in self.builder_state.queries.values() {
             match state.ty {
                 QueryType::Occlusion => {
                     // VUID-vkCmdExecuteCommands-commandBuffer-00102
@@ -375,15 +375,19 @@ where
         (fns.v1_0.cmd_execute_commands)(self.handle(), 1, &command_buffer.handle());
 
         // The secondary command buffer could leave the primary in any state.
-        self.current_state = Default::default();
+        self.builder_state = Default::default();
 
         // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
         self.usage = std::cmp::min(self.usage, command_buffer.usage);
 
-        self.resources.push(Box::new(command_buffer));
+        let _command_index = self.next_command_index;
+        let _command_name = "execute_commands";
 
         // TODO: sync state update
 
+        self.resources.push(Box::new(command_buffer));
+
+        self.next_command_index += 1;
         self
     }
 }

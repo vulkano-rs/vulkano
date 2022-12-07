@@ -7,28 +7,36 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{CommandBufferBuilder, PipelineExecutionError, RenderPassState, RenderPassStateType};
+use super::{
+    CommandBufferBuilder, DescriptorSetState, PipelineExecutionError, RenderPassState,
+    RenderPassStateType, ResourcesState,
+};
 use crate::{
     buffer::{view::BufferViewAbstract, BufferAccess, BufferUsage, TypedBufferAccess},
     command_buffer::{
         allocator::CommandBufferAllocator, commands::pipeline::DescriptorResourceInvalidError,
-        DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand, SubpassContents,
+        DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand,
+        ResourceInCommand, ResourceUseRef, SubpassContents,
     },
     descriptor_set::{layout::DescriptorType, DescriptorBindingResources},
     device::{DeviceOwned, QueueFlags},
     format::FormatFeatures,
-    image::{ImageAspects, ImageViewAbstract, SampleCount},
+    image::{ImageAccess, ImageAspects, ImageViewAbstract, SampleCount},
     pipeline::{
         graphics::{
-            input_assembly::PrimitiveTopology, render_pass::PipelineRenderPassType,
+            input_assembly::{IndexType, PrimitiveTopology},
+            render_pass::PipelineRenderPassType,
             vertex_input::VertexInputRate,
         },
-        DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineLayout,
+        DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineBindPoint,
+        PipelineLayout,
     },
     sampler::Sampler,
-    shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage},
+    shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage, ShaderStages},
+    sync::PipelineStageAccess,
     RequiresOneOf, VulkanObject,
 };
+use ahash::HashMap;
 use std::{cmp::min, mem::size_of, sync::Arc};
 
 impl<L, A> CommandBufferBuilder<L, A>
@@ -69,13 +77,13 @@ where
         }
 
         // VUID-vkCmdDispatch-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(PipelineExecutionError::ForbiddenInsideRenderPass);
         }
 
         // VUID-vkCmdDispatch-None-02700
         let pipeline = self
-            .current_state
+            .builder_state
             .pipeline_compute
             .as_ref()
             .ok_or(PipelineExecutionError::PipelineNotBound)?
@@ -115,8 +123,23 @@ where
             group_counts[2],
         );
 
-        // TODO: sync state update
+        let command_index = self.next_command_index;
+        let command_name = "dispatch";
+        let pipeline = self
+            .builder_state
+            .pipeline_compute
+            .as_ref()
+            .unwrap()
+            .as_ref();
+        record_descriptor_sets_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.descriptor_sets,
+            pipeline,
+        );
 
+        self.next_command_index += 1;
         self
     }
 
@@ -158,13 +181,13 @@ where
         }
 
         // VUID-vkCmdDispatchIndirect-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(PipelineExecutionError::ForbiddenInsideRenderPass);
         }
 
         // VUID-vkCmdDispatchIndirect-None-02700
         let pipeline = self
-            .current_state
+            .builder_state
             .pipeline_compute
             .as_ref()
             .ok_or(PipelineExecutionError::PipelineNotBound)?
@@ -193,10 +216,31 @@ where
             indirect_buffer_inner.offset,
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "dispatch_indirect";
+        let pipeline = self
+            .builder_state
+            .pipeline_compute
+            .as_ref()
+            .unwrap()
+            .as_ref();
+        record_descriptor_sets_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.descriptor_sets,
+            pipeline,
+        );
+        record_indirect_buffer_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &indirect_buffer,
+        );
+
         self.resources.push(Box::new(indirect_buffer));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -242,14 +286,14 @@ where
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDraw-renderpass
         let render_pass_state = self
-            .current_state
+            .builder_state
             .render_pass
             .as_ref()
             .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
 
         // VUID-vkCmdDraw-None-02700
         let pipeline = self
-            .current_state
+            .builder_state
             .pipeline_graphics
             .as_ref()
             .ok_or(PipelineExecutionError::PipelineNotBound)?
@@ -287,14 +331,36 @@ where
             first_instance,
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "draw";
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+        record_descriptor_sets_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.descriptor_sets,
+            pipeline,
+        );
+        record_vertex_buffers_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.vertex_buffers,
+            pipeline,
+        );
+
         if let RenderPassStateType::BeginRendering(state) =
-            &mut self.current_state.render_pass.as_mut().unwrap().render_pass
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
         {
             state.pipeline_used = true;
         }
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -340,14 +406,14 @@ where
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDrawIndirect-renderpass
         let render_pass_state = self
-            .current_state
+            .builder_state
             .render_pass
             .as_ref()
             .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
 
         // VUID-vkCmdDrawIndirect-None-02700
         let pipeline = self
-            .current_state
+            .builder_state
             .pipeline_graphics
             .as_ref()
             .ok_or(PipelineExecutionError::PipelineNotBound)?
@@ -409,16 +475,44 @@ where
             stride,
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "draw_indirect";
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+        record_descriptor_sets_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.descriptor_sets,
+            pipeline,
+        );
+        record_vertex_buffers_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.vertex_buffers,
+            pipeline,
+        );
+        record_indirect_buffer_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &indirect_buffer,
+        );
+
         if let RenderPassStateType::BeginRendering(state) =
-            &mut self.current_state.render_pass.as_mut().unwrap().render_pass
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
         {
             state.pipeline_used = true;
         }
 
         self.resources.push(Box::new(indirect_buffer));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -487,14 +581,14 @@ where
 
         // VUID-vkCmdDrawIndexed-renderpass
         let render_pass_state = self
-            .current_state
+            .builder_state
             .render_pass
             .as_ref()
             .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
 
         // VUID-vkCmdDrawIndexed-None-02700
         let pipeline = self
-            .current_state
+            .builder_state
             .pipeline_graphics
             .as_ref()
             .ok_or(PipelineExecutionError::PipelineNotBound)?
@@ -536,14 +630,42 @@ where
             first_instance,
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "draw_indexed";
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+        record_descriptor_sets_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.descriptor_sets,
+            pipeline,
+        );
+        record_vertex_buffers_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.vertex_buffers,
+            pipeline,
+        );
+        record_index_buffer_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.index_buffer,
+        );
+
         if let RenderPassStateType::BeginRendering(state) =
-            &mut self.current_state.render_pass.as_mut().unwrap().render_pass
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
         {
             state.pipeline_used = true;
         }
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -596,14 +718,14 @@ where
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDrawIndexedIndirect-renderpass
         let render_pass_state = self
-            .current_state
+            .builder_state
             .render_pass
             .as_ref()
             .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
 
         // VUID-vkCmdDrawIndexedIndirect-None-02700
         let pipeline = self
-            .current_state
+            .builder_state
             .pipeline_graphics
             .as_ref()
             .ok_or(PipelineExecutionError::PipelineNotBound)?
@@ -666,16 +788,50 @@ where
             stride,
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "draw_indexed_indirect";
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+        record_descriptor_sets_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.descriptor_sets,
+            pipeline,
+        );
+        record_vertex_buffers_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.vertex_buffers,
+            pipeline,
+        );
+        record_index_buffer_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &self.builder_state.index_buffer,
+        );
+        record_indirect_buffer_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            &indirect_buffer,
+        );
+
         if let RenderPassStateType::BeginRendering(state) =
-            &mut self.current_state.render_pass.as_mut().unwrap().render_pass
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
         {
             state.pipeline_used = true;
         }
 
         self.resources.push(Box::new(indirect_buffer));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -685,7 +841,7 @@ where
     ) -> Result<(), PipelineExecutionError> {
         // VUID?
         let (index_buffer, index_type) = self
-            .current_state
+            .builder_state
             .index_buffer
             .as_ref()
             .ok_or(PipelineExecutionError::IndexBufferNotBound)?;
@@ -787,7 +943,7 @@ where
 
         // VUID-vkCmdDispatch-None-02697
         let descriptor_set_state = self
-            .current_state
+            .builder_state
             .descriptor_sets
             .get(&pipeline.bind_point())
             .ok_or(PipelineExecutionError::PipelineLayoutNotCompatible)?;
@@ -1137,7 +1293,7 @@ where
 
         // VUID-vkCmdDispatch-maintenance4-06425
         let constants_pipeline_layout = self
-            .current_state
+            .builder_state
             .push_constants_pipeline_layout
             .as_ref()
             .ok_or(PipelineExecutionError::PushConstantsMissing)?;
@@ -1150,7 +1306,7 @@ where
             return Err(PipelineExecutionError::PushConstantsNotCompatible);
         }
 
-        let set_bytes = &self.current_state.push_constants;
+        let set_bytes = &self.builder_state.push_constants;
 
         // VUID-vkCmdDispatch-maintenance4-06425
         if !pipeline_layout
@@ -1179,13 +1335,13 @@ where
             match dynamic_state {
                 DynamicState::BlendConstants => {
                     // VUID?
-                    if self.current_state.blend_constants.is_none() {
+                    if self.builder_state.blend_constants.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::ColorWriteEnable => {
                     // VUID-vkCmdDraw-attachmentCount-06667
-                    let enables = self.current_state.color_write_enable.as_ref().ok_or(PipelineExecutionError::DynamicStateNotSet { dynamic_state })?;
+                    let enables = self.builder_state.color_write_enable.as_ref().ok_or(PipelineExecutionError::DynamicStateNotSet { dynamic_state })?;
 
                     // VUID-vkCmdDraw-attachmentCount-06667
                     if enables.len() < pipeline.color_blend_state().unwrap().attachments.len() {
@@ -1203,49 +1359,49 @@ where
                 }
                 DynamicState::CullMode => {
                     // VUID?
-                    if self.current_state.cull_mode.is_none() {
+                    if self.builder_state.cull_mode.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthBias => {
                     // VUID?
-                    if self.current_state.depth_bias.is_none() {
+                    if self.builder_state.depth_bias.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthBiasEnable => {
                     // VUID-vkCmdDraw-None-04877
-                    if self.current_state.depth_bias_enable.is_none() {
+                    if self.builder_state.depth_bias_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthBounds => {
                     // VUID?
-                    if self.current_state.depth_bounds.is_none() {
+                    if self.builder_state.depth_bounds.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthBoundsTestEnable => {
                     // VUID?
-                    if self.current_state.depth_bounds_test_enable.is_none() {
+                    if self.builder_state.depth_bounds_test_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthCompareOp => {
                     // VUID?
-                    if self.current_state.depth_compare_op.is_none() {
+                    if self.builder_state.depth_compare_op.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthTestEnable => {
                     // VUID?
-                    if self.current_state.depth_test_enable.is_none() {
+                    if self.builder_state.depth_test_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthWriteEnable => {
                     // VUID?
-                    if self.current_state.depth_write_enable.is_none() {
+                    if self.builder_state.depth_write_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
 
@@ -1260,7 +1416,7 @@ where
 
                     for num in 0..discard_rectangle_count {
                         // VUID?
-                        if !self.current_state.discard_rectangle.contains_key(&num) {
+                        if !self.builder_state.discard_rectangle.contains_key(&num) {
                             return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                         }
                     }
@@ -1269,38 +1425,38 @@ where
                 DynamicState::FragmentShadingRate => todo!(),
                 DynamicState::FrontFace => {
                     // VUID?
-                    if self.current_state.front_face.is_none() {
+                    if self.builder_state.front_face.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::LineStipple => {
                     // VUID?
-                    if self.current_state.line_stipple.is_none() {
+                    if self.builder_state.line_stipple.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::LineWidth => {
                     // VUID?
-                    if self.current_state.line_width.is_none() {
+                    if self.builder_state.line_width.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::LogicOp => {
                     // VUID-vkCmdDraw-logicOp-04878
-                    if self.current_state.logic_op.is_none() {
+                    if self.builder_state.logic_op.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::PatchControlPoints => {
                     // VUID-vkCmdDraw-None-04875
-                    if self.current_state.patch_control_points.is_none() {
+                    if self.builder_state.patch_control_points.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::PrimitiveRestartEnable => {
                     // VUID-vkCmdDraw-None-04879
                     let primitive_restart_enable =
-                        if let Some(enable) = self.current_state.primitive_restart_enable {
+                        if let Some(enable) = self.builder_state.primitive_restart_enable {
                             enable
                         } else {
                             return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
@@ -1310,7 +1466,7 @@ where
                         let topology = match pipeline.input_assembly_state().topology {
                             PartialStateMode::Fixed(topology) => topology,
                             PartialStateMode::Dynamic(_) => {
-                                if let Some(topology) = self.current_state.primitive_topology {
+                                if let Some(topology) = self.builder_state.primitive_topology {
                                     topology
                                 } else {
                                     return Err(PipelineExecutionError::DynamicStateNotSet {
@@ -1364,7 +1520,7 @@ where
                 }
                 DynamicState::PrimitiveTopology => {
                     // VUID-vkCmdDraw-primitiveTopology-03420
-                    let topology = if let Some(topology) = self.current_state.primitive_topology {
+                    let topology = if let Some(topology) = self.builder_state.primitive_topology {
                         topology
                     } else {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
@@ -1405,7 +1561,7 @@ where
                 }
                 DynamicState::RasterizerDiscardEnable => {
                     // VUID-vkCmdDraw-None-04876
-                    if self.current_state.rasterizer_discard_enable.is_none() {
+                    if self.builder_state.rasterizer_discard_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
@@ -1416,7 +1572,7 @@ where
                 DynamicState::Scissor => {
                     for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
                         // VUID?
-                        if !self.current_state.scissor.contains_key(&num) {
+                        if !self.builder_state.scissor.contains_key(&num) {
                             return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                         }
                     }
@@ -1424,7 +1580,7 @@ where
                 DynamicState::ScissorWithCount => {
                     // VUID-vkCmdDraw-scissorCount-03418
                     // VUID-vkCmdDraw-viewportCount-03419
-                    let scissor_count = self.current_state.scissor_with_count.as_ref().ok_or(PipelineExecutionError::DynamicStateNotSet { dynamic_state })?.len() as u32;
+                    let scissor_count = self.builder_state.scissor_with_count.as_ref().ok_or(PipelineExecutionError::DynamicStateNotSet { dynamic_state })?.len() as u32;
 
                     // Check if the counts match, but only if the viewport count is fixed.
                     // If the viewport count is also dynamic, then the
@@ -1442,7 +1598,7 @@ where
                     }
                 }
                 DynamicState::StencilCompareMask => {
-                    let state = self.current_state.stencil_compare_mask;
+                    let state = self.builder_state.stencil_compare_mask;
 
                     // VUID?
                     if state.front.is_none() || state.back.is_none() {
@@ -1450,7 +1606,7 @@ where
                     }
                 }
                 DynamicState::StencilOp => {
-                    let state = self.current_state.stencil_op;
+                    let state = self.builder_state.stencil_op;
 
                     // VUID?
                     if state.front.is_none() || state.back.is_none() {
@@ -1458,7 +1614,7 @@ where
                     }
                 }
                 DynamicState::StencilReference => {
-                    let state = self.current_state.stencil_reference;
+                    let state = self.builder_state.stencil_reference;
 
                     // VUID?
                     if state.front.is_none() || state.back.is_none() {
@@ -1467,14 +1623,14 @@ where
                 }
                 DynamicState::StencilTestEnable => {
                     // VUID?
-                    if self.current_state.stencil_test_enable.is_none() {
+                    if self.builder_state.stencil_test_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
 
                     // TODO: Check if the stencil buffer is writable
                 }
                 DynamicState::StencilWriteMask => {
-                    let state = self.current_state.stencil_write_mask;
+                    let state = self.builder_state.stencil_write_mask;
 
                     // VUID?
                     if state.front.is_none() || state.back.is_none() {
@@ -1486,7 +1642,7 @@ where
                 DynamicState::Viewport => {
                     for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
                         // VUID?
-                        if !self.current_state.viewport.contains_key(&num) {
+                        if !self.builder_state.viewport.contains_key(&num) {
                             return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                         }
                     }
@@ -1495,7 +1651,7 @@ where
                 DynamicState::ViewportShadingRatePalette => todo!(),
                 DynamicState::ViewportWithCount => {
                     // VUID-vkCmdDraw-viewportCount-03417
-                    let viewport_count = self.current_state.viewport_with_count.as_ref().ok_or(PipelineExecutionError::DynamicStateNotSet { dynamic_state })?.len() as u32;
+                    let viewport_count = self.builder_state.viewport_with_count.as_ref().ok_or(PipelineExecutionError::DynamicStateNotSet { dynamic_state })?.len() as u32;
 
                     let scissor_count = if let Some(scissor_count) =
                         pipeline.viewport_state().unwrap().count()
@@ -1505,7 +1661,7 @@ where
                     } else {
                         // VUID-vkCmdDraw-viewportCount-03419
                         // The scissor count is also dynamic.
-                        self.current_state.scissor_with_count.as_ref().ok_or(PipelineExecutionError::DynamicStateNotSet { dynamic_state })?.len() as u32
+                        self.builder_state.scissor_with_count.as_ref().ok_or(PipelineExecutionError::DynamicStateNotSet { dynamic_state })?.len() as u32
                     };
 
                     // VUID-vkCmdDraw-viewportCount-03417
@@ -1710,7 +1866,7 @@ where
 
         for (&binding_num, binding_desc) in &vertex_input.bindings {
             // VUID-vkCmdDraw-None-04007
-            let vertex_buffer = match self.current_state.vertex_buffers.get(&binding_num) {
+            let vertex_buffer = match self.builder_state.vertex_buffers.get(&binding_num) {
                 Some(x) => x,
                 None => return Err(PipelineExecutionError::VertexBufferNotBound { binding_num }),
             };
@@ -1806,4 +1962,253 @@ where
 
         Ok(())
     }
+}
+
+fn record_descriptor_sets_access(
+    resources_usage_state: &mut ResourcesState,
+    command_index: usize,
+    command_name: &'static str,
+    descriptor_sets_state: &HashMap<PipelineBindPoint, DescriptorSetState>,
+    pipeline: &impl Pipeline,
+) {
+    let descriptor_sets_state = match descriptor_sets_state.get(&pipeline.bind_point()) {
+        Some(x) => x,
+        None => return,
+    };
+
+    for (&(set, binding), binding_reqs) in pipeline.descriptor_binding_requirements() {
+        let descriptor_type = descriptor_sets_state.pipeline_layout.set_layouts()[set as usize]
+            .bindings()[&binding]
+            .descriptor_type;
+
+        // TODO: Should input attachments be handled here or in attachment access?
+        if descriptor_type == DescriptorType::InputAttachment {
+            continue;
+        }
+
+        let use_iter = move |index: u32| {
+            let (stages_read, stages_write) = [Some(index), None]
+                .into_iter()
+                .filter_map(|index| binding_reqs.descriptors.get(&index))
+                .fold(
+                    (ShaderStages::empty(), ShaderStages::empty()),
+                    |(stages_read, stages_write), desc_reqs| {
+                        (
+                            stages_read | desc_reqs.memory_read,
+                            stages_write | desc_reqs.memory_write,
+                        )
+                    },
+                );
+            let use_ref = ResourceUseRef {
+                command_index,
+                command_name,
+                resource_in_command: ResourceInCommand::DescriptorSet {
+                    set,
+                    binding,
+                    index,
+                },
+                secondary_use_ref: None,
+            };
+            let stage_access_iter = PipelineStageAccess::iter_descriptor_stages(
+                descriptor_type,
+                stages_read,
+                stages_write,
+            );
+            (use_ref, stage_access_iter)
+        };
+
+        match descriptor_sets_state.descriptor_sets[&set]
+            .resources()
+            .binding(binding)
+            .unwrap()
+        {
+            DescriptorBindingResources::None(_) => continue,
+            DescriptorBindingResources::Buffer(elements) => {
+                for (index, element) in elements.iter().enumerate() {
+                    if let Some(buffer) = element {
+                        let buffer_inner = buffer.inner();
+                        let (use_ref, stage_access_iter) = use_iter(index as u32);
+
+                        let mut range = 0..buffer.size(); // TODO:
+                        range.start += buffer_inner.offset;
+                        range.end += buffer_inner.offset;
+
+                        for stage_access in stage_access_iter {
+                            resources_usage_state.record_buffer_access(
+                                &use_ref,
+                                buffer_inner.buffer,
+                                range.clone(),
+                                stage_access,
+                            );
+                        }
+                    }
+                }
+            }
+            DescriptorBindingResources::BufferView(elements) => {
+                for (index, element) in elements.iter().enumerate() {
+                    if let Some(buffer_view) = element {
+                        let buffer = buffer_view.buffer();
+                        let buffer_inner = buffer.inner();
+                        let (use_ref, stage_access_iter) = use_iter(index as u32);
+
+                        let mut range = buffer_view.range();
+                        range.start += buffer_inner.offset;
+                        range.end += buffer_inner.offset;
+
+                        for stage_access in stage_access_iter {
+                            resources_usage_state.record_buffer_access(
+                                &use_ref,
+                                buffer_inner.buffer,
+                                range.clone(),
+                                stage_access,
+                            );
+                        }
+                    }
+                }
+            }
+            DescriptorBindingResources::ImageView(elements) => {
+                for (index, element) in elements.iter().enumerate() {
+                    if let Some(image_view) = element {
+                        let image = image_view.image();
+                        let image_inner = image.inner();
+                        let layout = image
+                            .descriptor_layouts()
+                            .expect(
+                                "descriptor_layouts must return Some when used in an image view",
+                            )
+                            .layout_for(descriptor_type);
+                        let (use_ref, stage_access_iter) = use_iter(index as u32);
+
+                        let mut subresource_range = image_view.subresource_range().clone();
+                        subresource_range.array_layers.start += image_inner.first_layer;
+                        subresource_range.array_layers.end += image_inner.first_layer;
+                        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
+                        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
+
+                        for stage_access in stage_access_iter {
+                            resources_usage_state.record_image_access(
+                                &use_ref,
+                                image_inner.image,
+                                subresource_range.clone(),
+                                stage_access,
+                                layout,
+                            );
+                        }
+                    }
+                }
+            }
+            DescriptorBindingResources::ImageViewSampler(elements) => {
+                for (index, element) in elements.iter().enumerate() {
+                    if let Some((image_view, _)) = element {
+                        let image = image_view.image();
+                        let image_inner = image.inner();
+                        let layout = image
+                            .descriptor_layouts()
+                            .expect(
+                                "descriptor_layouts must return Some when used in an image view",
+                            )
+                            .layout_for(descriptor_type);
+                        let (use_ref, stage_access_iter) = use_iter(index as u32);
+
+                        let mut subresource_range = image_view.subresource_range().clone();
+                        subresource_range.array_layers.start += image_inner.first_layer;
+                        subresource_range.array_layers.end += image_inner.first_layer;
+                        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
+                        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
+
+                        for stage_access in stage_access_iter {
+                            resources_usage_state.record_image_access(
+                                &use_ref,
+                                image_inner.image,
+                                subresource_range.clone(),
+                                stage_access,
+                                layout,
+                            );
+                        }
+                    }
+                }
+            }
+            DescriptorBindingResources::Sampler(_) => (),
+        }
+    }
+}
+
+fn record_vertex_buffers_access(
+    resources_usage_state: &mut ResourcesState,
+    command_index: usize,
+    command_name: &'static str,
+    vertex_buffers_state: &HashMap<u32, Arc<dyn BufferAccess>>,
+    pipeline: &GraphicsPipeline,
+) {
+    for &binding in pipeline.vertex_input_state().bindings.keys() {
+        let buffer = &vertex_buffers_state[&binding];
+        let buffer_inner = buffer.inner();
+        let use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::VertexBuffer { binding },
+            secondary_use_ref: None,
+        };
+
+        let mut range = 0..buffer.size(); // TODO: take range from draw command
+        range.start += buffer_inner.offset;
+        range.end += buffer_inner.offset;
+        resources_usage_state.record_buffer_access(
+            &use_ref,
+            buffer_inner.buffer,
+            range,
+            PipelineStageAccess::VertexAttributeInput_VertexAttributeRead,
+        );
+    }
+}
+
+fn record_index_buffer_access(
+    resources_usage_state: &mut ResourcesState,
+    command_index: usize,
+    command_name: &'static str,
+    index_buffer_state: &Option<(Arc<dyn BufferAccess>, IndexType)>,
+) {
+    let buffer = &index_buffer_state.as_ref().unwrap().0;
+    let buffer_inner = buffer.inner();
+    let use_ref = ResourceUseRef {
+        command_index,
+        command_name,
+        resource_in_command: ResourceInCommand::IndexBuffer,
+        secondary_use_ref: None,
+    };
+
+    let mut range = 0..buffer.size(); // TODO: take range from draw command
+    range.start += buffer_inner.offset;
+    range.end += buffer_inner.offset;
+    resources_usage_state.record_buffer_access(
+        &use_ref,
+        buffer_inner.buffer,
+        range,
+        PipelineStageAccess::IndexInput_IndexRead,
+    );
+}
+
+fn record_indirect_buffer_access(
+    resources_usage_state: &mut ResourcesState,
+    command_index: usize,
+    command_name: &'static str,
+    buffer: &Arc<dyn BufferAccess>,
+) {
+    let buffer_inner = buffer.inner();
+    let use_ref = ResourceUseRef {
+        command_index,
+        command_name,
+        resource_in_command: ResourceInCommand::IndirectBuffer,
+        secondary_use_ref: None,
+    };
+
+    let mut range = 0..buffer.size(); // TODO: take range from draw command
+    range.start += buffer_inner.offset;
+    range.end += buffer_inner.offset;
+    resources_usage_state.record_buffer_access(
+        &use_ref,
+        buffer_inner.buffer,
+        range,
+        PipelineStageAccess::DrawIndirect_IndirectCommandRead,
+    );
 }

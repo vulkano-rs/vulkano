@@ -16,6 +16,7 @@
 //! This safety is enforced at runtime by vulkano but it is not magic and you will require some
 //! knowledge if you want to avoid errors.
 
+pub(crate) use self::pipeline::{PipelineStageAccess, PipelineStageAccessSet};
 pub use self::{
     future::{now, FlushError, GpuFuture},
     pipeline::{

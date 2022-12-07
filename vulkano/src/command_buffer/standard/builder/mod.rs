@@ -21,7 +21,7 @@ pub use crate::command_buffer::{
     RenderingAttachmentInfo, RenderingAttachmentResolveInfo, RenderingInfo, ResolveImageInfo,
 };
 use crate::{
-    buffer::BufferAccess,
+    buffer::{sys::Buffer, BufferAccess},
     command_buffer::{
         allocator::{
             CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
@@ -30,12 +30,12 @@ use crate::{
         BuildError, CommandBufferBeginError, CommandBufferInheritanceInfo,
         CommandBufferInheritanceRenderPassInfo, CommandBufferInheritanceRenderPassType,
         CommandBufferInheritanceRenderingInfo, CommandBufferLevel, CommandBufferUsage,
-        SubpassContents,
+        ResourceInCommand, ResourceUseRef, SubpassContents,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
-    device::{Device, DeviceOwned, QueueFamilyProperties},
+    device::{Device, DeviceOwned, QueueFamilyProperties, QueueFlags},
     format::{Format, FormatFeatures},
-    image::ImageAspects,
+    image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     pipeline::{
         graphics::{
             color_blend::LogicOp,
@@ -47,17 +47,23 @@ use crate::{
         ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
     query::{QueryControlFlags, QueryType},
+    range_map::RangeMap,
     range_set::RangeSet,
     render_pass::{Framebuffer, Subpass},
-    OomError, RequiresOneOf, VulkanError, VulkanObject,
+    sync::{
+        BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier, PipelineStage,
+        PipelineStageAccess, PipelineStageAccessSet, PipelineStages,
+    },
+    DeviceSize, OomError, RequiresOneOf, VulkanError, VulkanObject,
 };
+use ahash::HashMap;
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
     any::Any,
-    collections::{hash_map::Entry, HashMap},
+    collections::hash_map::Entry,
     marker::PhantomData,
-    ops::RangeInclusive,
+    ops::{Range, RangeInclusive},
     ptr,
     sync::{atomic::AtomicBool, Arc},
 };
@@ -83,8 +89,10 @@ where
     queue_family_index: u32,
     usage: CommandBufferUsage,
 
+    next_command_index: usize,
     resources: Vec<Box<dyn Any + Send + Sync>>,
-    current_state: CurrentState,
+    builder_state: CommandBufferBuilderState,
+    resources_usage_state: ResourcesState,
 
     _data: PhantomData<L>,
 }
@@ -542,7 +550,7 @@ where
                 .map_err(VulkanError::from)?;
         }
 
-        let mut current_state: CurrentState = Default::default();
+        let mut builder_state: CommandBufferBuilderState = Default::default();
 
         if let Some(inheritance_info) = &inheritance_info {
             let &CommandBufferInheritanceInfo {
@@ -553,7 +561,7 @@ where
             } = inheritance_info;
 
             if let Some(render_pass) = render_pass {
-                current_state.render_pass = Some(RenderPassState::from_inheritance(render_pass));
+                builder_state.render_pass = Some(RenderPassState::from_inheritance(render_pass));
             }
         }
 
@@ -563,8 +571,10 @@ where
             queue_family_index,
             usage,
 
+            next_command_index: 0,
             resources: Vec::new(),
-            current_state,
+            builder_state,
+            resources_usage_state: Default::default(),
 
             _data: PhantomData,
         })
@@ -581,11 +591,11 @@ where
 {
     /// Builds the command buffer.
     pub fn build(self) -> Result<PrimaryCommandBuffer<A::Alloc>, BuildError> {
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(BuildError::RenderPassActive);
         }
 
-        if !self.current_state.queries.is_empty() {
+        if !self.builder_state.queries.is_empty() {
             return Err(BuildError::QueryActive);
         }
 
@@ -615,7 +625,7 @@ where
 {
     /// Builds the command buffer.
     pub fn build(self) -> Result<SecondaryCommandBuffer<A::Alloc>, BuildError> {
-        if !self.current_state.queries.is_empty() {
+        if !self.builder_state.queries.is_empty() {
             return Err(BuildError::QueryActive);
         }
 
@@ -653,7 +663,7 @@ where
 
 /// Holds the current binding and setting state.
 #[derive(Default)]
-struct CurrentState {
+struct CommandBufferBuilderState {
     // Render pass
     render_pass: Option<RenderPassState>,
 
@@ -700,7 +710,7 @@ struct CurrentState {
     queries: HashMap<ash::vk::QueryType, QueryState>,
 }
 
-impl CurrentState {
+impl CommandBufferBuilderState {
     fn reset_dynamic_states(&mut self, states: impl IntoIterator<Item = DynamicState>) {
         for state in states {
             match state {
@@ -961,4 +971,434 @@ struct QueryState {
     ty: QueryType,
     flags: QueryControlFlags,
     in_subpass: bool,
+}
+
+#[derive(Debug, Default)]
+struct ResourcesState {
+    buffers: HashMap<Arc<Buffer>, RangeMap<DeviceSize, BufferRangeState>>,
+    images: HashMap<Arc<Image>, RangeMap<DeviceSize, ImageRangeState>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct BufferRangeState {
+    resource_uses: Vec<ResourceUseRef>,
+    memory_access: MemoryAccessState,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct ImageRangeState {
+    resource_uses: Vec<ResourceUseRef>,
+    memory_access: MemoryAccessState,
+    expected_layout: ImageLayout,
+    current_layout: ImageLayout,
+}
+
+impl ResourcesState {
+    fn record_buffer_access(
+        &mut self,
+        use_ref: &ResourceUseRef,
+        buffer: &Arc<Buffer>,
+        range: Range<DeviceSize>,
+        stage_access: PipelineStageAccess,
+    ) {
+        let range_map = self.buffers.entry(buffer.clone()).or_insert_with(|| {
+            [(0..buffer.size(), Default::default())]
+                .into_iter()
+                .collect()
+        });
+        range_map.split_at(&range.start);
+        range_map.split_at(&range.end);
+
+        for (_range, state) in range_map.range_mut(&range) {
+            state.resource_uses.push(*use_ref);
+            state.memory_access.record_access(use_ref, stage_access);
+        }
+    }
+
+    fn record_image_access(
+        &mut self,
+        use_ref: &ResourceUseRef,
+        image: &Arc<Image>,
+        subresource_range: ImageSubresourceRange,
+        stage_access: PipelineStageAccess,
+        image_layout: ImageLayout,
+    ) {
+        let range_map = self.images.entry(image.clone()).or_insert_with(|| {
+            [(0..image.range_size(), Default::default())]
+                .into_iter()
+                .collect()
+        });
+
+        for range in image.iter_ranges(subresource_range) {
+            range_map.split_at(&range.start);
+            range_map.split_at(&range.end);
+
+            for (_range, state) in range_map.range_mut(&range) {
+                if state.resource_uses.is_empty() {
+                    state.expected_layout = image_layout;
+                }
+
+                state.resource_uses.push(*use_ref);
+                state.memory_access.record_access(use_ref, stage_access);
+            }
+        }
+    }
+
+    fn record_pipeline_barrier(
+        &mut self,
+        command_index: usize,
+        command_name: &'static str,
+        dependency_info: &DependencyInfo,
+        queue_flags: QueueFlags,
+    ) {
+        for barrier in &dependency_info.buffer_memory_barriers {
+            let barrier_scopes = BarrierScopes::from_buffer_memory_barrier(barrier, queue_flags);
+            let &BufferMemoryBarrier {
+                src_stages: _,
+                src_access: _,
+                dst_stages: _,
+                dst_access: _,
+                queue_family_ownership_transfer: _,
+                ref buffer,
+                ref range,
+                _ne: _,
+            } = barrier;
+
+            let range_map = self.buffers.entry(buffer.clone()).or_insert_with(|| {
+                [(0..buffer.size(), Default::default())]
+                    .into_iter()
+                    .collect()
+            });
+            range_map.split_at(&range.start);
+            range_map.split_at(&range.end);
+
+            for (_range, state) in range_map.range_mut(range) {
+                state.memory_access.record_barrier(&barrier_scopes, None);
+            }
+        }
+
+        for (index, barrier) in dependency_info.image_memory_barriers.iter().enumerate() {
+            let index = index as u32;
+            let barrier_scopes = BarrierScopes::from_image_memory_barrier(barrier, queue_flags);
+            let &ImageMemoryBarrier {
+                src_stages: _,
+                src_access: _,
+                dst_stages: _,
+                dst_access: _,
+                old_layout,
+                new_layout,
+                queue_family_ownership_transfer: _,
+                ref image,
+                ref subresource_range,
+                _ne,
+            } = barrier;
+
+            // This is only used if there is a layout transition.
+            let use_ref = ResourceUseRef {
+                command_index,
+                command_name,
+                resource_in_command: ResourceInCommand::ImageMemoryBarrier { index },
+                secondary_use_ref: None,
+            };
+            let layout_transition = (old_layout != new_layout).then_some(&use_ref);
+
+            let range_map = self.images.entry(image.clone()).or_insert_with(|| {
+                [(0..image.range_size(), Default::default())]
+                    .into_iter()
+                    .collect()
+            });
+
+            for range in image.iter_ranges(subresource_range.clone()) {
+                range_map.split_at(&range.start);
+                range_map.split_at(&range.end);
+
+                for (_range, state) in range_map.range_mut(&range) {
+                    if old_layout != new_layout {
+                        if state.resource_uses.is_empty() {
+                            state.expected_layout = old_layout;
+                        }
+
+                        state.resource_uses.push(ResourceUseRef {
+                            command_index,
+                            command_name,
+                            resource_in_command: ResourceInCommand::ImageMemoryBarrier { index },
+                            secondary_use_ref: None,
+                        });
+                        state.current_layout = new_layout;
+                    }
+
+                    state
+                        .memory_access
+                        .record_barrier(&barrier_scopes, layout_transition);
+                }
+            }
+        }
+
+        for barrier in &dependency_info.buffer_memory_barriers {
+            let &BufferMemoryBarrier {
+                ref buffer,
+                ref range,
+                ..
+            } = barrier;
+
+            let range_map = self.buffers.get_mut(buffer).unwrap();
+            for (_range, state) in range_map.range_mut(range) {
+                state.memory_access.apply_pending();
+            }
+        }
+
+        for barrier in &dependency_info.image_memory_barriers {
+            let &ImageMemoryBarrier {
+                ref image,
+                ref subresource_range,
+                ..
+            } = barrier;
+
+            let range_map = self.images.get_mut(image).unwrap();
+            for range in image.iter_ranges(subresource_range.clone()) {
+                for (_range, state) in range_map.range_mut(&range) {
+                    state.memory_access.apply_pending();
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct MemoryAccessState {
+    mutable: bool,
+    last_write: Option<WriteState>,
+    reads_since_last_write: HashMap<PipelineStage, ReadState>,
+
+    /// Pending changes that have not yet been applied. This is used during barrier recording.
+    pending: Option<PendingWriteState>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WriteState {
+    use_ref: ResourceUseRef,
+    access: PipelineStageAccess,
+
+    /// The `dst_stages` and `dst_access` of all barriers that protect against this write.
+    barriers_since: PipelineStageAccessSet,
+
+    /// The `dst_stages` of all barriers that form a dependency chain with this write.
+    dependency_chain: PipelineStages,
+
+    /// The union of all `barriers_since` of all `reads_since_last_write`.
+    read_barriers_since: PipelineStages,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct PendingWriteState {
+    /// If this is `Some`, then the barrier is treated as a new write,
+    /// and the previous `last_write` is discarded.
+    /// Otherwise, the values below are added to the existing `last_write`.
+    layout_transition: Option<ResourceUseRef>,
+
+    barriers_since: PipelineStageAccessSet,
+    dependency_chain: PipelineStages,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ReadState {
+    use_ref: ResourceUseRef,
+    access: PipelineStageAccess,
+
+    /// The `dst_stages` of all barriers that protect against this read.
+    /// This always includes the stage of `self`.
+    barriers_since: PipelineStages,
+
+    /// Stages of reads recorded after this read,
+    /// that were in scope of `barriers_since` at the time of recording.
+    /// This always includes the stage of `self`.
+    barriered_reads_since: PipelineStages,
+
+    /// Pending changes that have not yet been applied. This is used during barrier recording.
+    pending: Option<PendingReadState>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct PendingReadState {
+    barriers_since: PipelineStages,
+}
+
+impl MemoryAccessState {
+    fn record_access(&mut self, use_ref: &ResourceUseRef, access: PipelineStageAccess) {
+        if access.is_write() {
+            self.mutable = true;
+            self.last_write = Some(WriteState {
+                use_ref: *use_ref,
+                access,
+                barriers_since: Default::default(),
+                dependency_chain: Default::default(),
+                read_barriers_since: Default::default(),
+            });
+            self.reads_since_last_write.clear();
+        } else {
+            let pipeline_stage = PipelineStage::try_from(access).unwrap();
+            let pipeline_stages = PipelineStages::from(pipeline_stage);
+
+            for read_state in self.reads_since_last_write.values_mut() {
+                if read_state.barriers_since.intersects(pipeline_stages) {
+                    read_state.barriered_reads_since |= pipeline_stages;
+                } else {
+                    read_state.barriered_reads_since -= pipeline_stages;
+                }
+            }
+
+            self.reads_since_last_write.insert(
+                pipeline_stage,
+                ReadState {
+                    use_ref: *use_ref,
+                    access,
+                    barriers_since: pipeline_stages,
+                    barriered_reads_since: pipeline_stages,
+                    pending: None,
+                },
+            );
+        }
+    }
+
+    fn record_barrier(
+        &mut self,
+        barrier_scopes: &BarrierScopes,
+        layout_transition: Option<&ResourceUseRef>,
+    ) {
+        let skip_reads = if let Some(use_ref) = layout_transition {
+            let pending = self.pending.get_or_insert_with(Default::default);
+            pending.layout_transition = Some(*use_ref);
+            true
+        } else {
+            self.pending
+                .map_or(false, |pending| pending.layout_transition.is_some())
+        };
+
+        // If the last write is in the src scope of the barrier, then add the dst scopes.
+        // If the barrier includes a layout transition, then that layout transition is
+        // considered the last write, and it is always in the src scope of the barrier.
+        if layout_transition.is_some()
+            || self.last_write.as_ref().map_or(false, |write_state| {
+                barrier_scopes
+                    .src_access_scope
+                    .contains_enum(write_state.access)
+                    || barrier_scopes
+                        .src_exec_scope
+                        .intersects(write_state.dependency_chain)
+            })
+        {
+            let pending = self.pending.get_or_insert_with(Default::default);
+            pending.barriers_since |= barrier_scopes.dst_access_scope;
+            pending.dependency_chain |= barrier_scopes.dst_exec_scope;
+        }
+
+        // A layout transition counts as a write, which means that `reads_since_last_write` will
+        // be cleared when applying pending operations.
+        // Therefore, there is no need to update the reads.
+        if !skip_reads {
+            // Gather all reads for which `barriers_since` is in the barrier's `src_exec_scope`.
+            let reads_in_src_exec_scope = self.reads_since_last_write.iter().fold(
+                PipelineStages::empty(),
+                |total, (&stage, read_state)| {
+                    if barrier_scopes
+                        .src_exec_scope
+                        .intersects(read_state.barriers_since)
+                    {
+                        total.union(stage.into())
+                    } else {
+                        total
+                    }
+                },
+            );
+
+            for read_state in self.reads_since_last_write.values_mut() {
+                if reads_in_src_exec_scope.intersects(read_state.barriered_reads_since) {
+                    let pending = read_state.pending.get_or_insert_with(Default::default);
+                    pending.barriers_since |= barrier_scopes.dst_exec_scope;
+                }
+            }
+        }
+    }
+
+    fn apply_pending(&mut self) {
+        if let Some(PendingWriteState {
+            layout_transition,
+            barriers_since,
+            dependency_chain,
+        }) = self.pending.take()
+        {
+            // If there is a pending layout transition, it is treated as the new `last_write`.
+            if let Some(use_ref) = layout_transition {
+                self.mutable = true;
+                self.last_write = Some(WriteState {
+                    use_ref,
+                    access: PipelineStageAccess::ImageLayoutTransition,
+                    barriers_since,
+                    dependency_chain,
+                    read_barriers_since: Default::default(),
+                });
+                self.reads_since_last_write.clear();
+            } else if let Some(write_state) = &mut self.last_write {
+                write_state.barriers_since |= barriers_since;
+                write_state.dependency_chain |= dependency_chain;
+            }
+        }
+
+        for read_state in self.reads_since_last_write.values_mut() {
+            if let Some(PendingReadState { barriers_since }) = read_state.pending.take() {
+                read_state.barriers_since |= barriers_since;
+
+                if let Some(write_state) = &mut self.last_write {
+                    write_state.read_barriers_since |= read_state.barriers_since;
+                }
+            }
+        }
+    }
+}
+
+struct BarrierScopes {
+    src_exec_scope: PipelineStages,
+    src_access_scope: PipelineStageAccessSet,
+    dst_exec_scope: PipelineStages,
+    dst_access_scope: PipelineStageAccessSet,
+}
+
+impl BarrierScopes {
+    fn from_buffer_memory_barrier(barrier: &BufferMemoryBarrier, queue_flags: QueueFlags) -> Self {
+        let src_stages_expanded = barrier.src_stages.expand(queue_flags);
+        let src_exec_scope = src_stages_expanded.with_earlier();
+        let src_access_scope = PipelineStageAccessSet::from(barrier.src_access)
+            & PipelineStageAccessSet::from(src_stages_expanded);
+
+        let dst_stages_expanded = barrier.dst_stages.expand(queue_flags);
+        let dst_exec_scope = dst_stages_expanded.with_later();
+        let dst_access_scope = PipelineStageAccessSet::from(barrier.dst_access)
+            & PipelineStageAccessSet::from(dst_stages_expanded);
+
+        Self {
+            src_exec_scope,
+            src_access_scope,
+            dst_exec_scope,
+            dst_access_scope,
+        }
+    }
+
+    fn from_image_memory_barrier(barrier: &ImageMemoryBarrier, queue_flags: QueueFlags) -> Self {
+        let src_stages_expanded = barrier.src_stages.expand(queue_flags);
+        let src_exec_scope = src_stages_expanded.with_earlier();
+        let src_access_scope = PipelineStageAccessSet::from(barrier.src_access)
+            & PipelineStageAccessSet::from(src_stages_expanded);
+
+        let dst_stages_expanded = barrier.dst_stages.expand(queue_flags);
+        let dst_exec_scope = dst_stages_expanded.with_later();
+        let dst_access_scope = PipelineStageAccessSet::from(barrier.dst_access)
+            & PipelineStageAccessSet::from(dst_stages_expanded);
+
+        Self {
+            src_exec_scope,
+            src_access_scope,
+            dst_exec_scope,
+            dst_access_scope,
+        }
+    }
 }

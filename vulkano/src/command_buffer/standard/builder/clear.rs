@@ -13,10 +13,11 @@ use super::{
 };
 use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, TypedBufferAccess},
-    command_buffer::allocator::CommandBufferAllocator,
+    command_buffer::{allocator::CommandBufferAllocator, ResourceInCommand, ResourceUseRef},
     device::{DeviceOwned, QueueFlags},
     format::FormatFeatures,
     image::{ImageAccess, ImageAspects, ImageLayout, ImageUsage},
+    sync::PipelineStageAccess,
     DeviceSize, RequiresOneOf, Version, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -50,7 +51,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdClearColorImage-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(ClearError::ForbiddenInsideRenderPass);
         }
 
@@ -193,6 +194,7 @@ where
             return self;
         }
 
+        let image_inner = image.inner();
         let clear_value = clear_value.into();
         let ranges: SmallVec<[_; 8]> = regions
             .iter()
@@ -203,17 +205,40 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_color_image)(
             self.handle(),
-            image.inner().image.handle(),
+            image_inner.image.handle(),
             image_layout.into(),
             &clear_value,
             ranges.len() as u32,
             ranges.as_ptr(),
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "clear_color_image";
+        let use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        for mut subresource_range in regions {
+            subresource_range.array_layers.start += image_inner.first_layer;
+            subresource_range.array_layers.end += image_inner.first_layer;
+            subresource_range.mip_levels.start += image_inner.first_mipmap_level;
+            subresource_range.mip_levels.end += image_inner.first_mipmap_level;
+
+            self.resources_usage_state.record_image_access(
+                &use_ref,
+                image_inner.image,
+                subresource_range,
+                PipelineStageAccess::Clear_TransferWrite,
+                image_layout,
+            );
+        }
+
         self.resources.push(Box::new(image));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -241,7 +266,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdClearDepthStencilImage-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(ClearError::ForbiddenInsideRenderPass);
         }
 
@@ -402,6 +427,7 @@ where
             return self;
         }
 
+        let image_inner = image.inner();
         let clear_value = clear_value.into();
         let ranges: SmallVec<[_; 8]> = regions
             .iter()
@@ -412,17 +438,40 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_depth_stencil_image)(
             self.handle(),
-            image.inner().image.handle(),
+            image_inner.image.handle(),
             image_layout.into(),
             &clear_value,
             ranges.len() as u32,
             ranges.as_ptr(),
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "clear_depth_stencil_image";
+        let use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        for mut subresource_range in regions {
+            subresource_range.array_layers.start += image_inner.first_layer;
+            subresource_range.array_layers.end += image_inner.first_layer;
+            subresource_range.mip_levels.start += image_inner.first_mipmap_level;
+            subresource_range.mip_levels.end += image_inner.first_mipmap_level;
+
+            self.resources_usage_state.record_image_access(
+                &use_ref,
+                image_inner.image,
+                subresource_range,
+                PipelineStageAccess::Clear_TransferWrite,
+                image_layout,
+            );
+        }
+
         self.resources.push(Box::new(image));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -453,7 +502,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdFillBuffer-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(ClearError::ForbiddenInsideRenderPass);
         }
 
@@ -554,10 +603,28 @@ where
             data,
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "fill_buffer";
+        let use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        let mut dst_range = dst_offset..dst_offset + size;
+        dst_range.start += dst_buffer_inner.offset;
+        dst_range.end += dst_buffer_inner.offset;
+        self.resources_usage_state.record_buffer_access(
+            &use_ref,
+            dst_buffer_inner.buffer,
+            dst_range,
+            PipelineStageAccess::Clear_TransferWrite,
+        );
+
         self.resources.push(Box::new(dst_buffer));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 
@@ -596,7 +663,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdUpdateBuffer-renderpass
-        if self.current_state.render_pass.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(ClearError::ForbiddenInsideRenderPass);
         }
 
@@ -684,10 +751,28 @@ where
             data.as_bytes().as_ptr() as *const _,
         );
 
+        let command_index = self.next_command_index;
+        let command_name = "update_buffer";
+        let use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::Destination,
+            secondary_use_ref: None,
+        };
+
+        let mut dst_range = dst_offset..dst_offset + size_of_val(data) as DeviceSize;
+        dst_range.start += dst_buffer_inner.offset;
+        dst_range.end += dst_buffer_inner.offset;
+        self.resources_usage_state.record_buffer_access(
+            &use_ref,
+            dst_buffer_inner.buffer,
+            dst_range,
+            PipelineStageAccess::Clear_TransferWrite,
+        );
+
         self.resources.push(Box::new(dst_buffer));
 
-        // TODO: sync state update
-
+        self.next_command_index += 1;
         self
     }
 }

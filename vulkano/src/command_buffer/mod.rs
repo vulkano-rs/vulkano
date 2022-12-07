@@ -597,6 +597,7 @@ pub enum ResourceInCommand {
     DescriptorSet { set: u32, binding: u32, index: u32 },
     Destination,
     FramebufferAttachment { index: u32 },
+    ImageMemoryBarrier { index: u32 },
     IndexBuffer,
     IndirectBuffer,
     SecondaryCommandBuffer { index: u32 },
