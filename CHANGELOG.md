@@ -58,6 +58,11 @@ Changes to pipelines:
 
 ### Bugs fixed
 
+# Version 0.32.3 (2022-12-07)
+
+### Bugs fixed
+- Fixed issue with `MemoryAlloc::mapped_ptr` not being adjusted for offset.
+
 # Version 0.32.2 (2022-12-06)
 
 ### Bugs fixed
