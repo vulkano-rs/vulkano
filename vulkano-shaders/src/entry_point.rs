@@ -74,7 +74,18 @@ fn write_shader_execution(execution: &ShaderExecution) -> TokenStream {
                 )
             }
         }
-        ShaderExecution::Fragment => quote! { ::vulkano::shader::ShaderExecution::Fragment },
+        ShaderExecution::Fragment(::vulkano::shader::FragmentShaderExecution {
+            fragment_tests_stages,
+        }) => {
+            let fragment_tests_stages = format_ident!("{}", format!("{:?}", fragment_tests_stages));
+            quote! {
+                ::vulkano::shader::ShaderExecution::Fragment(
+                    ::vulkano::shader::FragmentShaderExecution {
+                        fragment_tests_stages: ::vulkano::shader::FragmentTestsStages::#fragment_tests_stages,
+                    }
+                )
+            }
+        }
         ShaderExecution::Compute => quote! { ::vulkano::shader::ShaderExecution::Compute },
         ShaderExecution::RayGeneration => {
             quote! { ::vulkano::shader::ShaderExecution::RayGeneration }

@@ -47,8 +47,8 @@ use crate::{
         DynamicState, PartialStateMode, PipelineLayout, StateMode,
     },
     shader::{
-        DescriptorBindingRequirements, EntryPoint, ShaderExecution, ShaderStage,
-        SpecializationConstants, SpecializationMapEntry,
+        DescriptorBindingRequirements, EntryPoint, FragmentShaderExecution, FragmentTestsStages,
+        ShaderExecution, ShaderStage, SpecializationConstants, SpecializationMapEntry,
     },
     DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -364,16 +364,18 @@ where
 
         self.validate_create(&device, &pipeline_layout, &vertex_input_state, has)?;
 
-        let (handle, descriptor_requirements, dynamic_state, shaders) =
+        let (handle, descriptor_requirements, dynamic_state, shaders, fragment_tests_stages) =
             unsafe { self.record_create(&device, &pipeline_layout, &vertex_input_state, has)? };
 
         let Self {
             mut render_pass,
             cache: _,
+
             vertex_shader: _,
             tessellation_shaders: _,
             geometry_shader: _,
             fragment_shader: _,
+
             vertex_input_state: _,
             input_assembly_state,
             tessellation_state,
@@ -398,9 +400,12 @@ where
             id: GraphicsPipeline::next_id(),
             layout: pipeline_layout,
             render_pass: render_pass.take().expect("Missing render pass"),
+
             shaders,
             descriptor_binding_requirements: descriptor_requirements,
             num_used_descriptor_sets,
+            fragment_tests_stages,
+
             vertex_input_state, // Can be None if there's a mesh shader, but we don't support that yet
             input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet
             tessellation_state: has.tessellation_state.then_some(tessellation_state),
@@ -1845,7 +1850,7 @@ where
                 });
 
                 match entry_point.execution() {
-                    ShaderExecution::Fragment => (),
+                    ShaderExecution::Fragment(_) => (),
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 }
 
@@ -2540,6 +2545,7 @@ where
             HashMap<(u32, u32), DescriptorBindingRequirements>,
             HashMap<DynamicState, bool>,
             HashMap<ShaderStage, ()>,
+            Option<FragmentTestsStages>,
         ),
         GraphicsPipelineCreationError,
     > {
@@ -2572,6 +2578,7 @@ where
         let mut dynamic_state: HashMap<DynamicState, bool> = HashMap::default();
         let mut stages = HashMap::default();
         let mut stages_vk: SmallVec<[_; 5]> = SmallVec::new();
+        let mut fragment_tests_stages = None;
 
         /*
             Render pass
@@ -3249,6 +3256,13 @@ where
                     p_specialization_info: specialization_info_vk as *const _,
                     ..Default::default()
                 });
+                fragment_tests_stages = match entry_point.execution() {
+                    ShaderExecution::Fragment(FragmentShaderExecution {
+                        fragment_tests_stages,
+                        ..
+                    }) => Some(*fragment_tests_stages),
+                    _ => unreachable!(),
+                };
             }
         }
 
@@ -3700,6 +3714,7 @@ where
             descriptor_binding_requirements,
             dynamic_state,
             stages,
+            fragment_tests_stages,
         ))
     }
 

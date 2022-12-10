@@ -426,6 +426,7 @@ pub enum StateMode<F> {
     /// The pipeline has a fixed value for this state. Previously set dynamic state will be lost
     /// when binding it, and will have to be re-set after binding a pipeline that uses it.
     Fixed(F),
+
     /// The pipeline expects a dynamic value to be set by a command buffer. Previously set dynamic
     /// state is not disturbed when binding it.
     Dynamic,

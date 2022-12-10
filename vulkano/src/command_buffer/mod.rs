@@ -592,8 +592,8 @@ impl From<ResourceUseRef> for SecondaryResourceUseRef {
 pub enum ResourceInCommand {
     ColorAttachment { index: u32 },
     ColorResolveAttachment { index: u32 },
-    DepthAttachment,
-    DepthResolveAttachment,
+    DepthStencilAttachment,
+    DepthStencilResolveAttachment,
     DescriptorSet { set: u32, binding: u32, index: u32 },
     Destination,
     FramebufferAttachment { index: u32 },
@@ -602,8 +602,6 @@ pub enum ResourceInCommand {
     IndirectBuffer,
     SecondaryCommandBuffer { index: u32 },
     Source,
-    StencilAttachment,
-    StencilResolveAttachment,
     VertexBuffer { binding: u32 },
 }
 

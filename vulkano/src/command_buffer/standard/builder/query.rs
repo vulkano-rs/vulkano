@@ -131,7 +131,9 @@ where
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdBeginQuery-query-00808
-            if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
+            if query + render_pass_state.rendering_info.view_mask.count_ones()
+                > query_pool.query_count()
+            {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }
@@ -216,7 +218,9 @@ where
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdEndQuery-query-00812
-            if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
+            if query + render_pass_state.rendering_info.view_mask.count_ones()
+                > query_pool.query_count()
+            {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }
@@ -448,7 +452,9 @@ where
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdWriteTimestamp2-query-03865
-            if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
+            if query + render_pass_state.rendering_info.view_mask.count_ones()
+                > query_pool.query_count()
+            {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }

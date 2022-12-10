@@ -120,10 +120,10 @@ where
                     }
                 }
                 (
-                    RenderPassStateType::BeginRendering(state),
+                    RenderPassStateType::BeginRendering(_),
                     CommandBufferInheritanceRenderPassType::BeginRendering(inheritance_info),
                 ) => {
-                    let attachments = state.attachments.as_ref().unwrap();
+                    let attachments = render_pass_state.attachments.as_ref().unwrap();
 
                     // VUID-vkCmdExecuteCommands-colorAttachmentCount-06027
                     if inheritance_info.color_attachment_formats.len()
@@ -230,10 +230,10 @@ where
                     }
 
                     // VUID-vkCmdExecuteCommands-viewMask-06031
-                    if inheritance_info.view_mask != render_pass_state.view_mask {
+                    if inheritance_info.view_mask != render_pass_state.rendering_info.view_mask {
                         return Err(ExecuteCommandsError::RenderPassViewMaskMismatch {
                             command_buffer_index,
-                            required_view_mask: render_pass_state.view_mask,
+                            required_view_mask: render_pass_state.rendering_info.view_mask,
                             inherited_view_mask: inheritance_info.view_mask,
                         });
                     }

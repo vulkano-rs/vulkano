@@ -34,14 +34,15 @@ use crate::{
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned, QueueFamilyProperties, QueueFlags},
-    format::{Format, FormatFeatures},
-    image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
+    format::FormatFeatures,
+    image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange, ImageViewAbstract},
     pipeline::{
         graphics::{
             color_blend::LogicOp,
             depth_stencil::{CompareOp, StencilOps},
             input_assembly::{IndexType, PrimitiveTopology},
             rasterization::{CullMode, DepthBias, FrontFace, LineStipple},
+            render_pass::PipelineRenderingCreateInfo,
             viewport::{Scissor, Viewport},
         },
         ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
@@ -49,7 +50,7 @@ use crate::{
     query::{QueryControlFlags, QueryType},
     range_map::RangeMap,
     range_set::RangeSet,
-    render_pass::{Framebuffer, Subpass},
+    render_pass::{Framebuffer, LoadOp, StoreOp, Subpass},
     sync::{
         BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier, PipelineStage,
         PipelineStageAccess, PipelineStageAccessSet, PipelineStages,
@@ -847,49 +848,48 @@ struct RenderPassState {
     contents: SubpassContents,
     render_area_offset: [u32; 2],
     render_area_extent: [u32; 2],
+
+    rendering_info: PipelineRenderingCreateInfo,
+    attachments: Option<RenderPassStateAttachments>,
+
     render_pass: RenderPassStateType,
-    view_mask: u32,
 }
 
 impl RenderPassState {
     fn from_inheritance(render_pass: &CommandBufferInheritanceRenderPassType) -> Self {
-        // In a secondary command buffer, we don't know the render area yet, so use a
-        // dummy value.
-        let render_area_offset = [0, 0];
-        let mut render_area_extent = [u32::MAX, u32::MAX];
-
         match render_pass {
             CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
-                if let Some(framebuffer) = &info.framebuffer {
-                    // Still not exact, but it's a better upper bound.
-                    render_area_extent = framebuffer.extent();
-                }
-
                 RenderPassState {
                     contents: SubpassContents::Inline,
-                    render_area_offset,
-                    render_area_extent,
+                    render_area_offset: [0, 0],
+                    render_area_extent: (info.framebuffer.as_ref())
+                        // Still not exact, but it's a better upper bound.
+                        .map_or([u32::MAX, u32::MAX], |framebuffer| framebuffer.extent()),
+
+                    rendering_info: PipelineRenderingCreateInfo::from_subpass(&info.subpass),
+                    attachments: info.framebuffer.as_ref().map(|framebuffer| {
+                        RenderPassStateAttachments::from_subpass(&info.subpass, framebuffer)
+                    }),
+
                     render_pass: BeginRenderPassState {
                         subpass: info.subpass.clone(),
                         framebuffer: info.framebuffer.clone(),
                     }
                     .into(),
-                    view_mask: info.subpass.subpass_desc().view_mask,
                 }
             }
             CommandBufferInheritanceRenderPassType::BeginRendering(info) => RenderPassState {
                 contents: SubpassContents::Inline,
-                render_area_offset,
-                render_area_extent,
+                render_area_offset: [0, 0],
+                render_area_extent: [u32::MAX, u32::MAX],
+
+                rendering_info: PipelineRenderingCreateInfo::from_inheritance_rendering_info(info),
+                attachments: None,
+
                 render_pass: BeginRenderingState {
-                    attachments: None,
-                    color_attachment_formats: info.color_attachment_formats.clone(),
-                    depth_attachment_format: info.depth_attachment_format,
-                    stencil_attachment_format: info.stencil_attachment_format,
                     pipeline_used: false,
                 }
                 .into(),
-                view_mask: info.view_mask,
             },
         }
     }
@@ -920,17 +920,190 @@ struct BeginRenderPassState {
 }
 
 struct BeginRenderingState {
-    attachments: Option<BeginRenderingAttachments>,
-    color_attachment_formats: Vec<Option<Format>>,
-    depth_attachment_format: Option<Format>,
-    stencil_attachment_format: Option<Format>,
     pipeline_used: bool,
 }
 
-struct BeginRenderingAttachments {
-    color_attachments: Vec<Option<RenderingAttachmentInfo>>,
-    depth_attachment: Option<RenderingAttachmentInfo>,
-    stencil_attachment: Option<RenderingAttachmentInfo>,
+struct RenderPassStateAttachments {
+    color_attachments: Vec<Option<RenderPassStateAttachmentInfo>>,
+    depth_attachment: Option<RenderPassStateAttachmentInfo>,
+    stencil_attachment: Option<RenderPassStateAttachmentInfo>,
+}
+
+impl RenderPassStateAttachments {
+    fn from_subpass(subpass: &Subpass, framebuffer: &Framebuffer) -> Self {
+        let subpass_desc = subpass.subpass_desc();
+        let rp_attachments = subpass.render_pass().attachments();
+        let fb_attachments = framebuffer.attachments();
+
+        Self {
+            color_attachments: (subpass_desc.color_attachments.iter().enumerate())
+                .map(|(index, atch_ref)| {
+                    (atch_ref.as_ref()).map(|atch_ref| RenderPassStateAttachmentInfo {
+                        image_view: fb_attachments[atch_ref.attachment as usize].clone(),
+                        image_layout: atch_ref.layout,
+                        load_access: subpass
+                            .load_op(atch_ref.attachment)
+                            .and_then(color_load_access),
+                        store_access: subpass
+                            .store_op(atch_ref.attachment)
+                            .and_then(color_store_access),
+                        resolve_info: (subpass_desc.resolve_attachments.get(index))
+                            .and_then(|atch_ref| atch_ref.as_ref())
+                            .map(|atch_ref| RenderPassStateAttachmentResolveInfo {
+                                image_view: fb_attachments[atch_ref.attachment as usize].clone(),
+                                image_layout: atch_ref.layout,
+                                load_access: subpass
+                                    .load_op(atch_ref.attachment)
+                                    .and_then(color_load_access),
+                                store_access: subpass
+                                    .store_op(atch_ref.attachment)
+                                    .and_then(color_store_access),
+                            }),
+                    })
+                })
+                .collect(),
+            depth_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
+                .filter(|atch_ref| {
+                    (rp_attachments[atch_ref.attachment as usize].format.unwrap())
+                        .aspects()
+                        .intersects(ImageAspects::DEPTH)
+                })
+                .map(|atch_ref| RenderPassStateAttachmentInfo {
+                    image_view: fb_attachments[atch_ref.attachment as usize].clone(),
+                    image_layout: atch_ref.layout,
+                    load_access: subpass
+                        .load_op(atch_ref.attachment)
+                        .and_then(depth_stencil_load_access),
+                    store_access: subpass
+                        .store_op(atch_ref.attachment)
+                        .and_then(depth_stencil_store_access),
+                    resolve_info: None,
+                }),
+            stencil_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
+                .filter(|atch_ref| {
+                    (rp_attachments[atch_ref.attachment as usize].format.unwrap())
+                        .aspects()
+                        .intersects(ImageAspects::STENCIL)
+                })
+                .map(|atch_ref| RenderPassStateAttachmentInfo {
+                    image_view: fb_attachments[atch_ref.attachment as usize].clone(),
+                    image_layout: atch_ref.layout,
+                    load_access: subpass
+                        .stencil_load_op(atch_ref.attachment)
+                        .and_then(depth_stencil_load_access),
+                    store_access: subpass
+                        .stencil_store_op(atch_ref.attachment)
+                        .and_then(depth_stencil_store_access),
+                    resolve_info: None,
+                }),
+        }
+    }
+
+    fn from_rendering_info(info: &RenderingInfo) -> Self {
+        Self {
+            color_attachments: (info.color_attachments.iter())
+                .map(|atch_info| {
+                    (atch_info.as_ref()).map(|atch_info| RenderPassStateAttachmentInfo {
+                        image_view: atch_info.image_view.clone(),
+                        image_layout: atch_info.image_layout,
+                        load_access: color_load_access(atch_info.load_op),
+                        store_access: color_store_access(atch_info.store_op),
+                        resolve_info: atch_info.resolve_info.as_ref().map(|resolve_atch_info| {
+                            RenderPassStateAttachmentResolveInfo {
+                                image_view: resolve_atch_info.image_view.clone(),
+                                image_layout: resolve_atch_info.image_layout,
+                                load_access: None,
+                                store_access: None,
+                            }
+                        }),
+                    })
+                })
+                .collect(),
+            depth_attachment: (info.depth_attachment.as_ref()).map(|atch_info| {
+                RenderPassStateAttachmentInfo {
+                    image_view: atch_info.image_view.clone(),
+                    image_layout: atch_info.image_layout,
+                    load_access: depth_stencil_load_access(atch_info.load_op),
+                    store_access: depth_stencil_store_access(atch_info.store_op),
+                    resolve_info: atch_info.resolve_info.as_ref().map(|resolve_atch_info| {
+                        RenderPassStateAttachmentResolveInfo {
+                            image_view: resolve_atch_info.image_view.clone(),
+                            image_layout: resolve_atch_info.image_layout,
+                            load_access: None,
+                            store_access: None,
+                        }
+                    }),
+                }
+            }),
+            stencil_attachment: (info.stencil_attachment.as_ref()).map(|atch_info| {
+                RenderPassStateAttachmentInfo {
+                    image_view: atch_info.image_view.clone(),
+                    image_layout: atch_info.image_layout,
+                    load_access: depth_stencil_load_access(atch_info.load_op),
+                    store_access: depth_stencil_store_access(atch_info.store_op),
+                    resolve_info: atch_info.resolve_info.as_ref().map(|resolve_atch_info| {
+                        RenderPassStateAttachmentResolveInfo {
+                            image_view: resolve_atch_info.image_view.clone(),
+                            image_layout: resolve_atch_info.image_layout,
+                            load_access: None,
+                            store_access: None,
+                        }
+                    }),
+                }
+            }),
+        }
+    }
+}
+
+fn color_load_access(load_op: LoadOp) -> Option<PipelineStageAccess> {
+    match load_op {
+        LoadOp::Load => Some(PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentRead),
+        LoadOp::Clear => Some(PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite),
+        LoadOp::DontCare => Some(PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite),
+        //LoadOp::None => None,
+    }
+}
+
+fn depth_stencil_load_access(load_op: LoadOp) -> Option<PipelineStageAccess> {
+    match load_op {
+        LoadOp::Load => Some(PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentRead),
+        LoadOp::Clear => Some(PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite),
+        LoadOp::DontCare => {
+            Some(PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite)
+        } //LoadOp::None => None,
+    }
+}
+
+fn color_store_access(store_op: StoreOp) -> Option<PipelineStageAccess> {
+    match store_op {
+        StoreOp::Store => Some(PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite),
+        StoreOp::DontCare => Some(PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite),
+        // StoreOp::None => None,
+    }
+}
+
+fn depth_stencil_store_access(store_op: StoreOp) -> Option<PipelineStageAccess> {
+    match store_op {
+        StoreOp::Store => Some(PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite),
+        StoreOp::DontCare => {
+            Some(PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite)
+        } // StoreOp::None => None,
+    }
+}
+
+struct RenderPassStateAttachmentInfo {
+    image_view: Arc<dyn ImageViewAbstract>,
+    image_layout: ImageLayout,
+    load_access: Option<PipelineStageAccess>,
+    store_access: Option<PipelineStageAccess>,
+    resolve_info: Option<RenderPassStateAttachmentResolveInfo>,
+}
+
+struct RenderPassStateAttachmentResolveInfo {
+    image_view: Arc<dyn ImageViewAbstract>,
+    image_layout: ImageLayout,
+    load_access: Option<PipelineStageAccess>,
+    store_access: Option<PipelineStageAccess>,
 }
 
 struct DescriptorSetState {

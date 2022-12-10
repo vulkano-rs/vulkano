@@ -9,7 +9,7 @@
 
 //! Extraction of information from SPIR-V modules, that is needed by the rest of Vulkano.
 
-use super::DescriptorBindingRequirements;
+use super::{DescriptorBindingRequirements, FragmentShaderExecution, FragmentTestsStages};
 use crate::{
     descriptor_set::layout::DescriptorType,
     image::view::ImageViewType,
@@ -128,32 +128,69 @@ fn shader_execution(
         ExecutionModel::TessellationEvaluation => ShaderExecution::TessellationEvaluation,
 
         ExecutionModel::Geometry => {
-            let input = spirv
-                .iter_execution_mode()
-                .into_iter()
-                .find_map(|instruction| match instruction {
+            let mut input = None;
+
+            for instruction in spirv.iter_execution_mode() {
+                let mode = match instruction {
                     Instruction::ExecutionMode {
                         entry_point, mode, ..
-                    } if *entry_point == function_id => match mode {
-                        ExecutionMode::InputPoints => Some(GeometryShaderInput::Points),
-                        ExecutionMode::InputLines => Some(GeometryShaderInput::Lines),
-                        ExecutionMode::InputLinesAdjacency => {
-                            Some(GeometryShaderInput::LinesWithAdjacency)
-                        }
-                        ExecutionMode::Triangles => Some(GeometryShaderInput::Triangles),
-                        ExecutionMode::InputTrianglesAdjacency => {
-                            Some(GeometryShaderInput::TrianglesWithAdjacency)
-                        }
-                        _ => todo!(),
-                    },
-                    _ => None,
-                })
-                .expect("Geometry shader does not have an input primitive ExecutionMode");
+                    } if *entry_point == function_id => mode,
+                    _ => continue,
+                };
 
-            ShaderExecution::Geometry(GeometryShaderExecution { input })
+                match mode {
+                    ExecutionMode::InputPoints => {
+                        input = Some(GeometryShaderInput::Points);
+                    }
+                    ExecutionMode::InputLines => {
+                        input = Some(GeometryShaderInput::Lines);
+                    }
+                    ExecutionMode::InputLinesAdjacency => {
+                        input = Some(GeometryShaderInput::LinesWithAdjacency);
+                    }
+                    ExecutionMode::Triangles => {
+                        input = Some(GeometryShaderInput::Triangles);
+                    }
+                    ExecutionMode::InputTrianglesAdjacency => {
+                        input = Some(GeometryShaderInput::TrianglesWithAdjacency);
+                    }
+                    _ => (),
+                }
+            }
+
+            ShaderExecution::Geometry(GeometryShaderExecution {
+                input: input
+                    .expect("Geometry shader does not have an input primitive ExecutionMode"),
+            })
         }
 
-        ExecutionModel::Fragment => ShaderExecution::Fragment,
+        ExecutionModel::Fragment => {
+            let mut fragment_tests_stages = FragmentTestsStages::Late;
+
+            for instruction in spirv.iter_execution_mode() {
+                let mode = match instruction {
+                    Instruction::ExecutionMode {
+                        entry_point, mode, ..
+                    } if *entry_point == function_id => mode,
+                    _ => continue,
+                };
+
+                #[allow(clippy::single_match)]
+                match mode {
+                    ExecutionMode::EarlyFragmentTests => {
+                        fragment_tests_stages = FragmentTestsStages::Early;
+                    }
+                    /*ExecutionMode::EarlyAndLateFragmentTestsAMD => {
+                        fragment_tests_stages = FragmentTestsStages::EarlyAndLate;
+                    }*/
+                    _ => (),
+                }
+            }
+
+            ShaderExecution::Fragment(FragmentShaderExecution {
+                fragment_tests_stages,
+            })
+        }
 
         ExecutionModel::GLCompute => ShaderExecution::Compute,
 
@@ -164,7 +201,10 @@ fn shader_execution(
         ExecutionModel::MissKHR => ShaderExecution::Miss,
         ExecutionModel::CallableKHR => ShaderExecution::Callable,
 
-        ExecutionModel::Kernel | ExecutionModel::TaskNV | ExecutionModel::MeshNV => todo!(),
+        ExecutionModel::TaskNV => ShaderExecution::Task,
+        ExecutionModel::MeshNV => ShaderExecution::Mesh,
+
+        ExecutionModel::Kernel => todo!(),
     }
 }
 
