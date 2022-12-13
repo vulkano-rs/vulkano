@@ -12,8 +12,9 @@ use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, TypedBufferAccess},
     command_buffer::{allocator::CommandBufferAllocator, commands::bind_push::BindPushError},
     descriptor_set::{
-        check_descriptor_write, DescriptorSetResources, DescriptorSetWithOffsets,
-        DescriptorSetsCollection, DescriptorWriteInfo, WriteDescriptorSet,
+        check_descriptor_write, layout::DescriptorType, DescriptorBindingResources,
+        DescriptorSetResources, DescriptorSetWithOffsets, DescriptorSetsCollection,
+        DescriptorWriteInfo, WriteDescriptorSet,
     },
     device::{DeviceOwned, QueueFlags},
     pipeline::{
@@ -24,7 +25,7 @@ use crate::{
         },
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
-    RequiresOneOf, VulkanObject,
+    DeviceSize, RequiresOneOf, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{cmp::min, sync::Arc};
@@ -108,24 +109,93 @@ where
             });
         }
 
+        let properties = self.device().physical_device().properties();
+        let uniform_alignment = properties.min_uniform_buffer_offset_alignment as u32;
+        let storage_alignment = properties.min_storage_buffer_offset_alignment as u32;
+
         for (i, set) in descriptor_sets.iter().enumerate() {
             let set_num = first_set + i as u32;
+            let (set, dynamic_offsets) = set.as_ref();
 
             // VUID-vkCmdBindDescriptorSets-commonparent
-            assert_eq!(self.device(), set.as_ref().0.device());
+            assert_eq!(self.device(), set.device());
 
-            let pipeline_layout_set = &pipeline_layout.set_layouts()[set_num as usize];
+            let set_layout = set.layout();
+            let pipeline_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 
             // VUID-vkCmdBindDescriptorSets-pDescriptorSets-00358
-            if !pipeline_layout_set.is_compatible_with(set.as_ref().0.layout()) {
+            if !pipeline_set_layout.is_compatible_with(set_layout) {
                 return Err(BindPushError::DescriptorSetNotCompatible { set_num });
             }
 
-            // TODO: see https://github.com/vulkano-rs/vulkano/issues/1643
-            // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971
-            // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01972
-            // VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979
-            // VUID-vkCmdBindDescriptorSets-pDescriptorSets-06715
+            let mut dynamic_offsets_remaining = dynamic_offsets;
+            let mut required_dynamic_offset_count = 0;
+
+            for (&binding_num, binding) in set_layout.bindings() {
+                let required_alignment = match binding.descriptor_type {
+                    DescriptorType::UniformBufferDynamic => uniform_alignment,
+                    DescriptorType::StorageBufferDynamic => storage_alignment,
+                    _ => continue,
+                };
+
+                let count = if binding.variable_descriptor_count {
+                    set.variable_descriptor_count()
+                } else {
+                    binding.descriptor_count
+                } as usize;
+
+                required_dynamic_offset_count += count;
+
+                if !dynamic_offsets_remaining.is_empty() {
+                    let split_index = min(count, dynamic_offsets_remaining.len());
+                    let dynamic_offsets = &dynamic_offsets_remaining[..split_index];
+                    dynamic_offsets_remaining = &dynamic_offsets_remaining[split_index..];
+
+                    let elements = match set.resources().binding(binding_num) {
+                        Some(DescriptorBindingResources::Buffer(elements)) => elements.as_slice(),
+                        _ => unreachable!(),
+                    };
+
+                    for (index, (&offset, element)) in
+                        dynamic_offsets.iter().zip(elements).enumerate()
+                    {
+                        // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971
+                        // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01972
+                        if offset % required_alignment != 0 {
+                            return Err(BindPushError::DynamicOffsetNotAligned {
+                                set_num,
+                                binding_num,
+                                index: index as u32,
+                                offset,
+                                required_alignment,
+                            });
+                        }
+
+                        if let Some((buffer, range)) = element {
+                            // VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979
+                            if offset as DeviceSize + range.end > buffer.size() {
+                                return Err(BindPushError::DynamicOffsetOutOfBufferBounds {
+                                    set_num,
+                                    binding_num,
+                                    index: index as u32,
+                                    offset,
+                                    range_end: range.end,
+                                    buffer_size: buffer.size(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // VUID-vkCmdBindDescriptorSets-dynamicOffsetCount-00359
+            if dynamic_offsets.len() != required_dynamic_offset_count {
+                return Err(BindPushError::DynamicOffsetCountMismatch {
+                    set_num,
+                    provided_count: dynamic_offsets.len(),
+                    required_count: required_dynamic_offset_count,
+                });
+            }
         }
 
         Ok(())

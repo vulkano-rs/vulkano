@@ -91,7 +91,7 @@ use crate::{
     device::DeviceOwned,
     image::view::ImageViewAbstract,
     sampler::Sampler,
-    OomError, VulkanObject,
+    DeviceSize, OomError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::{smallvec, SmallVec};
@@ -99,6 +99,7 @@ use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
+    ops::Range,
     ptr,
     sync::Arc,
 };
@@ -120,6 +121,9 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
 
     /// Returns the layout of this descriptor set.
     fn layout(&self) -> &Arc<DescriptorSetLayout>;
+
+    /// Returns the variable descriptor count that this descriptor set was allocated with.
+    fn variable_descriptor_count(&self) -> u32;
 
     /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
     fn offsets(
@@ -153,6 +157,7 @@ impl Hash for dyn DescriptorSet {
 
 pub(crate) struct DescriptorSetInner {
     layout: Arc<DescriptorSetLayout>,
+    variable_descriptor_count: u32,
     resources: DescriptorSetResources,
 }
 
@@ -229,7 +234,11 @@ impl DescriptorSetInner {
             );
         }
 
-        Ok(DescriptorSetInner { layout, resources })
+        Ok(DescriptorSetInner {
+            layout,
+            variable_descriptor_count,
+            resources,
+        })
     }
 
     pub(crate) fn layout(&self) -> &Arc<DescriptorSetLayout> {
@@ -333,7 +342,7 @@ impl DescriptorSetResources {
 #[derive(Clone)]
 pub enum DescriptorBindingResources {
     None(Elements<()>),
-    Buffer(Elements<Arc<dyn BufferAccess>>),
+    Buffer(Elements<(Arc<dyn BufferAccess>, Range<DeviceSize>)>),
     BufferView(Elements<Arc<dyn BufferViewAbstract>>),
     ImageView(Elements<Arc<dyn ImageViewAbstract>>),
     ImageViewSampler(Elements<(Arc<dyn ImageViewAbstract>, Arc<Sampler>)>),

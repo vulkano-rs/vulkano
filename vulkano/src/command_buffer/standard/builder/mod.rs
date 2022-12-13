@@ -1124,6 +1124,14 @@ impl SetOrPush {
             Self::Push(resources) => resources,
         }
     }
+
+    #[inline]
+    pub fn dynamic_offsets(&self) -> &[u32] {
+        match self {
+            Self::Set(set) => set.as_ref().1,
+            Self::Push(_) => &[],
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]

@@ -647,7 +647,7 @@ where
             let layout_binding =
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
-            let check_buffer = |_index: u32, _buffer: &Arc<dyn BufferAccess>| Ok(());
+            let check_buffer = |_index: u32, (_buffer, _range): &(Arc<dyn BufferAccess>, Range<DeviceSize>)| Ok(());
 
             let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
                 for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
@@ -2144,26 +2144,46 @@ impl SyncCommandBufferBuilder {
                 })
             };
 
-            match descriptor_sets_state.descriptor_sets[&set]
-                .resources()
+            let descriptor_set_state = &descriptor_sets_state.descriptor_sets[&set];
+
+            match descriptor_set_state.resources()
                 .binding(binding)
                 .unwrap()
             {
                 DescriptorBindingResources::None(_) => continue,
                 DescriptorBindingResources::Buffer(elements) => {
-                    resources.extend(
-                        (elements.iter().enumerate())
-                            .filter_map(|(index, element)| {
-                                element.as_ref().map(|buffer| {
-                                    (
-                                        index as u32,
-                                        buffer.clone(),
-                                        0..buffer.size(), // TODO:
-                                    )
+                    if matches!(descriptor_type, DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic) {
+                        let dynamic_offsets = descriptor_set_state.dynamic_offsets();
+                        resources.extend(
+                            (elements.iter().enumerate())
+                                .filter_map(|(index, element)| {
+                                    element.as_ref().map(|(buffer, range)| {
+                                        let dynamic_offset = dynamic_offsets[index] as DeviceSize;
+
+                                        (
+                                            index as u32,
+                                            buffer.clone(),
+                                            dynamic_offset + range.start..dynamic_offset + range.end,
+                                        )
+                                    })
                                 })
-                            })
-                            .flat_map(buffer_resource),
-                    );
+                                .flat_map(buffer_resource),
+                        );
+                    } else {
+                        resources.extend(
+                            (elements.iter().enumerate())
+                                .filter_map(|(index, element)| {
+                                    element.as_ref().map(|(buffer, range)| {
+                                        (
+                                            index as u32,
+                                            buffer.clone(),
+                                            range.clone(),
+                                        )
+                                    })
+                                })
+                                .flat_map(buffer_resource),
+                        );
+                    }
                 }
                 DescriptorBindingResources::BufferView(elements) => {
                     resources.extend(
