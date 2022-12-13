@@ -1709,7 +1709,7 @@ impl SyncCommandBufferBuilder {
                     ResourceUseRef {
                         command_index,
                         command_name,
-                        resource_in_command: ResourceInCommand::DepthAttachment,
+                        resource_in_command: ResourceInCommand::DepthStencilAttachment,
                         secondary_use_ref: None,
                     },
                     Resource::Image {
@@ -1736,7 +1736,7 @@ impl SyncCommandBufferBuilder {
                         ResourceUseRef {
                             command_index,
                             command_name,
-                            resource_in_command: ResourceInCommand::DepthResolveAttachment,
+                            resource_in_command: ResourceInCommand::DepthStencilResolveAttachment,
                             secondary_use_ref: None,
                         },
                         Resource::Image {
@@ -1773,7 +1773,7 @@ impl SyncCommandBufferBuilder {
                     ResourceUseRef {
                         command_index,
                         command_name,
-                        resource_in_command: ResourceInCommand::StencilAttachment,
+                        resource_in_command: ResourceInCommand::DepthStencilAttachment,
                         secondary_use_ref: None,
                     },
                     Resource::Image {
@@ -1800,7 +1800,7 @@ impl SyncCommandBufferBuilder {
                         ResourceUseRef {
                             command_index,
                             command_name,
-                            resource_in_command: ResourceInCommand::StencilResolveAttachment,
+                            resource_in_command: ResourceInCommand::DepthStencilResolveAttachment,
                             secondary_use_ref: None,
                         },
                         Resource::Image {

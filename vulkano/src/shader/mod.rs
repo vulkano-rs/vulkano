@@ -467,7 +467,7 @@ pub enum ShaderExecution {
     TessellationControl,
     TessellationEvaluation,
     Geometry(GeometryShaderExecution),
-    Fragment,
+    Fragment(FragmentShaderExecution),
     Compute,
     RayGeneration,
     AnyHit,
@@ -549,6 +549,20 @@ pub enum GeometryShaderOutput {
     LineStrip,
     TriangleStrip,
 }*/
+
+/// The mode in which a fragment shader executes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FragmentShaderExecution {
+    pub fragment_tests_stages: FragmentTestsStages,
+}
+
+/// The fragment tests stages that will be executed in a fragment shader.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FragmentTestsStages {
+    Early,
+    Late,
+    EarlyAndLate,
+}
 
 /// The requirements imposed by a shader on a binding within a descriptor set layout, and on any
 /// resource that is bound to that binding.
@@ -1189,7 +1203,7 @@ impl From<ShaderExecution> for ShaderStage {
             ShaderExecution::TessellationControl => Self::TessellationControl,
             ShaderExecution::TessellationEvaluation => Self::TessellationEvaluation,
             ShaderExecution::Geometry(_) => Self::Geometry,
-            ShaderExecution::Fragment => Self::Fragment,
+            ShaderExecution::Fragment(_) => Self::Fragment,
             ShaderExecution::Compute => Self::Compute,
             ShaderExecution::RayGeneration => Self::Raygen,
             ShaderExecution::AnyHit => Self::AnyHit,

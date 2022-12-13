@@ -8,8 +8,8 @@
 // according to those terms.
 
 use super::{
-    CommandBufferBuilder, DescriptorSetState, PipelineExecutionError, RenderPassState,
-    RenderPassStateType, ResourcesState,
+    CommandBufferBuilder, CommandBufferBuilderState, DescriptorSetState, PipelineExecutionError,
+    RenderPassState, RenderPassStateAttachmentInfo, RenderPassStateType, ResourcesState,
 };
 use crate::{
     buffer::{view::BufferViewAbstract, BufferAccess, BufferUsage, TypedBufferAccess},
@@ -21,7 +21,7 @@ use crate::{
     descriptor_set::{layout::DescriptorType, DescriptorBindingResources},
     device::{DeviceOwned, QueueFlags},
     format::FormatFeatures,
-    image::{ImageAccess, ImageAspects, ImageViewAbstract, SampleCount},
+    image::{ImageAccess, ImageAspects, ImageSubresourceRange, ImageViewAbstract, SampleCount},
     pipeline::{
         graphics::{
             input_assembly::{IndexType, PrimitiveTopology},
@@ -32,7 +32,10 @@ use crate::{
         PipelineLayout,
     },
     sampler::Sampler,
-    shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage, ShaderStages},
+    shader::{
+        DescriptorBindingRequirements, FragmentTestsStages, ShaderScalarType, ShaderStage,
+        ShaderStages,
+    },
     sync::PipelineStageAccess,
     RequiresOneOf, VulkanObject,
 };
@@ -353,6 +356,14 @@ where
             &self.builder_state.vertex_buffers,
             pipeline,
         );
+        record_subpass_attachments_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            self.builder_state.render_pass.as_ref().unwrap(),
+            &self.builder_state,
+            pipeline,
+        );
 
         if let RenderPassStateType::BeginRendering(state) =
             &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
@@ -502,6 +513,14 @@ where
             command_index,
             command_name,
             &indirect_buffer,
+        );
+        record_subpass_attachments_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            self.builder_state.render_pass.as_ref().unwrap(),
+            &self.builder_state,
+            pipeline,
         );
 
         if let RenderPassStateType::BeginRendering(state) =
@@ -657,6 +676,14 @@ where
             command_index,
             command_name,
             &self.builder_state.index_buffer,
+        );
+        record_subpass_attachments_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            self.builder_state.render_pass.as_ref().unwrap(),
+            &self.builder_state,
+            pipeline,
         );
 
         if let RenderPassStateType::BeginRendering(state) =
@@ -821,6 +848,14 @@ where
             command_index,
             command_name,
             &indirect_buffer,
+        );
+        record_subpass_attachments_access(
+            &mut self.resources_usage_state,
+            command_index,
+            command_name,
+            self.builder_state.render_pass.as_ref().unwrap(),
+            &self.builder_state,
+            pipeline,
         );
 
         if let RenderPassStateType::BeginRendering(state) =
@@ -1716,7 +1751,6 @@ where
                 DynamicState::ShadingRateImageEnable => todo!(),
                 DynamicState::RepresentativeFragmentTestEnable => todo!(),
                 DynamicState::CoverageReductionMode => todo!(),
-                
             }
         }
 
@@ -1757,43 +1791,48 @@ where
                 }
             }
             (
-                RenderPassStateType::BeginRendering(current_rendering_info),
+                RenderPassStateType::BeginRendering(_),
                 PipelineRenderPassType::BeginRendering(pipeline_rendering_info),
             ) => {
                 // VUID-vkCmdDraw-viewMask-06178
-                if pipeline_rendering_info.view_mask != render_pass_state.view_mask {
+                if pipeline_rendering_info.view_mask != render_pass_state.rendering_info.view_mask {
                     return Err(PipelineExecutionError::PipelineViewMaskMismatch {
                         pipeline_view_mask: pipeline_rendering_info.view_mask,
-                        required_view_mask: render_pass_state.view_mask,
+                        required_view_mask: render_pass_state.rendering_info.view_mask,
                     });
                 }
 
                 // VUID-vkCmdDraw-colorAttachmentCount-06179
                 if pipeline_rendering_info.color_attachment_formats.len()
-                    != current_rendering_info.color_attachment_formats.len()
+                    != render_pass_state
+                        .rendering_info
+                        .color_attachment_formats
+                        .len()
                 {
                     return Err(
                         PipelineExecutionError::PipelineColorAttachmentCountMismatch {
                             pipeline_count: pipeline_rendering_info.color_attachment_formats.len()
                                 as u32,
-                            required_count: current_rendering_info.color_attachment_formats.len()
-                                as u32,
+                            required_count: render_pass_state
+                                .rendering_info
+                                .color_attachment_formats
+                                .len() as u32,
                         },
                     );
                 }
 
-                for (color_attachment_index, required_format, pipeline_format) in
-                    current_rendering_info
-                        .color_attachment_formats
-                        .iter()
-                        .zip(
-                            pipeline_rendering_info
-                                .color_attachment_formats
-                                .iter()
-                                .copied(),
-                        )
-                        .enumerate()
-                        .filter_map(|(i, (r, p))| r.map(|r| (i as u32, r, p)))
+                for (color_attachment_index, required_format, pipeline_format) in render_pass_state
+                    .rendering_info
+                    .color_attachment_formats
+                    .iter()
+                    .zip(
+                        pipeline_rendering_info
+                            .color_attachment_formats
+                            .iter()
+                            .copied(),
+                    )
+                    .enumerate()
+                    .filter_map(|(i, (r, p))| r.map(|r| (i as u32, r, p)))
                 {
                     // VUID-vkCmdDraw-colorAttachmentCount-06180
                     if Some(required_format) != pipeline_format {
@@ -1807,7 +1846,8 @@ where
                     }
                 }
 
-                if let Some((required_format, pipeline_format)) = current_rendering_info
+                if let Some((required_format, pipeline_format)) = render_pass_state
+                    .rendering_info
                     .depth_attachment_format
                     .map(|r| (r, pipeline_rendering_info.depth_attachment_format))
                 {
@@ -1822,7 +1862,8 @@ where
                     }
                 }
 
-                if let Some((required_format, pipeline_format)) = current_rendering_info
+                if let Some((required_format, pipeline_format)) = render_pass_state
+                    .rendering_info
                     .stencil_attachment_format
                     .map(|r| (r, pipeline_rendering_info.stencil_attachment_format))
                 {
@@ -2211,4 +2252,165 @@ fn record_indirect_buffer_access(
         range,
         PipelineStageAccess::DrawIndirect_IndirectCommandRead,
     );
+}
+
+fn record_subpass_attachments_access(
+    resources_usage_state: &mut ResourcesState,
+    command_index: usize,
+    command_name: &'static str,
+    render_pass_state: &RenderPassState,
+    builder_state: &CommandBufferBuilderState,
+    pipeline: &GraphicsPipeline,
+) {
+    if Option::from(pipeline.rasterization_state().rasterizer_discard_enable)
+        .or(builder_state.rasterizer_discard_enable)
+        .unwrap()
+    {
+        return;
+    }
+
+    let attachments = match &render_pass_state.attachments {
+        Some(x) => x,
+        None => return,
+    };
+
+    if let Some(attachment_info) = attachments.depth_attachment.as_ref() {
+        let &RenderPassStateAttachmentInfo {
+            ref image_view,
+            image_layout,
+            ..
+        } = attachment_info;
+
+        // TODO: check `pipeline.depth_stencil_state` for whether the attachment is going to be
+        // read and/or written.
+        let accesses: &'static [PipelineStageAccess] =
+            match pipeline.fragment_tests_stages().unwrap() {
+                FragmentTestsStages::Early => {
+                    &[PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite]
+                }
+                FragmentTestsStages::Late => {
+                    &[PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite]
+                }
+                FragmentTestsStages::EarlyAndLate => &[
+                    PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite,
+                    PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite,
+                ],
+            };
+
+        let image = image_view.image();
+        let image_inner = image.inner();
+        let mut subresource_range = ImageSubresourceRange {
+            aspects: ImageAspects::DEPTH,
+            ..image_view.subresource_range().clone()
+        };
+        subresource_range.array_layers.start += image_inner.first_layer;
+        subresource_range.array_layers.end += image_inner.first_layer;
+        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
+        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
+
+        let use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::DepthStencilAttachment,
+            secondary_use_ref: None,
+        };
+
+        for &access in accesses {
+            resources_usage_state.record_image_access(
+                &use_ref,
+                image_inner.image,
+                subresource_range.clone(),
+                access,
+                image_layout,
+            );
+        }
+    }
+
+    if let Some(attachment_info) = attachments.stencil_attachment.as_ref() {
+        let &RenderPassStateAttachmentInfo {
+            ref image_view,
+            image_layout,
+            ..
+        } = attachment_info;
+
+        // TODO: check `pipeline.depth_stencil_state` for whether the attachment is going to be
+        // read and/or written.
+        let accesses: &'static [PipelineStageAccess] =
+            match pipeline.fragment_tests_stages().unwrap() {
+                FragmentTestsStages::Early => {
+                    &[PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite]
+                }
+                FragmentTestsStages::Late => {
+                    &[PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite]
+                }
+                FragmentTestsStages::EarlyAndLate => &[
+                    PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite,
+                    PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite,
+                ],
+            };
+
+        let image = image_view.image();
+        let image_inner = image.inner();
+        let mut subresource_range = ImageSubresourceRange {
+            aspects: ImageAspects::STENCIL,
+            ..image_view.subresource_range().clone()
+        };
+        subresource_range.array_layers.start += image_inner.first_layer;
+        subresource_range.array_layers.end += image_inner.first_layer;
+        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
+        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
+
+        let use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::DepthStencilAttachment,
+            secondary_use_ref: None,
+        };
+
+        for &access in accesses {
+            resources_usage_state.record_image_access(
+                &use_ref,
+                image_inner.image,
+                subresource_range.clone(),
+                access,
+                image_layout,
+            );
+        }
+    }
+
+    for (index, attachment_info) in (attachments.color_attachments.iter().enumerate())
+        .filter_map(|(i, a)| a.as_ref().map(|a| (i as u32, a)))
+    {
+        let &RenderPassStateAttachmentInfo {
+            ref image_view,
+            image_layout,
+            ..
+        } = attachment_info;
+
+        let image = image_view.image();
+        let image_inner = image.inner();
+        let mut subresource_range = image_view.subresource_range().clone();
+        subresource_range.array_layers.start += image_inner.first_layer;
+        subresource_range.array_layers.end += image_inner.first_layer;
+        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
+        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
+
+        let use_ref = ResourceUseRef {
+            command_index,
+            command_name,
+            resource_in_command: ResourceInCommand::ColorAttachment { index },
+            secondary_use_ref: None,
+        };
+
+        // TODO: process only the color attachment indices that the fragment shader actually
+        // writes to.
+        // TODO: is it possible to only read a color attachment but not write it?
+        resources_usage_state.record_image_access(
+            &use_ref,
+            image_inner.image,
+            subresource_range,
+            PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite,
+            image_layout,
+        );
+    }
 }

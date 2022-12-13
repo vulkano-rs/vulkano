@@ -1419,7 +1419,6 @@ where
                 DynamicState::ShadingRateImageEnable => todo!(),
                 DynamicState::RepresentativeFragmentTestEnable => todo!(),
                 DynamicState::CoverageReductionMode => todo!(),
-                
             }
         }
 

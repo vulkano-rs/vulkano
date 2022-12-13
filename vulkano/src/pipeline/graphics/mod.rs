@@ -67,7 +67,7 @@ use self::{
 use super::{DynamicState, Pipeline, PipelineBindPoint, PipelineLayout};
 use crate::{
     device::{Device, DeviceOwned},
-    shader::{DescriptorBindingRequirements, ShaderStage},
+    shader::{DescriptorBindingRequirements, FragmentTestsStages, ShaderStage},
     VulkanObject,
 };
 use ahash::HashMap;
@@ -108,6 +108,7 @@ pub struct GraphicsPipeline {
     shaders: HashMap<ShaderStage, ()>,
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
+    fragment_tests_stages: Option<FragmentTestsStages>,
 
     vertex_input_state: VertexInputState,
     input_assembly_state: InputAssemblyState,
@@ -232,6 +233,12 @@ impl GraphicsPipeline {
     #[inline]
     pub fn dynamic_states(&self) -> impl ExactSizeIterator<Item = (DynamicState, bool)> + '_ {
         self.dynamic_state.iter().map(|(k, v)| (*k, *v))
+    }
+
+    /// If the pipeline has a fragment shader, returns the fragment tests stages used.
+    #[inline]
+    pub fn fragment_tests_stages(&self) -> Option<FragmentTestsStages> {
+        self.fragment_tests_stages
     }
 }
 

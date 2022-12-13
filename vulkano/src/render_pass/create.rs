@@ -30,7 +30,7 @@ impl RenderPass {
     pub(super) fn validate(
         device: &Device,
         create_info: &mut RenderPassCreateInfo,
-    ) -> Result<u32, RenderPassCreationError> {
+    ) -> Result<(), RenderPassCreationError> {
         let properties = device.physical_device().properties();
 
         let RenderPassCreateInfo {
@@ -40,8 +40,6 @@ impl RenderPass {
             correlated_view_masks,
             _ne: _,
         } = create_info;
-
-        let mut views_used = 0;
 
         /*
             Attachments
@@ -190,8 +188,6 @@ impl RenderPass {
                     },
                 );
             }
-
-            views_used = views_used.max(view_count);
 
             // VUID-VkSubpassDescription2-colorAttachmentCount-03063
             if color_attachments.len() as u32 > properties.max_color_attachments {
@@ -1041,7 +1037,7 @@ impl RenderPass {
             })?;
         }
 
-        Ok(views_used)
+        Ok(())
     }
 
     pub(super) unsafe fn create_v2(

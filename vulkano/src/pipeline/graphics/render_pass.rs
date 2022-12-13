@@ -7,7 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{format::Format, render_pass::Subpass};
+use crate::{
+    command_buffer::{CommandBufferInheritanceRenderingInfo, RenderingInfo},
+    format::Format,
+    image::ImageAspects,
+    render_pass::Subpass,
+};
 
 /// Selects the type of render pass that a graphics pipeline is created for.
 #[derive(Clone, Debug)]
@@ -75,6 +80,61 @@ impl Default for PipelineRenderingCreateInfo {
             color_attachment_formats: Vec::new(),
             depth_attachment_format: None,
             stencil_attachment_format: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl PipelineRenderingCreateInfo {
+    pub(crate) fn from_subpass(subpass: &Subpass) -> Self {
+        let subpass_desc = subpass.subpass_desc();
+        let rp_attachments = subpass.render_pass().attachments();
+
+        Self {
+            view_mask: subpass_desc.view_mask,
+            color_attachment_formats: (subpass_desc.color_attachments.iter())
+                .map(|atch_ref| {
+                    atch_ref.as_ref().map(|atch_ref| {
+                        rp_attachments[atch_ref.attachment as usize].format.unwrap()
+                    })
+                })
+                .collect(),
+            depth_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
+                .map(|atch_ref| rp_attachments[atch_ref.attachment as usize].format.unwrap())
+                .filter(|format| format.aspects().intersects(ImageAspects::DEPTH)),
+            stencil_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
+                .map(|atch_ref| rp_attachments[atch_ref.attachment as usize].format.unwrap())
+                .filter(|format| format.aspects().intersects(ImageAspects::STENCIL)),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn from_rendering_info(info: &RenderingInfo) -> Self {
+        Self {
+            view_mask: info.view_mask,
+            color_attachment_formats: (info.color_attachments.iter())
+                .map(|atch_info| {
+                    atch_info
+                        .as_ref()
+                        .map(|atch_info| atch_info.image_view.format().unwrap())
+                })
+                .collect(),
+            depth_attachment_format: (info.depth_attachment.as_ref())
+                .map(|atch_info| atch_info.image_view.format().unwrap()),
+            stencil_attachment_format: (info.stencil_attachment.as_ref())
+                .map(|atch_info| atch_info.image_view.format().unwrap()),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn from_inheritance_rendering_info(
+        info: &CommandBufferInheritanceRenderingInfo,
+    ) -> Self {
+        Self {
+            view_mask: info.view_mask,
+            color_attachment_formats: info.color_attachment_formats.clone(),
+            depth_attachment_format: info.depth_attachment_format,
+            stencil_attachment_format: info.stencil_attachment_format,
             _ne: crate::NonExhaustive(()),
         }
     }

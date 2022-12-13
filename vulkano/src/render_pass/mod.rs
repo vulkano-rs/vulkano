@@ -109,6 +109,7 @@ pub struct RenderPass {
     dependencies: Vec<SubpassDependency>,
     correlated_view_masks: Vec<u32>,
 
+    attachment_uses: Vec<Option<AttachmentUse>>,
     granularity: [u32; 2],
     views_used: u32,
 }
@@ -124,7 +125,7 @@ impl RenderPass {
         device: Arc<Device>,
         mut create_info: RenderPassCreateInfo,
     ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
-        let views_used = Self::validate(&device, &mut create_info)?;
+        Self::validate(&device, &mut create_info)?;
 
         let handle = unsafe {
             if device.api_version() >= Version::V1_2
@@ -136,38 +137,7 @@ impl RenderPass {
             }
         };
 
-        let RenderPassCreateInfo {
-            attachments,
-            subpasses,
-            dependencies,
-            correlated_view_masks,
-            _ne: _,
-        } = create_info;
-
-        let granularity = unsafe { Self::get_granularity(&device, handle) };
-
-        Ok(Arc::new(RenderPass {
-            handle,
-            device,
-            id: Self::next_id(),
-            attachments,
-            subpasses,
-            dependencies,
-            correlated_view_masks,
-            granularity,
-            views_used,
-        }))
-    }
-
-    unsafe fn get_granularity(device: &Arc<Device>, handle: ash::vk::RenderPass) -> [u32; 2] {
-        let fns = device.fns();
-        let mut out = MaybeUninit::uninit();
-        (fns.v1_0.get_render_area_granularity)(device.handle(), handle, out.as_mut_ptr());
-
-        let out = out.assume_init();
-        debug_assert_ne!(out.width, 0);
-        debug_assert_ne!(out.height, 0);
-        [out.width, out.height]
+        unsafe { Ok(Self::from_handle(device, handle, create_info)) }
     }
 
     /// Builds a render pass with one subpass and no attachment.
@@ -197,15 +167,7 @@ impl RenderPass {
         device: Arc<Device>,
         handle: ash::vk::RenderPass,
         create_info: RenderPassCreateInfo,
-    ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
-        let views_used = create_info
-            .subpasses
-            .iter()
-            .map(|subpass| u32::BITS - subpass.view_mask.leading_zeros())
-            .max()
-            .unwrap();
-        let granularity = Self::get_granularity(&device, handle);
-
+    ) -> Arc<RenderPass> {
         let RenderPassCreateInfo {
             attachments,
             subpasses,
@@ -214,17 +176,65 @@ impl RenderPass {
             _ne: _,
         } = create_info;
 
-        Ok(Arc::new(RenderPass {
+        let granularity = Self::get_granularity(&device, handle);
+        let mut attachment_uses: Vec<Option<AttachmentUse>> = vec![None; attachments.len()];
+        let mut views_used = 0;
+
+        for (index, subpass_desc) in subpasses.iter().enumerate() {
+            let index = index as u32;
+            let &SubpassDescription {
+                view_mask,
+                ref input_attachments,
+                ref color_attachments,
+                ref resolve_attachments,
+                ref depth_stencil_attachment,
+                ..
+            } = subpass_desc;
+
+            for atch_ref in (input_attachments.iter().flatten())
+                .chain(color_attachments.iter().flatten())
+                .chain(resolve_attachments.iter().flatten())
+                .chain(depth_stencil_attachment.iter())
+            {
+                match &mut attachment_uses[atch_ref.attachment as usize] {
+                    Some(attachment_use) => attachment_use.last_use_subpass = index,
+                    attachment_use @ None => {
+                        *attachment_use = Some(AttachmentUse {
+                            first_use_subpass: index,
+                            last_use_subpass: index,
+                        })
+                    }
+                }
+            }
+
+            views_used = max(views_used, u32::BITS - view_mask.leading_zeros());
+        }
+
+        Arc::new(RenderPass {
             handle,
             device,
             id: Self::next_id(),
+
             attachments,
             subpasses,
             dependencies,
             correlated_view_masks,
+
+            attachment_uses,
             granularity,
             views_used,
-        }))
+        })
+    }
+
+    unsafe fn get_granularity(device: &Arc<Device>, handle: ash::vk::RenderPass) -> [u32; 2] {
+        let fns = device.fns();
+        let mut out = MaybeUninit::uninit();
+        (fns.v1_0.get_render_area_granularity)(device.handle(), handle, out.as_mut_ptr());
+
+        let out = out.assume_init();
+        debug_assert_ne!(out.width, 0);
+        debug_assert_ne!(out.height, 0);
+        [out.width, out.height]
     }
 
     /// Returns the attachments of the render pass.
@@ -292,6 +302,7 @@ impl RenderPass {
             subpasses: subpasses1,
             dependencies: dependencies1,
             correlated_view_masks: correlated_view_masks1,
+            attachment_uses: _,
             granularity: _,
             views_used: _,
         } = self;
@@ -302,6 +313,7 @@ impl RenderPass {
             attachments: attachments2,
             subpasses: subpasses2,
             dependencies: dependencies2,
+            attachment_uses: _,
             correlated_view_masks: correlated_view_masks2,
             granularity: _,
             views_used: _,
@@ -712,6 +724,44 @@ impl Subpass {
     pub fn is_compatible_with(&self, shader_interface: &ShaderInterface) -> bool {
         self.render_pass
             .is_compatible_with_shader(self.subpass_id, shader_interface)
+    }
+
+    pub(crate) fn load_op(&self, attachment_index: u32) -> Option<LoadOp> {
+        self.render_pass.attachment_uses[attachment_index as usize]
+            .as_ref()
+            .and_then(|attachment_use| {
+                (attachment_use.first_use_subpass == self.subpass_id)
+                    .then(|| self.render_pass.attachments[attachment_index as usize].load_op)
+            })
+    }
+
+    pub(crate) fn store_op(&self, attachment_index: u32) -> Option<StoreOp> {
+        self.render_pass.attachment_uses[attachment_index as usize]
+            .as_ref()
+            .and_then(|attachment_use| {
+                (attachment_use.last_use_subpass == self.subpass_id)
+                    .then(|| self.render_pass.attachments[attachment_index as usize].store_op)
+            })
+    }
+
+    pub(crate) fn stencil_load_op(&self, attachment_index: u32) -> Option<LoadOp> {
+        self.render_pass.attachment_uses[attachment_index as usize]
+            .as_ref()
+            .and_then(|attachment_use| {
+                (attachment_use.first_use_subpass == self.subpass_id).then(|| {
+                    self.render_pass.attachments[attachment_index as usize].stencil_load_op
+                })
+            })
+    }
+
+    pub(crate) fn stencil_store_op(&self, attachment_index: u32) -> Option<StoreOp> {
+        self.render_pass.attachment_uses[attachment_index as usize]
+            .as_ref()
+            .and_then(|attachment_use| {
+                (attachment_use.last_use_subpass == self.subpass_id).then(|| {
+                    self.render_pass.attachments[attachment_index as usize].stencil_store_op
+                })
+            })
     }
 }
 
@@ -1147,7 +1197,7 @@ vulkan_enum! {
     // TODO: document
     None = NONE {
         api_version: V1_3,
-        device_extensions: [ext_load_store_op_none],
+        device_extensions: [khr_dynamic_rendering, ext_load_store_op_none, qcom_render_pass_store_ops],
     },*/
 }
 
@@ -1182,6 +1232,12 @@ vulkan_bitflags_enum! {
     ///
     /// This mode is supported for depth and stencil formats only.
     MAX, Max = MAX,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AttachmentUse {
+    first_use_subpass: u32,
+    last_use_subpass: u32,
 }
 
 #[cfg(test)]
