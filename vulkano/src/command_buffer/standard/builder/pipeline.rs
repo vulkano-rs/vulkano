@@ -37,10 +37,10 @@ use crate::{
         ShaderStages,
     },
     sync::PipelineStageAccess,
-    RequiresOneOf, VulkanObject,
+    RequiresOneOf, VulkanObject, DeviceSize,
 };
 use ahash::HashMap;
-use std::{cmp::min, mem::size_of, sync::Arc};
+use std::{cmp::min, mem::size_of, sync::Arc, ops::Range};
 
 impl<L, A> CommandBufferBuilder<L, A>
 where
@@ -995,7 +995,7 @@ where
             let layout_binding =
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
-            let check_buffer = |_index: u32, _buffer: &Arc<dyn BufferAccess>| Ok(());
+            let check_buffer = |_index: u32, (_buffer, _range): &(Arc<dyn BufferAccess>, Range<DeviceSize>)| Ok(());
 
             let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
                 for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
@@ -2058,29 +2058,56 @@ fn record_descriptor_sets_access(
             (use_ref, stage_access_iter)
         };
 
-        match descriptor_sets_state.descriptor_sets[&set]
+        let descriptor_set_state = &descriptor_sets_state.descriptor_sets[&set];
+
+        match descriptor_set_state
             .resources()
             .binding(binding)
             .unwrap()
         {
             DescriptorBindingResources::None(_) => continue,
             DescriptorBindingResources::Buffer(elements) => {
-                for (index, element) in elements.iter().enumerate() {
-                    if let Some(buffer) = element {
-                        let buffer_inner = buffer.inner();
-                        let (use_ref, stage_access_iter) = use_iter(index as u32);
+                if matches!(descriptor_type, DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic) {
+                    let dynamic_offsets = descriptor_set_state.dynamic_offsets();
 
-                        let mut range = 0..buffer.size(); // TODO:
-                        range.start += buffer_inner.offset;
-                        range.end += buffer_inner.offset;
+                    for (index, element) in elements.iter().enumerate() {
+                        if let Some((buffer, range)) = element {
+                            let buffer_inner = buffer.inner();
+                            let dynamic_offset = dynamic_offsets[index] as DeviceSize;
+                            let (use_ref, stage_access_iter) = use_iter(index as u32);
 
-                        for stage_access in stage_access_iter {
-                            resources_usage_state.record_buffer_access(
-                                &use_ref,
-                                buffer_inner.buffer,
-                                range.clone(),
-                                stage_access,
-                            );
+                            let mut range = range.clone();
+                            range.start += buffer_inner.offset + dynamic_offset;
+                            range.end += buffer_inner.offset + dynamic_offset;
+
+                            for stage_access in stage_access_iter {
+                                resources_usage_state.record_buffer_access(
+                                    &use_ref,
+                                    buffer_inner.buffer,
+                                    range.clone(),
+                                    stage_access,
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    for (index, element) in elements.iter().enumerate() {
+                        if let Some((buffer, range)) = element {
+                            let buffer_inner = buffer.inner();
+                            let (use_ref, stage_access_iter) = use_iter(index as u32);
+
+                            let mut range = range.clone();
+                            range.start += buffer_inner.offset;
+                            range.end += buffer_inner.offset;
+
+                            for stage_access in stage_access_iter {
+                                resources_usage_state.record_buffer_access(
+                                    &use_ref,
+                                    buffer_inner.buffer,
+                                    range.clone(),
+                                    stage_access,
+                                );
+                            }
                         }
                     }
                 }
