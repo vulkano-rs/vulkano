@@ -199,10 +199,14 @@ impl UnsafeCommandBufferBuilder {
 
                     debug_assert!(AccessFlags::from(src_stages).contains(src_access));
                     debug_assert!(AccessFlags::from(dst_stages).contains(dst_access));
-                    debug_assert!(!matches!(
-                        new_layout,
-                        ImageLayout::Undefined | ImageLayout::Preinitialized
-                    ));
+
+                    debug_assert!(
+                        !matches!(
+                            new_layout,
+                            ImageLayout::Undefined | ImageLayout::Preinitialized
+                        ) || self.device.enabled_features().synchronization2
+                            && old_layout == new_layout
+                    );
                     debug_assert!(image
                         .format()
                         .unwrap()
