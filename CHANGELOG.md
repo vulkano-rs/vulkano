@@ -55,6 +55,7 @@ Changes to pipelines:
 - Implement `IntoIterator` for `Features`, `DeviceExtensions` and `InstanceExtensions`.
 - A new `CommandBufferBuilder` type, that provides validation and keeps resources alive, but requires manual synchronization commands.
 - The `PrimaryCommandBuffer` and `SecondaryCommandBuffer` types.
+- A `buffer_with_range` constructor for `WriteDescriptorSet`, which can be used to select the range within the buffer that should be bound. This must be used when using dynamic buffers.
 
 ### Bugs fixed
 
