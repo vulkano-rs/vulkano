@@ -28,50 +28,12 @@ unsafe impl Vertex for () {
 }
 
 /// Information about a member of a vertex struct.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VertexMemberInfo {
     /// Offset of the member in bytes from the start of the struct.
     pub offset: usize,
-    /// Type of data. This is used to check that the interface is matching.
-    pub ty: VertexMemberTy,
-    /// Number of consecutive elements of that type.
-    pub array_size: usize,
-}
-
-/// Type of a member of a vertex struct.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[allow(missing_docs)]
-pub enum VertexMemberTy {
-    I8,
-    U8,
-    I16,
-    U16,
-    I32,
-    U32,
-    F32,
-    F64,
-}
-
-impl VertexMemberTy {
-    /// Returns true if a combination of `(type, array_size)` matches a format.
-    #[inline]
-    pub fn matches(self, array_size: usize, format: Format, num_locs: u32) -> bool {
-        // TODO: implement correctly
-        let my_size = match self {
-            VertexMemberTy::I8 => 1,
-            VertexMemberTy::U8 => 1,
-            VertexMemberTy::I16 => 2,
-            VertexMemberTy::U16 => 2,
-            VertexMemberTy::I32 => 4,
-            VertexMemberTy::U32 => 4,
-            VertexMemberTy::F32 => 4,
-            VertexMemberTy::F64 => 8,
-        };
-
-        let format_size = match format.block_size() {
-            None => return false,
-            Some(s) => s,
-        } as usize;
-
-        array_size * my_size == format_size * num_locs as usize
-    }
+    /// Attribute format of the member. Implicitly provides number of components.
+    pub format: Format,
+    /// Number of consecutive array elements or matrix columns using format.
+    pub num_elements: u32,
 }

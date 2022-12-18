@@ -103,7 +103,7 @@ pub use self::{
     collection::VertexBuffersCollection,
     definition::{IncompatibleVertexDefinitionError, VertexDefinition},
     impl_vertex::VertexMember,
-    vertex::{Vertex, VertexMemberInfo, VertexMemberTy},
+    vertex::{Vertex, VertexMemberInfo},
 };
 use crate::format::Format;
 use ahash::HashMap;

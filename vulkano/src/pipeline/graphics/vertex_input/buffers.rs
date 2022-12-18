@@ -131,19 +131,13 @@ unsafe impl VertexDefinition for BuffersDefinition {
                         attribute: name.clone().into_owned(),
                     })?;
 
-            if !infos.ty.matches(
-                infos.array_size,
-                element.ty.to_format(),
-                element.ty.num_locations(),
-            ) {
-                // TODO: move this check to GraphicsPipelineBuilder
+            // TODO: should the num_components be checked as well between infos.format and
+            // element.ty.num_components
+            if infos.num_elements != element.ty.num_elements {
                 return Err(IncompatibleVertexDefinitionError::FormatMismatch {
                     attribute: name.clone().into_owned(),
-                    shader: (
-                        element.ty.to_format(),
-                        (element.ty.num_locations()) as usize,
-                    ),
-                    definition: (infos.ty, infos.array_size),
+                    shader: element.ty,
+                    definition: infos,
                 });
             }
 
@@ -155,11 +149,11 @@ unsafe impl VertexDefinition for BuffersDefinition {
                     location,
                     VertexInputAttributeDescription {
                         binding,
-                        format: element.ty.to_format(),
+                        format: infos.format,
                         offset: offset as u32,
                     },
                 ));
-                offset += element.ty.to_format().block_size().unwrap();
+                offset += infos.format.block_size().unwrap();
             }
         }
 

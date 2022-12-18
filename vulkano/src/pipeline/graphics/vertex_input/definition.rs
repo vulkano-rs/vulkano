@@ -51,9 +51,8 @@
 //! ```
 
 use crate::{
-    format::Format,
-    pipeline::graphics::vertex_input::{VertexInputState, VertexMemberTy},
-    shader::ShaderInterface,
+    pipeline::graphics::vertex_input::{VertexInputState, VertexMemberInfo},
+    shader::{ShaderInterface, ShaderInterfaceEntryType},
 };
 use std::{
     error::Error,
@@ -94,9 +93,9 @@ pub enum IncompatibleVertexDefinitionError {
         /// Name of the attribute.
         attribute: String,
         /// The format in the vertex shader.
-        shader: (Format, usize),
+        shader: ShaderInterfaceEntryType,
         /// The format in the vertex definition.
-        definition: (VertexMemberTy, usize),
+        definition: VertexMemberInfo,
     },
 }
 

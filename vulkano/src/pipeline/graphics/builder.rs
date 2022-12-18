@@ -994,7 +994,7 @@ where
                         // TODO: Check component assignments too. Multiple variables can occupy the same
                         // location but in different components.
 
-                        let shader_type = element.ty.to_format().type_color().unwrap();
+                        let shader_type = element.ty.to_numeric_type();
                         let attribute_type = attribute_desc.format.type_color().unwrap();
 
                         if !matches!(
