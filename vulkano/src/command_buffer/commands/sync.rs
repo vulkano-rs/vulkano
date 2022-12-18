@@ -199,10 +199,14 @@ impl UnsafeCommandBufferBuilder {
 
                     debug_assert!(AccessFlags::from(src_stages).contains(src_access));
                     debug_assert!(AccessFlags::from(dst_stages).contains(dst_access));
-                    debug_assert!(!matches!(
-                        new_layout,
-                        ImageLayout::Undefined | ImageLayout::Preinitialized
-                    ));
+
+                    debug_assert!(
+                        old_layout == new_layout
+                            || !matches!(
+                                new_layout,
+                                ImageLayout::Undefined | ImageLayout::Preinitialized
+                            )
+                    );
                     debug_assert!(image
                         .format()
                         .unwrap()

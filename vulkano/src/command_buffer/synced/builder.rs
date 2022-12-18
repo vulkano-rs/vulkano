@@ -616,36 +616,64 @@ impl SyncCommandBufferBuilder {
                                 dst_stages: PipelineStages::ALL_COMMANDS,
                                 dst_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
                                 old_layout: state.initial_layout,
-                                new_layout: state.initial_layout,
+                                new_layout: start_layout,
                                 subresource_range: inner.image.range_to_subresources(range.clone()),
                                 ..ImageMemoryBarrier::image(inner.image.clone())
                             };
 
-                            if state.initial_layout != start_layout {
-                                match start_layout {
-                                    ImageLayout::Undefined => {
-                                        // We can't transition to `Undefined`,
-                                        // but since this means that the command doesn't need any
-                                        // particular layout, we do nothing.
-                                    }
-                                    ImageLayout::Preinitialized => {
-                                        // We can't transition to `Preinitialized`,
-                                        // so all we can do here is error out.
-                                        // TODO: put this in find_image_conflict instead?
+                            // If the `new_layout` is Undefined or Preinitialized, this requires
+                            // special handling. With the synchronization2 feature enabled, these
+                            // values are permitted, as long as `new_layout` equals `old_layout`.
+                            // Without synchronization2, these values are never permitted.
+                            match barrier.new_layout {
+                                ImageLayout::Undefined => {
+                                    // If the command expects Undefined, that really means it
+                                    // doesn't care about the layout at all and anything is valid.
+                                    // We try to keep the old layout, or do a "dummy" transition to
+                                    // the image's final layout if that isn't possible.
+                                    barrier.new_layout =
+                                        if !self.inner.device.enabled_features().synchronization2
+                                            && matches!(
+                                                barrier.old_layout,
+                                                ImageLayout::Undefined
+                                                    | ImageLayout::Preinitialized
+                                            )
+                                        {
+                                            image.final_layout_requirement()
+                                        } else {
+                                            barrier.old_layout
+                                        };
+                                }
+                                ImageLayout::Preinitialized => {
+                                    // TODO: put this in find_image_conflict instead?
+
+                                    // The image must be in the Preinitialized layout already, we
+                                    // can't transition it.
+                                    if state.initial_layout != ImageLayout::Preinitialized {
                                         panic!(
-                                            "Command requires Preinitialized layout, but the \
-                                            initial layout of the image is not Preinitialized"
+                                            "The command requires the `Preinitialized layout`, but
+                                            the initial layout of the image is not `Preinitialized`"
                                         );
                                     }
-                                    _ => {
-                                        // Insert a layout transition.
 
-                                        // A layout transition is a write, so if we perform one, we
-                                        // need exclusive access.
-                                        state.exclusive_any = true;
-                                        barrier.new_layout = start_layout;
+                                    // The image is in the Preinitialized layout, but we can't keep
+                                    // that layout because of the limitations of
+                                    // pre-synchronization2 barriers. So an error is all we can do.
+                                    if !self.inner.device.enabled_features().synchronization2 {
+                                        panic!(
+                                            "The command requires the `Preinitialized` layout, \
+                                            but this is not allowed in pipeline barriers without
+                                            the `synchronization2` feature enabled"
+                                        );
                                     }
                                 }
+                                _ => (),
+                            }
+
+                            // A layout transition is a write, so if we perform one, we
+                            // need exclusive access.
+                            if barrier.old_layout != barrier.new_layout {
+                                state.exclusive_any = true;
                             }
 
                             self.pending_barrier.image_memory_barriers.push(barrier);
