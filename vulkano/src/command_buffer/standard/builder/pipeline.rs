@@ -37,10 +37,10 @@ use crate::{
         ShaderStages,
     },
     sync::PipelineStageAccess,
-    RequiresOneOf, VulkanObject, DeviceSize,
+    DeviceSize, RequiresOneOf, VulkanObject,
 };
 use ahash::HashMap;
-use std::{cmp::min, mem::size_of, sync::Arc, ops::Range};
+use std::{cmp::min, mem::size_of, ops::Range, sync::Arc};
 
 impl<L, A> CommandBufferBuilder<L, A>
 where
@@ -995,7 +995,8 @@ where
             let layout_binding =
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
-            let check_buffer = |_index: u32, (_buffer, _range): &(Arc<dyn BufferAccess>, Range<DeviceSize>)| Ok(());
+            let check_buffer =
+                |_index: u32, (_buffer, _range): &(Arc<dyn BufferAccess>, Range<DeviceSize>)| Ok(());
 
             let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
                 for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
@@ -1912,7 +1913,7 @@ where
                 None => return Err(PipelineExecutionError::VertexBufferNotBound { binding_num }),
             };
 
-            let mut num_elements = vertex_buffer.size() as u64 / binding_desc.stride as u64;
+            let mut num_elements = vertex_buffer.size() / binding_desc.stride as u64;
 
             match binding_desc.input_rate {
                 VertexInputRate::Vertex => {
@@ -2060,14 +2061,13 @@ fn record_descriptor_sets_access(
 
         let descriptor_set_state = &descriptor_sets_state.descriptor_sets[&set];
 
-        match descriptor_set_state
-            .resources()
-            .binding(binding)
-            .unwrap()
-        {
+        match descriptor_set_state.resources().binding(binding).unwrap() {
             DescriptorBindingResources::None(_) => continue,
             DescriptorBindingResources::Buffer(elements) => {
-                if matches!(descriptor_type, DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic) {
+                if matches!(
+                    descriptor_type,
+                    DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
+                ) {
                     let dynamic_offsets = descriptor_set_state.dynamic_offsets();
 
                     for (index, element) in elements.iter().enumerate() {

@@ -1192,8 +1192,8 @@ impl UnsafeCommandBufferBuilder {
             self.handle,
             pipeline_layout.handle(),
             stages.into(),
-            offset as u32,
-            size as u32,
+            offset,
+            size,
             data.as_bytes().as_ptr() as *const _,
         );
     }

@@ -756,8 +756,8 @@ fn inspect_entry_point(
 
     context
         .result
-        .into_iter()
-        .map(|(_, variable)| ((variable.set, variable.binding), variable.reqs))
+        .into_values()
+        .map(|variable| ((variable.set, variable.binding), variable.reqs))
         .collect()
 }
 

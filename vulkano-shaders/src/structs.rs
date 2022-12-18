@@ -616,7 +616,7 @@ pub(super) fn type_from_id(
             (
                 quote! { [#element_type; #array_length] },
                 Cow::from(format!("[{}; {}]", element_type_string, array_length)),
-                Some(element_size * array_length as usize),
+                Some(element_size * array_length),
                 element_align,
             )
         }
