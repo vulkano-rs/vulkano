@@ -58,6 +58,7 @@ Changes to pipelines:
 - A `buffer_with_range` constructor for `WriteDescriptorSet`, which can be used to select the range within the buffer that should be bound. This must be used when using dynamic buffers.
 
 ### Bugs fixed
+- [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
 
 # Version 0.32.3 (2022-12-07)
 
