@@ -1993,7 +1993,7 @@ where
         }
 
         let mut swapchain_info = self.swapchain_info.clone();
-        debug_assert!((swapchain_info.image_index as u32) < swapchain_info.swapchain.image_count());
+        debug_assert!(swapchain_info.image_index < swapchain_info.swapchain.image_count());
         let device = swapchain_info.swapchain.device();
 
         if !device.enabled_features().present_id {

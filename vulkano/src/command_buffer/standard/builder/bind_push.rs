@@ -722,7 +722,7 @@ where
                 self.handle(),
                 pipeline_layout.handle(),
                 range.stages.into(),
-                current_offset as u32,
+                current_offset,
                 values.len() as u32,
                 values.as_ptr() as *const _,
             );
