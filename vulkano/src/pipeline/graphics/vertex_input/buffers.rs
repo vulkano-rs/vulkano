@@ -131,9 +131,9 @@ unsafe impl VertexDefinition for BuffersDefinition {
                         attribute: name.clone().into_owned(),
                     })?;
 
-            // TODO: should the num_components be checked as well between infos.format and
-            // element.ty.num_components
-            if infos.num_elements != element.ty.num_elements {
+            if infos.num_components() != element.ty.num_components
+                || infos.num_locations != element.ty.num_locations()
+            {
                 return Err(IncompatibleVertexDefinitionError::FormatMismatch {
                     attribute: name.clone().into_owned(),
                     shader: element.ty,
