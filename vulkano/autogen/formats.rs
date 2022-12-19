@@ -51,12 +51,15 @@ struct FormatMember {
     components: [u8; 4],
     compression: Option<Ident>,
     planes: Vec<Ident>,
-    rust_type: Option<TokenStream>,
     texels_per_block: u8,
     type_color: Option<Ident>,
     type_depth: Option<Ident>,
     type_stencil: Option<Ident>,
     ycbcr_chroma_sampling: Option<Ident>,
+
+    type_std_array: Option<TokenStream>,
+    type_cgmath: Option<TokenStream>,
+    type_nalgebra: Option<TokenStream>,
 }
 
 fn formats_output(members: &[FormatMember]) -> TokenStream {
@@ -208,15 +211,43 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
     let try_from_items = members.iter().map(|FormatMember { name, ffi_name, .. }| {
         quote! { ash::vk::Format::#ffi_name => Ok(Self::#name), }
     });
+
     let type_for_format_items = members.iter().filter_map(
         |FormatMember {
-             name, rust_type, ..
+             name,
+             type_std_array,
+             ..
          }| {
-            rust_type.as_ref().map(|rust_type| {
-                quote! { (#name) => { #rust_type }; }
+            type_std_array.as_ref().map(|ty| {
+                quote! { (#name) => { #ty }; }
             })
         },
     );
+    let type_for_format_cgmath_items = members.iter().filter_map(
+        |FormatMember {
+             name,
+             type_std_array,
+             type_cgmath,
+             ..
+         }| {
+            (type_cgmath.as_ref().or(type_std_array.as_ref())).map(|ty| {
+                quote! { (#name) => { #ty }; }
+            })
+        },
+    );
+    let type_for_format_nalgebra_items = members.iter().filter_map(
+        |FormatMember {
+             name,
+             type_std_array,
+             type_nalgebra,
+             ..
+         }| {
+            (type_nalgebra.as_ref().or(type_std_array.as_ref())).map(|ty| {
+                quote! { (#name) => { #ty }; }
+            })
+        },
+    );
+
     let validate_device_items = members.iter().map(|FormatMember { name, requires, .. }| {
         let requires_items = requires.iter().map(
             |RequiresOneOf {
@@ -502,13 +533,12 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             }
         }
 
-        /// Converts a format enum identifier to a type that is suitable for representing the format
-        /// in a buffer or image.
+        /// Converts a format enum identifier to a standard Rust type that is suitable for
+        /// representing the format in a buffer or image.
         ///
         /// This macro returns one possible suitable representation, but there are usually other
-        /// possibilities for a given format, including those provided by external libraries like
-        /// `cmath` or `nalgebra`. A compile error occurs for formats that have no well-defined size
-        /// (the `size` method returns `None`).
+        /// possibilities for a given format. A compile error occurs for formats that have no
+        /// well-defined size (the `size` method returns `None`).
         ///
         /// - For regular unpacked formats with one component, this returns a single floating point,
         ///   signed or unsigned integer with the appropriate number of bits. For formats with
@@ -532,6 +562,77 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         #[macro_export]
         macro_rules! type_for_format {
             #(#type_for_format_items)*
+        }
+
+        /// Converts a format enum identifier to a [`cgmath`] or standard Rust type that is
+        /// suitable for representing the format in a buffer or image.
+        ///
+        /// This macro returns one possible suitable representation, but there are usually other
+        /// possibilities for a given format. A compile error occurs for formats that have no
+        /// well-defined size (the `size` method returns `None`).
+        ///
+        /// - For regular unpacked formats with one component, this returns a single floating point,
+        ///   signed or unsigned integer with the appropriate number of bits. For formats with
+        ///   multiple components, a [`cgmath`] `Vector` is returned.
+        /// - For packed formats, this returns an unsigned integer with the size of the packed
+        ///   element. For multi-packed formats (such as `2PACK16`), an array is returned.
+        /// - For compressed formats, this returns `[u8; N]` where N is the size of a block.
+        ///
+        /// Note: for 16-bit floating point values, you need to import the [`half::f16`] type.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// # #[macro_use] extern crate vulkano;
+        /// # fn main() {
+        /// let pixel: type_for_format_cgmath!(R32G32B32A32_SFLOAT);
+        /// # }
+        /// ```
+        ///
+        /// The type of `pixel` will be [`Vector4<f32>`].
+        ///
+        /// [`cgmath`]: https://crates.io/crates/cgmath
+        /// [`Vector4<f32>`]: https://docs.rs/cgmath/latest/cgmath/struct.Vector4.html
+        #[cfg(feature = "cgmath")]
+        #[macro_export]
+        macro_rules! type_for_format_cgmath {
+            #(#type_for_format_cgmath_items)*
+        }
+
+        /// Converts a format enum identifier to a [`nalgebra`] or standard Rust type that is
+        /// suitable for representing the format in a buffer or image.
+        ///
+        /// This macro returns one possible suitable representation, but there are usually other
+        /// possibilities for a given format. A compile error occurs for formats that have no
+        /// well-defined size (the `size` method returns `None`).
+        ///
+        /// - For regular unpacked formats with one component, this returns a single floating point,
+        ///   signed or unsigned integer with the appropriate number of bits. For formats with
+        ///   multiple components, a [`nalgebra`] [`SVector`] is returned.
+        /// - For packed formats, this returns an unsigned integer with the size of the packed
+        ///   element. For multi-packed formats (such as `2PACK16`), an array is returned.
+        /// - For compressed formats, this returns `[u8; N]` where N is the size of a block.
+        ///
+        /// Note: for 16-bit floating point values, you need to import the [`half::f16`] type.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// # #[macro_use] extern crate vulkano;
+        /// # fn main() {
+        /// let pixel: type_for_format_nalgebra!(R32G32B32A32_SFLOAT);
+        /// # }
+        /// ```
+        ///
+        /// The type of `pixel` will be [`Vector4<f32>`].
+        ///
+        /// [`nalgebra`]: https://crates.io/crates/nalgebra
+        /// [`SVector`]: https://docs.rs/nalgebra/latest/nalgebra/base/type.SVector.html
+        /// [`Vector4<f32>`]: https://docs.rs/nalgebra/latest/nalgebra/base/type.Vector4.html
+        #[cfg(feature = "nalgebra")]
+        #[macro_export]
+        macro_rules! type_for_format_nalgebra {
+            #(#type_for_format_nalgebra_items)*
         }
     }
 }
@@ -582,12 +683,15 @@ fn formats_members(
                     .as_ref()
                     .map(|c| format_ident!("{}", c.replace(' ', "_"))),
                 planes: vec![],
-                rust_type: None,
                 texels_per_block: format.texelsPerBlock,
                 type_color: None,
                 type_depth: None,
                 type_stencil: None,
                 ycbcr_chroma_sampling: None,
+
+                type_std_array: None,
+                type_cgmath: None,
+                type_nalgebra: None,
             };
 
             for child in &format.children {
@@ -682,7 +786,7 @@ fn formats_members(
                 member.block_size = Some(format.blockSize as u64);
 
                 if format.compressed.is_some() {
-                    member.rust_type = Some({
+                    member.type_std_array = Some({
                         let block_size = Literal::usize_unsuffixed(format.blockSize as usize);
                         quote! { [u8; #block_size] }
                     });
@@ -690,7 +794,7 @@ fn formats_members(
                     let pack_elements = format.blockSize * 8 / pack_bits;
                     let element_type = format_ident!("u{}", pack_bits);
 
-                    member.rust_type = Some(if pack_elements > 1 {
+                    member.type_std_array = Some(if pack_elements > 1 {
                         let elements = Literal::usize_unsuffixed(pack_elements as usize);
                         quote! { [#element_type; #elements] }
                     } else {
@@ -704,9 +808,9 @@ fn formats_members(
                         _ => unreachable!(),
                     };
                     let bits = member.components[0];
-                    let element_type = format_ident!("{}{}", prefix, bits);
+                    let component_type = format_ident!("{}{}", prefix, bits);
 
-                    let elements = if member.components[1] == 2 * bits {
+                    let component_count = if member.components[1] == 2 * bits {
                         // 422 format with repeated G component
                         4
                     } else {
@@ -725,12 +829,23 @@ fn formats_members(
                             .count()
                     };
 
-                    member.rust_type = Some(if elements > 1 {
-                        let elements = Literal::usize_unsuffixed(elements);
-                        quote! { [#element_type; #elements] }
+                    if component_count > 1 {
+                        let elements = Literal::usize_unsuffixed(component_count);
+                        member.type_std_array = Some(quote! { [#component_type; #elements] });
+
+                        // cgmath only has 1, 2, 3 and 4-component vector types.
+                        // Fall back to arrays for anything else.
+                        if matches!(component_count, 1 | 2 | 3 | 4) {
+                            let ty = format_ident!("{}", format!("Vector{}", component_count));
+                            member.type_cgmath = Some(quote! { cgmath::#ty<#component_type> });
+                        }
+
+                        member.type_nalgebra = Some(quote! {
+                            nalgebra::base::SVector<#component_type, #component_count>
+                        });
                     } else {
-                        quote! { #element_type }
-                    });
+                        member.type_std_array = Some(quote! { #component_type });
+                    }
                 }
             }
 
