@@ -18,13 +18,7 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Ninja Install
-      uses: crazy-max/ghaction-chocolatey@v2
-      with:
-        args: install ninja
-    - name: Python3 Install
-      uses: crazy-max/ghaction-chocolatey@v2
-      with:
-        args: install python3 --params "/InstallAllUsers"
+      run: pip install ninja
     - uses: actions/checkout@v3
     - name: Build
       run: cargo build --verbose
