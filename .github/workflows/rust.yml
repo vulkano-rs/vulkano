@@ -19,22 +19,22 @@ jobs:
       run: pip install ninja
     - uses: actions/checkout@v3
     - name: Build
-      run: cargo build -j 2 --verbose
+      run: cargo build --verbose
     - name: Run tests
-      run: cargo test -j 2 --verbose
+      run: cargo test --verbose
   linux_stable:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - name: Build
-      run: cargo build -j 2 --verbose
+      run: cargo build --verbose
     - name: Run tests
-      run: cargo test -j 2 --verbose
+      run: cargo test --verbose
   macos_stable:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
     - name: Build
-      run: cargo build -j 3 --verbose
+      run: cargo build --verbose
     - name: Run tests
-      run: cargo test -j 3 --verbose
+      run: cargo test --verbose
