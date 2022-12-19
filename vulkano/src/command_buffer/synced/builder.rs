@@ -26,7 +26,7 @@ use crate::{
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned},
-    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
+    image::{sys::Image, ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange},
     pipeline::{
         graphics::{
             color_blend::LogicOp,
@@ -538,6 +538,19 @@ impl SyncCommandBufferBuilder {
         subresource_range.array_layers.end += inner.first_layer;
         subresource_range.mip_levels.start += inner.first_mipmap_level;
         subresource_range.mip_levels.end += inner.first_mipmap_level;
+
+        // VUID-VkImageMemoryBarrier2-image-03320
+        if !self
+            .device()
+            .enabled_features()
+            .separate_depth_stencil_layouts
+            && image
+                .format()
+                .aspects()
+                .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        {
+            subresource_range.aspects = ImageAspects::DEPTH | ImageAspects::STENCIL;
+        }
 
         let range_map = self.images2.entry(inner.image.clone()).or_insert_with(|| {
             [(
