@@ -829,7 +829,7 @@ impl SyncCommandBufferBuilder {
                         .into_iter()
                         .filter(|(_range, state)| !state.resource_uses.is_empty())
                         .map(|(range, state)| {
-                            let first_use = state.resource_uses.into_iter().next().unwrap();
+                            let first_use = state.resource_uses.into_iter().next();
                             (
                                 range,
                                 CommandBufferBufferRangeUsage {
@@ -858,7 +858,7 @@ impl SyncCommandBufferBuilder {
                                 state.current_layout = state.final_layout;
                             }
 
-                            let first_use = state.resource_uses.into_iter().next().unwrap();
+                            let first_use = state.resource_uses.into_iter().next();
                             (
                                 range,
                                 CommandBufferImageRangeUsage {

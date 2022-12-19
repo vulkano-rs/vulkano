@@ -602,7 +602,7 @@ pub enum FlushError {
     /// Access to a resource has been denied.
     ResourceAccessError {
         error: AccessError,
-        use_ref: ResourceUseRef,
+        use_ref: Option<ResourceUseRef>,
     },
 
     /// The command buffer or one of the secondary command buffers it executes was created with the
