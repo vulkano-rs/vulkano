@@ -31,7 +31,6 @@ macro_rules! impl_vertex {
         unsafe impl $crate::pipeline::graphics::vertex_input::Vertex for $out {
             #[inline(always)]
             fn member(name: &str) -> Option<$crate::pipeline::graphics::vertex_input::VertexMemberInfo> {
-                use std::ptr;
                 #[allow(unused_imports)]
                 use $crate::format::Format;
                 use $crate::pipeline::graphics::vertex_input::VertexMemberInfo;
@@ -43,8 +42,9 @@ macro_rules! impl_vertex {
                         #[inline] fn f<T: VertexMember>(_: &T) -> Format { T::format() }
                         let format = f(&dummy.$member);
                         let field_size = {
-                            let m = core::mem::MaybeUninit::<$out>::uninit();
-                            let p = unsafe { core::ptr::addr_of!((*(&m as *const _ as *const $out)).$member) };
+                            let p = unsafe {
+                                core::ptr::addr_of!((*(&dummy as *const _ as *const $out)).$member)
+                            };
                             const fn size_of_raw<T>(_: *const T) -> usize {
                                 core::mem::size_of::<T>()
                             }
@@ -122,42 +122,8 @@ impl_vertex_member!([i32; 4], R32G32B32A32_SINT);
 impl_vertex_member!([u32; 4], R32G32B32A32_UINT);
 impl_vertex_member!([f32; 4], R32G32B32A32_SFLOAT);
 impl_vertex_member!([f64; 4], R64G64B64A64_SFLOAT);
-
-unsafe impl<T> VertexMember for (T,)
-where
-    T: VertexMember,
-{
-    fn format() -> Format {
-        <T as VertexMember>::format()
-    }
-}
-
-unsafe impl<T> VertexMember for (T, T)
-where
-    T: VertexMember,
-{
-    fn format() -> Format {
-        <T as VertexMember>::format()
-    }
-}
-
-unsafe impl<T> VertexMember for (T, T, T)
-where
-    T: VertexMember,
-{
-    fn format() -> Format {
-        <T as VertexMember>::format()
-    }
-}
-
-unsafe impl<T> VertexMember for (T, T, T, T)
-where
-    T: VertexMember,
-{
-    fn format() -> Format {
-        <T as VertexMember>::format()
-    }
-}
+impl_vertex_member!([f32; 9], R32G32B32_SFLOAT);
+impl_vertex_member!([f32; 16], R32G32B32A32_SFLOAT);
 
 unsafe impl<T> VertexMember for [T; 1]
 where
@@ -165,5 +131,39 @@ where
 {
     fn format() -> Format {
         <T as VertexMember>::format()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::format::Format;
+    use crate::pipeline::graphics::vertex_input::Vertex;
+
+    use bytemuck::{Pod, Zeroable};
+
+    #[test]
+    fn vertex_impl() {
+        #[repr(C)]
+        #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+        struct TestVertex {
+            matrix: [f32; 16],
+            vector: [f32; 4],
+            scalar: u16,
+            _padding: u16,
+        }
+        impl_vertex!(TestVertex, scalar, vector, matrix);
+
+        let matrix = TestVertex::member("matrix").unwrap();
+        let vector = TestVertex::member("vector").unwrap();
+        let scalar = TestVertex::member("scalar").unwrap();
+        assert_eq!(matrix.format, Format::R32G32B32A32_SFLOAT);
+        assert_eq!(matrix.offset, 0);
+        assert_eq!(matrix.num_elements, 4);
+        assert_eq!(vector.format, Format::R32G32B32A32_SFLOAT);
+        assert_eq!(vector.offset, 16 * 4);
+        assert_eq!(vector.num_elements, 1);
+        assert_eq!(scalar.format, Format::R16_UINT);
+        assert_eq!(scalar.offset, 16 * 5);
+        assert_eq!(scalar.num_elements, 1);
     }
 }
