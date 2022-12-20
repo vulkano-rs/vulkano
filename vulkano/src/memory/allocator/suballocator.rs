@@ -467,7 +467,7 @@ impl MemoryAlloc {
     pub fn shift(&mut self, amount: DeviceSize) {
         assert!(amount <= self.size);
 
-        self.offset += amount;
+        unsafe { self.set_offset(self.offset + amount) };
         self.size -= amount;
     }
 
