@@ -2478,13 +2478,12 @@ mod host {
     ///
     /// The allocator doesn't hand out pointers but rather IDs that are relative to the pool. This
     /// simplifies the logic because the pool can easily be moved and hence also resized, but the
-    /// downside is that the whole pool and possibly also the free-list must be copied when it runs
-    /// out of memory. It is therefore best to start out with a safely large capacity.
+    /// downside is that the whole pool must be copied when it runs out of memory. It is therefore
+    /// best to start out with a safely large capacity.
     #[derive(Debug)]
     pub(super) struct PoolAllocator<T> {
         pool: Vec<T>,
-        // LIFO list of free allocations, which means that newly freed allocations are always
-        // reused first before bumping the free start.
+        // Unsorted list of free slots.
         free_list: Vec<SlotId>,
     }
 
@@ -2492,57 +2491,24 @@ mod host {
         pub fn new(capacity: usize) -> Self {
             debug_assert!(capacity > 0);
 
-            let mut pool = Vec::new();
-            let mut free_list = Vec::new();
-            pool.reserve_exact(capacity);
-            free_list.reserve_exact(capacity);
-            // All IDs are free at the start.
-            for index in (1..=capacity).rev() {
-                free_list.push(SlotId(NonZeroUsize::new(index).unwrap()));
+            PoolAllocator {
+                pool: Vec::with_capacity(capacity),
+                free_list: Vec::new(),
             }
-
-            PoolAllocator { pool, free_list }
         }
 
         /// Allocates a slot and initializes it with the provided value. Returns the ID of the slot.
         pub fn allocate(&mut self, val: T) -> SlotId {
-            let id = self.free_list.pop().unwrap_or_else(|| {
-                // The free-list is empty, we need another pool.
-                let new_len = self.pool.len() * 3 / 2;
-                let additional = new_len - self.pool.len();
-                self.pool.reserve_exact(additional);
-                self.free_list.reserve_exact(additional);
+            if let Some(id) = self.free_list.pop() {
+                *self.get_mut(id) = val;
 
-                // Add the new IDs to the free-list.
-                let len = self.pool.len();
-                let cap = self.pool.capacity();
-                for id in (len + 2..=cap).rev() {
-                    // SAFETY: The `new_unchecked` is safe because:
-                    // - `id` is bound to the range [len + 2, cap].
-                    // - There is no way to add 2 to an unsigned integer (`len`) such that the
-                    //   result is 0, except for an overflow, which is why rustc can't optimize this
-                    //   out (unlike in the above loop where the range has a constant start).
-                    // - `Vec::reserve_exact` panics if the new capacity exceeds `isize::MAX` bytes,
-                    //   so the length of the pool can not be `usize::MAX - 1`.
-                    let id = SlotId(unsafe { NonZeroUsize::new_unchecked(id) });
-                    self.free_list.push(id);
-                }
-
-                // Smallest free ID.
-                SlotId(NonZeroUsize::new(len + 1).unwrap())
-            });
-
-            if let Some(x) = self.pool.get_mut(id.0.get() - 1) {
-                // We're reusing a slot, initialize it with the new value.
-                *x = val;
+                id
             } else {
-                // We're using a fresh slot. We always put IDs in order into the free-list, so the
-                // next free ID must be for the slot right after the end of the occupied slots.
-                debug_assert!(id.0.get() - 1 == self.pool.len());
                 self.pool.push(val);
-            }
 
-            id
+                // SAFETY: `self.pool` is guaranteed to be non-empty.
+                SlotId(unsafe { NonZeroUsize::new_unchecked(self.pool.len()) })
+            }
         }
 
         /// Returns the slot with the given ID to the allocator to be reused. The [`SlotId`] should
@@ -2555,6 +2521,7 @@ mod host {
         /// Returns a mutable reference to the slot with the given ID.
         pub fn get_mut(&mut self, id: SlotId) -> &mut T {
             debug_assert!(!self.free_list.contains(&id));
+            debug_assert!(id.0.get() <= self.pool.len());
 
             // SAFETY: This is safe because:
             // - The only way to obtain a `SlotId` is through `Self::allocate`.
@@ -2568,6 +2535,7 @@ mod host {
         /// Returns a copy of the slot with the given ID.
         pub fn get(&self, id: SlotId) -> T {
             debug_assert!(!self.free_list.contains(&id));
+            debug_assert!(id.0.get() <= self.pool.len());
 
             // SAFETY: Same as the `get_unchecked_mut` above.
             *unsafe { self.pool.get_unchecked(id.0.get() - 1) }
