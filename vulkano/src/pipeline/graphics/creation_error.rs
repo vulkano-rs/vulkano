@@ -183,6 +183,10 @@ pub enum GraphicsPipelineCreationError {
         attribute_type: NumericType,
     },
 
+    /// The location provided is assigned, but expected to unassigned due to the format of the
+    /// prior location.
+    VertexInputAttributeInvalidAssignedLocation { location: u32 },
+
     /// The binding number specified by a vertex input attribute does not exist in the provided list
     /// of binding descriptions.
     VertexInputAttributeInvalidBinding { location: u32, binding: u32 },
@@ -363,6 +367,11 @@ impl Display for GraphicsPipelineCreationError {
                 "the type of the shader input variable at location {} ({:?}) is not compatible \
                 with the format of the corresponding vertex input attribute ({:?})",
                 location, shader_type, attribute_type,
+            ),
+            Self::VertexInputAttributeInvalidAssignedLocation { location } => write!(
+                f,
+                "input attribute location {} is expected to be unassigned due to the format of the prior location",
+                location,
             ),
             Self::VertexInputAttributeInvalidBinding { location, binding } => write!(
                 f,

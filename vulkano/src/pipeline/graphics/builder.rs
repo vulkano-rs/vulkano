@@ -723,7 +723,23 @@ where
                 }
 
                 // VUID-VkPipelineVertexInputStateCreateInfo-pVertexAttributeDescriptions-00617
-                // Ensured by HashMap.
+                // Ensured by HashMap with the exception of formats exceeding a single location.
+                // When a format exceeds a single location the location following it (e.g.
+                // R64B64G64_SFLOAT) needs to be unassigned.
+                let unassigned_locations: Vec<u32> = attributes
+                    .iter()
+                    .filter(|&(_, attribute_desc)| attribute_desc.format.block_size().unwrap() > 16)
+                    .map(|(location, _)| location + 1)
+                    .collect();
+                for location in unassigned_locations {
+                    if !attributes.get(&location).is_none() {
+                        return Err(
+                            GraphicsPipelineCreationError::VertexInputAttributeInvalidAssignedLocation {
+                                location,
+                            },
+                        );
+                    }
+                }
 
                 for (&location, attribute_desc) in attributes {
                     let &VertexInputAttributeDescription {
