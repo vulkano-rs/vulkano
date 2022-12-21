@@ -56,6 +56,10 @@ Changes to pipelines:
 - A new `CommandBufferBuilder` type, that provides validation and keeps resources alive, but requires manual synchronization commands.
 - The `PrimaryCommandBuffer` and `SecondaryCommandBuffer` types.
 - A `buffer_with_range` constructor for `WriteDescriptorSet`, which can be used to select the range within the buffer that should be bound. This must be used when using dynamic buffers.
+- Better cgmath and nalgebra support, enabled by the `cgmath` or `nalgebra` features:
+- `VertexMember` is now implemented for cgmath `Vector`s and `Point`s.
+- `type_for_format_cgmath` and `type_for_format_nalgebra` macros, next to the existing `type_for_format` macro.
+- Vulkano-shaders: `shader_cgmath` and `shader_nalgebra` macros, next to the existing `shader` macro.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
