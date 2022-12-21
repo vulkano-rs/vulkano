@@ -35,8 +35,9 @@ pub struct VertexMemberInfo {
     pub offset: usize,
     /// Attribute format of the member. Implicitly provides number of components.
     pub format: Format,
-    /// Number of consecutive array elements or matrix columns using format.
-    pub num_locations: u32,
+    /// Number of consecutive array elements or matrix columns using format. The corresponding
+    /// number of locations might defer depending on the size of the format.
+    pub num_elements: u32,
 }
 
 impl VertexMemberInfo {
@@ -72,13 +73,13 @@ mod tests {
         let scalar = TestVertex::member("scalar").unwrap();
         assert_eq!(matrix.format, Format::R32G32B32A32_SFLOAT);
         assert_eq!(matrix.offset, 0);
-        assert_eq!(matrix.num_locations, 4);
+        assert_eq!(matrix.num_elements, 4);
         assert_eq!(vector.format, Format::R32G32B32A32_SFLOAT);
         assert_eq!(vector.offset, 16 * 4);
-        assert_eq!(vector.num_locations, 1);
+        assert_eq!(vector.num_elements, 1);
         assert_eq!(scalar.format, Format::R16_UINT);
         assert_eq!(scalar.offset, 16 * 5);
-        assert_eq!(scalar.num_locations, 1);
+        assert_eq!(scalar.num_elements, 1);
     }
 
     #[test]

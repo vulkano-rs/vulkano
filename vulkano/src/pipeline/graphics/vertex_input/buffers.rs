@@ -131,8 +131,11 @@ unsafe impl VertexDefinition for BuffersDefinition {
                         attribute: name.clone().into_owned(),
                     })?;
 
+            // TODO: ShaderInterfaceEntryType does not properly support 64bit.
+            //       Once it does the below logic around num_elements and num_locations
+            //       might have to be updated.
             if infos.num_components() != element.ty.num_components
-                || infos.num_locations != element.ty.num_locations()
+                || infos.num_elements != element.ty.num_locations()
             {
                 return Err(IncompatibleVertexDefinitionError::FormatMismatch {
                     attribute: name.clone().into_owned(),
@@ -142,7 +145,14 @@ unsafe impl VertexDefinition for BuffersDefinition {
             }
 
             let mut offset = infos.offset as DeviceSize;
-            let location_range = element.location..element.location + element.ty.num_locations();
+            let block_size = infos.format.block_size().unwrap();
+            // Double precision formats can exceed a single location.
+            // R64B64G64A64_SFLOAT requires two locations, so we need to adapt how we bind
+            let location_range = if block_size > 16 {
+                (element.location..element.location + 2 * element.ty.num_locations()).step_by(2)
+            } else {
+                (element.location..element.location + element.ty.num_locations()).step_by(1)
+            };
 
             for location in location_range {
                 attributes.push((
@@ -153,7 +163,7 @@ unsafe impl VertexDefinition for BuffersDefinition {
                         offset: offset as u32,
                     },
                 ));
-                offset += infos.format.block_size().unwrap();
+                offset += block_size;
             }
         }
 
