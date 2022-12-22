@@ -48,7 +48,8 @@ use crate::{
     },
     shader::{
         DescriptorBindingRequirements, EntryPoint, FragmentShaderExecution, FragmentTestsStages,
-        ShaderExecution, ShaderStage, SpecializationConstants, SpecializationMapEntry,
+        ShaderExecution, ShaderScalarType, ShaderStage, SpecializationConstants,
+        SpecializationMapEntry,
     },
     DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -1009,12 +1010,13 @@ where
                         // TODO: Check component assignments too. Multiple variables can occupy the same
                         // location but in different components.
 
-                        let shader_type = element.ty.to_numeric_type();
+                        let shader_type = element.ty.base_type;
                         let attribute_type = attribute_desc.format.type_color().unwrap();
 
                         if !matches!(
                             (shader_type, attribute_type),
                             (
+                                ShaderScalarType::Float,
                                 NumericType::SFLOAT
                                     | NumericType::UFLOAT
                                     | NumericType::SNORM
@@ -1022,15 +1024,8 @@ where
                                     | NumericType::SSCALED
                                     | NumericType::USCALED
                                     | NumericType::SRGB,
-                                NumericType::SFLOAT
-                                    | NumericType::UFLOAT
-                                    | NumericType::SNORM
-                                    | NumericType::UNORM
-                                    | NumericType::SSCALED
-                                    | NumericType::USCALED
-                                    | NumericType::SRGB,
-                            ) | (NumericType::SINT, NumericType::SINT)
-                                | (NumericType::UINT, NumericType::UINT)
+                            ) | (ShaderScalarType::Sint, NumericType::SINT)
+                                | (ShaderScalarType::Uint, NumericType::UINT)
                         ) {
                             return Err(
                                 GraphicsPipelineCreationError::VertexInputAttributeIncompatibleFormat {

@@ -12,7 +12,7 @@ use crate::{
     descriptor_set::layout::DescriptorSetLayoutCreationError,
     format::{Format, NumericType},
     pipeline::layout::{PipelineLayoutCreationError, PipelineLayoutSupersetError},
-    shader::ShaderInterfaceMismatchError,
+    shader::{ShaderInterfaceMismatchError, ShaderScalarType},
     OomError, RequirementNotMet, RequiresOneOf, VulkanError,
 };
 use std::{
@@ -179,7 +179,7 @@ pub enum GraphicsPipelineCreationError {
     /// format of the corresponding vertex input attribute.
     VertexInputAttributeIncompatibleFormat {
         location: u32,
-        shader_type: NumericType,
+        shader_type: ShaderScalarType,
         attribute_type: NumericType,
     },
 

@@ -1003,14 +1003,6 @@ pub struct ShaderInterfaceEntryType {
 }
 
 impl ShaderInterfaceEntryType {
-    pub(crate) fn to_numeric_type(&self) -> NumericType {
-        match self.base_type {
-            ShaderScalarType::Float => NumericType::SFLOAT,
-            ShaderScalarType::Sint => NumericType::SINT,
-            ShaderScalarType::Uint => NumericType::UINT,
-        }
-    }
-
     pub(crate) fn num_locations(&self) -> u32 {
         assert!(!self.is_64bit); // TODO: implement
         self.num_elements
