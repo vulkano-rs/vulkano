@@ -31,10 +31,13 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
         FoundCrate::Name(name) => Ident::new(&name, Span::call_site()),
     };
 
-    let mut member_cases = quote! {};
+    let mut member_cases = quote! {
+        let mut offset = 0;
+    };
 
     for field in fields.iter() {
         let field_name = field.ident.to_owned().unwrap();
+        let field_ty = &field.ty;
         let mut names = vec![LitStr::new(&field_name.to_string(), Span::call_site())];
         let mut format = quote! {
             let dummy = <#struct_name>::default();
@@ -61,32 +64,20 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
             member_cases = quote! {
                 #member_cases
 
+                let field_size = std::mem::size_of::<#field_ty>() as u32;
                 if name == #name {
                     #format
-                    let field_size = {
-                        let m = core::mem::MaybeUninit::<#struct_name>::uninit();
-                        let p = unsafe { core::ptr::addr_of!((*(&m as *const _ as *const #struct_name)).#field_name) };
-                        const fn size_of_raw<T>(_: *const T) -> usize {
-                            core::mem::size_of::<T>()
-                        }
-                        size_of_raw(p)
-                    } as u32;
                     let format_size = format.block_size().expect("no block size for format") as u32;
                     let num_elements = field_size / format_size;
                     let remainder = field_size % format_size;
                     assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", name);
-                    let offset = {
-                        let dummy = ::core::mem::MaybeUninit::<#struct_name>::uninit();
-                        let dummy_ptr = dummy.as_ptr();
-                        let member_ptr = unsafe { ::core::ptr::addr_of!((*dummy_ptr).#field_name) };
-                        member_ptr as usize - dummy_ptr as usize
-                    };
                     return Some(VertexMemberInfo {
                         offset,
                         format,
                         num_elements,
                     });
                 }
+                offset += field_size as usize;
             };
         }
     }
