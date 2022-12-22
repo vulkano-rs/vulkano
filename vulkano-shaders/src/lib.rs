@@ -1,6 +1,15 @@
 //! The procedural macro for vulkano's shader system.
 //! Manages the compile-time compilation of GLSL into SPIR-V and generation of assosciated rust code.
 //!
+//! # Cargo features
+//!
+//! | Feature                     | Description                                                                  |
+//! |-----------------------------|------------------------------------------------------------------------------|
+//! | `shaderc-build-from-source` | Build the `shaderc` library from source when compiling.                      |
+//! | `shaderc-debug`             | Compile shaders with debug information included.                             |
+//! | `cgmath`                    | Generate structures with vectors and matrices from the [`cgmath`] library.   |
+//! | `nalgebra`                  | Generate structures with vectors and matrices from the [`nalgebra`] library. |
+//!
 //! # Basic usage
 //!
 //! ```
@@ -204,6 +213,8 @@
 //!
 //! The crate fails to compile but prints the generated rust code to stdout.
 //!
+//! [`cgmath`]: https://crates.io/crates/cgmath
+//! [`nalgebra`]: https://crates.io/crates/nalgebra
 //! [reflect]: https://github.com/vulkano-rs/vulkano/blob/master/vulkano-shaders/src/lib.rs#L67
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [ShaderModule::new]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/struct.ShaderModule.html#method.new

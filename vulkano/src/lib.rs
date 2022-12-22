@@ -10,56 +10,121 @@
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 //! Safe and rich Rust wrapper around the Vulkan API.
 //!
-//! # Brief summary of Vulkan
+//! # Cargo features
 //!
-//! - The [`VulkanLibrary`](crate::VulkanLibrary) represents a Vulkan library on the system.
-//!   It must be loaded before you can do anything with Vulkan.
+//! | Feature              | Description                                                                   |
+//! |----------------------|-------------------------------------------------------------------------------|
+//! | `document_unchecked` | Include `_unchecked` functions in the generated documentation.                |
+//! | `cgmath`             | Generate additional definitions and functions using the [`cgmath`] library.   |
+//! | `nalgebra`           | Generate additional definitions and functions using the [`nalgebra`] library. |
 //!
-//! - The [`Instance`](crate::instance::Instance) object is the API entry point, and represents
-//!   an initialised Vulkan library. This is the first Vulkan object that you create.
+//! # Starting off with Vulkano
 //!
-//! - The [`PhysicalDevice`](crate::device::physical::PhysicalDevice) object represents a
-//!   Vulkan-capable device that is available on the system (eg. a graphics card, a software
-//!   implementation, etc.). Physical devices can be enumerated from an instance with
-//!   [`Instance::enumerate_physical_devices`](crate::instance::Instance::enumerate_physical_devices).
+//! The steps for using Vulkan through Vulkano are in principle not any different from using
+//! the raw Vulkan API, but the details may be different for the sake of idiomaticity, safety
+//! and convenience.
 //!
-//! - Once you have chosen a physical device to use, you can create a
-//!   [`Device`](crate::device::Device) object from it. The `Device` is the most important
-//!   object of Vulkan, as it represents an open channel of communication with a physical device.
-//!   You always need to have one before you can do interesting things with Vulkan.
+//! 1. Create a [`VulkanLibrary`]. This represents a Vulkan library on the system, which must be
+//!    loaded before you can do anything with Vulkan.
 //!
-//! - [*Buffers*](crate::buffer) and [*images*](crate::image) can be used to store data on
-//!   memory accessible by the GPU (or more generally by the Vulkan implementation). Buffers are
-//!   usually used to store information about vertices, lights, etc. or arbitrary data, while
-//!   images are used to store textures or multi-dimensional data.
+//! 2. Create an [`Instance`]. This is the API entry point, and represents an initialised Vulkan
+//!    library.
 //!
-//! - In order to show something on the screen, you need a
-//!   [`Surface` and a `Swapchain`](crate::swapchain).
-//!   A `Swapchain` contains special `Image`s that correspond to the content of the window or the
-//!   monitor. When you *present* a swapchain, the content of one of these special images is shown
-//!   on the screen.
+//! 3. If you intend to show graphics to the user on a window or a screen, create a [`Surface`].
+//!    A `Surface` is created from a window identifier or handle, that is specific to the display or
+//!    windowing system being used. The [`vulkano-win`] crate, which is part of the Vulkano
+//!    project, can make this step easier.
 //!
-//! - For graphical operations, [`RenderPass`es and `Framebuffer`s](crate::render_pass)
-//!   describe which images the device must draw upon.
+//! 4. [Enumerate the physical devices] that are available on the `Instance`, and choose one that
+//!    is suitable for your program. A [`PhysicalDevice`] represents a Vulkan-capable device that
+//!    is available on the system, such as a graphics card, a software implementation, etc.
 //!
-//! - In order to be able to perform operations on the device, you need to have created a
-//!   [pipeline object](crate::pipeline) that describes the operation you want. These objects are usually
-//!   created during your program's initialization. `Shader`s are programs that the GPU will
-//!   execute as part of a pipeline. [*Descriptor sets*](crate::descriptor_set) can be used to access
-//!   the content of buffers or images from within shaders.
+//! 6. Create a [`Device`] and accompanying [`Queue`]s from the selected `PhysicalDevice`.
+//!    The `Device` is the most important object of Vulkan, and you need one to create almost
+//!    every other object. `Queue`s are created together with the `Device`, and are used to submit
+//!    work to the device to make it do something.
 //!
-//! - To tell the GPU to do something, you must create a
-//!   [*command buffer*](crate::command_buffer). A command buffer contains a list of commands
-//!   that the GPU must perform. This can include copies between buffers and images, compute
-//!   operations, or graphics operations. For the work to start, the command buffer must then be
-//!   submitted to a [`Queue`](crate::device::Queue), which is obtained when you create the
-//!   `Device`.
+//! 7. If you created a `Surface` earlier, create a [`Swapchain`]. This object contains special
+//!    images that correspond to the contents of the surface. Whenever you want to
+//!    change the contents (show something new to the user), you must first *acquire* one of these
+//!    images from the swapchain, fill it with the new contents (by rendering, copying or any
+//!    other means), and then *present* it back to the swapchain.
+//!    A swapchain can become outdated if the properties of the surface change, such as when
+//!    the size of the window changes. It then becomes necessary to create a new swapchain.
 //!
-//! - Once you have built a *command buffer* that contains a list of commands, submitting it to the
-//!   GPU will return an object that implements [the `GpuFuture` trait](crate::sync::GpuFuture).
-//!   `GpuFuture`s allow you to chain multiple submissions together and are essential to performing
-//!   multiple operations on multiple different GPU queues.
+//! 8. Record a [*command buffer*](crate::command_buffer), containing commands that the device must
+//!    execute. Then build the command buffer and submit it to a `Queue`.
 //!
+//! Many different operations can be recorded to a command buffer, such as *draw*, *compute* and
+//! *transfer* operations. To do any of these things, you will need to create several other objects,
+//! depending on your specific needs. This includes:
+//!
+//! - [*Buffers*] store general-purpose data on memory accessible by the device. This can include
+//!   mesh data (vertices, texture coordinates etc.), lighting information, matrices, and anything
+//!   else you can think of.
+//!
+//! - [*Images*] store texel data, arranged in a grid of one or more dimensions. They can be used
+//!   as textures, depth/stencil buffers, framebuffers and as part of a swapchain.
+//!
+//! - [*Pipelines*] describe operations on the device. They include one or more [*shader*]s, small
+//!   programs that the device will execute as part of a pipeline.
+//!   Pipelines come in several types:
+//!   - A [`ComputePipeline`] describes how *dispatch* commands are to be performed.
+//!   - A [`GraphicsPipeline`] describes how *draw* commands are to be performed.
+//!
+//! - [*Descriptor sets*] make buffers, images and other objects available to shaders. The
+//!   arrangement of these resources in shaders is described by a [`DescriptorSetLayout`]. One or
+//!   more of these layouts in turn forms a [`PipelineLayout`], which is used when creating a
+//!   pipeline object.
+//!
+//! - For more complex, multi-stage draw operations, you can create a [`RenderPass`] object.
+//!   This object describes the stages, known as subpasses, that draw operations consist of,
+//!   how they interact with one another, and which types of images are available in each subpass.
+//!   You must also create a [`Framebuffer`], which contains the image objects that are to be used
+//!   in a render pass.
+//!
+//! # `_unchecked` functions
+//!
+//! Many functions in Vulkano have two versions: the normal function, which is usually safe to
+//! call, and another function with `_unchecked` added onto the end of the name, which is unsafe
+//! to call. The `_unchecked` functions skip all validation checks, so they are usually more
+//! efficient, but you must ensure that you meet the validity/safety requirements of the function.
+//!
+//! For all `_unchecked` functions, a call to the function is valid, if a call to the
+//! corresponding normal function with the same arguments would return without any error.
+//! This includes following all the valid usage requirements of the Vulkan specification, but may
+//! also include additional requirements specific to Vulkano.
+//! **All other usage of `_unchecked` functions may be undefined behavior.**
+//!
+//! Because there are potentially many `_unchecked` functions, and because their name and operation
+//! can be straightforwardly understood based on the corresponding normal function, they are hidden
+//! from the Vulkano documentation by default. You can unhide them by enabling the
+//! `document_unchecked` cargo feature, and then generating the documentation with the command
+//! `cargo doc --open`.
+//!
+//! [`cgmath`]: https://crates.io/crates/cgmath
+//! [`nalgebra`]: https://crates.io/crates/nalgebra
+//! [`VulkanLibrary`]: crate::VulkanLibrary
+//! [`Instance`]: crate::instance::Instance
+//! [`Surface`]: crate::swapchain::Surface
+//! [`vulkano-win`]: https://crates.io/crates/vulkano-win
+//! [Enumerate the physical devices]: crate::instance::Instance::enumerate_physical_devices
+//! [`PhysicalDevice`]: crate::device::physical::PhysicalDevice
+//! [`Device`]: crate::device::Device
+//! [`Queue`]: crate::device::Queue
+//! [`Swapchain`]: crate::swapchain::Swapchain
+//! [*command buffer*]: crate::command_buffer
+//! [*Buffers*]: crate::buffer
+//! [*Images*]: crate::image
+//! [*Pipelines*]: crate::pipeline
+//! [*shader*]: crate::shader
+//! [`ComputePipeline`]: crate::pipeline::ComputePipeline
+//! [`GraphicsPipeline`]: crate::pipeline::GraphicsPipeline
+//! [*Descriptor sets*]: crate::descriptor_set
+//! [`DescriptorSetLayout`]: crate::descriptor_set::layout
+//! [`PipelineLayout`]: crate::pipeline::layout
+//! [`RenderPass`]: crate::render_pass::RenderPass
+//! [`Framebuffer`]: crate::render_pass::Framebuffer
 
 //#![warn(missing_docs)]        // TODO: activate
 #![warn(
