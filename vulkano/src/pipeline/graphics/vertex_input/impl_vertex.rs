@@ -142,7 +142,7 @@ mod tests {
     use bytemuck::{Pod, Zeroable};
 
     #[test]
-    fn vertex_impl() {
+    fn impl_vertex() {
         #[repr(C)]
         #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
         struct TestVertex {
