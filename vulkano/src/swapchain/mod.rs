@@ -337,7 +337,7 @@ pub use self::{
 #[cfg(target_os = "ios")]
 pub use surface::IOSMetalLayer;
 
-use crate::sync::Semaphore;
+use crate::sync::semaphore::Semaphore;
 use std::{
     num::NonZeroU64,
     sync::{atomic::AtomicBool, Arc},

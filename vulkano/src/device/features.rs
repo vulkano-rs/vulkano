@@ -66,3 +66,23 @@ impl Display for FeatureRestriction {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Features;
+
+    #[test]
+    fn into_iter() {
+        let features = Features {
+            tessellation_shader: true,
+            ..Features::empty()
+        };
+        for (name, enabled) in features {
+            if name == "tessellationShader" {
+                assert!(enabled);
+            } else {
+                assert!(!enabled);
+            }
+        }
+    }
+}

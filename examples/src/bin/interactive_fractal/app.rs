@@ -285,8 +285,8 @@ impl InputState {
 
     fn normalized_mouse_pos(&self) -> Vector2<f32> {
         Vector2::new(
-            (self.mouse_pos.x / self.window_size[0] as f32).clamp(0.0, 1.0),
-            (self.mouse_pos.y / self.window_size[1] as f32).clamp(0.0, 1.0),
+            (self.mouse_pos.x / self.window_size[0]).clamp(0.0, 1.0),
+            (self.mouse_pos.y / self.window_size[1]).clamp(0.0, 1.0),
         )
     }
 

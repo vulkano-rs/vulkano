@@ -1442,17 +1442,17 @@ vulkan_enum! {
     /// The value `(1, 1, 1, 1)`. Can only be used with integer images.
     IntOpaqueWhite = INT_OPAQUE_WHITE,
 
-    /*
+    /* TODO: enable
     // TODO: document
     FloatCustom = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT {
         device_extensions: [ext_custom_border_color],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     IntCustom = INT_CUSTOM_EXT {
         device_extensions: [ext_custom_border_color],
-    },
-     */
+    },*/
 }
 
 vulkan_enum! {

@@ -79,6 +79,7 @@
     clippy::new_without_default,
     clippy::nonminimal_bool,
     clippy::op_ref, // Seems to be bugged, the fixed code triggers a compile error
+    clippy::result_large_err,
     clippy::too_many_arguments,
     clippy::type_complexity,
     clippy::vec_box,
@@ -266,6 +267,23 @@ impl Display for VulkanError {
                     "the requested DRM format modifier plane layout is invalid"
                 }
                 VulkanError::InvalidShader => "one or more shaders failed to compile or link",
+                VulkanError::ImageUsageNotSupported =>
+                    "the requested `ImageUsage` are not supported",
+                VulkanError::VideoPictureLayoutNotSupported =>
+                    "the requested video picture layout is not supported",
+                VulkanError::VideoProfileOperationNotSupported =>
+                    "a video profile operation specified via \
+                    `VideoProfileInfo::video_codec_operation` is not supported",
+                VulkanError::VideoProfileFormatNotSupported =>
+                    "format parameters in a requested `VideoProfileInfo` chain are not supported",
+                VulkanError::VideoProfileCodecNotSupported =>
+                    "codec-specific parameters in a requested `VideoProfileInfo` chain are not \
+                    supported",
+                VulkanError::VideoStdVersionNotSupported =>
+                    "the specified video Std header version is not supported",
+                VulkanError::CompressionExhausted =>
+                    "an image creation failed because internal resources required for compression \
+                    are exhausted",
                 VulkanError::Unnamed(result) =>
                     return write!(f, "unnamed error, VkResult value {}", result.as_raw()),
             }

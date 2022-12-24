@@ -912,6 +912,46 @@ vulkan_bitflags! {
         device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
+    // TODO: document
+    LINEAR_COLOR_ATTACHMENT = LINEAR_COLOR_ATTACHMENT_NV {
+        device_extensions: [nv_linear_color_attachment],
+    },
+
+    // TODO: document
+    WEIGHT_IMAGE = WEIGHT_IMAGE_QCOM {
+        device_extensions: [qcom_image_processing],
+    },
+
+    // TODO: document
+    WEIGHT_SAMPLED_IMAGE = WEIGHT_SAMPLED_IMAGE_QCOM {
+        device_extensions: [qcom_image_processing],
+    },
+
+    // TODO: document
+    BLOCK_MATCHING = BLOCK_MATCHING_QCOM {
+        device_extensions: [qcom_image_processing],
+    },
+
+    // TODO: document
+    BOX_FILTER_SAMPLED = BOX_FILTER_SAMPLED_QCOM {
+        device_extensions: [qcom_image_processing],
+    },
+
+    // TODO: document
+    OPTICAL_FLOW_IMAGE = OPTICAL_FLOW_IMAGE_NV {
+        device_extensions: [nv_optical_flow],
+    },
+
+    // TODO: document
+    OPTICAL_FLOW_VECTOR = OPTICAL_FLOW_VECTOR_NV {
+        device_extensions: [nv_optical_flow],
+    },
+
+    // TODO: document
+    OPTICAL_FLOW_COST = OPTICAL_FLOW_COST_NV {
+        device_extensions: [nv_optical_flow],
+    },
+
     /* Buffer usage  */
 
     /// Can be used with a uniform texel buffer descriptor.

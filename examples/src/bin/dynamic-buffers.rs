@@ -32,7 +32,7 @@ use vulkano::{
     memory::allocator::StandardMemoryAllocator,
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
-    VulkanLibrary,
+    DeviceSize, VulkanLibrary,
 };
 
 fn main() {
@@ -188,7 +188,15 @@ fn main() {
         &descriptor_set_allocator,
         layout.clone(),
         [
-            WriteDescriptorSet::buffer(0, input_buffer),
+            // When writing to the dynamic buffer binding, the range of the buffer that the shader
+            // will access must also be provided. We specify the size of the `InData` struct here.
+            // When dynamic offsets are provided later, they get added to the start and end of
+            // this range.
+            WriteDescriptorSet::buffer_with_range(
+                0,
+                input_buffer,
+                0..size_of::<shader::ty::InData>() as DeviceSize,
+            ),
             WriteDescriptorSet::buffer(1, output_buffer.clone()),
         ],
     )

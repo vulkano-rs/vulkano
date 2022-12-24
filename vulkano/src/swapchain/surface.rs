@@ -1490,17 +1490,17 @@ vulkan_enum! {
     /// This is the equivalent of OpenGL's `SwapInterval` with a value of -1.
     FifoRelaxed = FIFO_RELAXED,
 
-    /*
+    /* TODO: enable
     // TODO: document
     SharedDemandRefresh = SHARED_DEMAND_REFRESH_KHR {
         device_extensions: [khr_shared_presentable_image],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SharedContinuousRefresh = SHARED_CONTINUOUS_REFRESH_KHR {
         device_extensions: [khr_shared_presentable_image],
-    },
-     */
+    },*/
 }
 
 vulkan_bitflags_enum! {

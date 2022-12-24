@@ -7,14 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! In the Vulkan API, command buffers must be allocated from *command pools*.
+//! Traits and types for managing the allocation of command buffers and command pools.
 //!
-//! A command pool holds and manages the memory of one or more command buffers. If you destroy a
-//! command pool, all of its command buffers are automatically destroyed.
-//!
-//! In vulkano, creating a command buffer requires passing an implementation of the
-//! [`CommandBufferAllocator`] trait, which you can implement yourself or use the vulkano-provided
-//! [`StandardCommandBufferAllocator`].
+//! In Vulkano, creating a command buffer requires passing an implementation of the
+//! [`CommandBufferAllocator`] trait. You can implement this trait yourself, or use the
+//! Vulkano-provided [`StandardCommandBufferAllocator`].
 
 use super::{
     pool::{

@@ -9,16 +9,18 @@
 
 use super::{
     CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferUsage, SemaphoreSubmitInfo, SubmitInfo,
+    CommandBufferUsage, SecondaryCommandBufferResourcesUsage, SemaphoreSubmitInfo, SubmitInfo,
 };
 use crate::{
-    buffer::{sys::Buffer, BufferAccess},
+    buffer::sys::Buffer,
     device::{Device, DeviceOwned, Queue},
-    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
+    image::{sys::Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
-        now, AccessCheckError, AccessError, AccessFlags, FlushError, GpuFuture, NowFuture,
-        PipelineMemoryAccess, PipelineStages, SubmitAnyBuilder,
+        future::{
+            now, AccessCheckError, AccessError, FlushError, GpuFuture, NowFuture, SubmitAnyBuilder,
+        },
+        PipelineStages,
     },
     DeviceSize, SafeDeref, VulkanObject,
 };
@@ -116,23 +118,6 @@ pub unsafe trait PrimaryCommandBufferAbstract:
         })
     }
 
-    fn check_buffer_access(
-        &self,
-        buffer: &Buffer,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
-
-    fn check_image_access(
-        &self,
-        image: &Image,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        expected_layout: ImageLayout,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
-
     #[doc(hidden)]
     fn state(&self) -> MutexGuard<'_, CommandBufferState>;
 
@@ -153,27 +138,6 @@ where
 {
     fn usage(&self) -> CommandBufferUsage {
         (**self).usage()
-    }
-
-    fn check_buffer_access(
-        &self,
-        buffer: &Buffer,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        (**self).check_buffer_access(buffer, range, exclusive, queue)
-    }
-
-    fn check_image_access(
-        &self,
-        image: &Image,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        expected_layout: ImageLayout,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        (**self).check_image_access(image, range, exclusive, expected_layout, queue)
     }
 
     fn state(&self) -> MutexGuard<'_, CommandBufferState> {
@@ -208,37 +172,8 @@ pub unsafe trait SecondaryCommandBufferAbstract:
     /// Must not be called if you haven't called `lock_record` before.
     unsafe fn unlock(&self);
 
-    /// Returns the number of buffers accessed by this command buffer.
-    fn num_buffers(&self) -> usize;
-
-    /// Returns the `index`th buffer of this command buffer, or `None` if out of range.
-    ///
-    /// The valid range is between 0 and `num_buffers()`.
-    fn buffer(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &Arc<dyn BufferAccess>,
-        Range<DeviceSize>,
-        PipelineMemoryAccess,
-    )>;
-
-    /// Returns the number of images accessed by this command buffer.
-    fn num_images(&self) -> usize;
-
-    /// Returns the `index`th image of this command buffer, or `None` if out of range.
-    ///
-    /// The valid range is between 0 and `num_images()`.
-    fn image(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &Arc<dyn ImageAccess>,
-        &ImageSubresourceRange,
-        PipelineMemoryAccess,
-        ImageLayout,
-        ImageLayout,
-    )>;
+    #[doc(hidden)]
+    fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage;
 }
 
 unsafe impl<T> SecondaryCommandBufferAbstract for T
@@ -262,36 +197,8 @@ where
         (**self).unlock();
     }
 
-    fn num_buffers(&self) -> usize {
-        (**self).num_buffers()
-    }
-
-    fn buffer(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &Arc<dyn BufferAccess>,
-        Range<DeviceSize>,
-        PipelineMemoryAccess,
-    )> {
-        (**self).buffer(index)
-    }
-
-    fn num_images(&self) -> usize {
-        (**self).num_images()
-    }
-
-    fn image(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &Arc<dyn ImageAccess>,
-        &ImageSubresourceRange,
-        PipelineMemoryAccess,
-        ImageLayout,
-        ImageLayout,
-    )> {
-        (**self).image(index)
+    fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
+        (**self).resources_usage()
     }
 }
 
@@ -423,12 +330,28 @@ where
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        match self
-            .command_buffer
-            .check_buffer_access(buffer, range.clone(), exclusive, queue)
-        {
-            Ok(v) => Ok(v),
+    ) -> Result<(), AccessCheckError> {
+        let resources_usage = self.command_buffer.resources_usage();
+        let usage = match resources_usage.buffer_indices.get(buffer) {
+            Some(&index) => &resources_usage.buffers[index],
+            None => return Err(AccessCheckError::Unknown),
+        };
+
+        // TODO: check the queue family
+
+        let result = usage
+            .ranges
+            .range(&range)
+            .try_fold((), |_, (_range, range_usage)| {
+                if !range_usage.mutable && exclusive {
+                    Err(AccessCheckError::Unknown)
+                } else {
+                    Ok(())
+                }
+            });
+
+        match result {
+            Ok(()) => Ok(()),
             Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
             Err(AccessCheckError::Unknown) => self
                 .previous
@@ -443,15 +366,39 @@ where
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        match self.command_buffer.check_image_access(
-            image,
-            range.clone(),
-            exclusive,
-            expected_layout,
-            queue,
-        ) {
-            Ok(v) => Ok(v),
+    ) -> Result<(), AccessCheckError> {
+        let resources_usage = self.command_buffer.resources_usage();
+        let usage = match resources_usage.image_indices.get(image) {
+            Some(&index) => &resources_usage.images[index],
+            None => return Err(AccessCheckError::Unknown),
+        };
+
+        // TODO: check the queue family
+
+        let result = usage
+            .ranges
+            .range(&range)
+            .try_fold((), |_, (_range, range_usage)| {
+                if expected_layout != ImageLayout::Undefined
+                    && range_usage.final_layout != expected_layout
+                {
+                    return Err(AccessCheckError::Denied(
+                        AccessError::UnexpectedImageLayout {
+                            allowed: range_usage.final_layout,
+                            requested: expected_layout,
+                        },
+                    ));
+                }
+
+                if !range_usage.mutable && exclusive {
+                    Err(AccessCheckError::Unknown)
+                } else {
+                    Ok(())
+                }
+            });
+
+        match result {
+            Ok(()) => Ok(()),
             Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
             Err(AccessCheckError::Unknown) => {
                 self.previous

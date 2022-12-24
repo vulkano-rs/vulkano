@@ -168,7 +168,8 @@ macro_rules! ordered_passes_renderpass {
                         dst_stages,
                         src_access,
                         dst_access,
-                        by_region: true,                      // TODO: correct values
+                        // TODO: correct values
+                        dependency_flags: $crate::sync::DependencyFlags::BY_REGION,
                         ..Default::default()
                     }
                 })

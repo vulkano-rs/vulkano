@@ -338,6 +338,13 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         }
     });
 
+    let arr_items = members.iter().map(|ExtensionsMember { name, raw, .. }| {
+        quote! {
+            (#raw, self.#name),
+        }
+    });
+    let arr_len = members.len();
+
     let from_str_for_extensions_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
             let raw = Literal::string(raw);
@@ -538,6 +545,16 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                 let mut data = Self::new();
                 #(#from_extensions_for_vec_cstring_items)*
                 data
+            }
+        }
+
+        impl IntoIterator for #struct_name {
+            type Item = (&'static str, bool);
+            type IntoIter = std::array::IntoIter<Self::Item, #arr_len>;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                [#(#arr_items)*].into_iter()
             }
         }
     }

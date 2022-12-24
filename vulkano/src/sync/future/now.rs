@@ -13,7 +13,6 @@ use crate::{
     device::{Device, DeviceOwned, Queue},
     image::{sys::Image, ImageLayout},
     swapchain::Swapchain,
-    sync::{AccessFlags, PipelineStages},
     DeviceSize,
 };
 use std::{ops::Range, sync::Arc};
@@ -63,7 +62,7 @@ unsafe impl GpuFuture for NowFuture {
         _range: Range<DeviceSize>,
         _exclusive: bool,
         _queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
@@ -75,7 +74,7 @@ unsafe impl GpuFuture for NowFuture {
         _exclusive: bool,
         _expected_layout: ImageLayout,
         _queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 

@@ -22,8 +22,10 @@ use crate::{
     macros::vulkan_enum,
     swapchain::{PresentInfo, SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
     sync::{
-        AccessCheckError, AccessError, AccessFlags, Fence, FenceError, FlushError, GpuFuture,
-        PipelineStages, Semaphore, SemaphoreError, Sharing, SubmitAnyBuilder,
+        fence::{Fence, FenceError},
+        future::{AccessCheckError, AccessError, FlushError, GpuFuture, SubmitAnyBuilder},
+        semaphore::{Semaphore, SemaphoreError},
+        Sharing,
     },
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
@@ -1634,6 +1636,18 @@ impl SwapchainAcquireFuture {
     pub fn swapchain(&self) -> &Arc<Swapchain> {
         &self.swapchain
     }
+
+    /// Blocks the current thread until the swapchain image has been acquired, or timeout
+    ///
+    /// If timeout is `None`, will potentially block forever
+    ///
+    /// You still need to join with this future for present to work
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FenceError> {
+        match &self.fence {
+            Some(fence) => fence.wait(timeout),
+            None => Ok(()),
+        }
+    }
 }
 
 unsafe impl GpuFuture for SwapchainAcquireFuture {
@@ -1670,7 +1684,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
         _range: Range<DeviceSize>,
         _exclusive: bool,
         _queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
@@ -1681,7 +1695,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
         _exclusive: bool,
         expected_layout: ImageLayout,
         _queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         if self.swapchain.index_of_image(image) != Some(self.image_index) {
             return Err(AccessCheckError::Unknown);
         }
@@ -1705,7 +1719,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
             ));
         }
 
-        Ok(None)
+        Ok(())
     }
 
     #[inline]
@@ -1979,7 +1993,7 @@ where
         }
 
         let mut swapchain_info = self.swapchain_info.clone();
-        debug_assert!((swapchain_info.image_index as u32) < swapchain_info.swapchain.image_count());
+        debug_assert!(swapchain_info.image_index < swapchain_info.swapchain.image_count());
         let device = swapchain_info.swapchain.device();
 
         if !device.enabled_features().present_id {
@@ -2108,7 +2122,7 @@ where
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         self.previous
             .check_buffer_access(buffer, range, exclusive, queue)
     }
@@ -2120,7 +2134,7 @@ where
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         if self.swapchain_info.swapchain.index_of_image(image)
             == Some(self.swapchain_info.image_index)
         {

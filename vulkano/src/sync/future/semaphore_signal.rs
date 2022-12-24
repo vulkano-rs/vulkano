@@ -14,7 +14,7 @@ use crate::{
     device::{Device, DeviceOwned, Queue},
     image::{sys::Image, ImageLayout},
     swapchain::Swapchain,
-    sync::{AccessError, AccessFlags, PipelineStages, Semaphore},
+    sync::{future::AccessError, semaphore::Semaphore, PipelineStages},
     DeviceSize,
 };
 use parking_lot::Mutex;
@@ -207,10 +207,9 @@ where
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         self.previous
             .check_buffer_access(buffer, range, exclusive, queue)
-            .map(|_| None)
     }
 
     fn check_image_access(
@@ -220,10 +219,9 @@ where
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         self.previous
             .check_image_access(image, range, exclusive, expected_layout, queue)
-            .map(|_| None)
     }
 
     #[inline]

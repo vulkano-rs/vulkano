@@ -66,7 +66,7 @@
 use crate::{
     descriptor_set::layout::{DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorType},
     device::{Device, DeviceOwned},
-    shader::{DescriptorRequirements, ShaderStages},
+    shader::{DescriptorBindingRequirements, ShaderStages},
     OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -619,7 +619,9 @@ impl PipelineLayout {
     /// constant ranges. Returns an `Err` if this is not the case.
     pub fn ensure_compatible_with_shader<'a>(
         &self,
-        descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
+        descriptor_requirements: impl IntoIterator<
+            Item = ((u32, u32), &'a DescriptorBindingRequirements),
+        >,
         push_constant_range: Option<&PushConstantRange>,
     ) -> Result<(), PipelineLayoutSupersetError> {
         for ((set_num, binding_num), reqs) in descriptor_requirements.into_iter() {

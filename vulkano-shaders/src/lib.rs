@@ -226,6 +226,7 @@ extern crate syn;
 
 use crate::codegen::ShaderKind;
 use ahash::HashMap;
+use proc_macro2::TokenStream;
 use shaderc::{EnvVersion, SpirvVersion};
 use std::{
     borrow::Cow,
@@ -244,6 +245,160 @@ use syn::{
 mod codegen;
 mod entry_point;
 mod structs;
+
+/// Generates vectors and matrices using standard Rust arrays.
+#[proc_macro]
+pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    shader_inner::<StdArray>(input)
+}
+
+/// Generates vectors and matrices using the [`cgmath`] library where possible, falling back to
+/// standard Rust arrays otherwise.
+///
+/// [`cgmath`]: https://crates.io/crates/cgmath
+#[cfg(feature = "cgmath")]
+#[proc_macro]
+pub fn shader_cgmath(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    shader_inner::<CGMath>(input)
+}
+
+/// Generates vectors and matrices using the [`nalgebra`] library.
+///
+/// [`nalgebra`]: https://crates.io/crates/nalgebra
+#[cfg(feature = "nalgebra")]
+#[proc_macro]
+pub fn shader_nalgebra(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    shader_inner::<Nalgebra>(input)
+}
+
+fn shader_inner<L: LinAlgType>(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as MacroInput);
+
+    let is_single = input.shaders.len() == 1;
+    let root = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
+    let root_path = Path::new(&root);
+
+    let mut shaders_code = Vec::with_capacity(input.shaders.len());
+    let mut types_code = Vec::with_capacity(input.shaders.len());
+    let mut types_registry = HashMap::default();
+
+    for (prefix, (shader_kind, shader_source)) in input.shaders {
+        let (code, types) = if let SourceKind::Bytes(path) = shader_source {
+            let full_path = root_path.join(&path);
+
+            let bytes = if full_path.is_file() {
+                fs::read(full_path)
+                    .unwrap_or_else(|_| panic!("Error reading source from {:?}", path))
+            } else {
+                panic!(
+                    "File {:?} was not found; note that the path must be relative to your Cargo.toml",
+                    path
+                );
+            };
+
+            // The SPIR-V specification essentially guarantees that
+            // a shader will always be an integer number of words
+            assert_eq!(0, bytes.len() % 4);
+            codegen::reflect::<StdArray>(
+                prefix.as_str(),
+                unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
+                &input.types_meta,
+                empty(),
+                input.shared_constants,
+                &mut types_registry,
+            )
+            .unwrap()
+        } else {
+            let (path, full_path, source_code) = match shader_source {
+                SourceKind::Src(source) => (None, None, source),
+                SourceKind::Path(path) => {
+                    let full_path = root_path.join(&path);
+                    let source_code = read_file_to_string(&full_path)
+                        .unwrap_or_else(|_| panic!("Error reading source from {:?}", path));
+
+                    if full_path.is_file() {
+                        (Some(path.clone()), Some(full_path), source_code)
+                    } else {
+                        panic!("File {:?} was not found; note that the path must be relative to your Cargo.toml", path);
+                    }
+                }
+                SourceKind::Bytes(_) => unreachable!(),
+            };
+
+            let include_paths = input
+                .include_directories
+                .iter()
+                .map(|include_directory| {
+                    let include_path = Path::new(include_directory);
+                    let mut full_include_path = root_path.to_owned();
+                    full_include_path.push(include_path);
+                    full_include_path
+                })
+                .collect::<Vec<_>>();
+
+            let (content, includes) = match codegen::compile(
+                path,
+                &root_path,
+                &source_code,
+                shader_kind,
+                &include_paths,
+                &input.macro_defines,
+                input.vulkan_version,
+                input.spirv_version,
+            ) {
+                Ok(ok) => ok,
+                Err(e) => {
+                    if is_single {
+                        panic!("{}", e.replace("(s): ", "(s):\n"))
+                    } else {
+                        panic!("Shader {:?} {}", prefix, e.replace("(s): ", "(s):\n"))
+                    }
+                }
+            };
+
+            let input_paths = includes
+                .iter()
+                .map(|s| s.as_ref())
+                .chain(full_path.as_deref().map(codegen::path_to_str));
+
+            codegen::reflect::<StdArray>(
+                prefix.as_str(),
+                content.as_binary(),
+                &input.types_meta,
+                input_paths,
+                input.shared_constants,
+                &mut types_registry,
+            )
+            .unwrap()
+        };
+
+        shaders_code.push(code);
+        types_code.push(types);
+    }
+
+    let uses = &input.types_meta.uses;
+
+    let result = quote! {
+        #(
+            #shaders_code
+        )*
+
+        pub mod ty {
+            #( #uses )*
+
+            #(
+                #types_code
+            )*
+        }
+    };
+
+    if input.dump {
+        println!("{}", result);
+        panic!("`shader!` rust codegen dumped") // TODO: use span from dump
+    }
+
+    proc_macro::TokenStream::from(result)
+}
 
 enum SourceKind {
     Src(String),
@@ -794,132 +949,57 @@ pub(self) fn read_file_to_string(full_path: &Path) -> IoResult<String> {
     Ok(buf)
 }
 
-#[proc_macro]
-pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = parse_macro_input!(input as MacroInput);
+trait LinAlgType {
+    fn vector(component_type: &TokenStream, component_count: usize) -> TokenStream;
+    fn matrix(component_type: &TokenStream, row_count: usize, column_count: usize) -> TokenStream;
+}
 
-    let is_single = input.shaders.len() == 1;
-    let root = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
-    let root_path = Path::new(&root);
+struct StdArray;
 
-    let mut shaders_code = Vec::with_capacity(input.shaders.len());
-    let mut types_code = Vec::with_capacity(input.shaders.len());
-    let mut types_registry = HashMap::default();
+impl LinAlgType for StdArray {
+    fn vector(component_type: &TokenStream, component_count: usize) -> TokenStream {
+        quote! { [#component_type; #component_count] }
+    }
 
-    for (prefix, (shader_kind, shader_source)) in input.shaders {
-        let (code, types) = if let SourceKind::Bytes(path) = shader_source {
-            let full_path = root_path.join(&path);
+    fn matrix(component_type: &TokenStream, row_count: usize, column_count: usize) -> TokenStream {
+        quote! { [[#component_type; #row_count]; #column_count] }
+    }
+}
 
-            let bytes = if full_path.is_file() {
-                fs::read(full_path)
-                    .unwrap_or_else(|_| panic!("Error reading source from {:?}", path))
-            } else {
-                panic!(
-                    "File {:?} was not found; note that the path must be relative to your Cargo.toml",
-                    path
-                );
-            };
+struct CGMath;
 
-            // The SPIR-V specification essentially guarantees that
-            // a shader will always be an integer number of words
-            assert_eq!(0, bytes.len() % 4);
-            codegen::reflect(
-                prefix.as_str(),
-                unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
-                &input.types_meta,
-                empty(),
-                input.shared_constants,
-                &mut types_registry,
-            )
-            .unwrap()
+impl LinAlgType for CGMath {
+    fn vector(component_type: &TokenStream, component_count: usize) -> TokenStream {
+        // cgmath only has 1, 2, 3 and 4-component vector types.
+        // Fall back to arrays for anything else.
+        if matches!(component_count, 1 | 2 | 3 | 4) {
+            let ty = format_ident!("{}", format!("Vector{}", component_count));
+            quote! { cgmath::#ty<#component_type> }
         } else {
-            let (path, full_path, source_code) = match shader_source {
-                SourceKind::Src(source) => (None, None, source),
-                SourceKind::Path(path) => {
-                    let full_path = root_path.join(&path);
-                    let source_code = read_file_to_string(&full_path)
-                        .unwrap_or_else(|_| panic!("Error reading source from {:?}", path));
-
-                    if full_path.is_file() {
-                        (Some(path.clone()), Some(full_path), source_code)
-                    } else {
-                        panic!("File {:?} was not found; note that the path must be relative to your Cargo.toml", path);
-                    }
-                }
-                SourceKind::Bytes(_) => unreachable!(),
-            };
-
-            let include_paths = input
-                .include_directories
-                .iter()
-                .map(|include_directory| {
-                    let include_path = Path::new(include_directory);
-                    let mut full_include_path = root_path.to_owned();
-                    full_include_path.push(include_path);
-                    full_include_path
-                })
-                .collect::<Vec<_>>();
-
-            let (content, includes) = match codegen::compile(
-                path,
-                &root_path,
-                &source_code,
-                shader_kind,
-                &include_paths,
-                &input.macro_defines,
-                input.vulkan_version,
-                input.spirv_version,
-            ) {
-                Ok(ok) => ok,
-                Err(e) => {
-                    if is_single {
-                        panic!("{}", e.replace("(s): ", "(s):\n"))
-                    } else {
-                        panic!("Shader {:?} {}", prefix, e.replace("(s): ", "(s):\n"))
-                    }
-                }
-            };
-
-            let input_paths = includes
-                .iter()
-                .map(|s| s.as_ref())
-                .chain(full_path.as_deref().map(codegen::path_to_str));
-
-            codegen::reflect(
-                prefix.as_str(),
-                content.as_binary(),
-                &input.types_meta,
-                input_paths,
-                input.shared_constants,
-                &mut types_registry,
-            )
-            .unwrap()
-        };
-
-        shaders_code.push(code);
-        types_code.push(types);
-    }
-
-    let uses = &input.types_meta.uses;
-
-    let result = quote! {
-        #(
-            #shaders_code
-        )*
-
-        pub mod ty {
-            #( #uses )*
-
-            #(
-                #types_code
-            )*
+            StdArray::vector(component_type, component_count)
         }
-    };
-
-    if input.dump {
-        println!("{}", result);
-        panic!("`shader!` rust codegen dumped") // TODO: use span from dump
     }
 
-    proc_macro::TokenStream::from(result)
+    fn matrix(component_type: &TokenStream, row_count: usize, column_count: usize) -> TokenStream {
+        // cgmath only has square 2x2, 3x3 and 4x4 matrix types.
+        // Fall back to arrays for anything else.
+        if row_count == column_count && matches!(column_count, 2 | 3 | 4) {
+            let ty = format_ident!("{}", format!("Matrix{}", column_count));
+            quote! { cgmath::#ty<#component_type> }
+        } else {
+            StdArray::matrix(component_type, row_count, column_count)
+        }
+    }
+}
+
+struct Nalgebra;
+
+impl LinAlgType for Nalgebra {
+    fn vector(component_type: &TokenStream, component_count: usize) -> TokenStream {
+        quote! { nalgebra::base::SVector<#component_type, #component_count> }
+    }
+
+    fn matrix(component_type: &TokenStream, row_count: usize, column_count: usize) -> TokenStream {
+        quote! { nalgebra::base::SMatrix<#component_type, #row_count, #column_count> }
+    }
 }

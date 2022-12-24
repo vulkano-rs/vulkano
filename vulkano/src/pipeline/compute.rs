@@ -33,7 +33,7 @@ use crate::{
         layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutSupersetError},
         Pipeline, PipelineBindPoint,
     },
-    shader::{DescriptorRequirements, EntryPoint, SpecializationConstants},
+    shader::{DescriptorBindingRequirements, EntryPoint, SpecializationConstants},
     DeviceSize, OomError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
@@ -60,7 +60,7 @@ pub struct ComputePipeline {
     device: Arc<Device>,
     id: NonZeroU64,
     layout: Arc<PipelineLayout>,
-    descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements>,
+    descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
 }
 
@@ -81,8 +81,9 @@ impl ComputePipeline {
         Css: SpecializationConstants,
         F: FnOnce(&mut [DescriptorSetLayoutCreateInfo]),
     {
-        let mut set_layout_create_infos =
-            DescriptorSetLayoutCreateInfo::from_requirements(shader.descriptor_requirements());
+        let mut set_layout_create_infos = DescriptorSetLayoutCreateInfo::from_requirements(
+            shader.descriptor_binding_requirements(),
+        );
         func(&mut set_layout_create_infos);
         let set_layouts = set_layout_create_infos
             .iter()
@@ -141,7 +142,7 @@ impl ComputePipeline {
         }
 
         layout.ensure_compatible_with_shader(
-            shader.descriptor_requirements(),
+            shader.descriptor_binding_requirements(),
             shader.push_constant_requirements(),
         )?;
 
@@ -220,11 +221,11 @@ impl ComputePipeline {
             output.assume_init()
         };
 
-        let descriptor_requirements: HashMap<_, _> = shader
-            .descriptor_requirements()
+        let descriptor_binding_requirements: HashMap<_, _> = shader
+            .descriptor_binding_requirements()
             .map(|(loc, reqs)| (loc, reqs.clone()))
             .collect();
-        let num_used_descriptor_sets = descriptor_requirements
+        let num_used_descriptor_sets = descriptor_binding_requirements
             .keys()
             .map(|loc| loc.0)
             .max()
@@ -236,7 +237,7 @@ impl ComputePipeline {
             device: device.clone(),
             id: Self::next_id(),
             layout,
-            descriptor_requirements,
+            descriptor_binding_requirements,
             num_used_descriptor_sets,
         }))
     }
@@ -245,16 +246,6 @@ impl ComputePipeline {
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
-    }
-
-    /// Returns an iterator over the descriptor requirements for this pipeline.
-    #[inline]
-    pub fn descriptor_requirements(
-        &self,
-    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorRequirements)> {
-        self.descriptor_requirements
-            .iter()
-            .map(|(loc, reqs)| (*loc, reqs))
     }
 }
 
@@ -272,6 +263,13 @@ impl Pipeline for ComputePipeline {
     #[inline]
     fn num_used_descriptor_sets(&self) -> u32 {
         self.num_used_descriptor_sets
+    }
+
+    #[inline]
+    fn descriptor_binding_requirements(
+        &self,
+    ) -> &HashMap<(u32, u32), DescriptorBindingRequirements> {
+        &self.descriptor_binding_requirements
     }
 }
 

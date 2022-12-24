@@ -84,10 +84,7 @@ impl GameOfLifeComputePipeline {
             compute_queue.clone(),
             size,
             Format::R8G8B8A8_UNORM,
-            ImageUsage::SAMPLED
-                | ImageUsage::STORAGE
-                | ImageUsage::COLOR_ATTACHMENT
-                | ImageUsage::TRANSFER_DST,
+            ImageUsage::SAMPLED | ImageUsage::STORAGE | ImageUsage::TRANSFER_DST,
         )
         .unwrap();
 

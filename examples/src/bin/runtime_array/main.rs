@@ -348,7 +348,9 @@ fn main() {
 
     let pipeline_layout = {
         let mut layout_create_infos: Vec<_> = DescriptorSetLayoutCreateInfo::from_requirements(
-            fs.entry_point("main").unwrap().descriptor_requirements(),
+            fs.entry_point("main")
+                .unwrap()
+                .descriptor_binding_requirements(),
         );
 
         // Set 0, Binding 0
@@ -603,7 +605,7 @@ layout(location = 0) out vec4 f_color;
 layout(set = 0, binding = 0) uniform sampler2D tex[];
 
 void main() {
-    f_color = texture(tex[tex_i], coords);
+    f_color = texture(nonuniformEXT(tex[tex_i]), coords);
 }"
     }
 }

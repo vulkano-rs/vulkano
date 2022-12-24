@@ -241,12 +241,11 @@ vulkan_enum! {
     // TODO: document
     U32 = UINT32,
 
-    /*
+    /* TODO: enable
     // TODO: document
     None = NONE_KHR {
         device_extensions: [khr_acceleration_structure, nv_ray_tracing],
-    },
-     */
+    },*/
 }
 
 impl IndexType {

@@ -149,8 +149,8 @@ fn draw_life(
         let window_size = window.window_size();
         let compute_pipeline = &mut app.pipelines.get_mut(id).unwrap().compute;
         let mut normalized_pos = Vector2::new(
-            (cursor_pos.x / window_size[0] as f32).clamp(0.0, 1.0),
-            (cursor_pos.y / window_size[1] as f32).clamp(0.0, 1.0),
+            (cursor_pos.x / window_size[0]).clamp(0.0, 1.0),
+            (cursor_pos.y / window_size[1]).clamp(0.0, 1.0),
         );
         // flip y
         normalized_pos.y = 1.0 - normalized_pos.y;

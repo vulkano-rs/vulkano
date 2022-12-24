@@ -14,7 +14,7 @@ use crate::{
         auto::QueryState,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder,
+        AutoCommandBufferBuilder, ResourceInCommand, ResourceUseRef,
     },
     device::{DeviceOwned, QueueFlags},
     query::{
@@ -285,7 +285,7 @@ where
         assert_eq!(device, query_pool.device());
 
         // VUID-vkCmdWriteTimestamp2-stage-03860
-        if !queue_family_properties.supports_stage(stage) {
+        if !PipelineStages::from(queue_family_properties.queue_flags).contains_enum(stage) {
             return Err(QueryError::StageNotSupported);
         }
 
@@ -753,8 +753,15 @@ impl SyncCommandBufferBuilder {
             }
         }
 
+        let command_index = self.commands.len();
+        let command_name = "copy_query_pool_results";
         let resources = [(
-            "destination".into(),
+            ResourceUseRef {
+                command_index,
+                command_name,
+                resource_in_command: ResourceInCommand::Destination,
+                secondary_use_ref: None,
+            },
             Resource::Buffer {
                 buffer: destination.clone(),
                 range: 0..destination.size(), // TODO:
@@ -910,7 +917,7 @@ impl UnsafeCommandBufferBuilder {
     }
 }
 
-/// Error that can happen when calling a query command.
+/// Error that can happen when recording a query command.
 #[derive(Clone, Debug)]
 pub enum QueryError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),

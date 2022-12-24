@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{entry_point, read_file_to_string, structs, RegisteredType, TypesMeta};
+use crate::{entry_point, read_file_to_string, structs, LinAlgType, RegisteredType, TypesMeta};
 use ahash::HashMap;
 use proc_macro2::TokenStream;
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
@@ -205,7 +205,7 @@ pub fn compile(
     Ok((content, includes))
 }
 
-pub(super) fn reflect<'a>(
+pub(super) fn reflect<'a, L: LinAlgType>(
     prefix: &'a str,
     words: &[u32],
     types_meta: &TypesMeta,
@@ -243,8 +243,12 @@ pub(super) fn reflect<'a>(
     let entry_points = reflect::entry_points(&spirv)
         .map(|(name, model, info)| entry_point::write_entry_point(&name, model, &info));
 
-    let specialization_constants =
-        structs::write_specialization_constants(prefix, &spirv, shared_constants, types_registry);
+    let specialization_constants = structs::write_specialization_constants::<L>(
+        prefix,
+        &spirv,
+        shared_constants,
+        types_registry,
+    );
 
     let load_name = if prefix.is_empty() {
         format_ident!("load")
@@ -278,7 +282,7 @@ pub(super) fn reflect<'a>(
         #specialization_constants
     };
 
-    let structs = structs::write_structs(prefix, &spirv, types_meta, types_registry);
+    let structs = structs::write_structs::<L>(prefix, &spirv, types_meta, types_registry);
 
     Ok((shader_code, structs))
 }
@@ -304,7 +308,7 @@ impl From<SpirvError> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codegen::compile;
+    use crate::{codegen::compile, StdArray};
     use shaderc::ShaderKind;
     use std::path::{Path, PathBuf};
     use vulkano::shader::{reflect, spirv::Spirv};
@@ -371,7 +375,12 @@ mod tests {
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
         let res = std::panic::catch_unwind(|| {
-            structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::default())
+            structs::write_structs::<StdArray>(
+                "",
+                &spirv,
+                &TypesMeta::default(),
+                &mut HashMap::default(),
+            )
         });
         assert!(res.is_err());
     }
@@ -400,7 +409,12 @@ mod tests {
         )
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::default());
+        structs::write_structs::<StdArray>(
+            "",
+            &spirv,
+            &TypesMeta::default(),
+            &mut HashMap::default(),
+        );
     }
     #[test]
     fn test_wrap_alignment() {
@@ -432,7 +446,12 @@ mod tests {
         )
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::default());
+        structs::write_structs::<StdArray>(
+            "",
+            &spirv,
+            &TypesMeta::default(),
+            &mut HashMap::default(),
+        );
     }
 
     #[test]
@@ -692,7 +711,7 @@ mod tests {
 
         let mut descriptors = Vec::new();
         for (_, _, info) in reflect::entry_points(&spirv) {
-            descriptors.push(info.descriptor_requirements);
+            descriptors.push(info.descriptor_binding_requirements);
         }
 
         // Check first entrypoint
@@ -764,7 +783,7 @@ mod tests {
 
         if let Some((_, _, info)) = reflect::entry_points(&spirv).next() {
             let mut bindings = Vec::new();
-            for (loc, _reqs) in info.descriptor_requirements {
+            for (loc, _reqs) in info.descriptor_binding_requirements {
                 bindings.push(loc);
             }
             assert_eq!(bindings.len(), 4);

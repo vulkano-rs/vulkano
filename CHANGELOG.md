@@ -9,6 +9,8 @@
 
 ### Public dependency updates
 
+- [ash](https://crates.io/crates/ash) 0.37.1
+
 ### Breaking changes
 
 Changes to all Vulkan bitflag types:
@@ -25,10 +27,59 @@ Changes to two swapchain bitflag types:
   - `SupportedSurfaceTransforms` is renamed to `SurfaceTransforms`.
   - `SupportedCompositeAlpha` is renamed to `CompositeAlphas`.
 
+Changes to CPU buffer allocation:
+- Replaced `CpuBufferPool` with `CpuBufferAllocator`, which is now marked `!Sync` and no longer has a `T` type parameter. The type parameter was moved to the methods, to allow one allocator to allocate as many types of buffers as needed.
+- Merged `CpuBufferPoolChunk` and `CpuBufferPoolSubbuffer` into `CpuSubbuffer`.'
+
+Changes to `DescriptorRequirements`:
+- The struct has been split into two levels: the per-binding `DescriptorBindingRequirements`, and the per-descriptor-index `DescriptorRequirements`.
+- The `descriptor_requirements` method of various types has been renamed to `descriptor_binding_requirements` to match.
+- `DescriptorBindingRequirements` has a single `descriptors` member instead of multiple `HashSet` members. This member is a `HashMap` with `Option<u32>` as the key type. The key `None` holds requirements for non-constant indices, while requirements for constant indices are stored as `Some`.
+- Validation checks against the requirements, and pipeline barriers, now always include the requirements of the `None` key as well. This may result in false positives, but prevents false negatives.
+- `DescriptorRequirements` now has `memory_read` and `memory_write` members, which hold a `ShaderStages` value for the stages which read or write the resource. This is used for more fine-grained pipeline barriers.
+
+Changes to the `sync` module and types:
+- Split the module into several submodules: `event`, `fence`, `future`, `semaphore`.
+- Added the `DependencyFlags` type, which is now used by `DependencyInfo` and `SubpassDependency`.
+- Renamed `QueueFamilyTransfer` to `QueueFamilyOwnershipTransfer` and made it into an enum to prevent invalid usage.
+
+Changes to `GpuFuture`:
+- The `check_buffer_access` and `check_image_access` methods now return nothing on success.
+
+Changes to pipelines:
+- The `descriptor_binding_requirements` method is moved to the `Pipeline` trait, and returns a reference to the hashmap directly.
+
 ### Additions
+- Added `CpuBufferAllocatorCreateInfo`.
+- Allow waiting on `SwapchainAcquireFuture`.
+- Implement `IntoIterator` for `Features`, `DeviceExtensions` and `InstanceExtensions`.
+- A new `CommandBufferBuilder` type, that provides validation and keeps resources alive, but requires manual synchronization commands.
+- The `PrimaryCommandBuffer` and `SecondaryCommandBuffer` types.
+- A `buffer_with_range` constructor for `WriteDescriptorSet`, which can be used to select the range within the buffer that should be bound. This must be used when using dynamic buffers.
+- Better cgmath and nalgebra support, enabled by the `cgmath` or `nalgebra` features:
+- `VertexMember` is now implemented for cgmath `Vector`s and `Point`s.
+- `type_for_format_cgmath` and `type_for_format_nalgebra` macros, next to the existing `type_for_format` macro.
+- Vulkano-shaders: `shader_cgmath` and `shader_nalgebra` macros, next to the existing `shader` macro.
+
+### Bugs fixed
+- [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
+
+# Version 0.32.3 (2022-12-07)
+
+### Bugs fixed
+- Fixed issue with `MemoryAlloc::mapped_ptr` not being adjusted for offset.
+
+# Version 0.32.2 (2022-12-06)
+
+### Bugs fixed
+- Fixed another issue with `CpuBufferPool<T>`, where the alignment of `T` was not being considered when allocating.
+
+# Version 0.32.1 (2022-11-09)
 
 ### Bugs fixed
 - [#2074](https://github.com/vulkano-rs/vulkano/issues/2074): Fixed error on multiple draw calls using a texture that had a layout transition.
+- Fixed an issue with `CpuBufferPool<T>`, where the alignment of `T` was not being considered when allocating.
+- Fixed an issue with `CpuBufferPool`, where the allocated subbuffers did not respect the non-coherent atom size for non-host-coherent memory types.
 
 # Version 0.32.0 (2022-10-31)
 

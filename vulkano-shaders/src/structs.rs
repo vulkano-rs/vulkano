@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{RegisteredType, TypesMeta};
+use crate::{LinAlgType, RegisteredType, TypesMeta};
 use ahash::HashMap;
 use heck::ToUpperCamelCase;
 use proc_macro2::{Span, TokenStream};
@@ -16,7 +16,7 @@ use syn::{Ident, LitStr};
 use vulkano::shader::spirv::{Decoration, Id, Instruction, Spirv};
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
-pub(super) fn write_structs<'a>(
+pub(super) fn write_structs<'a, L: LinAlgType>(
     shader: &'a str,
     spirv: &'a Spirv,
     types_meta: &'a TypesMeta,
@@ -34,7 +34,7 @@ pub(super) fn write_structs<'a>(
         .filter(|&(struct_id, _member_types)| has_defined_layout(spirv, struct_id))
         .filter_map(|(struct_id, member_types)| {
             let (rust_members, is_sized) =
-                write_struct_members(shader, spirv, struct_id, member_types);
+                write_struct_members::<L>(spirv, struct_id, member_types);
 
             let struct_name = spirv
                 .id(struct_id)
@@ -86,8 +86,7 @@ struct Member {
     signature: Cow<'static, str>,
 }
 
-fn write_struct_members<'a>(
-    shader: &'a str,
+fn write_struct_members<L: LinAlgType>(
     spirv: &Spirv,
     struct_id: Id,
     members: &[Id],
@@ -107,7 +106,7 @@ fn write_struct_members<'a>(
         .enumerate()
     {
         // Compute infos about the member.
-        let (ty, signature, rust_size, rust_align) = type_from_id(shader, spirv, member);
+        let (ty, signature, rust_size, rust_align) = type_from_id::<L>(spirv, member);
         let member_name = member_info
             .iter_name()
             .find_map(|instruction| match instruction {
@@ -403,8 +402,7 @@ fn struct_size_from_array_stride(spirv: &Spirv, type_id: Id) -> Option<u32> {
 /// Returns the type name to put in the Rust struct, and its size and alignment.
 ///
 /// The size can be `None` if it's only known at runtime.
-pub(super) fn type_from_id(
-    shader: &str,
+pub(super) fn type_from_id<L: LinAlgType>(
     spirv: &Spirv,
     type_id: Id,
 ) -> (TokenStream, Cow<'static, str>, Option<usize>, usize) {
@@ -558,32 +556,53 @@ pub(super) fn type_from_id(
             ..
         } => {
             debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-            let (ty, item, t_size, t_align) = type_from_id(shader, spirv, component_type);
-            let array_length = component_count as usize;
-            let size = t_size.map(|s| s * component_count as usize);
-            (
-                quote! { [#ty; #array_length] },
-                Cow::from(format!("[{}; {}]", item, array_length)),
-                size,
-                t_align,
-            )
+            let component_count = component_count as usize;
+            let (element_ty, element_item, element_size, align) =
+                type_from_id::<L>(spirv, component_type);
+
+            let ty = L::vector(&element_ty, component_count);
+            let item = Cow::from(format!("[{}; {}]", element_item, component_count));
+            let size = element_size.map(|s| s * component_count);
+
+            (ty, item, size, align)
         }
         &Instruction::TypeMatrix {
             column_type,
             column_count,
             ..
         } => {
-            // FIXME: row-major or column-major
             debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-            let (ty, item, t_size, t_align) = type_from_id(shader, spirv, column_type);
-            let array_length = column_count as usize;
-            let size = t_size.map(|s| s * column_count as usize);
-            (
-                quote! { [#ty; #array_length] },
-                Cow::from(format!("[{}; {}]", item, array_length)),
-                size,
-                t_align,
-            )
+            let column_count = column_count as usize;
+
+            // FIXME: row-major or column-major
+            let (row_count, element, element_item, element_size, align) =
+                match spirv.id(column_type).instruction() {
+                    &Instruction::TypeVector {
+                        component_type,
+                        component_count,
+                        ..
+                    } => {
+                        let (element, element_item, element_size, align) =
+                            type_from_id::<L>(spirv, component_type);
+                        (
+                            component_count as usize,
+                            element,
+                            element_item,
+                            element_size,
+                            align,
+                        )
+                    }
+                    _ => unreachable!(),
+                };
+
+            let ty = L::matrix(&element, row_count, column_count);
+            let size = element_size.map(|s| s * row_count * column_count);
+            let item = Cow::from(format!(
+                "[[{}; {}]; {}]",
+                element_item, row_count, column_count
+            ));
+
+            (ty, item, size, align)
         }
         &Instruction::TypeArray {
             element_type,
@@ -593,7 +612,7 @@ pub(super) fn type_from_id(
             debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
 
             let (element_type, element_type_string, element_size, element_align) =
-                type_from_id(shader, spirv, element_type);
+                type_from_id::<L>(spirv, element_type);
 
             let element_size = element_size.expect("array components must be sized");
             let array_length = match spirv.id(length).instruction() {
@@ -623,7 +642,7 @@ pub(super) fn type_from_id(
             (
                 quote! { [#element_type; #array_length] },
                 Cow::from(format!("[{}; {}]", element_type_string, array_length)),
-                Some(element_size * array_length as usize),
+                Some(element_size * array_length),
                 element_align,
             )
         }
@@ -631,7 +650,7 @@ pub(super) fn type_from_id(
             debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
 
             let (element_type, element_type_string, _, element_align) =
-                type_from_id(shader, spirv, element_type);
+                type_from_id::<L>(spirv, element_type);
 
             (
                 quote! { [#element_type] },
@@ -667,7 +686,7 @@ pub(super) fn type_from_id(
                                         _ => None,
                                     })
                                     .unwrap();
-                                let (_, _, rust_size, _) = type_from_id(shader, spirv, member);
+                                let (_, _, rust_size, _) = type_from_id::<L>(spirv, member);
                                 rust_size.map(|rust_size| spirv_offset + rust_size)
                             })
                     })
@@ -675,7 +694,7 @@ pub(super) fn type_from_id(
 
             let align = member_types
                 .iter()
-                .map(|&t| type_from_id(shader, spirv, t).3)
+                .map(|&t| type_from_id::<L>(spirv, t).3)
                 .max()
                 .unwrap_or(1);
 
@@ -699,7 +718,7 @@ pub(super) fn type_from_id(
 
 /// Writes the `SpecializationConstants` struct that contains the specialization constants and
 /// implements the `Default` and the `vulkano::shader::SpecializationConstants` traits.
-pub(super) fn write_specialization_constants<'a>(
+pub(super) fn write_specialization_constants<'a, L: LinAlgType>(
     shader: &'a str,
     spirv: &Spirv,
     shared_constants: bool,
@@ -764,7 +783,7 @@ pub(super) fn write_specialization_constants<'a>(
                     Some(mem::size_of::<u32>()),
                     mem::align_of::<u32>(),
                 ),
-                _ => type_from_id(shader, spirv, result_type_id),
+                _ => type_from_id::<L>(spirv, result_type_id),
             };
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 

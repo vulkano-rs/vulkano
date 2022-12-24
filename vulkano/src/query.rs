@@ -644,17 +644,17 @@ vulkan_bitflags! {
     /// Count the number of times a compute shader is invoked.
     COMPUTE_SHADER_INVOCATIONS = COMPUTE_SHADER_INVOCATIONS,
 
-    /*
+    /* TODO: enable
     // TODO: document
     TASK_SHADER_INVOCATIONS = TASK_SHADER_INVOCATIONS_NV {
         device_extensions: [nv_mesh_shader],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     MESH_SHADER_INVOCATIONS = MESH_SHADER_INVOCATIONS_NV {
         device_extensions: [nv_mesh_shader],
-    },
-     */
+    },*/
 }
 
 vulkan_bitflags! {
@@ -679,12 +679,11 @@ vulkan_bitflags! {
     /// available.
     PARTIAL = PARTIAL,
 
-    /*
+    /* TODO: enable
     // TODO: document
     WITH_STATUS = WITH_STATUS_KHR {
         device_extensions: [khr_video_queue],
-    },
-     */
+    },*/
 }
 
 #[cfg(test)]

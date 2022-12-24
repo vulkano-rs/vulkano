@@ -17,18 +17,16 @@ use super::{
     CommandBufferExecError, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassInfo,
     CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandBufferResourcesUsage,
     CommandBufferState, CommandBufferUsage, PrimaryCommandBufferAbstract, RenderingAttachmentInfo,
-    SecondaryCommandBufferAbstract, SubpassContents,
+    SecondaryCommandBufferAbstract, SecondaryCommandBufferResourcesUsage, SubpassContents,
 };
 use crate::{
-    buffer::{sys::Buffer, BufferAccess},
     command_buffer::CommandBufferInheritanceRenderingInfo,
-    device::{Device, DeviceOwned, Queue, QueueFamilyProperties},
+    device::{Device, DeviceOwned, QueueFamilyProperties},
     format::{Format, FormatFeatures},
-    image::{sys::Image, ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange},
+    image::ImageAspects,
     query::{QueryControlFlags, QueryType},
     render_pass::{Framebuffer, Subpass},
-    sync::{AccessCheckError, AccessFlags, PipelineMemoryAccess, PipelineStages},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, VulkanObject,
 };
 use ahash::HashMap;
 use parking_lot::{Mutex, MutexGuard};
@@ -36,7 +34,6 @@ use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     marker::PhantomData,
-    ops::Range,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -754,29 +751,6 @@ where
         self.usage
     }
 
-    fn check_buffer_access(
-        &self,
-        buffer: &Buffer,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        self.inner
-            .check_buffer_access(buffer, range, exclusive, queue)
-    }
-
-    fn check_image_access(
-        &self,
-        image: &Image,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        expected_layout: ImageLayout,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        self.inner
-            .check_image_access(image, range, exclusive, expected_layout, queue)
-    }
-
     fn state(&self) -> MutexGuard<'_, CommandBufferState> {
         self.state.lock()
     }
@@ -859,36 +833,8 @@ where
         };
     }
 
-    fn num_buffers(&self) -> usize {
-        self.inner.num_buffers()
-    }
-
-    fn buffer(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &Arc<dyn BufferAccess>,
-        Range<DeviceSize>,
-        PipelineMemoryAccess,
-    )> {
-        self.inner.buffer(index)
-    }
-
-    fn num_images(&self) -> usize {
-        self.inner.num_images()
-    }
-
-    fn image(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &Arc<dyn ImageAccess>,
-        &ImageSubresourceRange,
-        PipelineMemoryAccess,
-        ImageLayout,
-        ImageLayout,
-    )> {
-        self.inner.image(index)
+    fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
+        self.inner.secondary_resources_usage()
     }
 }
 

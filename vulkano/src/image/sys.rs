@@ -34,7 +34,7 @@ use crate::{
     },
     range_map::RangeMap,
     swapchain::Swapchain,
-    sync::{AccessError, CurrentAccess, Sharing},
+    sync::{future::AccessError, CurrentAccess, Sharing},
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};

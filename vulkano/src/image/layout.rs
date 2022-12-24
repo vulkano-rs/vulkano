@@ -88,43 +88,48 @@ vulkan_enum! {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],
     },
-    /*
+
+    /* TODO: enable
     // TODO: document
     DepthAttachmentOptimal = DEPTH_ATTACHMENT_OPTIMAL {
         api_version: V1_2,
         device_extensions: [khr_separate_depth_stencil_layouts],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     DepthReadOnlyOptimal = DEPTH_READ_ONLY_OPTIMAL {
         api_version: V1_2,
         device_extensions: [khr_separate_depth_stencil_layouts],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     StencilAttachmentOptimal = STENCIL_ATTACHMENT_OPTIMAL {
         api_version: V1_2,
         device_extensions: [khr_separate_depth_stencil_layouts],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     StencilReadOnlyOptimal = STENCIL_READ_ONLY_OPTIMAL {
         api_version: V1_2,
         device_extensions: [khr_separate_depth_stencil_layouts],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     ReadOnlyOptimal = READ_ONLY_OPTIMAL {
         api_version: V1_3,
         device_extensions: [khr_synchronization2],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     AttachmentOptimal = ATTACHMENT_OPTIMAL {
         api_version: V1_3,
         device_extensions: [khr_synchronization2],
-    },
-     */
+    },*/
 
     /// The layout of images that are held in a swapchain. Images are in this layout when they are
     /// acquired from the swapchain, and must be transitioned back into this layout before
@@ -133,52 +138,72 @@ vulkan_enum! {
         device_extensions: [khr_swapchain],
     },
 
-    /*
+    /* TODO: enable
     // TODO: document
     VideoDecodeDst = VIDEO_DECODE_DST_KHR {
         device_extensions: [khr_video_decode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VideoDecodeSrc = VIDEO_DECODE_SRC_KHR {
         device_extensions: [khr_video_decode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VideoDecodeDpb = VIDEO_DECODE_DPB_KHR {
         device_extensions: [khr_video_decode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SharedPresent = SHARED_PRESENT_KHR {
         device_extensions: [khr_shared_presentable_image],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     FragmentDensityMapOptimal = FRAGMENT_DENSITY_MAP_OPTIMAL_EXT {
         device_extensions: [ext_fragment_density_map],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     FragmentShadingRateAttachmentOptimal = FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR {
         device_extensions: [khr_fragment_shading_rate],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VideoEncodeDst = VIDEO_ENCODE_DST_KHR {
         device_extensions: [khr_video_encode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VideoEncodeSrc = VIDEO_ENCODE_SRC_KHR {
         device_extensions: [khr_video_encode_queue],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     VideoEncodeDpb = VIDEO_ENCODE_DPB_KHR {
         device_extensions: [khr_video_encode_queue],
-    },
-     */
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    AttachmentFeedbackLoopOptimal = ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT {
+        device_extensions: [ext_attachment_feedback_loop_layout],
+    },*/
+}
+
+impl Default for ImageLayout {
+    #[inline]
+    fn default() -> Self {
+        ImageLayout::Undefined
+    }
 }
 
 /// The set of layouts to use for an image when used in descriptor of various kinds.

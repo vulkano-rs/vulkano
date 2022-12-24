@@ -217,7 +217,7 @@ impl PipelineCache {
                 .result()
                 .map_err(VulkanError::from)?;
 
-                let mut data: Vec<u8> = Vec::with_capacity(count as usize);
+                let mut data: Vec<u8> = Vec::with_capacity(count);
                 let result = (fns.v1_0.get_pipeline_cache_data)(
                     self.device.handle(),
                     self.cache,
@@ -227,7 +227,7 @@ impl PipelineCache {
 
                 match result {
                     ash::vk::Result::SUCCESS => {
-                        data.set_len(count as usize);
+                        data.set_len(count);
                         break data;
                     }
                     ash::vk::Result::INCOMPLETE => (),

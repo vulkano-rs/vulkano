@@ -15,7 +15,7 @@ use crate::{
     device::{Device, DeviceOwned},
     macros::vulkan_enum,
     sampler::Sampler,
-    shader::{DescriptorRequirements, ShaderStages},
+    shader::{DescriptorBindingRequirements, ShaderStages},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
@@ -632,10 +632,12 @@ impl Default for DescriptorSetLayoutCreateInfo {
 }
 
 impl DescriptorSetLayoutCreateInfo {
-    /// Builds a list of `DescriptorSetLayoutCreateInfo` from an iterator of `DescriptorRequirement`
-    /// originating from a shader.
+    /// Builds a list of `DescriptorSetLayoutCreateInfo` from an iterator of
+    /// `DescriptorBindingRequirements` originating from a shader.
     pub fn from_requirements<'a>(
-        descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
+        descriptor_requirements: impl IntoIterator<
+            Item = ((u32, u32), &'a DescriptorBindingRequirements),
+        >,
     ) -> Vec<Self> {
         let mut create_infos: Vec<Self> = Vec::new();
 
@@ -722,24 +724,18 @@ impl DescriptorSetLayoutBinding {
     #[inline]
     pub fn ensure_compatible_with_shader(
         &self,
-        descriptor_requirements: &DescriptorRequirements,
+        binding_requirements: &DescriptorBindingRequirements,
     ) -> Result<(), DescriptorRequirementsNotMet> {
-        let &DescriptorRequirements {
+        let &DescriptorBindingRequirements {
             ref descriptor_types,
             descriptor_count,
             image_format: _,
             image_multisampled: _,
             image_scalar_type: _,
             image_view_type: _,
-            sampler_compare: _,
-            sampler_no_unnormalized_coordinates: _,
-            sampler_no_ycbcr_conversion: _,
-            sampler_with_images: _,
             stages,
-            storage_image_atomic: _,
-            storage_read: _,
-            storage_write: _,
-        } = descriptor_requirements;
+            descriptors: _,
+        } = binding_requirements;
 
         if !descriptor_types.contains(&self.descriptor_type) {
             return Err(DescriptorRequirementsNotMet::DescriptorType {
@@ -768,9 +764,9 @@ impl DescriptorSetLayoutBinding {
     }
 }
 
-impl From<&DescriptorRequirements> for DescriptorSetLayoutBinding {
+impl From<&DescriptorBindingRequirements> for DescriptorSetLayoutBinding {
     #[inline]
-    fn from(reqs: &DescriptorRequirements) -> Self {
+    fn from(reqs: &DescriptorBindingRequirements) -> Self {
         Self {
             descriptor_type: reqs.descriptor_types[0],
             descriptor_count: reqs.descriptor_count.unwrap_or(0),
@@ -870,28 +866,42 @@ vulkan_enum! {
     /// pixel that is currently being processed by the fragment shader.
     InputAttachment = INPUT_ATTACHMENT,
 
-    /*
+    /* TODO: enable
     // TODO: document
     InlineUniformBlock = INLINE_UNIFORM_BLOCK {
         api_version: V1_3,
         device_extensions: [ext_inline_uniform_block],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     AccelerationStructure = ACCELERATION_STRUCTURE_KHR {
         device_extensions: [khr_acceleration_structure],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     AccelerationStructureNV = ACCELERATION_STRUCTURE_NV {
         device_extensions: [nv_ray_tracing],
-    },
+    },*/
 
+    /* TODO: enable
+    // TODO: document
+    SampleWeightImage = SAMPLE_WEIGHT_IMAGE_QCOM {
+        device_extensions: [qcom_image_processing],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    BlockMatchImage = BLOCK_MATCH_IMAGE_QCOM {
+        device_extensions: [qcom_image_processing],
+    },*/
+
+    /* TODO: enable
     // TODO: document
     Mutable = MUTABLE_VALVE {
         device_extensions: [valve_mutable_descriptor_type],
-    },
-     */
+    },*/
 }
 
 #[cfg(test)]

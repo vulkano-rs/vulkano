@@ -67,7 +67,7 @@ use self::{
 use super::{DynamicState, Pipeline, PipelineBindPoint, PipelineLayout};
 use crate::{
     device::{Device, DeviceOwned},
-    shader::{DescriptorRequirements, ShaderStage},
+    shader::{DescriptorBindingRequirements, FragmentTestsStages, ShaderStage},
     VulkanObject,
 };
 use ahash::HashMap;
@@ -106,8 +106,9 @@ pub struct GraphicsPipeline {
 
     // TODO: replace () with an object that describes the shaders in some way.
     shaders: HashMap<ShaderStage, ()>,
-    descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements>,
+    descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
+    fragment_tests_stages: Option<FragmentTestsStages>,
 
     vertex_input_state: VertexInputState,
     input_assembly_state: InputAssemblyState,
@@ -163,16 +164,6 @@ impl GraphicsPipeline {
     #[inline]
     pub(crate) fn shader(&self, stage: ShaderStage) -> Option<()> {
         self.shaders.get(&stage).copied()
-    }
-
-    /// Returns an iterator over the descriptor requirements for this pipeline.
-    #[inline]
-    pub fn descriptor_requirements(
-        &self,
-    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorRequirements)> {
-        self.descriptor_requirements
-            .iter()
-            .map(|(loc, reqs)| (*loc, reqs))
     }
 
     /// Returns the vertex input state used to create this pipeline.
@@ -243,6 +234,12 @@ impl GraphicsPipeline {
     pub fn dynamic_states(&self) -> impl ExactSizeIterator<Item = (DynamicState, bool)> + '_ {
         self.dynamic_state.iter().map(|(k, v)| (*k, *v))
     }
+
+    /// If the pipeline has a fragment shader, returns the fragment tests stages used.
+    #[inline]
+    pub fn fragment_tests_stages(&self) -> Option<FragmentTestsStages> {
+        self.fragment_tests_stages
+    }
 }
 
 impl Pipeline for GraphicsPipeline {
@@ -259,6 +256,13 @@ impl Pipeline for GraphicsPipeline {
     #[inline]
     fn num_used_descriptor_sets(&self) -> u32 {
         self.num_used_descriptor_sets
+    }
+
+    #[inline]
+    fn descriptor_binding_requirements(
+        &self,
+    ) -> &HashMap<(u32, u32), DescriptorBindingRequirements> {
+        &self.descriptor_binding_requirements
     }
 }
 

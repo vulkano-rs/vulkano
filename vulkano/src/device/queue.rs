@@ -22,7 +22,9 @@ use crate::{
     },
     swapchain::{PresentInfo, SwapchainPresentInfo},
     sync::{
-        AccessCheckError, Fence, FenceState, FlushError, GpuFuture, PipelineStage, SemaphoreState,
+        fence::{Fence, FenceState},
+        future::{AccessCheckError, FlushError, GpuFuture},
+        semaphore::SemaphoreState,
     },
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -669,8 +671,12 @@ impl<'a> QueueGuard<'a> {
                     CommandBufferUsage::SimultaneousUse => (),
                 }
 
-                let CommandBufferResourcesUsage { buffers, images } =
-                    command_buffer.resources_usage();
+                let CommandBufferResourcesUsage {
+                    buffers,
+                    images,
+                    buffer_indices: _,
+                    image_indices: _,
+                } = command_buffer.resources_usage();
 
                 for usage in buffers {
                     let state = states.buffers.get_mut(&usage.buffer.handle()).unwrap();
@@ -682,12 +688,10 @@ impl<'a> QueueGuard<'a> {
                             range_usage.mutable,
                             queue,
                         ) {
-                            Err(AccessCheckError::Denied(err)) => {
+                            Err(AccessCheckError::Denied(error)) => {
                                 return Err(FlushError::ResourceAccessError {
-                                    error: err,
-                                    command_name: range_usage.first_use.command_name.into(),
-                                    command_param: range_usage.first_use.description.clone(),
-                                    command_offset: range_usage.first_use.command_index,
+                                    error,
+                                    use_ref: range_usage.first_use,
                                 });
                             }
                             Err(AccessCheckError::Unknown) => {
@@ -697,12 +701,10 @@ impl<'a> QueueGuard<'a> {
                                     state.check_gpu_read(range.clone())
                                 };
 
-                                if let Err(err) = result {
+                                if let Err(error) = result {
                                     return Err(FlushError::ResourceAccessError {
-                                        error: err,
-                                        command_name: range_usage.first_use.command_name.into(),
-                                        command_param: range_usage.first_use.description.clone(),
-                                        command_offset: range_usage.first_use.command_index,
+                                        error,
+                                        use_ref: range_usage.first_use,
                                     });
                                 }
                             }
@@ -722,13 +724,10 @@ impl<'a> QueueGuard<'a> {
                             range_usage.expected_layout,
                             queue,
                         ) {
-                            Err(AccessCheckError::Denied(err)) => {
-                                println!("Foo");
+                            Err(AccessCheckError::Denied(error)) => {
                                 return Err(FlushError::ResourceAccessError {
-                                    error: err,
-                                    command_name: range_usage.first_use.command_name.into(),
-                                    command_param: range_usage.first_use.description.clone(),
-                                    command_offset: range_usage.first_use.command_index,
+                                    error,
+                                    use_ref: range_usage.first_use,
                                 });
                             }
                             Err(AccessCheckError::Unknown) => {
@@ -739,13 +738,10 @@ impl<'a> QueueGuard<'a> {
                                     state.check_gpu_read(range.clone(), range_usage.expected_layout)
                                 };
 
-                                if let Err(err) = result {
-                                    println!("Bar");
+                                if let Err(error) = result {
                                     return Err(FlushError::ResourceAccessError {
-                                        error: err,
-                                        command_name: range_usage.first_use.command_name.into(),
-                                        command_param: range_usage.first_use.description.clone(),
-                                        command_offset: range_usage.first_use.command_index,
+                                        error,
+                                        use_ref: range_usage.first_use,
                                     });
                                 }
                             }
@@ -1047,8 +1043,12 @@ impl<'a> QueueGuard<'a> {
                     .unwrap();
                 state.add_queue_submit();
 
-                let CommandBufferResourcesUsage { buffers, images } =
-                    command_buffer.resources_usage();
+                let CommandBufferResourcesUsage {
+                    buffers,
+                    images,
+                    buffer_indices: _,
+                    image_indices: _,
+                } = command_buffer.resources_usage();
 
                 for usage in buffers {
                     let state = states.buffers.get_mut(&usage.buffer.handle()).unwrap();
@@ -1532,6 +1532,8 @@ impl<'a> States<'a> {
                 let CommandBufferResourcesUsage {
                     buffers: buffers_usage,
                     images: images_usage,
+                    buffer_indices: _,
+                    image_indices: _,
                 } = command_buffer.resources_usage();
 
                 for usage in buffers_usage {
@@ -1588,14 +1590,6 @@ pub struct QueueFamilyProperties {
     pub min_image_transfer_granularity: [u32; 3],
 }
 
-impl QueueFamilyProperties {
-    /// Returns whether the queues of this family support a particular pipeline stage.
-    #[inline]
-    pub fn supports_stage(&self, stage: PipelineStage) -> bool {
-        self.queue_flags.contains(stage.required_queue_flags())
-    }
-}
-
 impl From<ash::vk::QueueFamilyProperties> for QueueFamilyProperties {
     #[inline]
     fn from(val: ash::vk::QueueFamilyProperties) -> Self {
@@ -1644,6 +1638,11 @@ vulkan_bitflags! {
     /// Queues of this family can execute video encode operations.
     VIDEO_ENCODE = VIDEO_ENCODE_KHR {
         device_extensions: [khr_video_encode_queue],
+    },
+
+    /// Queues of this family can execute optical flow operations.
+    OPTICAL_FLOW = OPTICAL_FLOW_NV {
+        device_extensions: [nv_optical_flow],
     },
 }
 
@@ -1700,7 +1699,7 @@ impl From<RequirementNotMet> for QueueError {
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::Fence;
+    use crate::sync::fence::Fence;
     use std::{sync::Arc, time::Duration};
 
     #[test]

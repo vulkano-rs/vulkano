@@ -15,7 +15,7 @@ use crate::{
     device::Device,
     format::FormatFeatures,
     image::{ImageAspects, ImageLayout, SampleCount},
-    sync::PipelineStages,
+    sync::{AccessFlags, DependencyFlags, PipelineStages},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -30,7 +30,7 @@ impl RenderPass {
     pub(super) fn validate(
         device: &Device,
         create_info: &mut RenderPassCreateInfo,
-    ) -> Result<u32, RenderPassCreationError> {
+    ) -> Result<(), RenderPassCreationError> {
         let properties = device.physical_device().properties();
 
         let RenderPassCreateInfo {
@@ -40,8 +40,6 @@ impl RenderPass {
             correlated_view_masks,
             _ne: _,
         } = create_info;
-
-        let mut views_used = 0;
 
         /*
             Attachments
@@ -190,8 +188,6 @@ impl RenderPass {
                     },
                 );
             }
-
-            views_used = views_used.max(view_count);
 
             // VUID-VkSubpassDescription2-colorAttachmentCount-03063
             if color_attachments.len() as u32 > properties.max_color_attachments {
@@ -633,8 +629,8 @@ impl RenderPass {
                 dst_stages,
                 src_access,
                 dst_access,
-                by_region,
-                view_local,
+                dependency_flags,
+                view_offset,
                 _ne: _,
             } = dependency;
             let dependency_num = dependency_num as u32;
@@ -875,7 +871,7 @@ impl RenderPass {
 
                 // VUID-VkSubpassDependency2-srcAccessMask-03088
                 // VUID-VkSubpassDependency2-dstAccessMask-03089
-                if !stages.supported_access().contains(access) {
+                if !AccessFlags::from(stages).contains(access) {
                     return Err(
                         RenderPassCreationError::DependencyAccessNotSupportedByStages {
                             dependency: dependency_num,
@@ -884,13 +880,24 @@ impl RenderPass {
                 }
             }
 
-            // VUID-VkRenderPassCreateInfo2-viewMask-03059
-            if view_local.is_some() && !is_multiview {
-                return Err(
-                    RenderPassCreationError::DependencyViewLocalMultiviewNotEnabled {
-                        dependency: dependency_num,
-                    },
-                );
+            if dependency_flags.intersects(DependencyFlags::VIEW_LOCAL) {
+                // VUID-VkRenderPassCreateInfo2-viewMask-03059
+                if !is_multiview {
+                    return Err(
+                        RenderPassCreationError::DependencyViewLocalMultiviewNotEnabled {
+                            dependency: dependency_num,
+                        },
+                    );
+                }
+            } else {
+                // VUID-VkSubpassDependency2-dependencyFlags-03092
+                if view_offset != 0 {
+                    return Err(
+                        RenderPassCreationError::DependencyViewOffzetNonzeroWithoutViewLocal {
+                            dependency: dependency_num,
+                        },
+                    );
+                }
             }
 
             // VUID-VkSubpassDependency2-srcSubpass-03085
@@ -937,7 +944,7 @@ impl RenderPass {
                 } else {
                     // VUID-VkSubpassDependency2-dependencyFlags-03090
                     // VUID-VkSubpassDependency2-dependencyFlags-03091
-                    if view_local.is_some() {
+                    if dependency_flags.intersects(DependencyFlags::VIEW_LOCAL) {
                         return Err(
                             RenderPassCreationError::DependencyViewLocalExternalDependency {
                                 dependency: dependency_num,
@@ -977,7 +984,7 @@ impl RenderPass {
                     // VUID-VkSubpassDependency2-srcSubpass-02245
                     if src_stages.intersects(framebuffer_stages)
                         && dst_stages.intersects(framebuffer_stages)
-                        && !by_region
+                        && !dependency_flags.intersects(DependencyFlags::BY_REGION)
                     {
                         return Err(
                             RenderPassCreationError::DependencySelfDependencyFramebufferStagesWithoutByRegion {
@@ -986,11 +993,11 @@ impl RenderPass {
                         );
                     }
 
-                    if let Some(view_offset) = view_local {
+                    if dependency_flags.intersects(DependencyFlags::VIEW_LOCAL) {
                         // VUID-VkSubpassDependency2-viewOffset-02530
                         if view_offset != 0 {
                             return Err(
-                                RenderPassCreationError::DependencySelfDependencyViewLocalNonzeroOffset {
+                                RenderPassCreationError::DependencySelfDependencyViewLocalNonzeroViewOffset {
                                     dependency: dependency_num,
                                 },
                             );
@@ -1030,7 +1037,7 @@ impl RenderPass {
             })?;
         }
 
-        Ok(views_used)
+        Ok(())
     }
 
     pub(super) unsafe fn create_v2(
@@ -1172,16 +1179,6 @@ impl RenderPass {
             .iter()
             .enumerate()
             .map(|(index, dependency)| {
-                let mut dependency_flags = ash::vk::DependencyFlags::empty();
-
-                if dependency.by_region {
-                    dependency_flags |= ash::vk::DependencyFlags::BY_REGION;
-                }
-
-                if dependency.view_local.is_some() {
-                    dependency_flags |= ash::vk::DependencyFlags::VIEW_LOCAL;
-                }
-
                 ash::vk::SubpassDependency2 {
                     p_next: memory_barriers_vk
                         .get(index)
@@ -1192,9 +1189,9 @@ impl RenderPass {
                     dst_stage_mask: dependency.dst_stages.into(),
                     src_access_mask: dependency.src_access.into(),
                     dst_access_mask: dependency.dst_access.into(),
-                    dependency_flags,
+                    dependency_flags: dependency.dependency_flags.into(),
                     // VUID-VkSubpassDependency2-dependencyFlags-03092
-                    view_offset: dependency.view_local.unwrap_or(0),
+                    view_offset: dependency.view_offset,
                     ..Default::default()
                 }
             })
@@ -1371,11 +1368,7 @@ impl RenderPass {
                 dst_stage_mask: dependency.dst_stages.into(),
                 src_access_mask: dependency.src_access.into(),
                 dst_access_mask: dependency.dst_access.into(),
-                dependency_flags: if dependency.by_region {
-                    ash::vk::DependencyFlags::BY_REGION
-                } else {
-                    ash::vk::DependencyFlags::empty()
-                },
+                dependency_flags: dependency.dependency_flags.into(),
             })
             .collect::<SmallVec<[_; 4]>>();
 
@@ -1427,7 +1420,7 @@ impl RenderPass {
                     subpasses.iter().map(|subpass| subpass.view_mask).collect(),
                     dependencies
                         .iter()
-                        .map(|dependency| dependency.view_local.unwrap_or(0))
+                        .map(|dependency| dependency.view_offset)
                         .collect(),
                 )
             } else {
@@ -1549,7 +1542,7 @@ pub enum RenderPassCreationError {
 
     /// A subpass dependency specifies a subpass self-dependency and has the `view_local` dependency
     /// enabled, but the inner offset value was not 0.
-    DependencySelfDependencyViewLocalNonzeroOffset { dependency: u32 },
+    DependencySelfDependencyViewLocalNonzeroViewOffset { dependency: u32 },
 
     /// A subpass dependency specifies a subpass self-dependency without the `view_local`
     /// dependency, but the referenced subpass has more than one bit set in its `view_mask`.
@@ -1566,13 +1559,23 @@ pub enum RenderPassCreationError {
     /// render pass.
     DependencySubpassOutOfRange { dependency: u32, subpass: u32 },
 
-    /// A subpass dependency has the `view_local` dependency enabled, but `src_subpass` or
+    /// In a subpass dependency, `dependency_flags` contains [`VIEW_LOCAL`], but `src_subpass` or
     /// `dst_subpass` were set to `None`.
+    ///
+    /// [`VIEW_LOCAL`]: crate::sync::DependencyFlags::VIEW_LOCAL
     DependencyViewLocalExternalDependency { dependency: u32 },
 
-    /// A subpass dependency has the `view_local` dependency enabled, but multiview is not enabled
-    /// on the render pass.
+    /// In a subpass dependency, `dependency_flags` contains [`VIEW_LOCAL`], but multiview is not
+    /// enabled on the render pass.
+    ///
+    /// [`VIEW_LOCAL`]: crate::sync::DependencyFlags::VIEW_LOCAL
     DependencyViewLocalMultiviewNotEnabled { dependency: u32 },
+
+    /// In a subpass dependency, `view_offset` is not zero, but `dependency_flags` does not contain
+    /// [`VIEW_LOCAL`].
+    ///
+    /// [`VIEW_LOCAL`]: crate::sync::DependencyFlags::VIEW_LOCAL
+    DependencyViewOffzetNonzeroWithoutViewLocal { dependency: u32 },
 
     /// A reference to an attachment used other than as an input attachment in a subpass has
     /// one or more aspects selected.
@@ -1740,7 +1743,7 @@ impl Display for RenderPassCreationError {
                     dependency,
                 )
             }
-            Self::DependencySelfDependencyViewLocalNonzeroOffset { dependency } => write!(
+            Self::DependencySelfDependencyViewLocalNonzeroViewOffset { dependency } => write!(
                 f,
                 "subpass dependency {} specifies a subpass self-dependency and has the \
                 `view_local` dependency enabled, but the inner offset value was not 0",
@@ -1785,14 +1788,20 @@ impl Display for RenderPassCreationError {
             ),
             Self::DependencyViewLocalExternalDependency { dependency } => write!(
                 f,
-                "subpass dependency {} has the `view_local` dependency enabled, but \
+                "in subpass dependency {}, `dependency_flags` contains `VIEW_LOCAL`, but \
                 `src_subpass` or `dst_subpass` were set to `None`",
                 dependency,
             ),
             Self::DependencyViewLocalMultiviewNotEnabled { dependency } => write!(
                 f,
-                "subpass dependency {} has the `view_local` dependency enabled, but multiview is \
-                not enabled on the render pass",
+                "in subpass dependency {}, `dependency_flags` contains `VIEW_LOCAL`, but \
+                multiview is not enabled on the render pass",
+                dependency,
+            ),
+            Self::DependencyViewOffzetNonzeroWithoutViewLocal { dependency } => write!(
+                f,
+                "in subpass dependency {}, `view_offset` is not zero, but `dependency_flags` does \
+                not contain `VIEW_LOCAL`",
                 dependency,
             ),
             Self::SubpassAttachmentAspectsNotEmpty {

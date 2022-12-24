@@ -25,7 +25,7 @@ use crate::{
         MemoryPropertyFlags, MemoryRequirements,
     },
     range_map::RangeMap,
-    sync::{AccessError, CurrentAccess, Sharing},
+    sync::{future::AccessError, CurrentAccess, Sharing},
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};

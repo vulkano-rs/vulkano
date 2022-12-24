@@ -91,7 +91,7 @@ use crate::{
     device::DeviceOwned,
     image::view::ImageViewAbstract,
     sampler::Sampler,
-    OomError, VulkanObject,
+    DeviceSize, OomError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::{smallvec, SmallVec};
@@ -99,6 +99,7 @@ use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
+    ops::Range,
     ptr,
     sync::Arc,
 };
@@ -120,6 +121,9 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
 
     /// Returns the layout of this descriptor set.
     fn layout(&self) -> &Arc<DescriptorSetLayout>;
+
+    /// Returns the variable descriptor count that this descriptor set was allocated with.
+    fn variable_descriptor_count(&self) -> u32;
 
     /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
     fn offsets(
@@ -153,6 +157,7 @@ impl Hash for dyn DescriptorSet {
 
 pub(crate) struct DescriptorSetInner {
     layout: Arc<DescriptorSetLayout>,
+    variable_descriptor_count: u32,
     resources: DescriptorSetResources,
 }
 
@@ -229,7 +234,11 @@ impl DescriptorSetInner {
             );
         }
 
-        Ok(DescriptorSetInner { layout, resources })
+        Ok(DescriptorSetInner {
+            layout,
+            variable_descriptor_count,
+            resources,
+        })
     }
 
     pub(crate) fn layout(&self) -> &Arc<DescriptorSetLayout> {
@@ -333,7 +342,7 @@ impl DescriptorSetResources {
 #[derive(Clone)]
 pub enum DescriptorBindingResources {
     None(Elements<()>),
-    Buffer(Elements<Arc<dyn BufferAccess>>),
+    Buffer(Elements<(Arc<dyn BufferAccess>, Range<DeviceSize>)>),
     BufferView(Elements<Arc<dyn BufferViewAbstract>>),
     ImageView(Elements<Arc<dyn ImageViewAbstract>>),
     ImageViewSampler(Elements<(Arc<dyn ImageViewAbstract>, Arc<Sampler>)>),
@@ -416,64 +425,9 @@ impl DescriptorSetWithOffsets {
         descriptor_set: Arc<dyn DescriptorSet>,
         dynamic_offsets: impl IntoIterator<Item = u32>,
     ) -> Self {
-        let dynamic_offsets: SmallVec<_> = dynamic_offsets.into_iter().collect();
-        let layout = descriptor_set.layout();
-        let properties = layout.device().physical_device().properties();
-        let min_uniform_off_align = properties.min_uniform_buffer_offset_alignment as u32;
-        let min_storage_off_align = properties.min_storage_buffer_offset_alignment as u32;
-        let mut dynamic_offset_index = 0;
-
-        // Ensure that the number of dynamic_offsets is correct and that each
-        // dynamic offset is a multiple of the minimum offset alignment specified
-        // by the physical device.
-        for binding in layout.bindings().values() {
-            match binding.descriptor_type {
-                DescriptorType::StorageBufferDynamic => {
-                    // Don't check alignment if there are not enough offsets anyway
-                    if dynamic_offsets.len() > dynamic_offset_index {
-                        assert!(
-                            dynamic_offsets[dynamic_offset_index] % min_storage_off_align == 0,
-                            "Dynamic storage buffer offset must be a multiple of \
-                            min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
-                            dynamic_offsets[dynamic_offset_index],
-                            min_storage_off_align,
-                        );
-                    }
-                    dynamic_offset_index += 1;
-                }
-                DescriptorType::UniformBufferDynamic => {
-                    // Don't check alignment if there are not enough offsets anyway
-                    if dynamic_offsets.len() > dynamic_offset_index {
-                        assert!(
-                            dynamic_offsets[dynamic_offset_index] % min_uniform_off_align == 0,
-                            "Dynamic uniform buffer offset must be a multiple of \
-                            min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
-                            dynamic_offsets[dynamic_offset_index],
-                            min_uniform_off_align,
-                        );
-                    }
-                    dynamic_offset_index += 1;
-                }
-                _ => (),
-            }
-        }
-
-        assert!(
-            dynamic_offsets.len() >= dynamic_offset_index,
-            "Too few dynamic offsets: got {}, expected {}",
-            dynamic_offsets.len(),
-            dynamic_offset_index,
-        );
-        assert!(
-            dynamic_offsets.len() <= dynamic_offset_index,
-            "Too many dynamic offsets: got {}, expected {}",
-            dynamic_offsets.len(),
-            dynamic_offset_index,
-        );
-
-        DescriptorSetWithOffsets {
+        Self {
             descriptor_set,
-            dynamic_offsets,
+            dynamic_offsets: dynamic_offsets.into_iter().collect(),
         }
     }
 

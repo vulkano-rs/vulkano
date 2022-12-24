@@ -18,7 +18,8 @@
 //! initialization or during a loading screen.
 
 pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::PipelineLayout};
-use crate::{device::DeviceOwned, macros::vulkan_enum};
+use crate::{device::DeviceOwned, macros::vulkan_enum, shader::DescriptorBindingRequirements};
+use ahash::HashMap;
 use std::sync::Arc;
 
 pub mod cache;
@@ -37,6 +38,11 @@ pub trait Pipeline: DeviceOwned {
     /// Returns the number of descriptor sets actually accessed by this pipeline. This may be less
     /// than the number of sets in the pipeline layout.
     fn num_used_descriptor_sets(&self) -> u32;
+
+    /// Returns a reference to the descriptor binding requirements for this pipeline.
+    fn descriptor_binding_requirements(
+        &self,
+    ) -> &HashMap<(u32, u32), DescriptorBindingRequirements>;
 }
 
 vulkan_enum! {
@@ -56,17 +62,17 @@ vulkan_enum! {
     // TODO: document
     Graphics = GRAPHICS,
 
-    /*
+    /* TODO: enable
     // TODO: document
     RayTracing = RAY_TRACING_KHR {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },
+    },*/
 
+    /* TODO: enable
     // TODO: document
     SubpassShading = SUBPASS_SHADING_HUAWEI {
         device_extensions: [huawei_subpass_shading],
-    },
-     */
+    },*/
 }
 
 vulkan_enum! {
@@ -257,6 +263,161 @@ vulkan_enum! {
     ColorWriteEnable = COLOR_WRITE_ENABLE_EXT {
         device_extensions: [ext_color_write_enable],
     },
+
+    // TODO: document
+    TessellationDomainOrigin = TESSELLATION_DOMAIN_ORIGIN_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    DepthClampEnable = DEPTH_CLAMP_ENABLE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    PolygonMode = POLYGON_MODE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    RasterizationSamples = RASTERIZATION_SAMPLES_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    SampleMask = SAMPLE_MASK_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    AlphaToCoverageEnable = ALPHA_TO_COVERAGE_ENABLE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    AlphaToOneEnable = ALPHA_TO_ONE_ENABLE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    LogicOpEnable = LOGIC_OP_ENABLE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ColorBlendEnable = COLOR_BLEND_ENABLE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ColorBlendEquation = COLOR_BLEND_EQUATION_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ColorWriteMask = COLOR_WRITE_MASK_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    RasterizationStream = RASTERIZATION_STREAM_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ConservativeRasterizationMode = CONSERVATIVE_RASTERIZATION_MODE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ExtraPrimitiveOverestimationSize = EXTRA_PRIMITIVE_OVERESTIMATION_SIZE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    DepthClipEnable = DEPTH_CLIP_ENABLE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    SampleLocationsEnable = SAMPLE_LOCATIONS_ENABLE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ColorBlendAdvanced = COLOR_BLEND_ADVANCED_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ProvokingVertexMode = PROVOKING_VERTEX_MODE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    LineRasterizationMode = LINE_RASTERIZATION_MODE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    LineStippleEnable = LINE_STIPPLE_ENABLE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    DepthClipNegativeOneToOne = DEPTH_CLIP_NEGATIVE_ONE_TO_ONE_EXT {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ViewportWScalingEnable = VIEWPORT_W_SCALING_ENABLE_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ViewportSwizzle = VIEWPORT_SWIZZLE_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    CoverageToColorEnable = COVERAGE_TO_COLOR_ENABLE_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    CoverageToColorLocation = COVERAGE_TO_COLOR_LOCATION_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    CoverageModulationMode = COVERAGE_MODULATION_MODE_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    CoverageModulationTableEnable = COVERAGE_MODULATION_TABLE_ENABLE_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    CoverageModulationTable = COVERAGE_MODULATION_TABLE_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    ShadingRateImageEnable = SHADING_RATE_IMAGE_ENABLE_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    RepresentativeFragmentTestEnable = REPRESENTATIVE_FRAGMENT_TEST_ENABLE_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
+
+    // TODO: document
+    CoverageReductionMode = COVERAGE_REDUCTION_MODE_NV {
+        device_extensions: [ext_extended_dynamic_state3],
+    },
 }
 
 /// Specifies how a dynamic state is handled by a graphics pipeline.
@@ -265,6 +426,7 @@ pub enum StateMode<F> {
     /// The pipeline has a fixed value for this state. Previously set dynamic state will be lost
     /// when binding it, and will have to be re-set after binding a pipeline that uses it.
     Fixed(F),
+
     /// The pipeline expects a dynamic value to be set by a command buffer. Previously set dynamic
     /// state is not disturbed when binding it.
     Dynamic,

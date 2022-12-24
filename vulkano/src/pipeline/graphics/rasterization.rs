@@ -197,7 +197,6 @@ vulkan_enum! {
 
     /// All faces will be removed.
     FrontAndBack = FRONT_AND_BACK,
-
 }
 
 impl Default for CullMode {
@@ -249,12 +248,11 @@ vulkan_enum! {
     /// feature must be enabled on the device.
     Point = POINT,
 
-    /*
+    /* TODO: enable
     // TODO: document
     FillRectangle = FILL_RECTANGLE_NV {
         device_extensions: [nv_fill_rectangle],
-    },
-     */
+    },*/
 }
 
 impl Default for PolygonMode {

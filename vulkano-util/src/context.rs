@@ -271,7 +271,7 @@ impl VulkanoContext {
         self.device
             .physical_device()
             .properties()
-            .max_memory_allocation_count as u32
+            .max_memory_allocation_count
     }
 
     /// Returns the instance.

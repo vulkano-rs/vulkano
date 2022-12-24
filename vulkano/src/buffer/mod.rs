@@ -110,7 +110,7 @@ vulkan_bitflags! {
     /// Flags to be set when creating a buffer.
     BufferCreateFlags = BufferCreateFlags(u32);
 
-    /*
+    /* TODO: enable
     /// The buffer will be backed by sparse memory binding (through queue commands) instead of
     /// regular binding (through [`bind_memory`]).
     ///
@@ -118,8 +118,9 @@ vulkan_bitflags! {
     ///
     /// [`bind_memory`]: sys::RawBuffer::bind_memory
     /// [`sparse_binding`]: crate::device::Features::sparse_binding
-    SPARSE_BINDING = SPARSE_BINDING,
+    SPARSE_BINDING = SPARSE_BINDING,*/
 
+    /* TODO: enable
     /// The buffer can be used without being fully resident in memory at the time of use.
     ///
     /// This requires the `sparse_binding` flag as well.
@@ -127,8 +128,9 @@ vulkan_bitflags! {
     /// The [`sparse_residency_buffer`] feature must be enabled on the device.
     ///
     /// [`sparse_residency_buffer`]: crate::device::Features::sparse_residency_buffer
-    SPARSE_RESIDENCY = SPARSE_RESIDENCY,
+    SPARSE_RESIDENCY = SPARSE_RESIDENCY,*/
 
+    /* TODO: enable
     /// The buffer's memory can alias with another buffer or a different part of the same buffer.
     ///
     /// This requires the `sparse_binding` flag as well.
@@ -136,16 +138,18 @@ vulkan_bitflags! {
     /// The [`sparse_residency_aliased`] feature must be enabled on the device.
     ///
     /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
-    SPARSE_ALIASED = SPARSE_ALIASED,
+    SPARSE_ALIASED = SPARSE_ALIASED,*/
 
+    /* TODO: enable
     /// The buffer is protected, and can only be used in combination with protected memory and other
     /// protected objects.
     ///
     /// The device API version must be at least 1.1.
     PROTECTED = PROTECTED {
         api_version: V1_1,
-    },
+    },*/
 
+    /* TODO: enable
     /// The buffer's device address can be saved and reused on a subsequent run.
     ///
     /// The device API version must be at least 1.2, or either the [`khr_buffer_device_address`] or
@@ -153,8 +157,7 @@ vulkan_bitflags! {
     DEVICE_ADDRESS_CAPTURE_REPLAY = DEVICE_ADDRESS_CAPTURE_REPLAY {
         api_version: V1_2,
         device_extensions: [khr_buffer_device_address, ext_buffer_device_address],
-    },
-     */
+    },*/
 }
 
 /// Trait for types of data that can be put in a buffer. These can be safely transmuted to and from

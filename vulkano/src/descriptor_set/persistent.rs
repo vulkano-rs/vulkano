@@ -114,6 +114,10 @@ where
         self.inner.layout()
     }
 
+    fn variable_descriptor_count(&self) -> u32 {
+        self.inner.variable_descriptor_count
+    }
+
     fn resources(&self) -> &DescriptorSetResources {
         self.inner.resources()
     }

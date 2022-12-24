@@ -52,8 +52,12 @@ mod linux {
             SwapchainPresentInfo,
         },
         sync::{
-            now, ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, FlushError, GpuFuture,
-            Semaphore, SemaphoreCreateInfo,
+            now,
+            semaphore::{
+                ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, Semaphore,
+                SemaphoreCreateInfo,
+            },
+            FlushError, GpuFuture,
         },
         VulkanLibrary,
     };

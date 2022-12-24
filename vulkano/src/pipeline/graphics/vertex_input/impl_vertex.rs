@@ -162,6 +162,81 @@ where
     }
 }
 
+#[cfg(feature = "cgmath")]
+unsafe impl<T> VertexMember for cgmath::Vector1<T>
+where
+    T: VertexMember,
+{
+    fn format() -> (VertexMemberTy, usize) {
+        <T as VertexMember>::format()
+    }
+}
+
+#[cfg(feature = "cgmath")]
+unsafe impl<T> VertexMember for cgmath::Vector2<T>
+where
+    T: VertexMember,
+{
+    fn format() -> (VertexMemberTy, usize) {
+        let (ty, sz) = <T as VertexMember>::format();
+        (ty, sz * 2)
+    }
+}
+
+#[cfg(feature = "cgmath")]
+unsafe impl<T> VertexMember for cgmath::Vector3<T>
+where
+    T: VertexMember,
+{
+    fn format() -> (VertexMemberTy, usize) {
+        let (ty, sz) = <T as VertexMember>::format();
+        (ty, sz * 3)
+    }
+}
+
+#[cfg(feature = "cgmath")]
+unsafe impl<T> VertexMember for cgmath::Vector4<T>
+where
+    T: VertexMember,
+{
+    fn format() -> (VertexMemberTy, usize) {
+        let (ty, sz) = <T as VertexMember>::format();
+        (ty, sz * 4)
+    }
+}
+
+#[cfg(feature = "cgmath")]
+unsafe impl<T> VertexMember for cgmath::Point1<T>
+where
+    T: VertexMember,
+{
+    fn format() -> (VertexMemberTy, usize) {
+        <T as VertexMember>::format()
+    }
+}
+
+#[cfg(feature = "cgmath")]
+unsafe impl<T> VertexMember for cgmath::Point2<T>
+where
+    T: VertexMember,
+{
+    fn format() -> (VertexMemberTy, usize) {
+        let (ty, sz) = <T as VertexMember>::format();
+        (ty, sz * 2)
+    }
+}
+
+#[cfg(feature = "cgmath")]
+unsafe impl<T> VertexMember for cgmath::Point3<T>
+where
+    T: VertexMember,
+{
+    fn format() -> (VertexMemberTy, usize) {
+        let (ty, sz) = <T as VertexMember>::format();
+        (ty, sz * 3)
+    }
+}
+
 #[cfg(feature = "nalgebra")]
 unsafe impl<T> VertexMember for nalgebra::Vector1<T>
 where

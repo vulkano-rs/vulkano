@@ -31,6 +31,7 @@ use crate::{
 use ahash::{HashMap, HashSet};
 use std::{
     borrow::Cow,
+    collections::hash_map::Entry,
     error::Error,
     ffi::{CStr, CString},
     fmt::{Display, Error as FmtError, Formatter},
@@ -381,7 +382,7 @@ impl Display for ShaderSupportError {
 #[derive(Clone, Debug)]
 pub struct EntryPointInfo {
     pub execution: ShaderExecution,
-    pub descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements>,
+    pub descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     pub push_constant_requirements: Option<PushConstantRange>,
     pub specialization_constant_requirements: HashMap<u32, SpecializationConstantRequirements>,
     pub input_interface: ShaderInterface,
@@ -417,13 +418,13 @@ impl<'a> EntryPoint<'a> {
         &self.info.execution
     }
 
-    /// Returns the descriptor requirements.
+    /// Returns the descriptor binding requirements.
     #[inline]
-    pub fn descriptor_requirements(
+    pub fn descriptor_binding_requirements(
         &self,
-    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorRequirements)> {
+    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorBindingRequirements)> {
         self.info
-            .descriptor_requirements
+            .descriptor_binding_requirements
             .iter()
             .map(|(k, v)| (*k, v))
     }
@@ -466,7 +467,7 @@ pub enum ShaderExecution {
     TessellationControl,
     TessellationEvaluation,
     Geometry(GeometryShaderExecution),
-    Fragment,
+    Fragment(FragmentShaderExecution),
     Compute,
     RayGeneration,
     AnyHit,
@@ -474,6 +475,9 @@ pub enum ShaderExecution {
     Miss,
     Intersection,
     Callable,
+    Task,
+    Mesh,
+    SubpassShading,
 }
 
 /*#[derive(Clone, Copy, Debug)]
@@ -546,10 +550,24 @@ pub enum GeometryShaderOutput {
     TriangleStrip,
 }*/
 
-/// The requirements imposed by a shader on a descriptor within a descriptor set layout, and on any
-/// resource that is bound to that descriptor.
+/// The mode in which a fragment shader executes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FragmentShaderExecution {
+    pub fragment_tests_stages: FragmentTestsStages,
+}
+
+/// The fragment tests stages that will be executed in a fragment shader.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FragmentTestsStages {
+    Early,
+    Late,
+    EarlyAndLate,
+}
+
+/// The requirements imposed by a shader on a binding within a descriptor set layout, and on any
+/// resource that is bound to that binding.
 #[derive(Clone, Debug, Default)]
-pub struct DescriptorRequirements {
+pub struct DescriptorBindingRequirements {
     /// The descriptor types that are allowed.
     pub descriptor_types: Vec<DescriptorType>,
 
@@ -560,51 +578,60 @@ pub struct DescriptorRequirements {
     /// access every array element provided in the descriptor set.
     pub descriptor_count: Option<u32>,
 
-    /// The image format that is required for image views bound to this descriptor. If this is
+    /// The image format that is required for image views bound to this binding. If this is
     /// `None`, then any image format is allowed.
     pub image_format: Option<Format>,
 
-    /// Whether image views bound to this descriptor must have multisampling enabled or disabled.
+    /// Whether image views bound to this binding must have multisampling enabled or disabled.
     pub image_multisampled: bool,
 
-    /// The base scalar type required for the format of image views bound to this descriptor.
-    /// This is `None` for non-image descriptors.
+    /// The base scalar type required for the format of image views bound to this binding.
+    /// This is `None` for non-image bindings.
     pub image_scalar_type: Option<ShaderScalarType>,
 
-    /// The view type that is required for image views bound to this descriptor.
-    /// This is `None` for non-image descriptors.
+    /// The view type that is required for image views bound to this binding.
+    /// This is `None` for non-image bindings.
     pub image_view_type: Option<ImageViewType>,
 
-    /// For sampler bindings, the descriptor indices that require a depth comparison sampler.
-    pub sampler_compare: HashSet<u32>,
-
-    /// For sampler bindings, the descriptor indices that perform sampling operations that are not
-    /// permitted with unnormalized coordinates. This includes sampling with `ImplicitLod`,
-    /// `Dref` or `Proj` SPIR-V instructions or with an LOD bias or offset.
-    pub sampler_no_unnormalized_coordinates: HashSet<u32>,
-
-    /// For sampler bindings, the descriptor indices that perform sampling operations that are not
-    /// permitted with a sampler YCbCr conversion. This includes sampling with `Gather` SPIR-V
-    /// instructions or with an offset.
-    pub sampler_no_ycbcr_conversion: HashSet<u32>,
-
-    /// For sampler bindings, the sampled image descriptors that are used in combination with each
-    /// sampler descriptor index.
-    pub sampler_with_images: HashMap<u32, HashSet<DescriptorIdentifier>>,
-
-    /// The shader stages that the descriptor must be declared for.
+    /// The shader stages that the binding must be declared for.
     pub stages: ShaderStages,
 
-    /// For storage image bindings, the descriptor indices that atomic operations are used with.
-    pub storage_image_atomic: HashSet<u32>,
+    /// The requirements for individual descriptors within a binding.
+    ///
+    /// Keys with `Some` hold requirements for a specific descriptor index, if it is statically
+    /// known in the shader (a constant). The key `None` holds requirements for indices that are
+    /// not statically known, but determined only at runtime (calculated from an input variable).
+    pub descriptors: HashMap<Option<u32>, DescriptorRequirements>,
+}
 
-    /// For storage images and storage texel buffers, the descriptor indices that perform read
-    /// operations on the bound resource.
-    pub storage_read: HashSet<u32>,
+/// The requirements imposed by a shader on resources bound to a descriptor.
+#[derive(Clone, Debug, Default)]
+pub struct DescriptorRequirements {
+    /// For buffers and images, which shader stages perform read operations.
+    pub memory_read: ShaderStages,
 
-    /// For storage buffers, storage images and storage texel buffers, the descriptor indices that
-    /// perform write operations on the bound resource.
-    pub storage_write: HashSet<u32>,
+    /// For buffers and images, which shader stages perform write operations.
+    pub memory_write: ShaderStages,
+
+    /// For sampler bindings, whether the shader performs depth comparison operations.
+    pub sampler_compare: bool,
+
+    /// For sampler bindings, whether the shader performs sampling operations that are not
+    /// permitted with unnormalized coordinates. This includes sampling with `ImplicitLod`,
+    /// `Dref` or `Proj` SPIR-V instructions or with an LOD bias or offset.
+    pub sampler_no_unnormalized_coordinates: bool,
+
+    /// For sampler bindings, whether the shader performs sampling operations that are not
+    /// permitted with a sampler YCbCr conversion. This includes sampling with `Gather` SPIR-V
+    /// instructions or with an offset.
+    pub sampler_no_ycbcr_conversion: bool,
+
+    /// For sampler bindings, the sampled image descriptors that are used in combination with this
+    /// sampler.
+    pub sampler_with_images: HashSet<DescriptorIdentifier>,
+
+    /// For storage image bindings, whether the shader performs atomic operations.
+    pub storage_image_atomic: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -614,79 +641,106 @@ pub struct DescriptorIdentifier {
     pub index: u32,
 }
 
-impl DescriptorRequirements {
-    /// Produces the intersection of two descriptor requirements, so that the requirements of both
-    /// are satisfied. An error is returned if the requirements conflict.
+impl DescriptorBindingRequirements {
+    /// Merges `other` into `self`, so that `self` satisfies the requirements of both.
+    /// An error is returned if the requirements conflict.
     #[inline]
-    pub fn intersection(&self, other: &Self) -> Result<Self, DescriptorRequirementsIncompatible> {
-        let descriptor_types: Vec<_> = self
-            .descriptor_types
-            .iter()
-            .copied()
-            .filter(|ty| other.descriptor_types.contains(ty))
-            .collect();
-
-        if descriptor_types.is_empty() {
-            return Err(DescriptorRequirementsIncompatible::DescriptorType);
-        }
-
-        if let (Some(first), Some(second)) = (self.image_format, other.image_format) {
-            if first != second {
-                return Err(DescriptorRequirementsIncompatible::ImageFormat);
-            }
-        }
-
-        if let (Some(first), Some(second)) = (self.image_scalar_type, other.image_scalar_type) {
-            if first != second {
-                return Err(DescriptorRequirementsIncompatible::ImageScalarType);
-            }
-        }
-
-        if let (Some(first), Some(second)) = (self.image_view_type, other.image_view_type) {
-            if first != second {
-                return Err(DescriptorRequirementsIncompatible::ImageViewType);
-            }
-        }
-
-        if self.image_multisampled != other.image_multisampled {
-            return Err(DescriptorRequirementsIncompatible::ImageMultisampled);
-        }
-
-        let sampler_with_images = {
-            let mut result = self.sampler_with_images.clone();
-
-            for (&index, other_identifiers) in &other.sampler_with_images {
-                result.entry(index).or_default().extend(other_identifiers);
-            }
-
-            result
-        };
-
-        Ok(Self {
+    pub fn merge(&mut self, other: &Self) -> Result<(), DescriptorBindingRequirementsIncompatible> {
+        let Self {
             descriptor_types,
-            descriptor_count: self.descriptor_count.max(other.descriptor_count),
-            image_format: self.image_format.or(other.image_format),
-            image_multisampled: self.image_multisampled,
-            image_scalar_type: self.image_scalar_type.or(other.image_scalar_type),
-            image_view_type: self.image_view_type.or(other.image_view_type),
-            sampler_compare: &self.sampler_compare | &other.sampler_compare,
-            sampler_no_unnormalized_coordinates: &self.sampler_no_unnormalized_coordinates
-                | &other.sampler_no_unnormalized_coordinates,
-            sampler_no_ycbcr_conversion: &self.sampler_no_ycbcr_conversion
-                | &other.sampler_no_ycbcr_conversion,
+            descriptor_count,
+            image_format,
+            image_multisampled,
+            image_scalar_type,
+            image_view_type,
+            stages,
+            descriptors,
+        } = self;
+
+        /* Checks */
+
+        if !descriptor_types
+            .iter()
+            .any(|ty| other.descriptor_types.contains(ty))
+        {
+            return Err(DescriptorBindingRequirementsIncompatible::DescriptorType);
+        }
+
+        if let (Some(first), Some(second)) = (*image_format, other.image_format) {
+            if first != second {
+                return Err(DescriptorBindingRequirementsIncompatible::ImageFormat);
+            }
+        }
+
+        if let (Some(first), Some(second)) = (*image_scalar_type, other.image_scalar_type) {
+            if first != second {
+                return Err(DescriptorBindingRequirementsIncompatible::ImageScalarType);
+            }
+        }
+
+        if let (Some(first), Some(second)) = (*image_view_type, other.image_view_type) {
+            if first != second {
+                return Err(DescriptorBindingRequirementsIncompatible::ImageViewType);
+            }
+        }
+
+        if *image_multisampled != other.image_multisampled {
+            return Err(DescriptorBindingRequirementsIncompatible::ImageMultisampled);
+        }
+
+        /* Merge */
+
+        descriptor_types.retain(|ty| other.descriptor_types.contains(ty));
+
+        *descriptor_count = (*descriptor_count).max(other.descriptor_count);
+        *image_format = image_format.or(other.image_format);
+        *image_scalar_type = image_scalar_type.or(other.image_scalar_type);
+        *image_view_type = image_view_type.or(other.image_view_type);
+        *stages |= other.stages;
+
+        for (&index, other) in &other.descriptors {
+            match descriptors.entry(index) {
+                Entry::Vacant(entry) => {
+                    entry.insert(other.clone());
+                }
+                Entry::Occupied(entry) => {
+                    entry.into_mut().merge(other);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl DescriptorRequirements {
+    /// Merges `other` into `self`, so that `self` satisfies the requirements of both.
+    #[inline]
+    pub fn merge(&mut self, other: &Self) {
+        let Self {
+            memory_read,
+            memory_write,
+            sampler_compare,
+            sampler_no_unnormalized_coordinates,
+            sampler_no_ycbcr_conversion,
             sampler_with_images,
-            stages: self.stages | other.stages,
-            storage_image_atomic: &self.storage_image_atomic | &other.storage_image_atomic,
-            storage_read: &self.storage_read | &other.storage_read,
-            storage_write: &self.storage_write | &other.storage_write,
-        })
+            storage_image_atomic,
+        } = self;
+
+        *memory_read |= other.memory_read;
+        *memory_write |= other.memory_write;
+        *sampler_compare |= other.sampler_compare;
+        *sampler_no_unnormalized_coordinates |= other.sampler_no_unnormalized_coordinates;
+        *sampler_no_ycbcr_conversion |= other.sampler_no_ycbcr_conversion;
+        sampler_with_images.extend(&other.sampler_with_images);
+        *storage_image_atomic |= other.storage_image_atomic;
     }
 }
 
 /// An error that can be returned when trying to create the intersection of two
-/// `DescriptorRequirements` values.
+/// `DescriptorBindingRequirements` values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DescriptorRequirementsIncompatible {
+pub enum DescriptorBindingRequirementsIncompatible {
     /// The allowed descriptor types of the descriptors do not overlap.
     DescriptorType,
     /// The descriptors require different formats.
@@ -699,26 +753,26 @@ pub enum DescriptorRequirementsIncompatible {
     ImageViewType,
 }
 
-impl Error for DescriptorRequirementsIncompatible {}
+impl Error for DescriptorBindingRequirementsIncompatible {}
 
-impl Display for DescriptorRequirementsIncompatible {
+impl Display for DescriptorBindingRequirementsIncompatible {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            DescriptorRequirementsIncompatible::DescriptorType => write!(
+            DescriptorBindingRequirementsIncompatible::DescriptorType => write!(
                 f,
                 "the allowed descriptor types of the two descriptors do not overlap",
             ),
-            DescriptorRequirementsIncompatible::ImageFormat => {
+            DescriptorBindingRequirementsIncompatible::ImageFormat => {
                 write!(f, "the descriptors require different formats",)
             }
-            DescriptorRequirementsIncompatible::ImageMultisampled => write!(
+            DescriptorBindingRequirementsIncompatible::ImageMultisampled => write!(
                 f,
                 "the multisampling requirements of the descriptors differ",
             ),
-            DescriptorRequirementsIncompatible::ImageScalarType => {
+            DescriptorBindingRequirementsIncompatible::ImageScalarType => {
                 write!(f, "the descriptors require different scalar types",)
             }
-            DescriptorRequirementsIncompatible::ImageViewType => {
+            DescriptorBindingRequirementsIncompatible::ImageViewType => {
                 write!(f, "the descriptors require different image view types",)
             }
         }
@@ -1125,22 +1179,20 @@ vulkan_bitflags_enum! {
         device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
-    /*
     // TODO: document
-    TASK, Task = TASK_NV {
-        device_extensions: [nv_mesh_shader],
+    TASK, Task = TASK_EXT {
+        device_extensions: [ext_mesh_shader, nv_mesh_shader],
     },
 
     // TODO: document
-    MESH, Mesh = MESH_NV {
-        device_extensions: [nv_mesh_shader],
+    MESH, Mesh = MESH_EXT {
+        device_extensions: [ext_mesh_shader, nv_mesh_shader],
     },
 
     // TODO: document
     SUBPASS_SHADING, SubpassShading = SUBPASS_SHADING_HUAWEI {
         device_extensions: [huawei_subpass_shading],
     },
-     */
 }
 
 impl From<ShaderExecution> for ShaderStage {
@@ -1151,7 +1203,7 @@ impl From<ShaderExecution> for ShaderStage {
             ShaderExecution::TessellationControl => Self::TessellationControl,
             ShaderExecution::TessellationEvaluation => Self::TessellationEvaluation,
             ShaderExecution::Geometry(_) => Self::Geometry,
-            ShaderExecution::Fragment => Self::Fragment,
+            ShaderExecution::Fragment(_) => Self::Fragment,
             ShaderExecution::Compute => Self::Compute,
             ShaderExecution::RayGeneration => Self::Raygen,
             ShaderExecution::AnyHit => Self::AnyHit,
@@ -1159,6 +1211,9 @@ impl From<ShaderExecution> for ShaderStage {
             ShaderExecution::Miss => Self::Miss,
             ShaderExecution::Intersection => Self::Intersection,
             ShaderExecution::Callable => Self::Callable,
+            ShaderExecution::Task => Self::Task,
+            ShaderExecution::Mesh => Self::Mesh,
+            ShaderExecution::SubpassShading => Self::SubpassShading,
         }
     }
 }
@@ -1201,6 +1256,18 @@ impl From<ShaderStages> for PipelineStages {
                 | ShaderStages::CALLABLE,
         ) {
             result |= PipelineStages::RAY_TRACING_SHADER
+        }
+
+        if stages.intersects(ShaderStages::TASK) {
+            result |= PipelineStages::TASK_SHADER;
+        }
+
+        if stages.intersects(ShaderStages::MESH) {
+            result |= PipelineStages::MESH_SHADER;
+        }
+
+        if stages.intersects(ShaderStages::SUBPASS_SHADING) {
+            result |= PipelineStages::SUBPASS_SHADING;
         }
 
         result

@@ -42,7 +42,7 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
     swapchain::{PresentMode, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
-    sync::{FenceSignalFuture, GpuFuture},
+    sync::{future::FenceSignalFuture, GpuFuture},
     VulkanLibrary,
 };
 use vulkano_win::VkSurfaceBuild;
@@ -148,7 +148,7 @@ fn main() {
             SwapchainCreateInfo {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
-                image_extent: [WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32],
+                image_extent: [WINDOW_WIDTH, WINDOW_HEIGHT],
                 image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha

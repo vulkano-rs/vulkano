@@ -22,4 +22,19 @@ mod tests {
         let i: Vec<CString> = (&InstanceExtensions::empty()).into();
         assert!(i.get(0).is_none());
     }
+
+    #[test]
+    fn into_iter() {
+        let extensions = InstanceExtensions {
+            khr_display: true,
+            ..InstanceExtensions::empty()
+        };
+        for (name, enabled) in extensions {
+            if name == "VK_KHR_display" {
+                assert!(enabled);
+            } else {
+                assert!(!enabled);
+            }
+        }
+    }
 }

@@ -13,7 +13,6 @@ use crate::{
     device::{Device, DeviceOwned, Queue},
     image::{sys::Image, ImageLayout},
     swapchain::Swapchain,
-    sync::{AccessFlags, PipelineStages},
     DeviceSize, VulkanObject,
 };
 use std::{ops::Range, sync::Arc};
@@ -204,7 +203,7 @@ where
         range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         let first = self
             .first
             .check_buffer_access(buffer, range.clone(), exclusive, queue);
@@ -221,14 +220,12 @@ where
             (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(_))) => {
                 Err(AccessCheckError::Denied(e1))
             } // TODO: which one?
-            (Ok(_), Err(AccessCheckError::Denied(_)))
-            | (Err(AccessCheckError::Denied(_)), Ok(_)) => panic!(
+            (Ok(()), Err(AccessCheckError::Denied(_)))
+            | (Err(AccessCheckError::Denied(_)), Ok(())) => panic!(
                 "Contradictory information \
                                                                  between two futures"
             ),
-            (Ok(None), Ok(None)) => Ok(None),
-            (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
-            (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => Ok(Some((a1 | b1, a2 | b2))),
+            (Ok(()), Ok(())) => Ok(()),
         }
     }
 
@@ -239,7 +236,7 @@ where
         exclusive: bool,
         expected_layout: ImageLayout,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+    ) -> Result<(), AccessCheckError> {
         let first =
             self.first
                 .check_image_access(image, range.clone(), exclusive, expected_layout, queue);
@@ -256,13 +253,11 @@ where
             (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(_))) => {
                 Err(AccessCheckError::Denied(e1))
             } // TODO: which one?
-            (Ok(_), Err(AccessCheckError::Denied(_)))
-            | (Err(AccessCheckError::Denied(_)), Ok(_)) => {
+            (Ok(()), Err(AccessCheckError::Denied(_)))
+            | (Err(AccessCheckError::Denied(_)), Ok(())) => {
                 panic!("Contradictory information between two futures")
             }
-            (Ok(None), Ok(None)) => Ok(None),
-            (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
-            (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => Ok(Some((a1 | b1, a2 | b2))),
+            (Ok(()), Ok(())) => Ok(()),
         }
     }
 
@@ -286,9 +281,9 @@ where
             (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(_))) => {
                 Err(AccessCheckError::Denied(e1))
             } // TODO: which one?
-            (Ok(_), Err(AccessCheckError::Denied(_)))
-            | (Err(AccessCheckError::Denied(_)), Ok(_)) => Ok(()),
-            (Ok(_), Ok(_)) => Ok(()), // TODO: Double Acquired?
+            (Ok(()), Err(AccessCheckError::Denied(_)))
+            | (Err(AccessCheckError::Denied(_)), Ok(())) => Ok(()),
+            (Ok(()), Ok(())) => Ok(()), // TODO: Double Acquired?
         }
     }
 }
