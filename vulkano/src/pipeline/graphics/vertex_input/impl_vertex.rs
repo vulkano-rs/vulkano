@@ -24,6 +24,10 @@ use crate::format::Format;
 ///
 /// vulkano::impl_vertex!(Vertex, position, color);
 /// ```
+#[deprecated(
+    since = "0.33.0",
+    note = "Derive `Vertex` instead and use field-level attributes to specify format"
+)]
 #[macro_export]
 macro_rules! impl_vertex {
     ($out:ty $(, $member:ident)*) => (
@@ -73,6 +77,10 @@ macro_rules! impl_vertex {
 }
 
 /// Trait for data types that can be used as vertex members. Used by the `impl_vertex!` macro.
+#[deprecated(
+    since = "0.33.0",
+    note = "Derive `Vertex` instead and use field-level attributes to specify format"
+)]
 pub unsafe trait VertexMember {
     /// Returns the format and array size of the member.
     fn format() -> Format;

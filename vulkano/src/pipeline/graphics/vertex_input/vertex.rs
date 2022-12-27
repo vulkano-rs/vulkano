@@ -17,24 +17,20 @@ pub use vulkano_macros::Vertex;
 /// At this stage, the vertex is in a "raw" format. For example a `[f32; 4]` can match both a
 /// `vec4` or a `float[4]`. The way the things are bound depends on the shader.
 ///
-/// The vertex trait can be implemented using the `vulkano::impl_vertex` macro or alternatively
-/// derived as follows:
+/// The vertex trait can be derived and the format has to be specified using the `format`
+/// field-level attribute:
 /// ```
 /// #[repr(C)]
 /// #[derive(Clone, Copy, Debug, Default, Vertex)]
-/// struct MyVertex {
-///     // If no field-level attributes are defined the format will be infered
-///     // using the `VertexMember` trait and the field-name will be used to
-///     // match a shader input.
+/// struct MyVertex {A
+///     // Every field needs to explicitly state the desired shader input format
+///     #[format(R32G32B32_SFLOAT)]
 ///     pos: [f32; 3],
 ///     // The `name` attribute can be used to specify shader input names to match.
+///     // By default the field-name is used.
 ///     #[name("in_proj", "cam_proj")]
+///     #[format(R32G32B32_SFLOAT)]
 ///     proj: [f32; 16],
-///     // If a custom type is used or a particular format is required, use
-///     // the `format` field-level attribute. This alleviates the need for a
-///     // `VertexMember` implementation.
-///     #[format(R8_UNORM)]
-///     unorm: u8,
 /// }
 /// ```
 pub unsafe trait Vertex: Pod + Send + Sync + 'static {
