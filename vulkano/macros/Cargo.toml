@@ -8,8 +8,7 @@ description = "Macros used by Vulkano"
 license = "MIT/Apache-2.0"
 documentation = "https://docs.rs/vulkano"
 homepage = "https://vulkano.rs"
-keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
-categories = ["rendering::graphics-api"]
+publish = false
 
 [lib]
 proc-macro = true
