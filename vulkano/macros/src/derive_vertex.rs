@@ -48,11 +48,7 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
         let field_name = field.ident.to_owned().unwrap();
         let field_ty = &field.ty;
         let mut names = vec![LitStr::new(&field_name.to_string(), Span::call_site())];
-        let mut format = quote! {
-            let dummy = <#struct_name>::default();
-            #[inline] fn f<T: VertexMember>(_: &T) -> Format { T::format() }
-            let format = f(&dummy.#field_name);
-        };
+        let mut format = quote! {};
         for attr in &field.attrs {
             let attr_ident = if let Some(ident) = attr.path.get_ident() {
                 ident
@@ -68,6 +64,12 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
                     let format = Format::#format_ident;
                 };
             }
+        }
+        if format.is_empty() {
+            return Err(Error::new(
+                field_name.span(),
+                "Expected `#[format(...)]`-attribute with valid `vulkano::format::Format`",
+            ));
         }
         for name in &names {
             member_cases = quote! {
