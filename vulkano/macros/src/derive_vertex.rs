@@ -36,7 +36,8 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
     let found_crate = crate_name("vulkano").expect("vulkano is present in `Cargo.toml`");
 
     let crate_ident = match found_crate {
-        FoundCrate::Itself => Ident::new("crate", Span::call_site()),
+        // We use `vulkano` by default as we are exporting crate as vulkano in vulkano/lib.rs.
+        FoundCrate::Itself => Ident::new("vulkano", Span::call_site()),
         FoundCrate::Name(name) => Ident::new(&name, Span::call_site()),
     };
 
