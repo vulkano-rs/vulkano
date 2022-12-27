@@ -78,13 +78,12 @@ use vulkano::{
     },
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage},
-    impl_vertex,
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             multisample::MultisampleState,
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -270,11 +269,11 @@ fn main() {
     let fs = fs::load(device.clone()).unwrap();
 
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
+        #[format(R32G32_SFLOAT)]
         position: [f32; 2],
     }
-    impl_vertex!(Vertex, position);
 
     let vertices = [
         Vertex {

@@ -32,14 +32,13 @@ use vulkano::{
         QueueFlags,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
-    impl_vertex,
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
             rasterization::{CullMode, FrontFace, RasterizationState},
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -59,15 +58,6 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-pub struct Vertex {
-    pub position: [f32; 2],
-    pub color: [f32; 3],
-}
-
-impl_vertex!(Vertex, position, color);
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();
@@ -222,6 +212,15 @@ fn main() {
     let mut recreate_swapchain = false;
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+    pub struct Vertex {
+        #[format(R32G32_SFLOAT)]
+        pub position: [f32; 2],
+        #[format(R32G32B32_SFLOAT)]
+        pub color: [f32; 3],
+    }
 
     let vertices = [
         Vertex {

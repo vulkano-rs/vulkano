@@ -25,13 +25,12 @@ use vulkano::{
         QueueFlags,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
-    impl_vertex,
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -57,22 +56,23 @@ use winit::{
 // Seeing as we are going to use the `OneVertexOneInstanceDefinition` vertex definition for our
 // graphics pipeline, we need to define two vertex types:
 //
-// 1. `Vertex` is the vertex type that we will use to describe the triangle's geometry.
+// 1. `TriangleVertex` is the vertex type that we will use to describe the triangle's geometry.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-struct Vertex {
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+struct TriangleVertex {
+    #[format(R32G32_SFLOAT)]
     position: [f32; 2],
 }
-impl_vertex!(Vertex, position);
 
 // 2. `InstanceData` is the vertex type that describes the unique data per instance.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 struct InstanceData {
+    #[format(R32G32_SFLOAT)]
     position_offset: [f32; 2],
+    #[format(R32_SFLOAT)]
     scale: f32,
 }
-impl_vertex!(InstanceData, position_offset, scale);
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();
@@ -180,13 +180,13 @@ fn main() {
     // We now create a buffer that will store the shape of our triangle.
     // This triangle is identical to the one in the `triangle.rs` example.
     let vertices = [
-        Vertex {
+        TriangleVertex {
             position: [-0.5, -0.25],
         },
-        Vertex {
+        TriangleVertex {
             position: [0.0, 0.5],
         },
-        Vertex {
+        TriangleVertex {
             position: [0.25, -0.1],
         },
     ];
@@ -292,7 +292,7 @@ fn main() {
         // are expected to be used.
         .vertex_input_state(
             BuffersDefinition::new()
-                .vertex::<Vertex>()
+                .vertex::<TriangleVertex>()
                 .instance::<InstanceData>(),
         )
         .vertex_shader(vs.entry_point("main").unwrap(), ())

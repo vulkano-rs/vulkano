@@ -8,1620 +8,1618 @@
 // according to those terms.
 
 use bytemuck::{Pod, Zeroable};
-use vulkano::impl_vertex;
+use vulkano::pipeline::graphics::vertex_input::Vertex;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-pub struct Vertex {
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+pub struct Position {
+    #[format(R32G32B32_SFLOAT)]
     position: [f32; 3],
 }
 
-impl_vertex!(Vertex, position);
-
-pub const VERTICES: [Vertex; 531] = [
-    Vertex {
+pub const POSITIONS: [Position; 531] = [
+    Position {
         position: [0.0, 0.0, 0.0],
     }, // dummy vector because in the original model indices
     // start at 1
-    Vertex {
+    Position {
         position: [40.6266, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [40.0714, 30.4443, -1.10804],
     },
-    Vertex {
+    Position {
         position: [40.7155, 31.1438, -1.10804],
     },
-    Vertex {
+    Position {
         position: [42.0257, 30.4443, -1.10804],
     },
-    Vertex {
+    Position {
         position: [43.4692, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [37.5425, 28.3457, 14.5117],
     },
-    Vertex {
+    Position {
         position: [37.0303, 30.4443, 14.2938],
     },
-    Vertex {
+    Position {
         position: [37.6244, 31.1438, 14.5466],
     },
-    Vertex {
+    Position {
         position: [38.8331, 30.4443, 15.0609],
     },
-    Vertex {
+    Position {
         position: [40.1647, 28.3457, 15.6274],
     },
-    Vertex {
+    Position {
         position: [29.0859, 28.3457, 27.1468],
     },
-    Vertex {
+    Position {
         position: [28.6917, 30.4443, 26.7527],
     },
-    Vertex {
+    Position {
         position: [29.149, 31.1438, 27.2099],
     },
-    Vertex {
+    Position {
         position: [30.0792, 30.4443, 28.1402],
     },
-    Vertex {
+    Position {
         position: [31.1041, 28.3457, 29.165],
     },
-    Vertex {
+    Position {
         position: [16.4508, 28.3457, 35.6034],
     },
-    Vertex {
+    Position {
         position: [16.2329, 30.4443, 35.0912],
     },
-    Vertex {
+    Position {
         position: [16.4857, 31.1438, 35.6853],
     },
-    Vertex {
+    Position {
         position: [16.9999, 30.4443, 36.894],
     },
-    Vertex {
+    Position {
         position: [17.5665, 28.3457, 38.2256],
     },
-    Vertex {
+    Position {
         position: [0.831025, 28.3457, 38.6876],
     },
-    Vertex {
+    Position {
         position: [0.831025, 30.4443, 38.1324],
     },
-    Vertex {
+    Position {
         position: [0.831025, 31.1438, 38.7764],
     },
-    Vertex {
+    Position {
         position: [0.831025, 30.4443, 40.0866],
     },
-    Vertex {
+    Position {
         position: [0.831025, 28.3457, 41.5301],
     },
-    Vertex {
+    Position {
         position: [-15.868, 28.3457, 35.6034],
     },
-    Vertex {
+    Position {
         position: [-15.0262, 30.4443, 35.0912],
     },
-    Vertex {
+    Position {
         position: [-14.9585, 31.1438, 35.6853],
     },
-    Vertex {
+    Position {
         position: [-15.3547, 30.4443, 36.894],
     },
-    Vertex {
+    Position {
         position: [-15.9044, 28.3457, 38.2256],
     },
-    Vertex {
+    Position {
         position: [-28.3832, 28.3457, 27.1468],
     },
-    Vertex {
+    Position {
         position: [-27.4344, 30.4443, 26.7527],
     },
-    Vertex {
+    Position {
         position: [-27.6068, 31.1438, 27.2099],
     },
-    Vertex {
+    Position {
         position: [-28.4322, 30.4443, 28.1402],
     },
-    Vertex {
+    Position {
         position: [-29.4421, 28.3457, 29.165],
     },
-    Vertex {
+    Position {
         position: [-36.2402, 28.3457, 14.5117],
     },
-    Vertex {
+    Position {
         position: [-35.52, 30.4443, 14.2938],
     },
-    Vertex {
+    Position {
         position: [-36.0073, 31.1438, 14.5466],
     },
-    Vertex {
+    Position {
         position: [-37.1767, 30.4443, 15.0609],
     },
-    Vertex {
+    Position {
         position: [-38.5027, 28.3457, 15.6274],
     },
-    Vertex {
+    Position {
         position: [-38.9646, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-38.4094, 30.4443, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-39.0534, 31.1438, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-40.3636, 30.4443, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-41.8071, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-35.8804, 28.3457, -16.7278],
     },
-    Vertex {
+    Position {
         position: [-35.3683, 30.4443, -16.5099],
     },
-    Vertex {
+    Position {
         position: [-35.9624, 31.1438, -16.7627],
     },
-    Vertex {
+    Position {
         position: [-37.1711, 30.4443, -17.2769],
     },
-    Vertex {
+    Position {
         position: [-38.5027, 28.3457, -17.8435],
     },
-    Vertex {
+    Position {
         position: [-27.4238, 28.3457, -29.3629],
     },
-    Vertex {
+    Position {
         position: [-27.0297, 30.4443, -28.9687],
     },
-    Vertex {
+    Position {
         position: [-27.4869, 31.1438, -29.426],
     },
-    Vertex {
+    Position {
         position: [-28.4172, 30.4443, -30.3562],
     },
-    Vertex {
+    Position {
         position: [-29.4421, 28.3457, -31.3811],
     },
-    Vertex {
+    Position {
         position: [-14.7887, 28.3457, -37.8195],
     },
-    Vertex {
+    Position {
         position: [-14.5708, 30.4443, -37.3073],
     },
-    Vertex {
+    Position {
         position: [-14.8236, 31.1438, -37.9014],
     },
-    Vertex {
+    Position {
         position: [-15.3379, 30.4443, -39.1101],
     },
-    Vertex {
+    Position {
         position: [-15.9044, 28.3457, -40.4417],
     },
-    Vertex {
+    Position {
         position: [0.831025, 28.3457, -40.9036],
     },
-    Vertex {
+    Position {
         position: [0.831025, 30.4443, -40.3484],
     },
-    Vertex {
+    Position {
         position: [0.831025, 31.1438, -40.9925],
     },
-    Vertex {
+    Position {
         position: [0.831025, 30.4443, -42.3027],
     },
-    Vertex {
+    Position {
         position: [0.831025, 28.3457, -43.7462],
     },
-    Vertex {
+    Position {
         position: [16.4508, 28.3457, -37.8195],
     },
-    Vertex {
+    Position {
         position: [16.2329, 30.4443, -37.3073],
     },
-    Vertex {
+    Position {
         position: [16.4857, 31.1438, -37.9014],
     },
-    Vertex {
+    Position {
         position: [16.9999, 30.4443, -39.1101],
     },
-    Vertex {
+    Position {
         position: [17.5665, 28.3457, -40.4417],
     },
-    Vertex {
+    Position {
         position: [29.0859, 28.3457, -29.3629],
     },
-    Vertex {
+    Position {
         position: [28.6917, 30.4443, -28.9687],
     },
-    Vertex {
+    Position {
         position: [29.149, 31.1438, -29.426],
     },
-    Vertex {
+    Position {
         position: [30.0792, 30.4443, -30.3562],
     },
-    Vertex {
+    Position {
         position: [31.1041, 28.3457, -31.3811],
     },
-    Vertex {
+    Position {
         position: [37.5425, 28.3457, -16.7278],
     },
-    Vertex {
+    Position {
         position: [37.0303, 30.4443, -16.5099],
     },
-    Vertex {
+    Position {
         position: [37.6244, 31.1438, -16.7627],
     },
-    Vertex {
+    Position {
         position: [38.8331, 30.4443, -17.2769],
     },
-    Vertex {
+    Position {
         position: [40.1647, 28.3457, -17.8435],
     },
-    Vertex {
+    Position {
         position: [48.6879, 17.1865, -1.10804],
     },
-    Vertex {
+    Position {
         position: [53.2404, 6.22714, -1.10804],
     },
-    Vertex {
+    Position {
         position: [56.4605, -4.33246, -1.10804],
     },
-    Vertex {
+    Position {
         position: [57.6819, -14.2925, -1.10804],
     },
-    Vertex {
+    Position {
         position: [44.979, 17.1865, 17.6758],
     },
-    Vertex {
+    Position {
         position: [49.1787, 6.22714, 19.4626],
     },
-    Vertex {
+    Position {
         position: [52.1492, -4.33246, 20.7265],
     },
-    Vertex {
+    Position {
         position: [53.2759, -14.2925, 21.2059],
     },
-    Vertex {
+    Position {
         position: [34.8094, 17.1865, 32.8703],
     },
-    Vertex {
+    Position {
         position: [38.0417, 6.22714, 36.1026],
     },
-    Vertex {
+    Position {
         position: [40.3279, -4.33246, 38.3889],
     },
-    Vertex {
+    Position {
         position: [41.1951, -14.2925, 39.2561],
     },
-    Vertex {
+    Position {
         position: [19.6148, 17.1865, 43.0399],
     },
-    Vertex {
+    Position {
         position: [21.4017, 6.22714, 47.2396],
     },
-    Vertex {
+    Position {
         position: [22.6656, -4.33246, 50.2101],
     },
-    Vertex {
+    Position {
         position: [23.145, -14.2925, 51.3369],
     },
-    Vertex {
+    Position {
         position: [0.831025, 17.1865, 46.7488],
     },
-    Vertex {
+    Position {
         position: [0.831025, 6.22714, 51.3013],
     },
-    Vertex {
+    Position {
         position: [0.831025, -4.33246, 54.5214],
     },
-    Vertex {
+    Position {
         position: [0.831025, -14.2925, 55.7428],
     },
-    Vertex {
+    Position {
         position: [-17.9528, 17.1865, 43.0399],
     },
-    Vertex {
+    Position {
         position: [-19.7397, 6.22714, 47.2396],
     },
-    Vertex {
+    Position {
         position: [-21.0035, -4.33246, 50.2101],
     },
-    Vertex {
+    Position {
         position: [-21.4829, -14.2925, 51.3369],
     },
-    Vertex {
+    Position {
         position: [-33.1474, 17.1865, 32.8703],
     },
-    Vertex {
+    Position {
         position: [-36.3796, 6.22714, 36.1026],
     },
-    Vertex {
+    Position {
         position: [-38.6659, -4.33246, 38.3889],
     },
-    Vertex {
+    Position {
         position: [-39.5331, -14.2925, 39.2561],
     },
-    Vertex {
+    Position {
         position: [-43.3169, 17.1865, 17.6758],
     },
-    Vertex {
+    Position {
         position: [-47.5166, 6.22714, 19.4626],
     },
-    Vertex {
+    Position {
         position: [-50.4871, -4.33246, 20.7265],
     },
-    Vertex {
+    Position {
         position: [-51.6139, -14.2925, 21.2059],
     },
-    Vertex {
+    Position {
         position: [-47.0258, 17.1865, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-51.5784, 6.22714, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-54.7984, -4.33246, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-56.0198, -14.2925, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-43.3169, 17.1865, -19.8919],
     },
-    Vertex {
+    Position {
         position: [-47.5166, 6.22714, -21.6787],
     },
-    Vertex {
+    Position {
         position: [-50.4871, -4.33246, -22.9426],
     },
-    Vertex {
+    Position {
         position: [-51.6139, -14.2925, -23.422],
     },
-    Vertex {
+    Position {
         position: [-33.1474, 17.1865, -35.0864],
     },
-    Vertex {
+    Position {
         position: [-36.3796, 6.22714, -38.3187],
     },
-    Vertex {
+    Position {
         position: [-38.6659, -4.33246, -40.6049],
     },
-    Vertex {
+    Position {
         position: [-39.5331, -14.2925, -41.4721],
     },
-    Vertex {
+    Position {
         position: [-17.9528, 17.1865, -45.256],
     },
-    Vertex {
+    Position {
         position: [-19.7397, 6.22714, -49.4557],
     },
-    Vertex {
+    Position {
         position: [-21.0035, -4.33246, -52.4262],
     },
-    Vertex {
+    Position {
         position: [-21.4829, -14.2925, -53.5529],
     },
-    Vertex {
+    Position {
         position: [0.831025, 17.1865, -48.9649],
     },
-    Vertex {
+    Position {
         position: [0.831025, 6.22714, -53.5174],
     },
-    Vertex {
+    Position {
         position: [0.831025, -4.33246, -56.7375],
     },
-    Vertex {
+    Position {
         position: [0.831025, -14.2925, -57.9589],
     },
-    Vertex {
+    Position {
         position: [19.6148, 17.1865, -45.256],
     },
-    Vertex {
+    Position {
         position: [21.4017, 6.22714, -49.4557],
     },
-    Vertex {
+    Position {
         position: [22.6656, -4.33246, -52.4262],
     },
-    Vertex {
+    Position {
         position: [23.145, -14.2925, -53.5529],
     },
-    Vertex {
+    Position {
         position: [34.8094, 17.1865, -35.0864],
     },
-    Vertex {
+    Position {
         position: [38.0417, 6.22714, -38.3187],
     },
-    Vertex {
+    Position {
         position: [40.3279, -4.33246, -40.6049],
     },
-    Vertex {
+    Position {
         position: [41.1951, -14.2925, -41.4721],
     },
-    Vertex {
+    Position {
         position: [44.979, 17.1865, -19.8919],
     },
-    Vertex {
+    Position {
         position: [49.1787, 6.22714, -21.6787],
     },
-    Vertex {
+    Position {
         position: [52.1492, -4.33246, -22.9426],
     },
-    Vertex {
+    Position {
         position: [53.2759, -14.2925, -23.422],
     },
-    Vertex {
+    Position {
         position: [55.4611, -22.7202, -1.10804],
     },
-    Vertex {
+    Position {
         position: [50.5755, -28.9493, -1.10804],
     },
-    Vertex {
+    Position {
         position: [45.6899, -33.1798, -1.10804],
     },
-    Vertex {
+    Position {
         position: [43.4692, -35.6115, -1.10804],
     },
-    Vertex {
+    Position {
         position: [51.2273, -22.7202, 20.3343],
     },
-    Vertex {
+    Position {
         position: [46.7203, -28.9493, 18.4167],
     },
-    Vertex {
+    Position {
         position: [42.2133, -33.1798, 16.4991],
     },
-    Vertex {
+    Position {
         position: [40.1647, -35.6115, 15.6274],
     },
-    Vertex {
+    Position {
         position: [39.6184, -22.7202, 37.6793],
     },
-    Vertex {
+    Position {
         position: [36.1496, -28.9493, 34.2106],
     },
-    Vertex {
+    Position {
         position: [32.6808, -33.1798, 30.7418],
     },
-    Vertex {
+    Position {
         position: [31.1041, -35.6115, 29.165],
     },
-    Vertex {
+    Position {
         position: [22.2733, -22.7202, 49.2882],
     },
-    Vertex {
+    Position {
         position: [20.3557, -28.9493, 44.7813],
     },
-    Vertex {
+    Position {
         position: [18.4381, -33.1798, 40.2743],
     },
-    Vertex {
+    Position {
         position: [17.5665, -35.6115, 38.2256],
     },
-    Vertex {
+    Position {
         position: [0.831025, -22.7202, 53.5221],
     },
-    Vertex {
+    Position {
         position: [0.831025, -28.9493, 48.6365],
     },
-    Vertex {
+    Position {
         position: [0.831025, -33.1798, 43.7508],
     },
-    Vertex {
+    Position {
         position: [0.831025, -35.6115, 41.5301],
     },
-    Vertex {
+    Position {
         position: [-20.6113, -22.7202, 49.2882],
     },
-    Vertex {
+    Position {
         position: [-18.6937, -28.9493, 44.7813],
     },
-    Vertex {
+    Position {
         position: [-16.7761, -33.1798, 40.2743],
     },
-    Vertex {
+    Position {
         position: [-15.9044, -35.6115, 38.2256],
     },
-    Vertex {
+    Position {
         position: [-37.9564, -22.7202, 37.6793],
     },
-    Vertex {
+    Position {
         position: [-34.4876, -28.9493, 34.2106],
     },
-    Vertex {
+    Position {
         position: [-31.0188, -33.1798, 30.7418],
     },
-    Vertex {
+    Position {
         position: [-29.4421, -35.6115, 29.165],
     },
-    Vertex {
+    Position {
         position: [-49.5653, -22.7202, 20.3343],
     },
-    Vertex {
+    Position {
         position: [-45.0583, -28.9493, 18.4167],
     },
-    Vertex {
+    Position {
         position: [-40.5513, -33.1798, 16.4991],
     },
-    Vertex {
+    Position {
         position: [-38.5027, -35.6115, 15.6274],
     },
-    Vertex {
+    Position {
         position: [-53.7991, -22.7202, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-48.9135, -28.9493, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-44.0279, -33.1798, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-41.8071, -35.6115, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-49.5653, -22.7202, -22.5504],
     },
-    Vertex {
+    Position {
         position: [-45.0583, -28.9493, -20.6327],
     },
-    Vertex {
+    Position {
         position: [-40.5513, -33.1798, -18.7151],
     },
-    Vertex {
+    Position {
         position: [-38.5027, -35.6115, -17.8435],
     },
-    Vertex {
+    Position {
         position: [-37.9564, -22.7202, -39.8954],
     },
-    Vertex {
+    Position {
         position: [-34.4876, -28.9493, -36.4266],
     },
-    Vertex {
+    Position {
         position: [-31.0188, -33.1798, -32.9578],
     },
-    Vertex {
+    Position {
         position: [-29.4421, -35.6115, -31.3811],
     },
-    Vertex {
+    Position {
         position: [-20.6113, -22.7202, -51.5043],
     },
-    Vertex {
+    Position {
         position: [-18.6937, -28.9493, -46.9973],
     },
-    Vertex {
+    Position {
         position: [-16.7761, -33.1798, -42.4903],
     },
-    Vertex {
+    Position {
         position: [-15.9044, -35.6115, -40.4417],
     },
-    Vertex {
+    Position {
         position: [0.831025, -22.7202, -55.7382],
     },
-    Vertex {
+    Position {
         position: [0.831025, -28.9493, -50.8525],
     },
-    Vertex {
+    Position {
         position: [0.831025, -33.1798, -45.9669],
     },
-    Vertex {
+    Position {
         position: [0.831025, -35.6115, -43.7462],
     },
-    Vertex {
+    Position {
         position: [22.2733, -22.7202, -51.5043],
     },
-    Vertex {
+    Position {
         position: [20.3557, -28.9493, -46.9973],
     },
-    Vertex {
+    Position {
         position: [18.4381, -33.1798, -42.4903],
     },
-    Vertex {
+    Position {
         position: [17.5665, -35.6115, -40.4417],
     },
-    Vertex {
+    Position {
         position: [39.6184, -22.7202, -39.8954],
     },
-    Vertex {
+    Position {
         position: [36.1496, -28.9493, -36.4266],
     },
-    Vertex {
+    Position {
         position: [32.6808, -33.1798, -32.9578],
     },
-    Vertex {
+    Position {
         position: [31.1041, -35.6115, -31.3811],
     },
-    Vertex {
+    Position {
         position: [51.2273, -22.7202, -22.5504],
     },
-    Vertex {
+    Position {
         position: [46.7203, -28.9493, -20.6327],
     },
-    Vertex {
+    Position {
         position: [42.2133, -33.1798, -18.7151],
     },
-    Vertex {
+    Position {
         position: [40.1647, -35.6115, -17.8435],
     },
-    Vertex {
+    Position {
         position: [42.5031, -37.1772, -1.10804],
     },
-    Vertex {
+    Position {
         position: [37.3399, -38.5429, -1.10804],
     },
-    Vertex {
+    Position {
         position: [24.5818, -39.5089, -1.10804],
     },
-    Vertex {
+    Position {
         position: [0.831025, -39.8754, -1.10804],
     },
-    Vertex {
+    Position {
         position: [39.2736, -37.1772, 15.2483],
     },
-    Vertex {
+    Position {
         position: [34.5105, -38.5429, 13.2217],
     },
-    Vertex {
+    Position {
         position: [22.7411, -39.5089, 8.21414],
     },
-    Vertex {
+    Position {
         position: [30.4182, -37.1772, 28.4792],
     },
-    Vertex {
+    Position {
         position: [26.7523, -38.5429, 24.8133],
     },
-    Vertex {
+    Position {
         position: [17.6941, -39.5089, 15.755],
     },
-    Vertex {
+    Position {
         position: [17.1873, -37.1772, 37.3345],
     },
-    Vertex {
+    Position {
         position: [15.1608, -38.5429, 32.5714],
     },
-    Vertex {
+    Position {
         position: [10.1532, -39.5089, 20.8021],
     },
-    Vertex {
+    Position {
         position: [0.831025, -37.1772, 40.5641],
     },
-    Vertex {
+    Position {
         position: [0.831025, -38.5429, 35.4009],
     },
-    Vertex {
+    Position {
         position: [0.831025, -39.5089, 22.6427],
     },
-    Vertex {
+    Position {
         position: [-15.5253, -37.1772, 37.3345],
     },
-    Vertex {
+    Position {
         position: [-13.4987, -38.5429, 32.5714],
     },
-    Vertex {
+    Position {
         position: [-8.49115, -39.5089, 20.8021],
     },
-    Vertex {
+    Position {
         position: [-28.7562, -37.1772, 28.4792],
     },
-    Vertex {
+    Position {
         position: [-25.0903, -38.5429, 24.8133],
     },
-    Vertex {
+    Position {
         position: [-16.032, -39.5089, 15.755],
     },
-    Vertex {
+    Position {
         position: [-37.6115, -37.1772, 15.2483],
     },
-    Vertex {
+    Position {
         position: [-32.8484, -38.5429, 13.2217],
     },
-    Vertex {
+    Position {
         position: [-21.0791, -39.5089, 8.21414],
     },
-    Vertex {
+    Position {
         position: [-40.8411, -37.1772, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-35.6779, -38.5429, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-22.9198, -39.5089, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-37.6115, -37.1772, -17.4643],
     },
-    Vertex {
+    Position {
         position: [-32.8484, -38.5429, -15.4378],
     },
-    Vertex {
+    Position {
         position: [-21.0791, -39.5089, -10.4302],
     },
-    Vertex {
+    Position {
         position: [-28.7562, -37.1772, -30.6952],
     },
-    Vertex {
+    Position {
         position: [-25.0903, -38.5429, -27.0294],
     },
-    Vertex {
+    Position {
         position: [-16.032, -39.5089, -17.9711],
     },
-    Vertex {
+    Position {
         position: [-15.5253, -37.1772, -39.5506],
     },
-    Vertex {
+    Position {
         position: [-13.4987, -38.5429, -34.7875],
     },
-    Vertex {
+    Position {
         position: [-8.49115, -39.5089, -23.0181],
     },
-    Vertex {
+    Position {
         position: [0.831025, -37.1772, -42.7802],
     },
-    Vertex {
+    Position {
         position: [0.831025, -38.5429, -37.6169],
     },
-    Vertex {
+    Position {
         position: [0.831025, -39.5089, -24.8588],
     },
-    Vertex {
+    Position {
         position: [17.1873, -37.1772, -39.5506],
     },
-    Vertex {
+    Position {
         position: [15.1608, -38.5429, -34.7875],
     },
-    Vertex {
+    Position {
         position: [10.1532, -39.5089, -23.0181],
     },
-    Vertex {
+    Position {
         position: [30.4182, -37.1772, -30.6952],
     },
-    Vertex {
+    Position {
         position: [26.7523, -38.5429, -27.0294],
     },
-    Vertex {
+    Position {
         position: [17.6941, -39.5089, -17.9711],
     },
-    Vertex {
+    Position {
         position: [39.2736, -37.1772, -17.4643],
     },
-    Vertex {
+    Position {
         position: [34.5105, -38.5429, -15.4378],
     },
-    Vertex {
+    Position {
         position: [22.7411, -39.5089, -10.4302],
     },
-    Vertex {
+    Position {
         position: [-44.6497, 17.6861, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-57.9297, 17.5862, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-67.7453, 16.8867, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-73.8301, 14.9879, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-75.9176, 11.2904, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-44.2055, 18.6855, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-58.3252, 18.5699, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-68.6891, 17.7611, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-75.0724, 15.5657, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-77.2501, 11.2904, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-43.2284, 20.884, 5.28769],
     },
-    Vertex {
+    Position {
         position: [-59.1955, 20.7341, 5.28769],
     },
-    Vertex {
+    Position {
         position: [-70.7655, 19.6848, 5.28769],
     },
-    Vertex {
+    Position {
         position: [-77.8053, 16.8367, 5.28769],
     },
-    Vertex {
+    Position {
         position: [-80.1814, 11.2904, 5.28769],
     },
-    Vertex {
+    Position {
         position: [-42.2513, 23.0825, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-60.0657, 22.8983, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-72.8419, 21.6085, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-80.5381, 18.1077, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-83.1128, 11.2904, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-41.8071, 24.0819, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-60.4613, 23.882, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-73.7857, 22.4829, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-81.7804, 18.6855, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-84.4453, 11.2904, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-42.2513, 23.0825, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-60.0657, 22.8983, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-72.8419, 21.6085, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-80.5381, 18.1077, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-83.1128, 11.2904, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-43.2284, 20.884, -7.50376],
     },
-    Vertex {
+    Position {
         position: [-59.1955, 20.7341, -7.50376],
     },
-    Vertex {
+    Position {
         position: [-70.7655, 19.6848, -7.50376],
     },
-    Vertex {
+    Position {
         position: [-77.8053, 16.8367, -7.50376],
     },
-    Vertex {
+    Position {
         position: [-80.1814, 11.2904, -7.50376],
     },
-    Vertex {
+    Position {
         position: [-44.2055, 18.6855, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-58.3252, 18.5699, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-68.6891, 17.7611, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-75.0724, 15.5657, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-77.2501, 11.2904, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-74.8073, 5.4943, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-71.2985, -1.50103, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-65.1248, -8.49634, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-56.0198, -14.2925, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-76.0183, 4.93477, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-72.159, -2.35462, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-65.4267, -9.55033, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-55.5757, -15.6249, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-78.6824, 3.70383, 5.28769],
     },
-    Vertex {
+    Position {
         position: [-74.0522, -4.23253, 5.28769],
     },
-    Vertex {
+    Position {
         position: [-66.0909, -11.8691, 5.28769],
     },
-    Vertex {
+    Position {
         position: [-54.5986, -18.5563, 5.28769],
     },
-    Vertex {
+    Position {
         position: [-81.3466, 2.47288, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-75.9454, -6.11044, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-66.755, -14.1878, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-53.6214, -21.4877, 3.68876],
     },
-    Vertex {
+    Position {
         position: [-82.5576, 1.91336, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-76.8059, -6.96404, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-67.0569, -15.2418, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-53.1773, -22.8201, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-81.3466, 2.47288, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-75.9454, -6.11044, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-66.755, -14.1878, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-53.6214, -21.4877, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-78.6824, 3.70383, -7.50376],
     },
-    Vertex {
+    Position {
         position: [-74.0522, -4.23253, -7.50376],
     },
-    Vertex {
+    Position {
         position: [-66.0909, -11.8691, -7.50376],
     },
-    Vertex {
+    Position {
         position: [-54.5986, -18.5563, -7.50376],
     },
-    Vertex {
+    Position {
         position: [-76.0183, 4.93477, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-72.159, -2.35462, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-65.4267, -9.55033, -5.90483],
     },
-    Vertex {
+    Position {
         position: [-55.5757, -15.6249, -5.90483],
     },
-    Vertex {
+    Position {
         position: [49.1543, 0.630882, -1.10804],
     },
-    Vertex {
+    Position {
         position: [62.7896, 3.76212, -1.10804],
     },
-    Vertex {
+    Position {
         position: [68.6967, 11.2904, -1.10804],
     },
-    Vertex {
+    Position {
         position: [71.939, 20.4176, -1.10804],
     },
-    Vertex {
+    Position {
         position: [77.5797, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [49.1543, -3.03333, 9.4449],
     },
-    Vertex {
+    Position {
         position: [63.8305, 1.04519, 8.42059],
     },
-    Vertex {
+    Position {
         position: [70.0292, 9.70814, 6.1671],
     },
-    Vertex {
+    Position {
         position: [73.5629, 19.8451, 3.91361],
     },
-    Vertex {
+    Position {
         position: [80.2446, 28.3457, 2.88929],
     },
-    Vertex {
+    Position {
         position: [49.1543, -11.0946, 12.9626],
     },
-    Vertex {
+    Position {
         position: [66.1207, -4.93206, 11.5968],
     },
-    Vertex {
+    Position {
         position: [72.9605, 6.22714, 8.59214],
     },
-    Vertex {
+    Position {
         position: [77.1355, 18.5855, 5.58749],
     },
-    Vertex {
+    Position {
         position: [86.1073, 28.3457, 4.22173],
     },
-    Vertex {
+    Position {
         position: [49.1543, -19.1559, 9.4449],
     },
-    Vertex {
+    Position {
         position: [68.4108, -10.9093, 8.42059],
     },
-    Vertex {
+    Position {
         position: [75.8919, 2.74614, 6.1671],
     },
-    Vertex {
+    Position {
         position: [80.7081, 17.326, 3.91361],
     },
-    Vertex {
+    Position {
         position: [91.97, 28.3457, 2.88929],
     },
-    Vertex {
+    Position {
         position: [49.1543, -22.8201, -1.10804],
     },
-    Vertex {
+    Position {
         position: [69.4518, -13.6262, -1.10804],
     },
-    Vertex {
+    Position {
         position: [77.2244, 1.16386, -1.10804],
     },
-    Vertex {
+    Position {
         position: [82.3321, 16.7534, -1.10804],
     },
-    Vertex {
+    Position {
         position: [94.6349, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [49.1543, -19.1559, -11.661],
     },
-    Vertex {
+    Position {
         position: [68.4108, -10.9093, -10.6367],
     },
-    Vertex {
+    Position {
         position: [75.8919, 2.74614, -8.38317],
     },
-    Vertex {
+    Position {
         position: [80.7081, 17.326, -6.12968],
     },
-    Vertex {
+    Position {
         position: [91.97, 28.3457, -5.10536],
     },
-    Vertex {
+    Position {
         position: [49.1543, -11.0946, -15.1786],
     },
-    Vertex {
+    Position {
         position: [66.1207, -4.93206, -13.8129],
     },
-    Vertex {
+    Position {
         position: [72.9605, 6.22714, -10.8082],
     },
-    Vertex {
+    Position {
         position: [77.1355, 18.5855, -7.80356],
     },
-    Vertex {
+    Position {
         position: [86.1073, 28.3457, -6.4378],
     },
-    Vertex {
+    Position {
         position: [49.1543, -3.03333, -11.661],
     },
-    Vertex {
+    Position {
         position: [63.8305, 1.04519, -10.6367],
     },
-    Vertex {
+    Position {
         position: [70.0292, 9.70814, -8.38317],
     },
-    Vertex {
+    Position {
         position: [73.5629, 19.8451, -6.12968],
     },
-    Vertex {
+    Position {
         position: [80.2446, 28.3457, -5.10536],
     },
-    Vertex {
+    Position {
         position: [79.6227, 29.5449, -1.10804],
     },
-    Vertex {
+    Position {
         position: [81.1329, 29.9446, -1.10804],
     },
-    Vertex {
+    Position {
         position: [81.577, 29.5449, -1.10804],
     },
-    Vertex {
+    Position {
         position: [80.4222, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [82.4767, 29.6034, 2.63946],
     },
-    Vertex {
+    Position {
         position: [83.8116, 30.0383, 2.08983],
     },
-    Vertex {
+    Position {
         position: [83.8515, 29.6268, 1.54019],
     },
-    Vertex {
+    Position {
         position: [82.1988, 28.3457, 1.29036],
     },
-    Vertex {
+    Position {
         position: [88.7555, 29.7322, 3.88862],
     },
-    Vertex {
+    Position {
         position: [89.7049, 30.2444, 3.15578],
     },
-    Vertex {
+    Position {
         position: [88.8555, 29.8072, 2.42294],
     },
-    Vertex {
+    Position {
         position: [86.1073, 28.3457, 2.08983],
     },
-    Vertex {
+    Position {
         position: [95.0343, 29.8611, 2.63946],
     },
-    Vertex {
+    Position {
         position: [95.5982, 30.4505, 2.08983],
     },
-    Vertex {
+    Position {
         position: [93.8594, 29.9875, 1.54019],
     },
-    Vertex {
+    Position {
         position: [90.0158, 28.3457, 1.29036],
     },
-    Vertex {
+    Position {
         position: [97.8883, 29.9196, -1.10804],
     },
-    Vertex {
+    Position {
         position: [98.2769, 30.5442, -1.10804],
     },
-    Vertex {
+    Position {
         position: [96.1339, 30.0695, -1.10804],
     },
-    Vertex {
+    Position {
         position: [91.7924, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [95.0343, 29.8611, -4.85553],
     },
-    Vertex {
+    Position {
         position: [95.5982, 30.4505, -4.3059],
     },
-    Vertex {
+    Position {
         position: [93.8594, 29.9875, -3.75626],
     },
-    Vertex {
+    Position {
         position: [90.0158, 28.3457, -3.50643],
     },
-    Vertex {
+    Position {
         position: [88.7555, 29.7322, -6.10469],
     },
-    Vertex {
+    Position {
         position: [89.7049, 30.2444, -5.37185],
     },
-    Vertex {
+    Position {
         position: [88.8555, 29.8072, -4.63901],
     },
-    Vertex {
+    Position {
         position: [86.1073, 28.3457, -4.3059],
     },
-    Vertex {
+    Position {
         position: [82.4767, 29.6034, -4.85553],
     },
-    Vertex {
+    Position {
         position: [83.8116, 30.0383, -4.3059],
     },
-    Vertex {
+    Position {
         position: [83.8515, 29.6268, -3.75626],
     },
-    Vertex {
+    Position {
         position: [82.1988, 28.3457, -3.50643],
     },
-    Vertex {
+    Position {
         position: [0.831025, 49.6647, -1.10804],
     },
-    Vertex {
+    Position {
         position: [10.5134, 48.2657, -1.10804],
     },
-    Vertex {
+    Position {
         position: [10.0693, 44.868, -1.10804],
     },
-    Vertex {
+    Position {
         position: [6.42728, 40.6708, -1.10804],
     },
-    Vertex {
+    Position {
         position: [6.51611, 36.8733, -1.10804],
     },
-    Vertex {
+    Position {
         position: [9.76642, 48.2657, 2.70243],
     },
-    Vertex {
+    Position {
         position: [9.35632, 44.868, 2.52698],
     },
-    Vertex {
+    Position {
         position: [5.9947, 40.6708, 1.09187],
     },
-    Vertex {
+    Position {
         position: [6.07552, 36.8733, 1.12336],
     },
-    Vertex {
+    Position {
         position: [7.71453, 48.2657, 5.77547],
     },
-    Vertex {
+    Position {
         position: [7.39819, 44.868, 5.45913],
     },
-    Vertex {
+    Position {
         position: [4.80736, 40.6708, 2.8683],
     },
-    Vertex {
+    Position {
         position: [4.86744, 36.8733, 2.92838],
     },
-    Vertex {
+    Position {
         position: [4.64149, 48.2657, 7.82736],
     },
-    Vertex {
+    Position {
         position: [4.46604, 44.868, 7.41726],
     },
-    Vertex {
+    Position {
         position: [3.03093, 40.6708, 4.05564],
     },
-    Vertex {
+    Position {
         position: [3.06242, 36.8733, 4.13646],
     },
-    Vertex {
+    Position {
         position: [0.831025, 48.2657, 8.57438],
     },
-    Vertex {
+    Position {
         position: [0.831025, 44.868, 8.13023],
     },
-    Vertex {
+    Position {
         position: [0.831025, 40.6708, 4.48822],
     },
-    Vertex {
+    Position {
         position: [0.831025, 36.8733, 4.57705],
     },
-    Vertex {
+    Position {
         position: [-2.97944, 48.2657, 7.82736],
     },
-    Vertex {
+    Position {
         position: [-2.80399, 44.868, 7.41726],
     },
-    Vertex {
+    Position {
         position: [-1.36888, 40.6708, 4.05564],
     },
-    Vertex {
+    Position {
         position: [-1.40037, 36.8733, 4.13646],
     },
-    Vertex {
+    Position {
         position: [-6.05248, 48.2657, 5.77547],
     },
-    Vertex {
+    Position {
         position: [-5.73614, 44.868, 5.45913],
     },
-    Vertex {
+    Position {
         position: [-3.14531, 40.6708, 2.8683],
     },
-    Vertex {
+    Position {
         position: [-3.20539, 36.8733, 2.92838],
     },
-    Vertex {
+    Position {
         position: [-8.10437, 48.2657, 2.70243],
     },
-    Vertex {
+    Position {
         position: [-7.69427, 44.868, 2.52698],
     },
-    Vertex {
+    Position {
         position: [-4.33265, 40.6708, 1.09187],
     },
-    Vertex {
+    Position {
         position: [-4.41347, 36.8733, 1.12336],
     },
-    Vertex {
+    Position {
         position: [-8.85139, 48.2657, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-8.40724, 44.868, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-4.76523, 40.6708, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-4.85406, 36.8733, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-8.10437, 48.2657, -4.9185],
     },
-    Vertex {
+    Position {
         position: [-7.69427, 44.868, -4.74305],
     },
-    Vertex {
+    Position {
         position: [-4.33265, 40.6708, -3.30794],
     },
-    Vertex {
+    Position {
         position: [-4.41347, 36.8733, -3.33943],
     },
-    Vertex {
+    Position {
         position: [-6.05248, 48.2657, -7.99154],
     },
-    Vertex {
+    Position {
         position: [-5.73614, 44.868, -7.6752],
     },
-    Vertex {
+    Position {
         position: [-3.14531, 40.6708, -5.08437],
     },
-    Vertex {
+    Position {
         position: [-3.20539, 36.8733, -5.14445],
     },
-    Vertex {
+    Position {
         position: [-2.97944, 48.2657, -10.0434],
     },
-    Vertex {
+    Position {
         position: [-2.80399, 44.868, -9.63333],
     },
-    Vertex {
+    Position {
         position: [-1.36888, 40.6708, -6.27171],
     },
-    Vertex {
+    Position {
         position: [-1.40037, 36.8733, -6.35253],
     },
-    Vertex {
+    Position {
         position: [0.831025, 48.2657, -10.7904],
     },
-    Vertex {
+    Position {
         position: [0.831025, 44.868, -10.3463],
     },
-    Vertex {
+    Position {
         position: [0.831025, 40.6708, -6.70429],
     },
-    Vertex {
+    Position {
         position: [0.831025, 36.8733, -6.79312],
     },
-    Vertex {
+    Position {
         position: [4.64149, 48.2657, -10.0434],
     },
-    Vertex {
+    Position {
         position: [4.46604, 44.868, -9.63333],
     },
-    Vertex {
+    Position {
         position: [3.03093, 40.6708, -6.27171],
     },
-    Vertex {
+    Position {
         position: [3.06242, 36.8733, -6.35253],
     },
-    Vertex {
+    Position {
         position: [7.71453, 48.2657, -7.99154],
     },
-    Vertex {
+    Position {
         position: [7.39819, 44.868, -7.6752],
     },
-    Vertex {
+    Position {
         position: [4.80736, 40.6708, -5.08437],
     },
-    Vertex {
+    Position {
         position: [4.86744, 36.8733, -5.14445],
     },
-    Vertex {
+    Position {
         position: [9.76642, 48.2657, -4.9185],
     },
-    Vertex {
+    Position {
         position: [9.35632, 44.868, -4.74305],
     },
-    Vertex {
+    Position {
         position: [5.9947, 40.6708, -3.30794],
     },
-    Vertex {
+    Position {
         position: [6.07552, 36.8733, -3.33943],
     },
-    Vertex {
+    Position {
         position: [13.8001, 34.3417, -1.10804],
     },
-    Vertex {
+    Position {
         position: [24.282, 32.6095, -1.10804],
     },
-    Vertex {
+    Position {
         position: [33.6979, 30.8773, -1.10804],
     },
-    Vertex {
+    Position {
         position: [37.7841, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [12.795, 34.3417, 3.98234],
     },
-    Vertex {
+    Position {
         position: [22.4646, 32.6095, 8.09647],
     },
-    Vertex {
+    Position {
         position: [31.1507, 30.8773, 11.7922],
     },
-    Vertex {
+    Position {
         position: [34.9202, 28.3457, 13.396],
     },
-    Vertex {
+    Position {
         position: [10.0391, 34.3417, 8.10003],
     },
-    Vertex {
+    Position {
         position: [17.4812, 32.6095, 15.5422],
     },
-    Vertex {
+    Position {
         position: [24.1665, 30.8773, 22.2275],
     },
-    Vertex {
+    Position {
         position: [27.0677, 28.3457, 25.1286],
     },
-    Vertex {
+    Position {
         position: [5.9214, 34.3417, 10.856],
     },
-    Vertex {
+    Position {
         position: [10.0355, 32.6095, 20.5255],
     },
-    Vertex {
+    Position {
         position: [13.7313, 30.8773, 29.2117],
     },
-    Vertex {
+    Position {
         position: [15.3351, 28.3457, 32.9812],
     },
-    Vertex {
+    Position {
         position: [0.831025, 34.3417, 11.8611],
     },
-    Vertex {
+    Position {
         position: [0.831025, 32.6095, 22.3429],
     },
-    Vertex {
+    Position {
         position: [0.831025, 30.8773, 31.7589],
     },
-    Vertex {
+    Position {
         position: [0.831025, 28.3457, 35.845],
     },
-    Vertex {
+    Position {
         position: [-4.25935, 34.3417, 10.856],
     },
-    Vertex {
+    Position {
         position: [-8.37348, 32.6095, 20.5255],
     },
-    Vertex {
+    Position {
         position: [-12.0692, 30.8773, 29.2117],
     },
-    Vertex {
+    Position {
         position: [-13.673, 28.3457, 32.9812],
     },
-    Vertex {
+    Position {
         position: [-8.37704, 34.3417, 8.10003],
     },
-    Vertex {
+    Position {
         position: [-15.8192, 32.6095, 15.5422],
     },
-    Vertex {
+    Position {
         position: [-22.5045, 30.8773, 22.2275],
     },
-    Vertex {
+    Position {
         position: [-25.4056, 28.3457, 25.1286],
     },
-    Vertex {
+    Position {
         position: [-11.133, 34.3417, 3.98234],
     },
-    Vertex {
+    Position {
         position: [-20.8025, 32.6095, 8.09647],
     },
-    Vertex {
+    Position {
         position: [-29.4887, 30.8773, 11.7922],
     },
-    Vertex {
+    Position {
         position: [-33.2582, 28.3457, 13.396],
     },
-    Vertex {
+    Position {
         position: [-12.1381, 34.3417, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-22.62, 32.6095, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-32.0359, 30.8773, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-36.122, 28.3457, -1.10804],
     },
-    Vertex {
+    Position {
         position: [-11.133, 34.3417, -6.19841],
     },
-    Vertex {
+    Position {
         position: [-20.8025, 32.6095, -10.3125],
     },
-    Vertex {
+    Position {
         position: [-29.4887, 30.8773, -14.0083],
     },
-    Vertex {
+    Position {
         position: [-33.2582, 28.3457, -15.6121],
     },
-    Vertex {
+    Position {
         position: [-8.37704, 34.3417, -10.3161],
     },
-    Vertex {
+    Position {
         position: [-15.8192, 32.6095, -17.7582],
     },
-    Vertex {
+    Position {
         position: [-22.5045, 30.8773, -24.4435],
     },
-    Vertex {
+    Position {
         position: [-25.4056, 28.3457, -27.3447],
     },
-    Vertex {
+    Position {
         position: [-4.25935, 34.3417, -13.072],
     },
-    Vertex {
+    Position {
         position: [-8.37348, 32.6095, -22.7416],
     },
-    Vertex {
+    Position {
         position: [-12.0692, 30.8773, -31.4277],
     },
-    Vertex {
+    Position {
         position: [-13.673, 28.3457, -35.1972],
     },
-    Vertex {
+    Position {
         position: [0.831025, 34.3417, -14.0771],
     },
-    Vertex {
+    Position {
         position: [0.831025, 32.6095, -24.559],
     },
-    Vertex {
+    Position {
         position: [0.831025, 30.8773, -33.9749],
     },
-    Vertex {
+    Position {
         position: [0.831025, 28.3457, -38.0611],
     },
-    Vertex {
+    Position {
         position: [5.9214, 34.3417, -13.072],
     },
-    Vertex {
+    Position {
         position: [10.0355, 32.6095, -22.7416],
     },
-    Vertex {
+    Position {
         position: [13.7313, 30.8773, -31.4277],
     },
-    Vertex {
+    Position {
         position: [15.3351, 28.3457, -35.1972],
     },
-    Vertex {
+    Position {
         position: [10.0391, 34.3417, -10.3161],
     },
-    Vertex {
+    Position {
         position: [17.4812, 32.6095, -17.7582],
     },
-    Vertex {
+    Position {
         position: [24.1665, 30.8773, -24.4435],
     },
-    Vertex {
+    Position {
         position: [27.0677, 28.3457, -27.3447],
     },
-    Vertex {
+    Position {
         position: [12.795, 34.3417, -6.19841],
     },
-    Vertex {
+    Position {
         position: [22.4646, 32.6095, -10.3125],
     },
-    Vertex {
+    Position {
         position: [31.1507, 30.8773, -14.0083],
     },
-    Vertex {
+    Position {
         position: [34.9202, 28.3457, -15.6121],
     },
 ];
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 pub struct Normal {
+    #[format(R32G32B32_SFLOAT)]
     normal: [f32; 3],
 }
-
-impl_vertex!(Normal, normal);
 
 pub const NORMALS: [Normal; 531] = [
     Normal {
