@@ -220,14 +220,6 @@ fn register_struct(
 fn write_derives(types_meta: &TypesMeta) -> TokenStream {
     let mut derives = vec![];
 
-    if types_meta.clone {
-        derives.push(quote! { Clone });
-    }
-
-    if types_meta.copy {
-        derives.push(quote! { Copy });
-    }
-
     derives.extend(
         types_meta
             .custom_derives

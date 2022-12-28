@@ -408,8 +408,6 @@ enum SourceKind {
 
 struct TypesMeta {
     custom_derives: Vec<SynPath>,
-    clone: bool,
-    copy: bool,
     display: bool,
     debug: bool,
     default: bool,
@@ -422,9 +420,12 @@ impl Default for TypesMeta {
     #[inline]
     fn default() -> Self {
         Self {
-            custom_derives: vec![],
-            clone: true,
-            copy: true,
+            custom_derives: vec![
+                parse_quote! { Clone },
+                parse_quote! { Copy },
+                parse_quote! { bytemuck::Pod },
+                parse_quote! { bytemuck::Zeroable },
+            ],
             partial_eq: false,
             debug: false,
             display: false,
@@ -440,8 +441,6 @@ impl TypesMeta {
     fn empty() -> Self {
         Self {
             custom_derives: Vec::new(),
-            clone: false,
-            copy: false,
             partial_eq: false,
             debug: false,
             display: false,
@@ -780,26 +779,6 @@ impl Parse for MacroInput {
                                             path.get_ident()
                                         {
                                             match derive_ident.to_string().as_str() {
-                                                "Clone" => {
-                                                    if meta.default {
-                                                        return Err(in_brackets
-                                                            .error("Duplicate Clone derive"));
-                                                    }
-
-                                                    meta.clone = true;
-
-                                                    false
-                                                }
-                                                "Copy" => {
-                                                    if meta.copy {
-                                                        return Err(in_brackets
-                                                            .error("Duplicate Copy derive"));
-                                                    }
-
-                                                    meta.copy = true;
-
-                                                    false
-                                                }
                                                 "PartialEq" => {
                                                     if meta.partial_eq {
                                                         return Err(in_brackets
@@ -850,7 +829,7 @@ impl Parse for MacroInput {
                                             if meta
                                                 .custom_derives
                                                 .iter()
-                                                .any(|candidate| candidate.eq(&path))
+                                                .any(|candidate| *candidate == path)
                                             {
                                                 return Err(
                                                     in_braces.error("Duplicate derive declaration")
