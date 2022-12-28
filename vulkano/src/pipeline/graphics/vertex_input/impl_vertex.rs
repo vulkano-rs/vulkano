@@ -34,6 +34,7 @@ macro_rules! impl_vertex {
         #[allow(unsafe_code)]
         unsafe impl $crate::pipeline::graphics::vertex_input::Vertex for $out {
             #[inline(always)]
+            #[allow(deprecated)]
             fn member(name: &str) -> Option<$crate::pipeline::graphics::vertex_input::VertexMemberInfo> {
                 #[allow(unused_imports)]
                 use $crate::format::Format;
@@ -89,6 +90,7 @@ pub unsafe trait VertexMember {
 #[macro_export]
 macro_rules! impl_vertex_member {
     ($out:ty, $format:ident) => {
+        #[allow(deprecated)]
         unsafe impl VertexMember for $out {
             #[inline]
             fn format() -> Format {
@@ -133,6 +135,7 @@ impl_vertex_member!([f64; 4], R64G64B64A64_SFLOAT);
 impl_vertex_member!([f32; 9], R32G32B32_SFLOAT);
 impl_vertex_member!([f32; 16], R32G32B32A32_SFLOAT);
 
+#[allow(deprecated)]
 unsafe impl<T> VertexMember for [T; 1]
 where
     T: VertexMember,
@@ -145,6 +148,7 @@ where
 #[allow(unused_macros)]
 macro_rules! impl_vertex_member_generic {
     ($first:ident$(::$rest:ident)*, $len:literal) => {
+        #[allow(deprecated)]
         unsafe impl<T> VertexMember for $first$(::$rest)*<T>
         where
             [T; $len]: VertexMember,
@@ -201,11 +205,13 @@ mod tests {
     use std::marker::PhantomData;
 
     use crate::format::Format;
+    #[allow(deprecated)]
     use crate::pipeline::graphics::vertex_input::{Vertex, VertexMember};
 
     use bytemuck::{Pod, Zeroable};
 
     #[test]
+    #[allow(deprecated)]
     fn impl_vertex() {
         #[repr(C)]
         #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
@@ -232,6 +238,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn impl_vertex_member_generic() {
         struct TestGeneric<T> {
             _data: PhantomData<T>,
