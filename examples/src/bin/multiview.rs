@@ -30,13 +30,12 @@ use vulkano::{
         view::ImageView, ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout,
         ImageSubresourceLayers, ImageUsage, SampleCount, StorageImage,
     },
-    impl_vertex,
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -149,11 +148,11 @@ fn main() {
     let image_view = ImageView::new_default(image.clone()).unwrap();
 
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
+        #[format(R32G32_SFLOAT)]
         position: [f32; 2],
     }
-    impl_vertex!(Vertex, position);
 
     let vertices = [
         Vertex {

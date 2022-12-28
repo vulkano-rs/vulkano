@@ -129,6 +129,13 @@ pub mod sync;
 /// Analogous to the Rust `usize` type on the host.
 pub use ash::vk::DeviceSize;
 
+// Allow refering to crate by its name to work around limitations of proc-macros
+// in doctests.
+// See https://github.com/rust-lang/cargo/issues/9886
+// and https://github.com/bkchr/proc-macro-crate/issues/10
+#[allow(unused_extern_crates)]
+extern crate self as vulkano;
+
 /// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
 pub unsafe trait SafeDeref: Deref {}
 unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}

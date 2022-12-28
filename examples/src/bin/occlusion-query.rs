@@ -25,14 +25,13 @@ use vulkano::{
     },
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SwapchainImage},
-    impl_vertex,
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             depth_stencil::DepthStencilState,
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -156,12 +155,13 @@ fn main() {
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
+        #[format(R32G32B32_SFLOAT)]
         position: [f32; 3],
+        #[format(R32G32B32_SFLOAT)]
         color: [f32; 3],
     }
-    impl_vertex!(Vertex, position, color);
 
     let vertices = [
         // The first triangle (red) is the same one as in the triangle example.

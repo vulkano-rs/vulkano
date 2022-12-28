@@ -131,35 +131,39 @@ unsafe impl VertexDefinition for BuffersDefinition {
                         attribute: name.clone().into_owned(),
                     })?;
 
-            if !infos.ty.matches(
-                infos.array_size,
-                element.ty.to_format(),
-                element.ty.num_locations(),
-            ) {
-                // TODO: move this check to GraphicsPipelineBuilder
+            // TODO: ShaderInterfaceEntryType does not properly support 64bit.
+            //       Once it does the below logic around num_elements and num_locations
+            //       might have to be updated.
+            if infos.num_components() != element.ty.num_components
+                || infos.num_elements != element.ty.num_locations()
+            {
                 return Err(IncompatibleVertexDefinitionError::FormatMismatch {
                     attribute: name.clone().into_owned(),
-                    shader: (
-                        element.ty.to_format(),
-                        (element.ty.num_locations()) as usize,
-                    ),
-                    definition: (infos.ty, infos.array_size),
+                    shader: element.ty,
+                    definition: infos,
                 });
             }
 
             let mut offset = infos.offset as DeviceSize;
-            let location_range = element.location..element.location + element.ty.num_locations();
+            let block_size = infos.format.block_size().unwrap();
+            // Double precision formats can exceed a single location.
+            // R64B64G64A64_SFLOAT requires two locations, so we need to adapt how we bind
+            let location_range = if block_size > 16 {
+                (element.location..element.location + 2 * element.ty.num_locations()).step_by(2)
+            } else {
+                (element.location..element.location + element.ty.num_locations()).step_by(1)
+            };
 
             for location in location_range {
                 attributes.push((
                     location,
                     VertexInputAttributeDescription {
                         binding,
-                        format: element.ty.to_format(),
+                        format: infos.format,
                         offset: offset as u32,
                     },
                 ));
-                offset += element.ty.to_format().block_size().unwrap();
+                offset += block_size;
             }
         }
 

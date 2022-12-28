@@ -9,12 +9,33 @@
 
 use crate::format::Format;
 use bytemuck::Pod;
+pub use vulkano_macros::Vertex;
 
 /// Describes an individual `Vertex`. In other words a collection of attributes that can be read
 /// from a vertex shader.
 ///
 /// At this stage, the vertex is in a "raw" format. For example a `[f32; 4]` can match both a
 /// `vec4` or a `float[4]`. The way the things are bound depends on the shader.
+///
+/// The vertex trait can be derived and the format has to be specified using the `format`
+/// field-level attribute:
+/// ```
+/// use bytemuck::{Pod, Zeroable};
+/// use vulkano::pipeline::graphics::vertex_input::Vertex;
+///
+/// #[repr(C)]
+/// #[derive(Clone, Copy, Debug, Default, Pod, Zeroable, Vertex)]
+/// struct MyVertex {
+///     // Every field needs to explicitly state the desired shader input format
+///     #[format(R32G32B32_SFLOAT)]
+///     pos: [f32; 3],
+///     // The `name` attribute can be used to specify shader input names to match.
+///     // By default the field-name is used.
+///     #[name("in_proj", "cam_proj")]
+///     #[format(R32G32B32_SFLOAT)]
+///     proj: [f32; 16],
+/// }
+/// ```
 pub unsafe trait Vertex: Pod + Send + Sync + 'static {
     /// Returns the characteristics of a vertex member by its name.
     fn member(name: &str) -> Option<VertexMemberInfo>;
@@ -28,50 +49,63 @@ unsafe impl Vertex for () {
 }
 
 /// Information about a member of a vertex struct.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VertexMemberInfo {
     /// Offset of the member in bytes from the start of the struct.
     pub offset: usize,
-    /// Type of data. This is used to check that the interface is matching.
-    pub ty: VertexMemberTy,
-    /// Number of consecutive elements of that type.
-    pub array_size: usize,
+    /// Attribute format of the member. Implicitly provides number of components.
+    pub format: Format,
+    /// Number of consecutive array elements or matrix columns using format. The corresponding
+    /// number of locations might defer depending on the size of the format.
+    pub num_elements: u32,
 }
 
-/// Type of a member of a vertex struct.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[allow(missing_docs)]
-pub enum VertexMemberTy {
-    I8,
-    U8,
-    I16,
-    U16,
-    I32,
-    U32,
-    F32,
-    F64,
+impl VertexMemberInfo {
+    pub fn num_components(&self) -> u32 {
+        self.format
+            .components()
+            .iter()
+            .filter(|&bits| *bits > 0)
+            .count() as u32
+    }
 }
 
-impl VertexMemberTy {
-    /// Returns true if a combination of `(type, array_size)` matches a format.
-    #[inline]
-    pub fn matches(self, array_size: usize, format: Format, num_locs: u32) -> bool {
-        // TODO: implement correctly
-        let my_size = match self {
-            VertexMemberTy::I8 => 1,
-            VertexMemberTy::U8 => 1,
-            VertexMemberTy::I16 => 2,
-            VertexMemberTy::U16 => 2,
-            VertexMemberTy::I32 => 4,
-            VertexMemberTy::U32 => 4,
-            VertexMemberTy::F32 => 4,
-            VertexMemberTy::F64 => 8,
-        };
+#[cfg(test)]
+mod tests {
+    use crate::format::Format;
+    use crate::pipeline::graphics::vertex_input::Vertex;
 
-        let format_size = match format.block_size() {
-            None => return false,
-            Some(s) => s,
-        } as usize;
+    use bytemuck::{Pod, Zeroable};
 
-        array_size * my_size == format_size * num_locs as usize
+    #[test]
+    fn derive_vertex_multiple_names() {
+        #[repr(C)]
+        #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+        struct TestVertex {
+            #[name("b", "c")]
+            #[format(R32G32B32A32_SFLOAT)]
+            a: [f32; 16],
+        }
+
+        let b = TestVertex::member("b").unwrap();
+        let c = TestVertex::member("c").unwrap();
+        assert_eq!(b.format, Format::R32G32B32A32_SFLOAT);
+        assert_eq!(c.format, Format::R32G32B32A32_SFLOAT);
+        assert_eq!(b.num_elements, 4);
+        assert_eq!(c.num_elements, 4);
+    }
+
+    #[test]
+    fn derive_vertex_format() {
+        #[repr(C)]
+        #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+        struct TestVertex {
+            #[format(R8_UNORM)]
+            unorm: u8,
+        }
+
+        let unorm = TestVertex::member("unorm").unwrap();
+        assert_eq!(unorm.format, Format::R8_UNORM);
+        assert_eq!(unorm.num_elements, 1);
     }
 }

@@ -43,13 +43,12 @@ use vulkano::{
         QueueFlags,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
-    impl_vertex,
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -69,15 +68,6 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-
-// # Vertex Types
-// `Vertex` is the vertex type that will be output from the compute shader and be input to the vertex shader.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-struct Vertex {
-    position: [f32; 2],
-}
-impl_vertex!(Vertex, position);
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();
@@ -301,6 +291,15 @@ fn main() {
         }
     )
     .unwrap();
+
+    // # Vertex Types
+    // `Vertex` is the vertex type that will be output from the compute shader and be input to the vertex shader.
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+    struct Vertex {
+        #[format(R32G32_SFLOAT)]
+        position: [f32; 2],
+    }
 
     let render_pipeline = GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())

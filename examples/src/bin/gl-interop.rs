@@ -30,7 +30,6 @@ mod linux {
         },
         format::Format,
         image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
-        impl_vertex,
         instance::{
             debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
             Instance, InstanceCreateInfo, InstanceExtensions,
@@ -40,7 +39,7 @@ mod linux {
             graphics::{
                 color_blend::ColorBlendState,
                 input_assembly::{InputAssemblyState, PrimitiveTopology},
-                vertex_input::BuffersDefinition,
+                vertex_input::{BuffersDefinition, Vertex},
                 viewport::{Scissor, Viewport, ViewportState},
             },
             GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -388,11 +387,11 @@ mod linux {
     }
 
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-    struct Vertex {
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+    struct MyVertex {
+        #[format(R32G32_SFLOAT)]
         position: [f32; 2],
     }
-    impl_vertex!(Vertex, position);
 
     #[allow(clippy::type_complexity)]
     fn vk_setup(
@@ -410,7 +409,7 @@ mod linux {
         Arc<vulkano::sampler::Sampler>,
         Arc<GraphicsPipeline>,
         StandardMemoryAllocator,
-        Arc<CpuAccessibleBuffer<[Vertex]>>,
+        Arc<CpuAccessibleBuffer<[MyVertex]>>,
     ) {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = vulkano_win::required_extensions(&library);
@@ -555,20 +554,20 @@ mod linux {
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
         let vertices = [
-            Vertex {
+            MyVertex {
                 position: [-0.5, -0.5],
             },
-            Vertex {
+            MyVertex {
                 position: [-0.5, 0.5],
             },
-            Vertex {
+            MyVertex {
                 position: [0.5, -0.5],
             },
-            Vertex {
+            MyVertex {
                 position: [0.5, 0.5],
             },
         ];
-        let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
+        let vertex_buffer = CpuAccessibleBuffer::<[MyVertex]>::from_iter(
             &memory_allocator,
             BufferUsage::VERTEX_BUFFER,
             false,
@@ -609,7 +608,7 @@ mod linux {
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
         let pipeline = GraphicsPipeline::start()
-            .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+            .vertex_input_state(BuffersDefinition::new().vertex::<MyVertex>())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
             .input_assembly_state(
                 InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),

@@ -31,7 +31,6 @@ use vulkano::{
         QueueCreateInfo, QueueFlags,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
-    impl_vertex,
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
@@ -39,7 +38,7 @@ use vulkano::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
             rasterization::{PolygonMode, RasterizationState},
             tessellation::TessellationState,
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -263,12 +262,12 @@ fn main() {
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     #[repr(C)]
     struct Vertex {
+        #[format(R32G32_SFLOAT)]
         position: [f32; 2],
     }
-    impl_vertex!(Vertex, position);
 
     let vertices = [
         Vertex {

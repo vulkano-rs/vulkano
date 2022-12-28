@@ -28,13 +28,12 @@ use vulkano::{
         QueueFlags,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
-    impl_vertex,
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -53,13 +52,6 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-struct Vertex {
-    position: [f32; 2],
-}
-impl_vertex!(Vertex, position);
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();
@@ -163,6 +155,13 @@ fn main() {
     };
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+    struct Vertex {
+        #[format(R32G32_SFLOAT)]
+        position: [f32; 2],
+    }
 
     // Using a buffer allocator allows multiple buffers to be "in-flight" simultaneously and is
     // suited to highly dynamic data like vertex, index and uniform buffers.

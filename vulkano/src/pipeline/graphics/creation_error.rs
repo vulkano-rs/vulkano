@@ -12,7 +12,7 @@ use crate::{
     descriptor_set::layout::DescriptorSetLayoutCreationError,
     format::{Format, NumericType},
     pipeline::layout::{PipelineLayoutCreationError, PipelineLayoutSupersetError},
-    shader::ShaderInterfaceMismatchError,
+    shader::{ShaderInterfaceMismatchError, ShaderScalarType},
     OomError, RequirementNotMet, RequiresOneOf, VulkanError,
 };
 use std::{
@@ -179,9 +179,13 @@ pub enum GraphicsPipelineCreationError {
     /// format of the corresponding vertex input attribute.
     VertexInputAttributeIncompatibleFormat {
         location: u32,
-        shader_type: NumericType,
+        shader_type: ShaderScalarType,
         attribute_type: NumericType,
     },
+
+    /// The location provided is assigned, but expected to unassigned due to the format of the
+    /// prior location.
+    VertexInputAttributeInvalidAssignedLocation { location: u32 },
 
     /// The binding number specified by a vertex input attribute does not exist in the provided list
     /// of binding descriptions.
@@ -363,6 +367,11 @@ impl Display for GraphicsPipelineCreationError {
                 "the type of the shader input variable at location {} ({:?}) is not compatible \
                 with the format of the corresponding vertex input attribute ({:?})",
                 location, shader_type, attribute_type,
+            ),
+            Self::VertexInputAttributeInvalidAssignedLocation { location } => write!(
+                f,
+                "input attribute location {} is expected to be unassigned due to the format of the prior location",
+                location,
             ),
             Self::VertexInputAttributeInvalidBinding { location, binding } => write!(
                 f,

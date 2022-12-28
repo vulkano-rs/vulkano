@@ -8,7 +8,7 @@
 // according to those terms.
 
 use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
-use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
+use examples::{Normal, Position, INDICES, NORMALS, POSITIONS};
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{
@@ -165,7 +165,7 @@ fn main() {
         &memory_allocator,
         BufferUsage::VERTEX_BUFFER,
         false,
-        VERTICES,
+        POSITIONS,
     )
     .unwrap();
     let normals_buffer = CpuAccessibleBuffer::from_iter(
@@ -431,7 +431,7 @@ fn window_size_dependent_setup(
     let pipeline = GraphicsPipeline::start()
         .vertex_input_state(
             BuffersDefinition::new()
-                .vertex::<Vertex>()
+                .vertex::<Position>()
                 .vertex::<Normal>(),
         )
         .vertex_shader(vs.entry_point("main").unwrap(), ())

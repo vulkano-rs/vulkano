@@ -28,6 +28,7 @@ once_cell = "1.16"
 parking_lot = { version = "0.12", features = ["send_guard"] }
 smallvec = "1.8"
 thread_local = "1.1"
+vulkano_macros = { path = "macros", version = "0.32.0" }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc = "0.2.5"
