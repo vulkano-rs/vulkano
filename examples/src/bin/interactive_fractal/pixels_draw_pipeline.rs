@@ -20,12 +20,11 @@ use vulkano::{
     },
     device::Queue,
     image::ImageViewAbstract,
-    impl_vertex,
     memory::allocator::MemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -36,12 +35,13 @@ use vulkano::{
 
 /// Vertex for textured quads
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 pub struct TexturedVertex {
+    #[format(R32G32_SFLOAT)]
     pub position: [f32; 2],
+    #[format(R32G32_SFLOAT)]
     pub tex_coords: [f32; 2],
 }
-impl_vertex!(TexturedVertex, position, tex_coords);
 
 pub fn textured_quad(width: f32, height: f32) -> (Vec<TexturedVertex>, Vec<u32>) {
     (

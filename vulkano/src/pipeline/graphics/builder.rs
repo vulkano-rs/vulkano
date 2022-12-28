@@ -48,7 +48,8 @@ use crate::{
     },
     shader::{
         DescriptorBindingRequirements, EntryPoint, FragmentShaderExecution, FragmentTestsStages,
-        ShaderExecution, ShaderStage, SpecializationConstants, SpecializationMapEntry,
+        ShaderExecution, ShaderScalarType, ShaderStage, SpecializationConstants,
+        SpecializationMapEntry,
     },
     DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -723,7 +724,22 @@ where
                 }
 
                 // VUID-VkPipelineVertexInputStateCreateInfo-pVertexAttributeDescriptions-00617
-                // Ensured by HashMap.
+                // Ensured by HashMap with the exception of formats exceeding a single location.
+                // When a format exceeds a single location the location following it (e.g.
+                // R64B64G64_SFLOAT) needs to be unassigned.
+                let unassigned_locations = attributes
+                    .iter()
+                    .filter(|&(_, attribute_desc)| attribute_desc.format.block_size().unwrap() > 16)
+                    .map(|(location, _)| location + 1);
+                for location in unassigned_locations {
+                    if !attributes.get(&location).is_none() {
+                        return Err(
+                            GraphicsPipelineCreationError::VertexInputAttributeInvalidAssignedLocation {
+                                location,
+                            },
+                        );
+                    }
+                }
 
                 for (&location, attribute_desc) in attributes {
                     let &VertexInputAttributeDescription {
@@ -994,12 +1010,13 @@ where
                         // TODO: Check component assignments too. Multiple variables can occupy the same
                         // location but in different components.
 
-                        let shader_type = element.ty.to_format().type_color().unwrap();
+                        let shader_type = element.ty.base_type;
                         let attribute_type = attribute_desc.format.type_color().unwrap();
 
                         if !matches!(
                             (shader_type, attribute_type),
                             (
+                                ShaderScalarType::Float,
                                 NumericType::SFLOAT
                                     | NumericType::UFLOAT
                                     | NumericType::SNORM
@@ -1007,15 +1024,8 @@ where
                                     | NumericType::SSCALED
                                     | NumericType::USCALED
                                     | NumericType::SRGB,
-                                NumericType::SFLOAT
-                                    | NumericType::UFLOAT
-                                    | NumericType::SNORM
-                                    | NumericType::UNORM
-                                    | NumericType::SSCALED
-                                    | NumericType::USCALED
-                                    | NumericType::SRGB,
-                            ) | (NumericType::SINT, NumericType::SINT)
-                                | (NumericType::UINT, NumericType::UINT)
+                            ) | (ShaderScalarType::Sint, NumericType::SINT)
+                                | (ShaderScalarType::Uint, NumericType::UINT)
                         ) {
                             return Err(
                                 GraphicsPipelineCreationError::VertexInputAttributeIncompatibleFormat {

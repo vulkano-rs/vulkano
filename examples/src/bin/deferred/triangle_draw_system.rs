@@ -16,13 +16,12 @@ use vulkano::{
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
     },
     device::Queue,
-    impl_vertex,
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             depth_stencil::DepthStencilState,
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::{BuffersDefinition, Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -32,7 +31,7 @@ use vulkano::{
 
 pub struct TriangleDrawSystem {
     gfx_queue: Arc<Queue>,
-    vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
+    vertex_buffer: Arc<CpuAccessibleBuffer<[TriangleVertex]>>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
@@ -47,13 +46,13 @@ impl TriangleDrawSystem {
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     ) -> TriangleDrawSystem {
         let vertices = [
-            Vertex {
+            TriangleVertex {
                 position: [-0.5, -0.25],
             },
-            Vertex {
+            TriangleVertex {
                 position: [0.0, 0.5],
             },
-            Vertex {
+            TriangleVertex {
                 position: [0.25, -0.1],
             },
         ];
@@ -72,7 +71,7 @@ impl TriangleDrawSystem {
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
 
             GraphicsPipeline::start()
-                .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+                .vertex_input_state(BuffersDefinition::new().vertex::<TriangleVertex>())
                 .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -122,11 +121,11 @@ impl TriangleDrawSystem {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-struct Vertex {
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+struct TriangleVertex {
+    #[format(R32G32_SFLOAT)]
     position: [f32; 2],
 }
-impl_vertex!(Vertex, position);
 
 mod vs {
     vulkano_shaders::shader! {

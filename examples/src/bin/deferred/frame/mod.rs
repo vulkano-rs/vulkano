@@ -12,9 +12,19 @@
 // The main code is in the `system` module, while the other modules implement the different kinds
 // of lighting sources.
 
+use bytemuck::{Pod, Zeroable};
+use vulkano::pipeline::graphics::vertex_input::Vertex;
+
 pub use self::system::{DrawPass, Frame, FrameSystem, LightingPass, Pass};
 
 mod ambient_lighting_system;
 mod directional_lighting_system;
 mod point_lighting_system;
 mod system;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+struct LightingVertex {
+    #[format(R32G32_SFLOAT)]
+    position: [f32; 2],
+}

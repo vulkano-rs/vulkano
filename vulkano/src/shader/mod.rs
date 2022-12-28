@@ -1003,33 +1003,6 @@ pub struct ShaderInterfaceEntryType {
 }
 
 impl ShaderInterfaceEntryType {
-    pub(crate) fn to_format(&self) -> Format {
-        assert!(!self.is_64bit); // TODO: implement
-        match self.base_type {
-            ShaderScalarType::Float => match self.num_components {
-                1 => Format::R32_SFLOAT,
-                2 => Format::R32G32_SFLOAT,
-                3 => Format::R32G32B32_SFLOAT,
-                4 => Format::R32G32B32A32_SFLOAT,
-                _ => unreachable!(),
-            },
-            ShaderScalarType::Sint => match self.num_components {
-                1 => Format::R32_SINT,
-                2 => Format::R32G32_SINT,
-                3 => Format::R32G32B32_SINT,
-                4 => Format::R32G32B32A32_SINT,
-                _ => unreachable!(),
-            },
-            ShaderScalarType::Uint => match self.num_components {
-                1 => Format::R32_UINT,
-                2 => Format::R32G32_UINT,
-                3 => Format::R32G32B32_UINT,
-                4 => Format::R32G32B32A32_UINT,
-                _ => unreachable!(),
-            },
-        }
-    }
-
     pub(crate) fn num_locations(&self) -> u32 {
         assert!(!self.is_64bit); // TODO: implement
         self.num_elements

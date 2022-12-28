@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use bytemuck::{Pod, Zeroable};
 use cgmath::{Matrix4, Vector3};
 use std::sync::Arc;
 use vulkano::{
@@ -21,7 +20,6 @@ use vulkano::{
     },
     device::Queue,
     image::ImageViewAbstract,
-    impl_vertex,
     memory::allocator::MemoryAllocator,
     pipeline::{
         graphics::{
@@ -35,9 +33,11 @@ use vulkano::{
     render_pass::Subpass,
 };
 
+use super::LightingVertex;
+
 pub struct PointLightingSystem {
     gfx_queue: Arc<Queue>,
-    vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
+    vertex_buffer: Arc<CpuAccessibleBuffer<[LightingVertex]>>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
@@ -56,13 +56,13 @@ impl PointLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader
         let vertices = [
-            Vertex {
+            LightingVertex {
                 position: [-1.0, -1.0],
             },
-            Vertex {
+            LightingVertex {
                 position: [-1.0, 3.0],
             },
-            Vertex {
+            LightingVertex {
                 position: [3.0, -1.0],
             },
         ];
@@ -81,7 +81,7 @@ impl PointLightingSystem {
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
 
             GraphicsPipeline::start()
-                .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+                .vertex_input_state(BuffersDefinition::new().vertex::<LightingVertex>())
                 .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -200,13 +200,6 @@ impl PointLightingSystem {
         builder.build().unwrap()
     }
 }
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-struct Vertex {
-    position: [f32; 2],
-}
-impl_vertex!(Vertex, position);
 
 mod vs {
     vulkano_shaders::shader! {
