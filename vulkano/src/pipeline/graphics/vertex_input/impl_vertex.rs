@@ -35,14 +35,16 @@ macro_rules! impl_vertex {
         unsafe impl $crate::pipeline::graphics::vertex_input::Vertex for $out {
             #[inline(always)]
             #[allow(deprecated)]
-            fn member(name: &str) -> Option<$crate::pipeline::graphics::vertex_input::VertexMemberInfo> {
+            fn info() -> $crate::pipeline::graphics::vertex_input::VertexInfo {
                 #[allow(unused_imports)]
                 use $crate::format::Format;
                 use $crate::pipeline::graphics::vertex_input::VertexMemberInfo;
                 use $crate::pipeline::graphics::vertex_input::VertexMember;
+                use $crate::pipeline::graphics::vertex_input::VertexMemberMap;
 
+                let mut members = VertexMemberMap::default();
                 $(
-                    if name == stringify!($member) {
+                    {
                         let dummy = <$out>::default();
                         #[inline] fn f<T: VertexMember>(_: &T) -> Format { T::format() }
                         let format = f(&dummy.$member);
@@ -58,12 +60,12 @@ macro_rules! impl_vertex {
                         let format_size = format.block_size().expect("no block size for format") as u32;
                         let num_elements = field_size / format_size;
                         let remainder = field_size % format_size;
-                        assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", name);
+                        assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", stringify!($member));
 
                         let dummy_ptr = (&dummy) as *const _;
                         let member_ptr = (&dummy.$member) as *const _;
 
-                        return Some(VertexMemberInfo {
+                        members.insert(stringify!($member).to_string(), VertexMemberInfo {
                             offset: member_ptr as usize - dummy_ptr as usize,
                             format,
                             num_elements,
@@ -71,7 +73,10 @@ macro_rules! impl_vertex {
                     }
                 )*
 
-                None
+                $crate::pipeline::graphics::vertex_input::VertexInfo {
+                    members,
+                    stride: std::mem::size_of::<$out>() as u32,
+                }
             }
         }
     )
@@ -223,9 +228,10 @@ mod tests {
         }
         impl_vertex!(TestVertex, scalar, vector, matrix);
 
-        let matrix = TestVertex::member("matrix").unwrap();
-        let vector = TestVertex::member("vector").unwrap();
-        let scalar = TestVertex::member("scalar").unwrap();
+        let info = TestVertex::info();
+        let matrix = info.members.get("matrix").unwrap();
+        let vector = info.members.get("vector").unwrap();
+        let scalar = info.members.get("scalar").unwrap();
         assert_eq!(matrix.format, Format::R32G32B32A32_SFLOAT);
         assert_eq!(matrix.offset, 0);
         assert_eq!(matrix.num_elements, 4);

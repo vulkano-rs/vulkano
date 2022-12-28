@@ -8,8 +8,11 @@
 // according to those terms.
 
 use crate::format::Format;
+use ahash::HashMap;
 use bytemuck::Pod;
 pub use vulkano_macros::Vertex;
+
+use super::{VertexInputBindingDescription, VertexInputRate};
 
 /// Describes an individual `Vertex`. In other words a collection of attributes that can be read
 /// from a vertex shader.
@@ -37,15 +40,28 @@ pub use vulkano_macros::Vertex;
 /// }
 /// ```
 pub unsafe trait Vertex: Pod + Send + Sync + 'static {
-    /// Returns the characteristics of a vertex member by its name.
-    fn member(name: &str) -> Option<VertexMemberInfo>;
+    /// Returns the information about this Vertex type.
+    fn info() -> VertexInfo;
 }
 
+// TODO: still required?
 unsafe impl Vertex for () {
     #[inline]
-    fn member(_: &str) -> Option<VertexMemberInfo> {
-        None
+    fn info() -> VertexInfo {
+        VertexInfo {
+            members: VertexMemberMap::default(),
+            stride: 0,
+        }
     }
+}
+
+pub type VertexMemberMap = HashMap<String, VertexMemberInfo>;
+
+pub struct VertexInfo {
+    /// List of member names with their detailed information.
+    pub members: VertexMemberMap,
+    /// Stride of the vertex type.
+    pub stride: u32,
 }
 
 /// Information about a member of a vertex struct.
@@ -70,6 +86,62 @@ impl VertexMemberInfo {
     }
 }
 
+/// Information about the contents of a VertexBuffer.
+#[derive(Clone, Debug)]
+pub struct VertexBufferInfo {
+    /// List of member names with their detailed information.
+    pub members: VertexMemberMap,
+    /// Stride of the vertex type in a buffer.
+    pub stride: u32,
+    /// How the vertex buffer is unrolled in the shader.
+    pub input_rate: VertexInputRate,
+}
+
+impl From<VertexBufferInfo> for VertexInputBindingDescription {
+    fn from(val: VertexBufferInfo) -> Self {
+        Self {
+            stride: val.stride,
+            input_rate: val.input_rate,
+        }
+    }
+}
+
+pub unsafe trait VertexInput {
+    fn per_vertex() -> VertexBufferInfo;
+    fn per_instance() -> VertexBufferInfo;
+    fn per_instance_with_divisor(divisor: u32) -> VertexBufferInfo;
+}
+
+unsafe impl<T: Vertex> VertexInput for T {
+    #[inline]
+    fn per_vertex() -> VertexBufferInfo {
+        let VertexInfo { members, stride } = <T as Vertex>::info();
+        VertexBufferInfo {
+            members,
+            stride,
+            input_rate: VertexInputRate::Vertex,
+        }
+    }
+    #[inline]
+    fn per_instance() -> VertexBufferInfo {
+        let VertexInfo { members, stride } = <T as Vertex>::info();
+        VertexBufferInfo {
+            members,
+            stride,
+            input_rate: VertexInputRate::Instance { divisor: 1 },
+        }
+    }
+    #[inline]
+    fn per_instance_with_divisor(divisor: u32) -> VertexBufferInfo {
+        let VertexInfo { members, stride } = <T as Vertex>::info();
+        VertexBufferInfo {
+            members,
+            stride,
+            input_rate: VertexInputRate::Instance { divisor },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::format::Format;
@@ -87,8 +159,9 @@ mod tests {
             a: [f32; 16],
         }
 
-        let b = TestVertex::member("b").unwrap();
-        let c = TestVertex::member("c").unwrap();
+        let info = TestVertex::info();
+        let b = info.members.get("b").unwrap();
+        let c = info.members.get("c").unwrap();
         assert_eq!(b.format, Format::R32G32B32A32_SFLOAT);
         assert_eq!(c.format, Format::R32G32B32A32_SFLOAT);
         assert_eq!(b.num_elements, 4);
@@ -104,7 +177,8 @@ mod tests {
             unorm: u8,
         }
 
-        let unorm = TestVertex::member("unorm").unwrap();
+        let info = TestVertex::info();
+        let unorm = info.members.get("unorm").unwrap();
         assert_eq!(unorm.format, Format::R8_UNORM);
         assert_eq!(unorm.num_elements, 1);
     }
