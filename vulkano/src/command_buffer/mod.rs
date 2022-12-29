@@ -71,14 +71,19 @@
 //! use vulkano::command_buffer::PrimaryCommandBufferAbstract;
 //! use vulkano::command_buffer::SubpassContents;
 //!
+//! # use vulkano::pipeline::graphics::vertex_input::Vertex;
+//! # use bytemuck::{Pod, Zeroable};
+//!
 //! # #[repr(C)]
-//! # #[derive(Clone, Copy, Debug, Default, bytemuck::Zeroable, bytemuck::Pod)]
-//! # struct Vertex { position: [f32; 3] };
-//! # vulkano::impl_vertex!(Vertex, position);
+//! # #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+//! # struct PosVertex {
+//! #     #[format(R32G32B32_SFLOAT)]
+//! #     position: [f32; 3]
+//! # };
 //! # use vulkano::buffer::TypedBufferAccess;
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
-//! # let vertex_buffer: std::sync::Arc<vulkano::buffer::CpuAccessibleBuffer<[Vertex]>> = return;
+//! # let vertex_buffer: std::sync::Arc<vulkano::buffer::CpuAccessibleBuffer<[PosVertex]>> = return;
 //! # let render_pass_begin_info: vulkano::command_buffer::RenderPassBeginInfo = return;
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
 //! # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;

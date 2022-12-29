@@ -82,12 +82,12 @@ macro_rules! impl_vertex {
             #[inline(always)]
             #[allow(deprecated)]
             fn per_instance() -> $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
-                <$out as Vertex>::per_vertex().per_instance()
+                <$out as $crate::pipeline::graphics::vertex_input::Vertex>::per_vertex().per_instance()
             }
             #[inline(always)]
             #[allow(deprecated)]
             fn per_instance_with_divisor(divisor: u32) -> $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
-                <$out as Vertex>::per_vertex().per_instance_with_divisor(divisor)
+                <$out as $crate::pipeline::graphics::vertex_input::Vertex>::per_vertex().per_instance_with_divisor(divisor)
             }
 
         }
