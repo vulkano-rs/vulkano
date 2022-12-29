@@ -104,9 +104,7 @@ pub use self::{
     collection::VertexBuffersCollection,
     definition::{IncompatibleVertexDefinitionError, VertexDefinition},
     impl_vertex::VertexMember,
-    vertex::{
-        Vertex, VertexBufferInfo, VertexInfo, VertexInput, VertexMemberInfo, VertexMemberMap,
-    },
+    vertex::{Vertex, VertexBufferInfo, VertexMemberInfo},
 };
 use crate::format::Format;
 use ahash::HashMap;

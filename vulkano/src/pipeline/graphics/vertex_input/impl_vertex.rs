@@ -35,14 +35,14 @@ macro_rules! impl_vertex {
         unsafe impl $crate::pipeline::graphics::vertex_input::Vertex for $out {
             #[inline(always)]
             #[allow(deprecated)]
-            fn info() -> $crate::pipeline::graphics::vertex_input::VertexInfo {
+            fn per_vertex() -> $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
                 #[allow(unused_imports)]
+                use std::collections::HashMap;
                 use $crate::format::Format;
-                use $crate::pipeline::graphics::vertex_input::VertexMemberInfo;
                 use $crate::pipeline::graphics::vertex_input::VertexMember;
-                use $crate::pipeline::graphics::vertex_input::VertexMemberMap;
+                use $crate::pipeline::graphics::vertex_input::{VertexInputRate, VertexMemberInfo};
 
-                let mut members = VertexMemberMap::default();
+                let mut members = HashMap::default();
                 $(
                     {
                         let dummy = <$out>::default();
@@ -73,11 +73,23 @@ macro_rules! impl_vertex {
                     }
                 )*
 
-                $crate::pipeline::graphics::vertex_input::VertexInfo {
+                $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
                     members,
                     stride: std::mem::size_of::<$out>() as u32,
+                    input_rate: VertexInputRate::Vertex,
                 }
             }
+            #[inline(always)]
+            #[allow(deprecated)]
+            fn per_instance() -> $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
+                <$out as Vertex>::per_vertex().per_instance()
+            }
+            #[inline(always)]
+            #[allow(deprecated)]
+            fn per_instance_with_divisor(divisor: u32) -> $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
+                <$out as Vertex>::per_vertex().per_instance_with_divisor(divisor)
+            }
+
         }
     )
 }
@@ -228,7 +240,7 @@ mod tests {
         }
         impl_vertex!(TestVertex, scalar, vector, matrix);
 
-        let info = TestVertex::info();
+        let info = TestVertex::per_vertex();
         let matrix = info.members.get("matrix").unwrap();
         let vector = info.members.get("vector").unwrap();
         let scalar = info.members.get("scalar").unwrap();

@@ -43,7 +43,7 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
 
     let mut members = quote! {
         let mut offset = 0;
-        let mut members = VertexMemberMap::default();
+        let mut members = HashMap::default();
     };
 
     for field in fields.iter() {
@@ -99,24 +99,37 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
         }
     }
 
-    Ok(TokenStream::from(quote! {
-        #[allow(unsafe_code)]
-        unsafe impl #crate_ident::pipeline::graphics::vertex_input::Vertex for #struct_name {
-            #[inline(always)]
-            fn info() -> #crate_ident::pipeline::graphics::vertex_input::VertexInfo {
-                #[allow(unused_imports)]
-                use #crate_ident::format::Format;
-                use #crate_ident::pipeline::graphics::vertex_input::VertexMemberInfo;
-                use #crate_ident::pipeline::graphics::vertex_input::VertexMemberMap;
+    let function_body = quote! {
+        #[allow(unused_imports)]
+        use std::collections::HashMap;
+        use #crate_ident::format::Format;
+        use #crate_ident::pipeline::graphics::vertex_input::{VertexInputRate, VertexMemberInfo};
 
-                #members
+        #members
 
-                #crate_ident::pipeline::graphics::vertex_input::VertexInfo {
-                    members,
-                    stride: std::mem::size_of::<#struct_name>() as u32,
-                }
-            }
+        #crate_ident::pipeline::graphics::vertex_input::VertexBufferInfo {
+            members,
+            stride: std::mem::size_of::<#struct_name>() as u32,
+            input_rate: VertexInputRate::Vertex,
         }
+    };
+
+    Ok(TokenStream::from(quote! {
+     #[allow(unsafe_code)]
+     unsafe impl #crate_ident::pipeline::graphics::vertex_input::Vertex for #struct_name {
+         #[inline(always)]
+         fn per_vertex() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferInfo {
+             #function_body
+         }
+         #[inline(always)]
+         fn per_instance() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferInfo {
+             #function_body.per_instance()
+         }
+         #[inline(always)]
+         fn per_instance_with_divisor(divisor: u32) -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferInfo {
+             #function_body.per_instance_with_divisor(divisor)
+         }
+     }
     }))
 }
 

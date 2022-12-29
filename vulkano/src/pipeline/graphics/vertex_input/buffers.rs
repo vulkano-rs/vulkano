@@ -28,13 +28,13 @@ impl BuffersDefinition {
 
     /// Adds a new vertex buffer containing elements of type `V` to the definition.
     pub fn vertex<V: Vertex>(mut self) -> Self {
-        self.0.push(V::info().per_vertex());
+        self.0.push(V::per_vertex());
         self
     }
 
     /// Adds a new instance buffer containing elements of type `V` to the definition.
     pub fn instance<V: Vertex>(mut self) -> Self {
-        self.0.push(V::info().per_instance());
+        self.0.push(V::per_instance());
         self
     }
 
@@ -50,7 +50,7 @@ impl BuffersDefinition {
     /// [`vertex_attribute_instance_rate_divisor`]: crate::device::Features::vertex_attribute_instance_rate_divisor
     /// [`vertex_attribute_instance_rate_zero_divisor`]: crate::device::Features::vertex_attribute_instance_rate_zero_divisor
     pub fn instance_with_divisor<V: Vertex>(mut self, divisor: u32) -> Self {
-        self.0.push(V::info().per_instance_with_divisor(divisor));
+        self.0.push(V::per_instance_with_divisor(divisor));
         self
     }
 }
