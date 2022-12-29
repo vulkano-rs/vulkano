@@ -100,6 +100,7 @@
 
 #[allow(deprecated)]
 pub use self::{
+    buffers::BuffersDefinition,
     collection::VertexBuffersCollection,
     definition::{IncompatibleVertexDefinitionError, VertexDefinition},
     impl_vertex::VertexMember,
@@ -110,6 +111,7 @@ pub use self::{
 use crate::format::Format;
 use ahash::HashMap;
 
+mod buffers;
 mod collection;
 mod definition;
 mod impl_vertex;

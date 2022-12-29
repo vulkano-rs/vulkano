@@ -64,6 +64,31 @@ pub struct VertexInfo {
     pub stride: u32,
 }
 
+impl VertexInfo {
+    #[inline]
+    pub fn per_vertex(self) -> VertexBufferInfo {
+        let VertexInfo { members, stride } = self;
+        VertexBufferInfo {
+            members,
+            stride,
+            input_rate: VertexInputRate::Vertex,
+        }
+    }
+    #[inline]
+    pub fn per_instance(self) -> VertexBufferInfo {
+        self.per_instance_with_divisor(1)
+    }
+    #[inline]
+    pub fn per_instance_with_divisor(self, divisor: u32) -> VertexBufferInfo {
+        let VertexInfo { members, stride } = self;
+        VertexBufferInfo {
+            members,
+            stride,
+            input_rate: VertexInputRate::Instance { divisor },
+        }
+    }
+}
+
 /// Information about a member of a vertex struct.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VertexMemberInfo {
@@ -115,30 +140,15 @@ pub unsafe trait VertexInput {
 unsafe impl<T: Vertex> VertexInput for T {
     #[inline]
     fn per_vertex() -> VertexBufferInfo {
-        let VertexInfo { members, stride } = <T as Vertex>::info();
-        VertexBufferInfo {
-            members,
-            stride,
-            input_rate: VertexInputRate::Vertex,
-        }
+        <T as Vertex>::info().per_vertex()
     }
     #[inline]
     fn per_instance() -> VertexBufferInfo {
-        let VertexInfo { members, stride } = <T as Vertex>::info();
-        VertexBufferInfo {
-            members,
-            stride,
-            input_rate: VertexInputRate::Instance { divisor: 1 },
-        }
+        <T as Vertex>::info().per_instance()
     }
     #[inline]
     fn per_instance_with_divisor(divisor: u32) -> VertexBufferInfo {
-        let VertexInfo { members, stride } = <T as Vertex>::info();
-        VertexBufferInfo {
-            members,
-            stride,
-            input_rate: VertexInputRate::Instance { divisor },
-        }
+        <T as Vertex>::info().per_instance_with_divisor(divisor)
     }
 }
 
