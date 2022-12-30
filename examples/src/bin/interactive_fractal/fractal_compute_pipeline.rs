@@ -257,10 +257,5 @@ void main() {
     );
     imageStore(img, ivec2(gl_GlobalInvocationID.xy), write_color);
 }",
-        types_meta: {
-            use bytemuck::{Pod, Zeroable};
-
-            #[derive(Clone, Copy, Zeroable, Pod)]
-        },
     }
 }

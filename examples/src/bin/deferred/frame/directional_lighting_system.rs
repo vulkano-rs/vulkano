@@ -235,10 +235,5 @@ void main() {
     f_color.rgb = light_percent * push_constants.color.rgb * in_diffuse;
     f_color.a = 1.0;
 }",
-        types_meta: {
-            use bytemuck::{Pod, Zeroable};
-
-            #[derive(Clone, Copy, Zeroable, Pod)]
-        },
     }
 }

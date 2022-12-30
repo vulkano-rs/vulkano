@@ -262,11 +262,6 @@ fn main() {
 	                verticies[index].vel = vel * exp(friction * push.delta_time);
                 }
             ",
-            types_meta: {
-                use bytemuck::{Pod, Zeroable};
-
-                #[derive(Clone, Copy, Zeroable, Pod)]
-            },
         }
     }
     // Vertex shader determines color and is run once per particle.
