@@ -71,6 +71,8 @@ Changes to `impl_vertex`, `VertexMember` and `VertexMemberInfo`:
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
+- Fixed wrong aspects being used in pipeline barriers when an image view selects one aspect of a combined depth+stencil image.
+- Fixed panic when building a finished command buffer, if the command buffer contains commands that use only some subresources of an image.
 
 # Version 0.32.3 (2022-12-07)
 
