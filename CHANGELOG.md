@@ -68,6 +68,8 @@ Changes to `impl_vertex`, `VertexMember` and `VertexMemberInfo`:
 - Added a derive macro for the `Vertex` trait. The `impl_vertex` macro and `VertexMember` trait are deprecated.
 - `BufferDefinition` matching logic was updated to work with the new `VertexMemberInfo` and now matches based on scalar type, number of components and number of elements allowing the use of formats such as `*_UNORM`.
 - `GraphicsPipelineBuilder` validation was extended to make sure locations are not bound multiple times when a single attribute spans multiple locations (e.g. using double precision float formats).
+- Added documentation of the cargo features to the main documentation page of each crate.
+- Added documentation of `_unchecked` functions to the main documentation page.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
