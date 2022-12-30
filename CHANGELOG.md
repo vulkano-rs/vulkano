@@ -70,6 +70,7 @@ Changes to `impl_vertex`, `VertexMember` and `VertexMemberInfo`:
 - `GraphicsPipelineBuilder` validation was extended to make sure locations are not bound multiple times when a single attribute spans multiple locations (e.g. using double precision float formats).
 - Added documentation of the cargo features to the main documentation page of each crate.
 - Added documentation of `_unchecked` functions to the main documentation page.
+- Vulkano-shaders: The bytemuck traits `Pod` and `Zeroable` are now automatically derived for generated structs, so there is no need to specify them with `types_meta` anymore.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
