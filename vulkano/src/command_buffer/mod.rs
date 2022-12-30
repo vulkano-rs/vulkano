@@ -534,7 +534,7 @@ pub(crate) struct CommandBufferBufferUsage {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CommandBufferBufferRangeUsage {
-    pub(crate) first_use: ResourceUseRef,
+    pub(crate) first_use: Option<ResourceUseRef>,
     pub(crate) mutable: bool,
 }
 
@@ -546,7 +546,7 @@ pub(crate) struct CommandBufferImageUsage {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CommandBufferImageRangeUsage {
-    pub(crate) first_use: ResourceUseRef,
+    pub(crate) first_use: Option<ResourceUseRef>,
     pub(crate) mutable: bool,
     pub(crate) expected_layout: ImageLayout,
     pub(crate) final_layout: ImageLayout,

@@ -26,7 +26,7 @@ use crate::{
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned},
-    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange},
+    image::{sys::Image, ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange},
     pipeline::{
         graphics::{
             color_blend::LogicOp,
@@ -539,6 +539,19 @@ impl SyncCommandBufferBuilder {
         subresource_range.mip_levels.start += inner.first_mipmap_level;
         subresource_range.mip_levels.end += inner.first_mipmap_level;
 
+        // VUID-VkImageMemoryBarrier2-image-03320
+        if !self
+            .device()
+            .enabled_features()
+            .separate_depth_stencil_layouts
+            && image
+                .format()
+                .aspects()
+                .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        {
+            subresource_range.aspects = ImageAspects::DEPTH | ImageAspects::STENCIL;
+        }
+
         let range_map = self.images2.entry(inner.image.clone()).or_insert_with(|| {
             [(
                 0..inner.image.range_size(),
@@ -816,7 +829,7 @@ impl SyncCommandBufferBuilder {
                         .into_iter()
                         .filter(|(_range, state)| !state.resource_uses.is_empty())
                         .map(|(range, state)| {
-                            let first_use = state.resource_uses.into_iter().next().unwrap();
+                            let first_use = state.resource_uses.into_iter().next();
                             (
                                 range,
                                 CommandBufferBufferRangeUsage {
@@ -845,7 +858,7 @@ impl SyncCommandBufferBuilder {
                                 state.current_layout = state.final_layout;
                             }
 
-                            let first_use = state.resource_uses.into_iter().next().unwrap();
+                            let first_use = state.resource_uses.into_iter().next();
                             (
                                 range,
                                 CommandBufferImageRangeUsage {
