@@ -7,13 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::collections::HashMap;
-
+use super::{VertexInputBindingDescription, VertexInputRate};
 use crate::format::Format;
 use bytemuck::Pod;
+use std::collections::HashMap;
 pub use vulkano_macros::Vertex;
-
-use super::{VertexInputBindingDescription, VertexInputRate};
 
 /// Describes an individual `Vertex`. In other words a collection of attributes that can be read
 /// from a vertex shader.
