@@ -50,6 +50,7 @@
 //! # }
 //! ```
 
+use super::{VertexBufferInfo, VertexInputAttributeDescription, VertexInputBindingDescription};
 use crate::{
     pipeline::graphics::vertex_input::{VertexInputState, VertexMemberInfo},
     shader::{ShaderInterface, ShaderInterfaceEntryType},
@@ -59,8 +60,6 @@ use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
 };
-
-use super::{VertexBufferInfo, VertexInputAttributeDescription};
 
 /// Trait for types that can create a [`VertexInputState`] from a [`ShaderInterface`].
 pub unsafe trait VertexDefinition {
@@ -123,10 +122,15 @@ unsafe impl VertexDefinition for &[VertexBufferInfo] {
         &self,
         interface: &ShaderInterface,
     ) -> Result<VertexInputState, IncompatibleVertexDefinitionError> {
-        let bindings = self
-            .iter()
-            .enumerate()
-            .map(|(binding, buffer)| (binding as u32, (*buffer).clone().into()));
+        let bindings = self.iter().enumerate().map(|(binding, buffer)| {
+            (
+                binding as u32,
+                VertexInputBindingDescription {
+                    stride: buffer.stride,
+                    input_rate: buffer.input_rate,
+                },
+            )
+        });
         let mut attributes: Vec<(u32, VertexInputAttributeDescription)> = Vec::new();
 
         for element in interface.elements() {

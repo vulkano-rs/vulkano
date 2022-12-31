@@ -56,15 +56,6 @@ pub struct VertexBufferInfo {
     pub input_rate: VertexInputRate,
 }
 
-impl From<VertexBufferInfo> for VertexInputBindingDescription {
-    fn from(val: VertexBufferInfo) -> Self {
-        Self {
-            stride: val.stride,
-            input_rate: val.input_rate,
-        }
-    }
-}
-
 impl VertexBufferInfo {
     #[inline]
     pub fn per_vertex(self) -> VertexBufferInfo {
