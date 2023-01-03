@@ -45,8 +45,7 @@ pub unsafe trait Vertex: Pod + Send + Sync + 'static {
     fn per_instance_with_divisor(divisor: u32) -> VertexBufferDescription;
 }
 
-/// Information about the contents of a VertexBuffer.
-/// TODO: add example usage!
+/// Describes the contents of a VertexBuffer.
 #[derive(Clone, Debug)]
 pub struct VertexBufferDescription {
     /// List of member names with their detailed information.
