@@ -216,12 +216,16 @@
 //! [`mem::forget`]: std::mem::forget
 //! [region]: Suballocator#regions
 
+mod layout;
 pub mod suballocator;
 
 use self::array_vec::ArrayVec;
-pub use self::suballocator::{
-    AllocationType, BuddyAllocator, BumpAllocator, FreeListAllocator, MemoryAlloc, PoolAllocator,
-    SuballocationCreateInfo, SuballocationCreationError, Suballocator,
+pub use self::{
+    layout::{DeviceAlignment, DeviceLayout},
+    suballocator::{
+        AllocationType, BuddyAllocator, BumpAllocator, FreeListAllocator, MemoryAlloc,
+        PoolAllocator, SuballocationCreateInfo, SuballocationCreationError, Suballocator,
+    },
 };
 use super::{
     DedicatedAllocation, DeviceMemory, ExternalMemoryHandleTypes, MemoryAllocateFlags,
@@ -229,7 +233,7 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError,
+    DeviceSize, NonZeroDeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
