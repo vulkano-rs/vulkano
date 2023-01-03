@@ -223,7 +223,7 @@ impl DeviceMemory {
                     // VUID-VkMemoryDedicatedAllocateInfo-commonparent
                     assert_eq!(device, buffer.device().as_ref());
 
-                    let required_size = buffer.memory_requirements().size;
+                    let required_size = buffer.memory_requirements().layout.size();
 
                     // VUID-VkMemoryDedicatedAllocateInfo-buffer-02965
                     if allocation_size != required_size {
@@ -237,7 +237,7 @@ impl DeviceMemory {
                     // VUID-VkMemoryDedicatedAllocateInfo-commonparent
                     assert_eq!(device, image.device().as_ref());
 
-                    let required_size = image.memory_requirements()[0].size;
+                    let required_size = image.memory_requirements()[0].layout.size();
 
                     // VUID-VkMemoryDedicatedAllocateInfo-image-02964
                     if allocation_size != required_size {

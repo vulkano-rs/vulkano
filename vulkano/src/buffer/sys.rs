@@ -20,7 +20,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     memory::{
-        allocator::{AllocationCreationError, MemoryAlloc},
+        allocator::{AllocationCreationError, DeviceAlignment, DeviceLayout, MemoryAlloc},
         DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryAllocateFlags,
         MemoryPropertyFlags, MemoryRequirements,
     },
@@ -285,10 +285,6 @@ impl RawBuffer {
         handle: ash::vk::Buffer,
         create_info: BufferCreateInfo,
     ) -> Self {
-        fn align(val: DeviceSize, al: DeviceSize) -> DeviceSize {
-            al * (1 + (val - 1) / al)
-        }
-
         let BufferCreateInfo {
             flags,
             size,
@@ -300,30 +296,36 @@ impl RawBuffer {
 
         let mut memory_requirements = Self::get_memory_requirements(&device, handle);
 
-        debug_assert!(memory_requirements.size >= size);
+        debug_assert!(memory_requirements.layout.size() >= size);
         debug_assert!(memory_requirements.memory_type_bits != 0);
 
         // We have to manually enforce some additional requirements for some buffer types.
         let properties = device.physical_device().properties();
         if usage.intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER) {
-            memory_requirements.alignment = align(
-                memory_requirements.alignment,
-                properties.min_texel_buffer_offset_alignment,
-            );
+            memory_requirements.layout = memory_requirements
+                .layout
+                .align_to(
+                    DeviceAlignment::new(properties.min_texel_buffer_offset_alignment).unwrap(),
+                )
+                .unwrap();
         }
 
         if usage.intersects(BufferUsage::STORAGE_BUFFER) {
-            memory_requirements.alignment = align(
-                memory_requirements.alignment,
-                properties.min_storage_buffer_offset_alignment,
-            );
+            memory_requirements.layout = memory_requirements
+                .layout
+                .align_to(
+                    DeviceAlignment::new(properties.min_storage_buffer_offset_alignment).unwrap(),
+                )
+                .unwrap();
         }
 
         if usage.intersects(BufferUsage::UNIFORM_BUFFER) {
-            memory_requirements.alignment = align(
-                memory_requirements.alignment,
-                properties.min_uniform_buffer_offset_alignment,
-            );
+            memory_requirements.layout = memory_requirements
+                .layout
+                .align_to(
+                    DeviceAlignment::new(properties.min_uniform_buffer_offset_alignment).unwrap(),
+                )
+                .unwrap();
         }
 
         RawBuffer {
@@ -393,8 +395,11 @@ impl RawBuffer {
         }
 
         MemoryRequirements {
-            size: memory_requirements2_vk.memory_requirements.size,
-            alignment: memory_requirements2_vk.memory_requirements.alignment,
+            layout: DeviceLayout::from_size_alignment(
+                memory_requirements2_vk.memory_requirements.size,
+                memory_requirements2_vk.memory_requirements.alignment,
+            )
+            .unwrap(),
             memory_type_bits: memory_requirements2_vk.memory_requirements.memory_type_bits,
             prefers_dedicated_allocation: memory_dedicated_requirements_vk
                 .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
@@ -452,18 +457,18 @@ impl RawBuffer {
         }
 
         // VUID-VkBindBufferMemoryInfo-memoryOffset-01036
-        if memory_offset % memory_requirements.alignment != 0 {
+        if memory_offset % memory_requirements.layout.alignment().as_nonzero() != 0 {
             return Err(BufferError::MemoryAllocationNotAligned {
                 allocation_offset: memory_offset,
-                required_alignment: memory_requirements.alignment,
+                required_alignment: memory_requirements.layout.alignment(),
             });
         }
 
         // VUID-VkBindBufferMemoryInfo-size-01037
-        if allocation.size() < memory_requirements.size {
+        if allocation.size() < memory_requirements.layout.size() {
             return Err(BufferError::MemoryAllocationTooSmall {
                 allocation_size: allocation.size(),
-                required_size: memory_requirements.size,
+                required_size: memory_requirements.layout.size(),
             });
         }
 
@@ -1212,7 +1217,7 @@ pub enum BufferError {
     /// The offset of the allocation does not have the required alignment.
     MemoryAllocationNotAligned {
         allocation_offset: DeviceSize,
-        required_alignment: DeviceSize,
+        required_alignment: DeviceAlignment,
     },
 
     /// The size of the allocation is smaller than what is required.
@@ -1313,7 +1318,7 @@ impl Display for BufferError {
                 required_alignment,
             } => write!(
                 f,
-                "the offset of the allocation ({}) does not have the required alignment ({})",
+                "the offset of the allocation ({}) does not have the required alignment ({:?})",
                 allocation_offset, required_alignment,
             ),
             Self::MemoryAllocationTooSmall {
@@ -1445,7 +1450,7 @@ mod tests {
         .unwrap();
         let reqs = buf.memory_requirements();
 
-        assert!(reqs.size >= 128);
+        assert!(reqs.layout.size() >= 128);
         assert_eq!(buf.size(), 128);
         assert_eq!(&**buf.device() as *const Device, &*device as *const Device);
     }

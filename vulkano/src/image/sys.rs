@@ -28,7 +28,7 @@ use crate::{
         SparseImageFormatProperties,
     },
     memory::{
-        allocator::{AllocationCreationError, MemoryAlloc},
+        allocator::{AllocationCreationError, DeviceAlignment, DeviceLayout, MemoryAlloc},
         DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryPropertyFlags,
         MemoryRequirements,
     },
@@ -1132,8 +1132,11 @@ impl RawImage {
         }
 
         MemoryRequirements {
-            size: memory_requirements2_vk.memory_requirements.size,
-            alignment: memory_requirements2_vk.memory_requirements.alignment,
+            layout: DeviceLayout::from_size_alignment(
+                memory_requirements2_vk.memory_requirements.size,
+                memory_requirements2_vk.memory_requirements.alignment,
+            )
+            .unwrap(),
             memory_type_bits: memory_requirements2_vk.memory_requirements.memory_type_bits,
             prefers_dedicated_allocation: memory_dedicated_requirements_vk
                 .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
@@ -1468,21 +1471,21 @@ impl RawImage {
 
             // VUID-VkBindImageMemoryInfo-pNext-01616
             // VUID-VkBindImageMemoryInfo-pNext-01620
-            if memory_offset % memory_requirements.alignment != 0 {
+            if memory_offset % memory_requirements.layout.alignment().as_nonzero() != 0 {
                 return Err(ImageError::MemoryAllocationNotAligned {
                     allocations_index,
                     allocation_offset: memory_offset,
-                    required_alignment: memory_requirements.alignment,
+                    required_alignment: memory_requirements.layout.alignment(),
                 });
             }
 
             // VUID-VkBindImageMemoryInfo-pNext-01617
             // VUID-VkBindImageMemoryInfo-pNext-01621
-            if allocation.size() < memory_requirements.size {
+            if allocation.size() < memory_requirements.layout.size() {
                 return Err(ImageError::MemoryAllocationTooSmall {
                     allocations_index,
                     allocation_size: allocation.size(),
-                    required_size: memory_requirements.size,
+                    required_size: memory_requirements.layout.size(),
                 });
             }
         }
@@ -2852,7 +2855,7 @@ pub enum ImageError {
     MemoryAllocationNotAligned {
         allocations_index: usize,
         allocation_offset: DeviceSize,
-        required_alignment: DeviceSize,
+        required_alignment: DeviceAlignment,
     },
 
     /// In an `allocations` element, the size of the allocation is smaller than what is required.
@@ -3081,7 +3084,7 @@ impl Display for ImageError {
             } => write!(
                 f,
                 "in `allocations` element {}, the offset of the allocation ({}) does not have the \
-                required alignment ({})",
+                required alignment ({:?})",
                 allocations_index, allocation_offset, required_alignment,
             ),
             Self::MemoryAllocationTooSmall {

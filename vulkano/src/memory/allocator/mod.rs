@@ -387,11 +387,11 @@ pub struct AllocationCreateInfo<'d> {
     /// correspond to the value returned by either [`RawBuffer::memory_requirements`] or
     /// [`RawImage::memory_requirements`] for the respective buffer or image.
     ///
-    /// All of the fields must be non-zero, [`alignment`] must be a power of two, and
     /// [`memory_type_bits`] must be below 2<sup>*n*</sup> where *n* is the number of available
     /// memory types.
     ///
-    /// The default is all zeros, which must be overridden.
+    /// The default is a layout with size [`DeviceLayout::MAX_SIZE`] and alignment
+    /// [`DeviceAlignment::MIN`] and the rest all zeroes, which must be overridden.
     ///
     /// [`alignment`]: MemoryRequirements::alignment
     /// [`memory_type_bits`]: MemoryRequirements::memory_type_bits
@@ -445,8 +445,11 @@ impl Default for AllocationCreateInfo<'_> {
     fn default() -> Self {
         AllocationCreateInfo {
             requirements: MemoryRequirements {
-                size: 0,
-                alignment: 0,
+                layout: DeviceLayout::new(
+                    NonZeroDeviceSize::new(DeviceLayout::MAX_SIZE).unwrap(),
+                    DeviceAlignment::MIN,
+                )
+                .unwrap(),
                 memory_type_bits: 0,
                 prefers_dedicated_allocation: false,
                 requires_dedicated_allocation: false,
@@ -824,6 +827,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
 
         let block_sizes = {
             let mut sizes = ArrayVec::new(memory_heaps.len(), [0; MAX_MEMORY_HEAPS]);
+
             for (i, memory_heap) in memory_heaps.iter().enumerate() {
                 let idx = match block_sizes.binary_search_by_key(&memory_heap.size, |&(t, _)| t) {
                     Ok(idx) => idx,
@@ -871,6 +875,12 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             }
         }
 
+        let flags = if device_address {
+            MemoryAllocateFlags::DEVICE_ADDRESS
+        } else {
+            MemoryAllocateFlags::empty()
+        };
+
         let max_memory_allocation_count = device
             .physical_device()
             .properties()
@@ -884,22 +894,15 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             allocation_type,
             dedicated_allocation,
             export_handle_types,
-            flags: if device_address {
-                MemoryAllocateFlags::DEVICE_ADDRESS
-            } else {
-                MemoryAllocateFlags::empty()
-            },
+            flags,
             memory_type_bits,
             max_allocations,
         }
     }
 
-    fn validate_allocate_from_type(
-        &self,
-        memory_type_index: u32,
-        create_info: &SuballocationCreateInfo,
-    ) {
-        let memory_type = &self.pools[memory_type_index as usize].memory_type;
+    fn validate_allocate_from_type(&self, memory_type_index: u32) {
+        let memory_type = &self.pools[usize::try_from(memory_type_index).unwrap()].memory_type;
+
         // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
         assert!(
             memory_type
@@ -919,8 +922,6 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             "attempted to allocate memory from a device-coherent memory type without the \
             `device_coherent_memory` feature being enabled on the device",
         );
-
-        create_info.validate();
     }
 
     fn validate_allocate(&self, create_info: &AllocationCreateInfo<'_>) {
@@ -933,8 +934,6 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             _ne: _,
         } = create_info;
 
-        SuballocationCreateInfo::from(create_info.clone()).validate();
-
         assert!(requirements.memory_type_bits != 0);
         assert!(requirements.memory_type_bits < 1 << self.pools.len());
 
@@ -944,19 +943,19 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                     // VUID-VkMemoryDedicatedAllocateInfo-commonparent
                     assert_eq!(&self.device, buffer.device());
 
-                    let required_size = buffer.memory_requirements().size;
+                    let required_size = buffer.memory_requirements().layout.size();
 
                     // VUID-VkMemoryDedicatedAllocateInfo-buffer-02965
-                    assert!(requirements.size != required_size);
+                    assert!(requirements.layout.size() != required_size);
                 }
                 DedicatedAllocation::Image(image) => {
                     // VUID-VkMemoryDedicatedAllocateInfo-commonparent
                     assert_eq!(&self.device, image.device());
 
-                    let required_size = image.memory_requirements()[0].size;
+                    let required_size = image.memory_requirements()[0].layout.size();
 
                     // VUID-VkMemoryDedicatedAllocateInfo-image-02964
-                    assert!(requirements.size != required_size);
+                    assert!(requirements.layout.size() != required_size);
                 }
             }
         }
@@ -1000,23 +999,20 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// # Panics
     ///
     /// - Panics if `memory_type_index` is not less than the number of available memory types.
-    /// - Panics if `memory_type_index` refers to a memory type which has the [`PROTECTED`] flag set
-    ///   and the [`protected_memory`] feature is not enabled on the device.
+    /// - Panics if `memory_type_index` refers to a memory type which has the [`PROTECTED`] flag
+    ///   set and the [`protected_memory`] feature is not enabled on the device.
     /// - Panics if `memory_type_index` refers to a memory type which has the [`DEVICE_COHERENT`]
     ///   flag set and the [`device_coherent_memory`] feature is not enabled on the device.
-    /// - Panics if `create_info.size` is zero.
-    /// - Panics if `create_info.alignment` is zero.
-    /// - Panics if `create_info.alignment` is not a power of two.
     ///
     /// # Errors
     ///
     /// - Returns an error if allocating a new block is required and failed. This can be one of the
     ///   OOM errors or [`TooManyObjects`].
-    /// - Returns [`BlockSizeExceeded`] if `create_info.size` is greater than the block size
-    ///   corresponding to the heap that the memory type corresponding to `memory_type_index`
+    /// - Returns [`BlockSizeExceeded`] if `create_info.layout.size()` is greater than the block
+    ///   size corresponding to the heap that the memory type corresponding to `memory_type_index`
     ///   resides in.
     /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
-    ///   `create_info.size` is greater than `BLOCK_SIZE`.
+    ///   `create_info.layout.size()` is greater than `BLOCK_SIZE`.
     ///
     /// [`PROTECTED`]: MemoryPropertyFlags::PROTECTED
     /// [`protected_memory`]: crate::device::Features::protected_memory
@@ -1030,7 +1026,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
     ) -> Result<MemoryAlloc, AllocationCreationError> {
-        self.validate_allocate_from_type(memory_type_index, &create_info);
+        self.validate_allocate_from_type(memory_type_index);
 
         if self.pools[memory_type_index as usize]
             .memory_type
@@ -1040,7 +1036,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             return unsafe {
                 self.allocate_dedicated_unchecked(
                     memory_type_index,
-                    create_info.size,
+                    create_info.layout.size(),
                     None,
                     if !self.export_handle_types.is_empty() {
                         self.export_handle_types[memory_type_index as usize]
@@ -1061,12 +1057,12 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         never_allocate: bool,
     ) -> Result<MemoryAlloc, AllocationCreationError> {
         let SuballocationCreateInfo {
-            size,
-            alignment: _,
+            layout,
             allocation_type: _,
             _ne: _,
         } = create_info;
 
+        let size = layout.size();
         let pool = &self.pools[memory_type_index as usize];
         let block_size = self.block_sizes[pool.memory_type.heap_index as usize];
 
@@ -1086,8 +1082,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             blocks.sort_by_key(Suballocator::free_size);
             let (Ok(idx) | Err(idx)) = blocks.binary_search_by_key(&size, Suballocator::free_size);
             for block in &blocks[idx..] {
-                match block.allocate_unchecked(create_info.clone()) {
-                    Ok(alloc) => return Ok(alloc),
+                match block.allocate(create_info.clone()) {
+                    Ok(allocation) => return Ok(allocation),
                     Err(SuballocationCreationError::BlockSizeExceeded) => {
                         return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
                     }
@@ -1109,8 +1105,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             let blocks = pool.blocks.read();
             // Search in reverse order because we always append new blocks at the end.
             for block in blocks.iter().rev() {
-                match block.allocate_unchecked(create_info.clone()) {
-                    Ok(alloc) => return Ok(alloc),
+                match block.allocate(create_info.clone()) {
+                    Ok(allocation) => return Ok(allocation),
                     // This can happen when using the `PoolAllocator<BLOCK_SIZE>` if the allocation
                     // size is greater than `BLOCK_SIZE`.
                     Err(SuballocationCreationError::BlockSizeExceeded) => {
@@ -1125,8 +1121,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             let blocks = pool.blocks.write();
             if blocks.len() > len {
                 // Another thread beat us to it and inserted a fresh block, try to allocate from it.
-                match blocks[len].allocate_unchecked(create_info.clone()) {
-                    Ok(alloc) => return Ok(alloc),
+                match blocks[len].allocate(create_info.clone()) {
+                    Ok(allocation) => return Ok(allocation),
                     // This can happen if this is the first block that was inserted and when using
                     // the `PoolAllocator<BLOCK_SIZE>` if the allocation size is greater than
                     // `BLOCK_SIZE`.
@@ -1146,8 +1142,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             blocks.sort_unstable_by_key(Suballocator::free_size);
 
             if let Some(block) = blocks.last() {
-                if let Ok(alloc) = block.allocate_unchecked(create_info.clone()) {
-                    return Ok(alloc);
+                if let Ok(allocation) = block.allocate(create_info.clone()) {
+                    return Ok(allocation);
                 }
             }
         }
@@ -1190,8 +1186,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         blocks.push(block);
         let block = blocks.last().unwrap();
 
-        match block.allocate_unchecked(create_info) {
-            Ok(alloc) => Ok(alloc),
+        match block.allocate(create_info) {
+            Ok(allocation) => Ok(allocation),
             // This can happen if the block ended up smaller than advertised because there wasn't
             // enough memory.
             Err(SuballocationCreationError::OutOfRegionMemory) => Err(
@@ -1212,9 +1208,6 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///
     /// # Panics
     ///
-    /// - Panics if `create_info.requirements.size` is zero.
-    /// - Panics if `create_info.requirements.alignment` is zero.
-    /// - Panics if `create_info.requirements.alignment` is not a power of two.
     /// - Panics if `create_info.requirements.memory_type_bits` is zero.
     /// - Panics if `create_info.requirements.memory_type_bits` is not less than 2<sup>*n*</sup>
     ///   where *n* is the number of available memory types.
@@ -1262,8 +1255,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         let AllocationCreateInfo {
             requirements:
                 MemoryRequirements {
-                    size,
-                    alignment: _,
+                    layout,
                     mut memory_type_bits,
                     mut prefers_dedicated_allocation,
                     requires_dedicated_allocation,
@@ -1277,16 +1269,18 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
         let create_info = SuballocationCreateInfo::from(create_info);
 
+        let size = layout.size();
         memory_type_bits &= self.memory_type_bits;
 
         let filter = usage.into();
-
         let mut memory_type_index = self
             .find_memory_type_index(memory_type_bits, filter)
             .expect("couldn't find a suitable memory type");
+
         if !self.dedicated_allocation {
             dedicated_allocation = None;
         }
+
         let export_handle_types = if self.export_handle_types.is_empty() {
             ExternalMemoryHandleTypes::empty()
         } else {
@@ -1371,7 +1365,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             };
 
             match res {
-                Ok(alloc) => return Ok(alloc),
+                Ok(allocation) => return Ok(allocation),
                 // This is not recoverable.
                 Err(AllocationCreationError::SuballocatorBlockSizeExceeded) => {
                     return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
@@ -1409,13 +1403,14 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             flags: self.flags,
             ..Default::default()
         };
-        let mut alloc = MemoryAlloc::new(
-            DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None)
-                .map_err(AllocationCreationError::from)?,
-        )?;
-        alloc.set_allocation_type(self.allocation_type);
+        let mut allocation = MemoryAlloc::new(DeviceMemory::allocate_unchecked(
+            self.device.clone(),
+            allocate_info,
+            None,
+        )?)?;
+        allocation.set_allocation_type(self.allocation_type);
 
-        Ok(alloc)
+        Ok(allocation)
     }
 }
 
@@ -1628,14 +1623,15 @@ impl From<RequirementNotMet> for GenericMemoryAllocatorCreationError {
     }
 }
 
-pub(crate) fn align_up(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
-    align_down(val + alignment - 1, alignment)
+/// > **Note**: Returns `0` on overflow.
+#[inline(always)]
+pub(crate) const fn align_up(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
+    align_down(val.wrapping_add(alignment.as_devicesize() - 1), alignment)
 }
 
-pub(crate) fn align_down(val: DeviceSize, alignment: DeviceSize) -> DeviceSize {
-    debug_assert!(alignment.is_power_of_two());
-
-    val & !(alignment - 1)
+#[inline(always)]
+pub(crate) const fn align_down(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
+    val & !(alignment.as_devicesize() - 1)
 }
 
 mod array_vec {

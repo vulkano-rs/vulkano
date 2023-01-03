@@ -91,6 +91,7 @@
 //! get memory from that pool. By default if you don't specify any pool when creating a buffer or
 //! an image, an instance of `StandardMemoryPool` that is shared by the `Device` object is used.
 
+use self::allocator::DeviceLayout;
 pub use self::device_memory::{
     DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
     MappedDeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryImportInfo, MemoryMapError,
@@ -299,12 +300,8 @@ vulkan_bitflags! {
 /// to a resource.
 #[derive(Clone, Copy, Debug)]
 pub struct MemoryRequirements {
-    /// Number of bytes of memory required.
-    pub size: DeviceSize,
-
-    /// Alignment of the requirement buffer. The base memory address must be a multiple
-    /// of this value.
-    pub alignment: DeviceSize,
+    /// Memory layout required for the resource.
+    pub layout: DeviceLayout,
 
     /// Indicates which memory types can be used. Each bit that is set to 1 means that the memory
     /// type whose index is the same as the position of the bit can be used.
