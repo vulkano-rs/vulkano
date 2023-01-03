@@ -420,7 +420,7 @@ fn main() {
 
     // Create a basic graphics pipeline for rendering particles.
     let graphics_pipeline = GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_input_state(Vertex::per_vertex())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList)) // Vertices will be rendered as a list of points.
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))

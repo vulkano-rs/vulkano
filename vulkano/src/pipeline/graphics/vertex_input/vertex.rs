@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{VertexInputBindingDescription, VertexInputRate};
+use super::VertexInputRate;
 use crate::format::Format;
 use bytemuck::Pod;
 use std::collections::HashMap;
@@ -40,14 +40,15 @@ pub use vulkano_macros::Vertex;
 /// ```
 pub unsafe trait Vertex: Pod + Send + Sync + 'static {
     /// Returns the information about this Vertex type.
-    fn per_vertex() -> VertexBufferInfo;
-    fn per_instance() -> VertexBufferInfo;
-    fn per_instance_with_divisor(divisor: u32) -> VertexBufferInfo;
+    fn per_vertex() -> VertexBufferDescription;
+    fn per_instance() -> VertexBufferDescription;
+    fn per_instance_with_divisor(divisor: u32) -> VertexBufferDescription;
 }
 
 /// Information about the contents of a VertexBuffer.
+/// TODO: add example usage!
 #[derive(Clone, Debug)]
-pub struct VertexBufferInfo {
+pub struct VertexBufferDescription {
     /// List of member names with their detailed information.
     pub members: HashMap<String, VertexMemberInfo>,
     /// Stride of the vertex type in a buffer.
@@ -56,13 +57,13 @@ pub struct VertexBufferInfo {
     pub input_rate: VertexInputRate,
 }
 
-impl VertexBufferInfo {
+impl VertexBufferDescription {
     #[inline]
-    pub fn per_vertex(self) -> VertexBufferInfo {
-        let VertexBufferInfo {
+    pub fn per_vertex(self) -> VertexBufferDescription {
+        let VertexBufferDescription {
             members, stride, ..
         } = self;
-        VertexBufferInfo {
+        VertexBufferDescription {
             members,
             stride,
             input_rate: VertexInputRate::Vertex,
@@ -70,16 +71,16 @@ impl VertexBufferInfo {
     }
 
     #[inline]
-    pub fn per_instance(self) -> VertexBufferInfo {
+    pub fn per_instance(self) -> VertexBufferDescription {
         self.per_instance_with_divisor(1)
     }
 
     #[inline]
-    pub fn per_instance_with_divisor(self, divisor: u32) -> VertexBufferInfo {
-        let VertexBufferInfo {
+    pub fn per_instance_with_divisor(self, divisor: u32) -> VertexBufferDescription {
+        let VertexBufferDescription {
             members, stride, ..
         } = self;
-        VertexBufferInfo {
+        VertexBufferDescription {
             members,
             stride,
             input_rate: VertexInputRate::Instance { divisor },

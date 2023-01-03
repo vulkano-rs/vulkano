@@ -608,7 +608,7 @@ mod linux {
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
         let pipeline = GraphicsPipeline::start()
-            .vertex_input_state(BuffersDefinition::new().vertex::<MyVertex>())
+            .vertex_input_state(MyVertex::per_vertex())
             .vertex_shader(vs.entry_point("main").unwrap(), ())
             .input_assembly_state(
                 InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),

@@ -35,7 +35,7 @@ macro_rules! impl_vertex {
         unsafe impl $crate::pipeline::graphics::vertex_input::Vertex for $out {
             #[inline(always)]
             #[allow(deprecated)]
-            fn per_vertex() -> $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
+            fn per_vertex() -> $crate::pipeline::graphics::vertex_input::VertexBufferDescription {
                 #[allow(unused_imports)]
                 use std::collections::HashMap;
                 use $crate::format::Format;
@@ -73,7 +73,7 @@ macro_rules! impl_vertex {
                     }
                 )*
 
-                $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
+                $crate::pipeline::graphics::vertex_input::VertexBufferDescription {
                     members,
                     stride: std::mem::size_of::<$out>() as u32,
                     input_rate: VertexInputRate::Vertex,
@@ -81,12 +81,12 @@ macro_rules! impl_vertex {
             }
             #[inline(always)]
             #[allow(deprecated)]
-            fn per_instance() -> $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
+            fn per_instance() -> $crate::pipeline::graphics::vertex_input::VertexBufferDescription {
                 <$out as $crate::pipeline::graphics::vertex_input::Vertex>::per_vertex().per_instance()
             }
             #[inline(always)]
             #[allow(deprecated)]
-            fn per_instance_with_divisor(divisor: u32) -> $crate::pipeline::graphics::vertex_input::VertexBufferInfo {
+            fn per_instance_with_divisor(divisor: u32) -> $crate::pipeline::graphics::vertex_input::VertexBufferDescription {
                 <$out as $crate::pipeline::graphics::vertex_input::Vertex>::per_vertex().per_instance_with_divisor(divisor)
             }
 

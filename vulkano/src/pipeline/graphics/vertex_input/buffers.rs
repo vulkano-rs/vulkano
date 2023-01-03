@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::VertexBufferInfo;
+use super::VertexBufferDescription;
 use crate::{
     pipeline::graphics::vertex_input::{
         IncompatibleVertexDefinitionError, Vertex, VertexDefinition, VertexInputState,
@@ -16,9 +16,14 @@ use crate::{
 };
 
 /// A vertex definition for any number of vertex and instance buffers.
+#[deprecated(
+    since = "0.33.0",
+    note = "Use `VertexBufferDescription` directly instead as returned by `Vertex::per_vertex` or `Vertex::per_instance`"
+)]
 #[derive(Clone, Debug, Default)]
-pub struct BuffersDefinition(Vec<VertexBufferInfo>);
+pub struct BuffersDefinition(Vec<VertexBufferDescription>);
 
+#[allow(deprecated)]
 impl BuffersDefinition {
     /// Constructs a new definition.
     #[inline]
@@ -55,6 +60,7 @@ impl BuffersDefinition {
     }
 }
 
+#[allow(deprecated)]
 unsafe impl VertexDefinition for BuffersDefinition {
     #[inline]
     fn definition(

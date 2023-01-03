@@ -50,7 +50,7 @@
 //! # }
 //! ```
 
-use super::{VertexBufferInfo, VertexInputAttributeDescription, VertexInputBindingDescription};
+use super::{VertexBufferDescription, VertexInputAttributeDescription, VertexInputBindingDescription};
 use crate::{
     pipeline::graphics::vertex_input::{VertexInputState, VertexMemberInfo},
     shader::{ShaderInterface, ShaderInterfaceEntryType},
@@ -116,7 +116,7 @@ impl Display for IncompatibleVertexDefinitionError {
     }
 }
 
-unsafe impl VertexDefinition for &[VertexBufferInfo] {
+unsafe impl VertexDefinition for &[VertexBufferDescription] {
     #[inline]
     fn definition(
         &self,
@@ -193,7 +193,7 @@ unsafe impl VertexDefinition for &[VertexBufferInfo] {
     }
 }
 
-unsafe impl<const N: usize> VertexDefinition for [VertexBufferInfo; N] {
+unsafe impl<const N: usize> VertexDefinition for [VertexBufferDescription; N] {
     #[inline]
     fn definition(
         &self,
@@ -203,7 +203,7 @@ unsafe impl<const N: usize> VertexDefinition for [VertexBufferInfo; N] {
     }
 }
 
-unsafe impl VertexDefinition for Vec<VertexBufferInfo> {
+unsafe impl VertexDefinition for Vec<VertexBufferDescription> {
     #[inline]
     fn definition(
         &self,
@@ -213,7 +213,7 @@ unsafe impl VertexDefinition for Vec<VertexBufferInfo> {
     }
 }
 
-unsafe impl VertexDefinition for VertexBufferInfo {
+unsafe impl VertexDefinition for VertexBufferDescription {
     #[inline]
     fn definition(
         &self,

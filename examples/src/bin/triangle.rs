@@ -383,7 +383,7 @@ fn main() {
         // in. The pipeline will only be usable from this particular subpass.
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         // We need to indicate the layout of the vertices.
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_input_state(Vertex::per_vertex())
         // The content of the vertex buffer describes a list of triangles.
         .input_assembly_state(InputAssemblyState::new())
         // A Vulkan shader can in theory contain multiple entry points, so we have to specify

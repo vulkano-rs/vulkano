@@ -107,7 +107,7 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
 
         #members
 
-        #crate_ident::pipeline::graphics::vertex_input::VertexBufferInfo {
+        #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
             members,
             stride: std::mem::size_of::<#struct_name>() as u32,
             input_rate: VertexInputRate::Vertex,
@@ -118,15 +118,15 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
      #[allow(unsafe_code)]
      unsafe impl #crate_ident::pipeline::graphics::vertex_input::Vertex for #struct_name {
          #[inline(always)]
-         fn per_vertex() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferInfo {
+         fn per_vertex() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
              #function_body
          }
          #[inline(always)]
-         fn per_instance() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferInfo {
+         fn per_instance() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
              #function_body.per_instance()
          }
          #[inline(always)]
-         fn per_instance_with_divisor(divisor: u32) -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferInfo {
+         fn per_instance_with_divisor(divisor: u32) -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
              #function_body.per_instance_with_divisor(divisor)
          }
      }

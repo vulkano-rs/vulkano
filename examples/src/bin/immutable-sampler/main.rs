@@ -42,7 +42,7 @@ use vulkano::{
         graphics::{
             color_blend::ColorBlendState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -263,7 +263,7 @@ fn main() {
 
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_input_state(Vertex::per_vertex())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip))
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
