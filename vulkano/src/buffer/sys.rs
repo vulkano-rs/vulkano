@@ -20,7 +20,9 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     memory::{
-        allocator::{AllocationCreationError, DeviceAlignment, DeviceLayout, MemoryAlloc},
+        allocator::{
+            AllocationCreationError, AllocationType, DeviceAlignment, DeviceLayout, MemoryAlloc,
+        },
         DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryAllocateFlags,
         MemoryPropertyFlags, MemoryRequirements,
     },
@@ -426,6 +428,8 @@ impl RawBuffer {
     }
 
     fn validate_bind_memory(&self, allocation: &MemoryAlloc) -> Result<(), BufferError> {
+        assert_ne!(allocation.allocation_type(), AllocationType::NonLinear);
+
         let memory_requirements = &self.memory_requirements;
         let memory = allocation.device_memory();
         let memory_offset = allocation.offset();

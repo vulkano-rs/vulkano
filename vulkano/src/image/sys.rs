@@ -28,7 +28,9 @@ use crate::{
         SparseImageFormatProperties,
     },
     memory::{
-        allocator::{AllocationCreationError, DeviceAlignment, DeviceLayout, MemoryAlloc},
+        allocator::{
+            AllocationCreationError, AllocationType, DeviceAlignment, DeviceLayout, MemoryAlloc,
+        },
         DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryPropertyFlags,
         MemoryRequirements,
     },
@@ -1386,6 +1388,8 @@ impl RawImage {
             .zip(self.memory_requirements.iter())
             .enumerate()
         {
+            assert_ne!(allocation.allocation_type(), AllocationType::Linear);
+
             let memory = allocation.device_memory();
             let memory_offset = allocation.offset();
             let memory_type = &self
