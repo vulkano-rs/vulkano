@@ -16,10 +16,10 @@
 // and that you want to learn Vulkan. This means that for example it won't go into details about
 // what a vertex or a shader is.
 //
-// This version of the triangle example is written for Vulkan 1.3 and higher, using dynamic
-// rendering instead of render pass and framebuffer objects. If your device does not support
-// Vulkan 1.3, or if you want to see how to support older versions, see the original triangle
-// example.
+// This version of the triangle example is written using dynamic rendering instead of render pass
+// and framebuffer objects. If your device does not support Vulkan 1.3 or the
+// `khr_dynamic_rendering` extension, or if you want to see how to support older versions, see the
+// original triangle example.
 
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
