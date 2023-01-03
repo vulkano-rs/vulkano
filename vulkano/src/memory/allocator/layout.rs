@@ -317,6 +317,7 @@ impl DeviceAlignment {
     /// The largest possible alignment, 2<sup>63</sup>.
     pub const MAX: Self = Self(AlignmentEnum::_Align1Shl63);
 
+    /// Returns the alignment for a type.
     #[inline]
     pub const fn of<T>() -> Self {
         #[cfg(any(
@@ -337,7 +338,7 @@ impl DeviceAlignment {
     #[inline]
     pub const fn new(alignment: DeviceSize) -> Option<Self> {
         if alignment.is_power_of_two() {
-            Some(unsafe { Self::new_unchecked(alignment) })
+            Some(unsafe { DeviceAlignment::new_unchecked(alignment) })
         } else {
             None
         }
@@ -510,6 +511,7 @@ enum AlignmentEnum {
     _Align1Shl63 = 1 << 63,
 }
 
+/// Error that can happen when trying to convert an integer to a `DeviceAlignment`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TryFromIntError;
 
