@@ -40,7 +40,7 @@ use vulkano::{
         graphics::{
             input_assembly::InputAssemblyState,
             render_pass::PipelineRenderingCreateInfo,
-            vertex_input::{Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,

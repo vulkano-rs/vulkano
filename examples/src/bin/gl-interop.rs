@@ -39,7 +39,7 @@ mod linux {
             graphics::{
                 color_blend::ColorBlendState,
                 input_assembly::{InputAssemblyState, PrimitiveTopology},
-                vertex_input::{Vertex},
+                vertex_input::Vertex,
                 viewport::{Scissor, Viewport, ViewportState},
             },
             GraphicsPipeline, Pipeline, PipelineBindPoint,

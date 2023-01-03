@@ -179,9 +179,7 @@ fn main() {
         }
     };
 
-    println!(
-        "Local size will be set to: ({local_size_x}, {local_size_y}, 1)"
-    );
+    println!("Local size will be set to: ({local_size_x}, {local_size_y}, 1)");
 
     let spec_consts = cs::SpecializationConstants {
         red: 0.2,

@@ -36,7 +36,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
-            vertex_input::{Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         layout::PipelineLayoutCreateInfo,

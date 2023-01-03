@@ -50,7 +50,9 @@
 //! # }
 //! ```
 
-use super::{VertexBufferDescription, VertexInputAttributeDescription, VertexInputBindingDescription};
+use super::{
+    VertexBufferDescription, VertexInputAttributeDescription, VertexInputBindingDescription,
+};
 use crate::{
     pipeline::graphics::vertex_input::{VertexInputState, VertexMemberInfo},
     shader::{ShaderInterface, ShaderInterfaceEntryType},

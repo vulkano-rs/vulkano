@@ -38,7 +38,7 @@ use vulkano::{
         graphics::{
             input_assembly::InputAssemblyState,
             rasterization::{CullMode, FrontFace, RasterizationState},
-            vertex_input::{Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,

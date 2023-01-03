@@ -38,7 +38,7 @@ use vulkano::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
             rasterization::{PolygonMode, RasterizationState},
             tessellation::TessellationState,
-            vertex_input::{Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
