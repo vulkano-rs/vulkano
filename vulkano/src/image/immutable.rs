@@ -149,8 +149,9 @@ impl ImmutableImage {
 
         match unsafe { allocator.allocate_unchecked(create_info) } {
             Ok(alloc) => {
-                debug_assert!(alloc.offset() % requirements.alignment == 0);
-                debug_assert!(alloc.size() == requirements.size);
+                debug_assert!(alloc.offset() % requirements.layout.alignment().as_nonzero() == 0);
+                debug_assert!(alloc.size() == requirements.layout.size());
+
                 let inner = Arc::new(unsafe {
                     raw_image
                         .bind_memory_unchecked([alloc])

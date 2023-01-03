@@ -20,7 +20,8 @@ use crate::{
     memory::{
         allocator::{
             align_up, AllocationCreateInfo, AllocationCreationError, AllocationType,
-            MemoryAllocatePreference, MemoryAllocator, MemoryUsage, StandardMemoryAllocator,
+            DeviceAlignment, DeviceLayout, MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
+            StandardMemoryAllocator,
         },
         DedicatedAllocation,
     },
@@ -28,9 +29,11 @@ use crate::{
 };
 use crossbeam_queue::ArrayQueue;
 use std::{
+    alloc::Layout,
     cell::UnsafeCell,
+    cmp,
     marker::PhantomData,
-    mem::{align_of, size_of, ManuallyDrop},
+    mem::{align_of, ManuallyDrop},
     num::NonZeroU64,
     ptr,
     sync::Arc,
@@ -156,7 +159,8 @@ where
         .into_iter()
         .flatten()
         .max()
-        .unwrap_or(1);
+        .map(|alignment| DeviceAlignment::new(alignment).unwrap())
+        .unwrap_or(DeviceAlignment::MIN);
 
         CpuBufferAllocator {
             state: UnsafeCell::new(CpuBufferAllocatorState {
@@ -214,13 +218,14 @@ where
     where
         T: BufferContents,
     {
-        assert!(size_of::<T>() > 0);
         assert!(align_of::<T>() <= 64);
 
-        let state = unsafe { &mut *self.state.get() };
+        let layout = DeviceLayout::from_layout(Layout::new::<T>())
+            .expect("can't allocate memory for zero-sized types");
+        let size = layout.size();
 
-        let size = size_of::<T>() as DeviceSize;
-        let offset = state.allocate(size, align_of::<T>() as DeviceSize)?;
+        let state = unsafe { &mut *self.state.get() };
+        let offset = state.allocate(layout)?;
         let arena = state.arena.as_ref().unwrap().clone();
         let allocation = match arena.inner.memory() {
             BufferMemory::Normal(a) => a,
@@ -234,8 +239,8 @@ where
             ptr::write(mapping, data);
 
             if let Some(atom_size) = allocation.atom_size() {
-                let size = align_up(size, atom_size.get());
-                let end = DeviceSize::min(offset + size, allocation.size());
+                let size = align_up(size, atom_size);
+                let end = cmp::min(offset + size, allocation.size());
                 allocation.flush_range(offset..end).unwrap();
             }
         }
@@ -264,14 +269,15 @@ where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
     {
-        assert!(size_of::<T>() > 0);
         assert!(align_of::<T>() <= 64);
 
         let iter = iter.into_iter();
-        let state = unsafe { &mut *self.state.get() };
+        let layout = DeviceLayout::from_layout(Layout::array::<T>(iter.len()).unwrap())
+            .expect("can't allocate memory for zero-sized types");
+        let size = layout.size();
 
-        let size = (size_of::<T>() * iter.len()) as DeviceSize;
-        let offset = state.allocate(size, align_of::<T>() as DeviceSize)?;
+        let state = unsafe { &mut *self.state.get() };
+        let offset = state.allocate(layout)?;
         let arena = state.arena.as_ref().unwrap().clone();
         let allocation = match arena.inner.memory() {
             BufferMemory::Normal(a) => a,
@@ -287,8 +293,8 @@ where
             }
 
             if let Some(atom_size) = allocation.atom_size() {
-                let size = align_up(size, atom_size.get());
-                let end = DeviceSize::min(offset + size, allocation.size());
+                let size = align_up(size, atom_size);
+                let end = cmp::min(offset + size, allocation.size());
                 allocation.flush_range(offset..end).unwrap();
             }
         }
@@ -309,7 +315,7 @@ struct CpuBufferAllocatorState<A> {
     buffer_usage: BufferUsage,
     memory_usage: MemoryUsage,
     // The alignment required for the subbuffers.
-    buffer_alignment: DeviceSize,
+    buffer_alignment: DeviceAlignment,
     // The current size of the arenas.
     arena_size: DeviceSize,
     // Contains the buffer that is currently being suballocated.
@@ -324,12 +330,9 @@ impl<A> CpuBufferAllocatorState<A>
 where
     A: MemoryAllocator,
 {
-    fn allocate(
-        &mut self,
-        size: DeviceSize,
-        alignment: DeviceSize,
-    ) -> Result<DeviceSize, AllocationCreationError> {
-        let alignment = DeviceSize::max(alignment, self.buffer_alignment);
+    fn allocate(&mut self, layout: DeviceLayout) -> Result<DeviceSize, AllocationCreationError> {
+        let size = layout.size();
+        let alignment = cmp::max(layout.alignment(), self.buffer_alignment);
 
         loop {
             if self.arena.is_none() {
@@ -351,9 +354,9 @@ where
                 BufferMemory::Sparse => unreachable!(),
             };
             let arena_offset = allocation.offset();
-            let atom_size = allocation.atom_size().map(NonZeroU64::get).unwrap_or(1);
+            let atom_size = allocation.atom_size().unwrap_or(DeviceAlignment::MIN);
 
-            let alignment = DeviceSize::max(alignment, atom_size);
+            let alignment = cmp::max(alignment, atom_size);
             let offset = align_up(arena_offset + self.free_start, alignment);
 
             if offset + size <= arena_offset + self.arena_size {
@@ -400,8 +403,7 @@ where
             // We don't use sparse-binding, therefore the other errors can't happen.
             _ => unreachable!(),
         })?;
-        let mut requirements = *raw_buffer.memory_requirements();
-        requirements.alignment = DeviceSize::max(requirements.alignment, self.buffer_alignment);
+        let requirements = *raw_buffer.memory_requirements();
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::Linear,
@@ -412,12 +414,15 @@ where
         };
 
         match unsafe { self.memory_allocator.allocate_unchecked(create_info) } {
-            Ok(mut alloc) => {
-                debug_assert!(alloc.offset() % requirements.alignment == 0);
-                debug_assert!(alloc.size() == requirements.size);
-                alloc.shrink(self.arena_size);
+            Ok(mut allocation) => {
+                debug_assert!(
+                    allocation.offset() % requirements.layout.alignment().as_nonzero() == 0
+                );
+                debug_assert!(allocation.size() == requirements.layout.size());
+
+                allocation.shrink(self.arena_size);
                 let inner = Arc::new(
-                    unsafe { raw_buffer.bind_memory_unchecked(alloc) }
+                    unsafe { raw_buffer.bind_memory_unchecked(allocation) }
                         .map_err(|(err, _, _)| err)?,
                 );
 

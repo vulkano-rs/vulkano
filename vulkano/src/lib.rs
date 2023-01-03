@@ -157,6 +157,7 @@ pub use library::{LoadingError, VulkanLibrary};
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
+    num::NonZeroU64,
     ops::Deref,
     sync::Arc,
 };
@@ -193,6 +194,9 @@ pub mod sync;
 /// Represents memory size and offset values on a Vulkan device.
 /// Analogous to the Rust `usize` type on the host.
 pub use ash::vk::DeviceSize;
+
+/// A [`DeviceSize`] that is known not to equal zero.
+pub type NonZeroDeviceSize = NonZeroU64;
 
 // Allow refering to crate by its name to work around limitations of proc-macros
 // in doctests.

@@ -25,7 +25,7 @@ use crate::{
     device::{Device, DeviceOwned},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationCreationError, AllocationType,
+            AllocationCreateInfo, AllocationCreationError, AllocationType, DeviceLayout,
             MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
         },
         DedicatedAllocation,
@@ -35,11 +35,11 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::{
+    alloc::Layout,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
-    mem::{align_of, size_of},
     ops::{Deref, DerefMut, Range},
     ptr,
     sync::Arc,
@@ -79,8 +79,8 @@ where
         unsafe {
             let uninitialized = CpuAccessibleBuffer::raw(
                 allocator,
-                size_of::<T>() as DeviceSize,
-                align_of::<T>() as DeviceSize,
+                DeviceLayout::from_layout(Layout::new::<T>())
+                    .expect("can't allocate memory for zero-sized types"),
                 usage,
                 host_cached,
                 [],
@@ -112,8 +112,8 @@ where
     ) -> Result<Arc<CpuAccessibleBuffer<T>>, AllocationCreationError> {
         CpuAccessibleBuffer::raw(
             allocator,
-            size_of::<T>() as DeviceSize,
-            align_of::<T>() as DeviceSize,
+            DeviceLayout::from_layout(Layout::new::<T>())
+                .expect("can't allocate memory for zero-sized types"),
             usage,
             host_cached,
             [],
@@ -184,8 +184,8 @@ where
     ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, AllocationCreationError> {
         CpuAccessibleBuffer::raw(
             allocator,
-            len * size_of::<T>() as DeviceSize,
-            align_of::<T>() as DeviceSize,
+            DeviceLayout::from_layout(Layout::array::<T>(len.try_into().unwrap()).unwrap())
+                .expect("can't allocate memory for zero-sized types"),
             usage,
             host_cached,
             [],
@@ -205,21 +205,15 @@ where
     ///
     /// # Panics
     ///
-    /// - Panics if `size` is zero.
-    /// - Panics if `alignment` is zero.
-    /// - Panics if `alignment` is not a power of two.
-    /// - Panics if `alignment` exceeds `64`.
+    /// - Panics if `layout.alignment()` exceeds `64`.
     pub unsafe fn raw(
         allocator: &(impl MemoryAllocator + ?Sized),
-        size: DeviceSize,
-        alignment: DeviceSize,
+        layout: DeviceLayout,
         usage: BufferUsage,
         host_cached: bool,
         queue_family_indices: impl IntoIterator<Item = u32>,
     ) -> Result<Arc<CpuAccessibleBuffer<T>>, AllocationCreationError> {
-        assert!(alignment != 0);
-        assert!(alignment.is_power_of_two());
-        assert!(alignment <= 64);
+        assert!(layout.alignment().as_devicesize() <= 64);
 
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
@@ -231,7 +225,7 @@ where
                 } else {
                     Sharing::Exclusive
                 },
-                size,
+                size: layout.size(),
                 usage,
                 ..Default::default()
             },
@@ -242,7 +236,7 @@ where
             _ => unreachable!(),
         })?;
         let mut requirements = *raw_buffer.memory_requirements();
-        requirements.alignment = DeviceSize::max(requirements.alignment, alignment);
+        requirements.layout = requirements.layout.align_to(layout.alignment()).unwrap();
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::Linear,
@@ -257,16 +251,19 @@ where
         };
 
         match allocator.allocate_unchecked(create_info) {
-            Ok(mut alloc) => {
-                debug_assert!(alloc.offset() % requirements.alignment == 0);
-                debug_assert!(alloc.size() == requirements.size);
+            Ok(mut allocation) => {
+                debug_assert!(
+                    allocation.offset() % requirements.layout.alignment().as_nonzero() == 0
+                );
+                debug_assert!(allocation.size() == requirements.layout.size());
+
                 // The implementation might require a larger size than we wanted. With this it is
                 // easier to invalidate and flush the whole buffer. It does not affect the
                 // allocation in any way.
-                alloc.shrink(size);
+                allocation.shrink(layout.size());
                 let inner = Arc::new(
                     raw_buffer
-                        .bind_memory_unchecked(alloc)
+                        .bind_memory_unchecked(allocation)
                         .map_err(|(err, _, _)| err)?,
                 );
 

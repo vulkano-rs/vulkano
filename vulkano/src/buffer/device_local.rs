@@ -339,8 +339,9 @@ where
 
         match allocator.allocate_unchecked(create_info) {
             Ok(alloc) => {
-                debug_assert!(alloc.offset() % requirements.alignment == 0);
-                debug_assert!(alloc.size() == requirements.size);
+                debug_assert!(alloc.offset() % requirements.layout.alignment().as_nonzero() == 0);
+                debug_assert!(alloc.size() == requirements.layout.size());
+
                 let inner = Arc::new(
                     raw_buffer
                         .bind_memory_unchecked(alloc)
@@ -420,13 +421,14 @@ where
 
         match allocator.allocate_dedicated_unchecked(
             memory_type_index,
-            requirements.size,
+            requirements.layout.size(),
             Some(DedicatedAllocation::Buffer(&raw_buffer)),
             external_memory_handle_types,
         ) {
             Ok(alloc) => {
-                debug_assert!(alloc.offset() % requirements.alignment == 0);
-                debug_assert!(alloc.size() == requirements.size);
+                debug_assert!(alloc.offset() % requirements.layout.alignment().as_nonzero() == 0);
+                debug_assert!(alloc.size() == requirements.layout.size());
+
                 let inner = Arc::new(
                     raw_buffer
                         .bind_memory_unchecked(alloc)
