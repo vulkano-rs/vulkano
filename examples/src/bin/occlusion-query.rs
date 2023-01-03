@@ -31,7 +31,7 @@ use vulkano::{
         graphics::{
             depth_stencil::DepthStencilState,
             input_assembly::InputAssemblyState,
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -302,7 +302,7 @@ fn main() {
     .unwrap();
 
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_input_state(Vertex::per_vertex())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -363,7 +363,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
                 };
 
                 swapchain = new_swapchain;
@@ -383,7 +383,7 @@ fn main() {
                         recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
                 };
 
             if suboptimal {
@@ -475,7 +475,7 @@ fn main() {
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {:?}", e);
+                    println!("Failed to flush future: {e:?}");
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }

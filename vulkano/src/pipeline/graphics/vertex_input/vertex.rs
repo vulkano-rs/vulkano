@@ -7,8 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::VertexInputRate;
 use crate::format::Format;
 use bytemuck::Pod;
+use std::collections::HashMap;
 pub use vulkano_macros::Vertex;
 
 /// Describes an individual `Vertex`. In other words a collection of attributes that can be read
@@ -37,14 +39,51 @@ pub use vulkano_macros::Vertex;
 /// }
 /// ```
 pub unsafe trait Vertex: Pod + Send + Sync + 'static {
-    /// Returns the characteristics of a vertex member by its name.
-    fn member(name: &str) -> Option<VertexMemberInfo>;
+    /// Returns the information about this Vertex type.
+    fn per_vertex() -> VertexBufferDescription;
+    fn per_instance() -> VertexBufferDescription;
+    fn per_instance_with_divisor(divisor: u32) -> VertexBufferDescription;
 }
 
-unsafe impl Vertex for () {
+/// Describes the contents of a VertexBuffer.
+#[derive(Clone, Debug)]
+pub struct VertexBufferDescription {
+    /// List of member names with their detailed information.
+    pub members: HashMap<String, VertexMemberInfo>,
+    /// Stride of the vertex type in a buffer.
+    pub stride: u32,
+    /// How the vertex buffer is unrolled in the shader.
+    pub input_rate: VertexInputRate,
+}
+
+impl VertexBufferDescription {
     #[inline]
-    fn member(_: &str) -> Option<VertexMemberInfo> {
-        None
+    pub fn per_vertex(self) -> VertexBufferDescription {
+        let VertexBufferDescription {
+            members, stride, ..
+        } = self;
+        VertexBufferDescription {
+            members,
+            stride,
+            input_rate: VertexInputRate::Vertex,
+        }
+    }
+
+    #[inline]
+    pub fn per_instance(self) -> VertexBufferDescription {
+        self.per_instance_with_divisor(1)
+    }
+
+    #[inline]
+    pub fn per_instance_with_divisor(self, divisor: u32) -> VertexBufferDescription {
+        let VertexBufferDescription {
+            members, stride, ..
+        } = self;
+        VertexBufferDescription {
+            members,
+            stride,
+            input_rate: VertexInputRate::Instance { divisor },
+        }
     }
 }
 
@@ -87,8 +126,9 @@ mod tests {
             a: [f32; 16],
         }
 
-        let b = TestVertex::member("b").unwrap();
-        let c = TestVertex::member("c").unwrap();
+        let info = TestVertex::per_vertex();
+        let b = info.members.get("b").unwrap();
+        let c = info.members.get("c").unwrap();
         assert_eq!(b.format, Format::R32G32B32A32_SFLOAT);
         assert_eq!(c.format, Format::R32G32B32A32_SFLOAT);
         assert_eq!(b.num_elements, 4);
@@ -104,7 +144,8 @@ mod tests {
             unorm: u8,
         }
 
-        let unorm = TestVertex::member("unorm").unwrap();
+        let info = TestVertex::per_instance();
+        let unorm = info.members.get("unorm").unwrap();
         assert_eq!(unorm.format, Format::R8_UNORM);
         assert_eq!(unorm.num_elements, 1);
     }

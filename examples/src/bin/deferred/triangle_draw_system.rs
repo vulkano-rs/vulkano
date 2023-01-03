@@ -21,7 +21,7 @@ use vulkano::{
         graphics::{
             depth_stencil::DepthStencilState,
             input_assembly::InputAssemblyState,
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -71,7 +71,7 @@ impl TriangleDrawSystem {
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
 
             GraphicsPipeline::start()
-                .vertex_input_state(BuffersDefinition::new().vertex::<TriangleVertex>())
+                .vertex_input_state(TriangleVertex::per_vertex())
                 .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())

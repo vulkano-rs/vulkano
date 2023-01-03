@@ -166,7 +166,7 @@ fn main() {
     // local size can lead to significant performance penalty.
     let (local_size_x, local_size_y) = match device.physical_device().properties().subgroup_size {
         Some(subgroup_size) => {
-            println!("Subgroup size is {}", subgroup_size);
+            println!("Subgroup size is {subgroup_size}");
 
             // Most of the subgroup values are divisors of 8
             (8, subgroup_size / 8)
@@ -179,10 +179,7 @@ fn main() {
         }
     };
 
-    println!(
-        "Local size will be set to: ({}, {}, 1)",
-        local_size_x, local_size_y
-    );
+    println!("Local size will be set to: ({local_size_x}, {local_size_y}, 1)");
 
     let spec_consts = cs::SpecializationConstants {
         red: 0.2,

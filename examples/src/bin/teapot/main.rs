@@ -34,7 +34,7 @@ use vulkano::{
         graphics::{
             depth_stencil::DepthStencilState,
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -258,7 +258,7 @@ fn main() {
                         }) {
                             Ok(r) => r,
                             Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                            Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
                         };
 
                     swapchain = new_swapchain;
@@ -321,7 +321,7 @@ fn main() {
                             recreate_swapchain = true;
                             return;
                         }
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
                     };
 
                 if suboptimal {
@@ -384,7 +384,7 @@ fn main() {
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                     Err(e) => {
-                        println!("Failed to flush future: {:?}", e);
+                        println!("Failed to flush future: {e:?}");
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }
@@ -429,11 +429,7 @@ fn window_size_dependent_setup(
     // This allows the driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_state(
-            BuffersDefinition::new()
-                .vertex::<Position>()
-                .vertex::<Normal>(),
-        )
+        .vertex_input_state([Position::per_vertex(), Normal::per_vertex()])
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([

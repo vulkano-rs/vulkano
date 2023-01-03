@@ -216,7 +216,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
                 };
                 let new_images = new_images
                     .into_iter()
@@ -235,7 +235,7 @@ fn main() {
                         recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
                 };
 
             if suboptimal {
@@ -285,7 +285,7 @@ fn main() {
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {:?}", e);
+                    println!("Failed to flush future: {e:?}");
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }
