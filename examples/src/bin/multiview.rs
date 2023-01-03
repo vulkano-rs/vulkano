@@ -35,7 +35,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::{Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,

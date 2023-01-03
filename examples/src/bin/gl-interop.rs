@@ -39,7 +39,7 @@ mod linux {
             graphics::{
                 color_blend::ColorBlendState,
                 input_assembly::{InputAssemblyState, PrimitiveTopology},
-                vertex_input::{BuffersDefinition, Vertex},
+                vertex_input::{Vertex},
                 viewport::{Scissor, Viewport, ViewportState},
             },
             GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -293,7 +293,7 @@ mod linux {
                                 Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => {
                                     return
                                 }
-                                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                                Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
                             };
 
                         swapchain = new_swapchain;
@@ -312,7 +312,7 @@ mod linux {
                                 recreate_swapchain = true;
                                 return;
                             }
-                            Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                            Err(e) => panic!("Failed to acquire next image: {e:?}"),
                         };
 
                     if suboptimal {
@@ -375,7 +375,7 @@ mod linux {
                             previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
                         }
                         Err(e) => {
-                            println!("Failed to flush future: {:?}", e);
+                            println!("Failed to flush future: {e:?}");
                             previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
                         }
                     };

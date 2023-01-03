@@ -147,10 +147,9 @@ fn main() {
         .properties()
         .min_uniform_buffer_offset_alignment as usize;
     println!(
-        "Minimum uniform buffer offset alignment: {}",
-        min_dynamic_align
+        "Minimum uniform buffer offset alignment: {min_dynamic_align}"
     );
-    println!("Input: {:?}", data);
+    println!("Input: {data:?}");
     // Round size up to the next multiple of align.
     let align = (size_of::<u32>() + min_dynamic_align - 1) & !(min_dynamic_align - 1);
     let aligned_data = {

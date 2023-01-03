@@ -138,7 +138,7 @@ fn compute_then_render(
     // Start frame
     let before_pipeline_future = match renderer.acquire() {
         Err(e) => {
-            println!("{}", e);
+            println!("{e}");
             return;
         }
         Ok(future) => future,

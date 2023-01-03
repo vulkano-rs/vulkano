@@ -40,7 +40,7 @@ use vulkano::{
         graphics::{
             input_assembly::InputAssemblyState,
             render_pass::PipelineRenderingCreateInfo,
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::{Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -467,7 +467,7 @@ fn main() {
                             // This error tends to happen when the user is manually resizing the window.
                             // Simply restarting the loop is the easiest way to fix this issue.
                             Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                            Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
                         };
 
                     swapchain = new_swapchain;
@@ -492,7 +492,7 @@ fn main() {
                             recreate_swapchain = true;
                             return;
                         }
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
                     };
 
                 // acquire_next_image can be successful, but suboptimal. This means that the swapchain image
@@ -590,7 +590,7 @@ fn main() {
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                     Err(e) => {
-                        println!("Failed to flush future: {:?}", e);
+                        println!("Failed to flush future: {e:?}");
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }

@@ -83,7 +83,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             multisample::MultisampleState,
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::{Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,

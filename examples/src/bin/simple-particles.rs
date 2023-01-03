@@ -34,7 +34,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::{Vertex},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, PipelineBindPoint,
@@ -469,7 +469,7 @@ fn main() {
                         None, /*timeout*/
                     ) {
                         Ok(tuple) => tuple,
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
                     };
 
                 // Since we disallow resizing, assert the swapchain and surface are optimally configured.
@@ -547,7 +547,7 @@ fn main() {
                     Ok(future) => Some(Arc::new(future)),
 
                     // Unknown failure.
-                    Err(e) => panic!("Failed to flush future: {:?}", e),
+                    Err(e) => panic!("Failed to flush future: {e:?}"),
                 };
                 previous_fence_index = image_index;
             }
