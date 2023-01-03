@@ -54,6 +54,10 @@ Changes to `impl_vertex`, `VertexMember` and `VertexMemberInfo`:
 - `VertexMemberInfo` now holds format and `VertexMemberTy` was removed.
 - `impl_vertex` was updated to correctly use the new `VertexMember::format` signature.
 
+Changes to memory allocation:
+- `MemoryRequirements::{size, alignment}` fields have been replaced with a single `layout` field.
+- `Suballocator::allocate_unchecked` has been removed.
+
 ### Additions
 - Added `CpuBufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
@@ -71,11 +75,16 @@ Changes to `impl_vertex`, `VertexMember` and `VertexMemberInfo`:
 - Added documentation of the cargo features to the main documentation page of each crate.
 - Added documentation of `_unchecked` functions to the main documentation page.
 - Vulkano-shaders: The bytemuck traits `Pod` and `Zeroable` are now automatically derived for generated structs, so there is no need to specify them with `types_meta` anymore.
+- Added `DeviceLayout` and `DeviceAlignment`.
+- Added the type alias `NonZeroDeviceSize`.
+- Added `VertexBufferDescription` and three new methods to the `Vertex` trait that return it: `per_vertex`, `per_instance` and `per_instance_with_divisor`. This deprecates and replaces `BuffersDefinition`.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
 - Fixed wrong aspects being used in pipeline barriers when an image view selects one aspect of a combined depth+stencil image.
 - Fixed panic when building a finished command buffer, if the command buffer contains commands that use only some subresources of an image.
+- Fixed possible arithmetic overflows when allocating memory with a size that's too large.
+- Added missing check for the allocation type when binding memory.
 
 # Version 0.32.3 (2022-12-07)
 
