@@ -131,7 +131,7 @@ fn main() {
 
     let serialized = to_string_pretty(&bar, PrettyConfig::default()).unwrap();
 
-    println!("Serialized Bar: {}", serialized);
+    println!("Serialized Bar: {serialized}");
 
     let deserialized = from_str::<Bar>(&serialized).unwrap();
 

@@ -25,8 +25,8 @@ use super::{
     render_pass::{PipelineRenderPassType, PipelineRenderingCreateInfo},
     tessellation::TessellationState,
     vertex_input::{
-        BuffersDefinition, Vertex, VertexDefinition, VertexInputAttributeDescription,
-        VertexInputBindingDescription, VertexInputState,
+        VertexDefinition, VertexInputAttributeDescription, VertexInputBindingDescription,
+        VertexInputState,
     },
     viewport::{Scissor, Viewport, ViewportState},
     GraphicsPipeline, GraphicsPipelineCreationError,
@@ -3995,29 +3995,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     pub fn geometry_shader_disabled(mut self) -> Self {
         self.geometry_shader = None;
         self
-    }
-
-    /// Sets the vertex input to a single vertex buffer.
-    ///
-    /// You will most likely need to explicitly specify the template parameter to the type of a
-    /// vertex.
-    #[deprecated(since = "0.27.0", note = "Use `vertex_input_state` instead")]
-    pub fn vertex_input_single_buffer<V: Vertex>(
-        self,
-    ) -> GraphicsPipelineBuilder<
-        'vs,
-        'tcs,
-        'tes,
-        'gs,
-        'fs,
-        BuffersDefinition,
-        Vss,
-        Tcss,
-        Tess,
-        Gss,
-        Fss,
-    > {
-        self.vertex_input_state(BuffersDefinition::new().vertex::<V>())
     }
 
     /// Sets whether primitive restart is enabled.

@@ -1,6 +1,15 @@
 //! The procedural macro for vulkano's shader system.
 //! Manages the compile-time compilation of GLSL into SPIR-V and generation of assosciated rust code.
 //!
+//! # Cargo features
+//!
+//! | Feature                     | Description                                                                  |
+//! |-----------------------------|------------------------------------------------------------------------------|
+//! | `shaderc-build-from-source` | Build the `shaderc` library from source when compiling.                      |
+//! | `shaderc-debug`             | Compile shaders with debug information included.                             |
+//! | `cgmath`                    | Generate structures with vectors and matrices from the [`cgmath`] library.   |
+//! | `nalgebra`                  | Generate structures with vectors and matrices from the [`nalgebra`] library. |
+//!
 //! # Basic usage
 //!
 //! ```
@@ -204,6 +213,8 @@
 //!
 //! The crate fails to compile but prints the generated rust code to stdout.
 //!
+//! [`cgmath`]: https://crates.io/crates/cgmath
+//! [`nalgebra`]: https://crates.io/crates/nalgebra
 //! [reflect]: https://github.com/vulkano-rs/vulkano/blob/master/vulkano-shaders/src/lib.rs#L67
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [ShaderModule::new]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/struct.ShaderModule.html#method.new
@@ -408,8 +419,6 @@ enum SourceKind {
 
 struct TypesMeta {
     custom_derives: Vec<SynPath>,
-    clone: bool,
-    copy: bool,
     display: bool,
     debug: bool,
     default: bool,
@@ -422,9 +431,12 @@ impl Default for TypesMeta {
     #[inline]
     fn default() -> Self {
         Self {
-            custom_derives: vec![],
-            clone: true,
-            copy: true,
+            custom_derives: vec![
+                parse_quote! { Clone },
+                parse_quote! { Copy },
+                parse_quote! { bytemuck::Pod },
+                parse_quote! { bytemuck::Zeroable },
+            ],
             partial_eq: false,
             debug: false,
             display: false,
@@ -440,8 +452,6 @@ impl TypesMeta {
     fn empty() -> Self {
         Self {
             custom_derives: Vec::new(),
-            clone: false,
-            copy: false,
             partial_eq: false,
             debug: false,
             display: false,
@@ -780,26 +790,6 @@ impl Parse for MacroInput {
                                             path.get_ident()
                                         {
                                             match derive_ident.to_string().as_str() {
-                                                "Clone" => {
-                                                    if meta.default {
-                                                        return Err(in_brackets
-                                                            .error("Duplicate Clone derive"));
-                                                    }
-
-                                                    meta.clone = true;
-
-                                                    false
-                                                }
-                                                "Copy" => {
-                                                    if meta.copy {
-                                                        return Err(in_brackets
-                                                            .error("Duplicate Copy derive"));
-                                                    }
-
-                                                    meta.copy = true;
-
-                                                    false
-                                                }
                                                 "PartialEq" => {
                                                     if meta.partial_eq {
                                                         return Err(in_brackets
@@ -850,7 +840,7 @@ impl Parse for MacroInput {
                                             if meta
                                                 .custom_derives
                                                 .iter()
-                                                .any(|candidate| candidate.eq(&path))
+                                                .any(|candidate| *candidate == path)
                                             {
                                                 return Err(
                                                     in_braces.error("Duplicate derive declaration")

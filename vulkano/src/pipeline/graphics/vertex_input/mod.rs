@@ -98,12 +98,13 @@
 //! different input rates, and it's also possible to have multiple bindings with the same input
 //! rate.
 
+#[allow(deprecated)]
 pub use self::{
     buffers::BuffersDefinition,
     collection::VertexBuffersCollection,
     definition::{IncompatibleVertexDefinitionError, VertexDefinition},
     impl_vertex::VertexMember,
-    vertex::{Vertex, VertexMemberInfo},
+    vertex::{Vertex, VertexBufferDescription, VertexMemberInfo},
 };
 use crate::format::Format;
 use ahash::HashMap;

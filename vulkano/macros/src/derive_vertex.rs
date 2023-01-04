@@ -41,14 +41,16 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
         FoundCrate::Name(name) => Ident::new(&name, Span::call_site()),
     };
 
-    let mut member_cases = quote! {
+    let mut members = quote! {
         let mut offset = 0;
+        let mut members = HashMap::default();
     };
 
     for field in fields.iter() {
         let field_name = field.ident.to_owned().unwrap();
+        let field_name_lit = LitStr::new(&field_name.to_string(), Span::call_site());
         let field_ty = &field.ty;
-        let mut names = vec![LitStr::new(&field_name.to_string(), Span::call_site())];
+        let mut names = vec![field_name_lit.clone()];
         let mut format = quote! {};
         for attr in &field.attrs {
             let attr_ident = if let Some(ident) = attr.path.get_ident() {
@@ -73,42 +75,61 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
             ));
         }
         for name in &names {
-            member_cases = quote! {
-                #member_cases
+            members = quote! {
+                #members
 
                 let field_size = std::mem::size_of::<#field_ty>() as u32;
-                if name == #name {
+                {
                     #format
                     let format_size = format.block_size().expect("no block size for format") as u32;
                     let num_elements = field_size / format_size;
                     let remainder = field_size % format_size;
-                    assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", name);
-                    return Some(VertexMemberInfo {
-                        offset,
-                        format,
-                        num_elements,
-                    });
+                    assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", #field_name_lit);
+                    members.insert(
+                        #name.to_string(),
+                        VertexMemberInfo {
+                            offset,
+                            format,
+                            num_elements,
+                        },
+                    );
                 }
                 offset += field_size as usize;
             };
         }
     }
 
-    Ok(TokenStream::from(quote! {
-        #[allow(unsafe_code)]
-        unsafe impl #crate_ident::pipeline::graphics::vertex_input::Vertex for #struct_name {
-            #[inline(always)]
-            fn member(name: &str) -> Option<#crate_ident::pipeline::graphics::vertex_input::VertexMemberInfo> {
-                #[allow(unused_imports)]
-                use #crate_ident::format::Format;
-                use #crate_ident::pipeline::graphics::vertex_input::VertexMemberInfo;
-                use #crate_ident::pipeline::graphics::vertex_input::VertexMember;
+    let function_body = quote! {
+        #[allow(unused_imports)]
+        use std::collections::HashMap;
+        use #crate_ident::format::Format;
+        use #crate_ident::pipeline::graphics::vertex_input::{VertexInputRate, VertexMemberInfo};
 
-                #member_cases
+        #members
 
-                None
-            }
+        #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+            members,
+            stride: std::mem::size_of::<#struct_name>() as u32,
+            input_rate: VertexInputRate::Vertex,
         }
+    };
+
+    Ok(TokenStream::from(quote! {
+     #[allow(unsafe_code)]
+     unsafe impl #crate_ident::pipeline::graphics::vertex_input::Vertex for #struct_name {
+         #[inline(always)]
+         fn per_vertex() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+             #function_body
+         }
+         #[inline(always)]
+         fn per_instance() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+             #function_body.per_instance()
+         }
+         #[inline(always)]
+         fn per_instance_with_divisor(divisor: u32) -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+             #function_body.per_instance_with_divisor(divisor)
+         }
+     }
     }))
 }
 

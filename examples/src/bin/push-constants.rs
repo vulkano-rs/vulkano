@@ -113,11 +113,6 @@ fn main() {
                     }
                 }
             ",
-            types_meta: {
-                use bytemuck::{Pod, Zeroable};
-
-                #[derive(Clone, Copy, Zeroable, Pod)]
-            },
         }
     }
 

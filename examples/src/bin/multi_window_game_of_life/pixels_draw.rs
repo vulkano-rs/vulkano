@@ -24,7 +24,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -106,7 +106,7 @@ impl PixelsDrawPipeline {
             let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
             GraphicsPipeline::start()
-                .vertex_input_state(BuffersDefinition::new().vertex::<TexturedVertex>())
+                .vertex_input_state(TexturedVertex::per_vertex())
                 .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .fragment_shader(fs.entry_point("main").unwrap(), ())

@@ -25,7 +25,7 @@ use vulkano::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -81,7 +81,7 @@ impl PointLightingSystem {
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
 
             GraphicsPipeline::start()
-                .vertex_input_state(BuffersDefinition::new().vertex::<LightingVertex>())
+                .vertex_input_state(LightingVertex::per_vertex())
                 .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -267,10 +267,5 @@ void main() {
     f_color.rgb = push_constants.color.rgb * light_percent * in_diffuse;
     f_color.a = 1.0;
 }",
-        types_meta: {
-            use bytemuck::{Pod, Zeroable};
-
-            #[derive(Clone, Copy, Zeroable, Pod)]
-        },
     }
 }

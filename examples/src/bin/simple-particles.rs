@@ -34,7 +34,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, PipelineBindPoint,
@@ -262,11 +262,6 @@ fn main() {
 	                verticies[index].vel = vel * exp(friction * push.delta_time);
                 }
             ",
-            types_meta: {
-                use bytemuck::{Pod, Zeroable};
-
-                #[derive(Clone, Copy, Zeroable, Pod)]
-            },
         }
     }
     // Vertex shader determines color and is run once per particle.
@@ -420,7 +415,7 @@ fn main() {
 
     // Create a basic graphics pipeline for rendering particles.
     let graphics_pipeline = GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_input_state(Vertex::per_vertex())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList)) // Vertices will be rendered as a list of points.
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
@@ -469,7 +464,7 @@ fn main() {
                         None, /*timeout*/
                     ) {
                         Ok(tuple) => tuple,
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
                     };
 
                 // Since we disallow resizing, assert the swapchain and surface are optimally configured.
@@ -547,7 +542,7 @@ fn main() {
                     Ok(future) => Some(Arc::new(future)),
 
                     // Unknown failure.
-                    Err(e) => panic!("Failed to flush future: {:?}", e),
+                    Err(e) => panic!("Failed to flush future: {e:?}"),
                 };
                 previous_fence_index = image_index;
             }

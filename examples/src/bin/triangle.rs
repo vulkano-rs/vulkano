@@ -34,7 +34,7 @@ use vulkano::{
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
-            vertex_input::{BuffersDefinition, Vertex},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -383,7 +383,7 @@ fn main() {
         // in. The pipeline will only be usable from this particular subpass.
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         // We need to indicate the layout of the vertices.
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_input_state(Vertex::per_vertex())
         // The content of the vertex buffer describes a list of triangles.
         .input_assembly_state(InputAssemblyState::new())
         // A Vulkan shader can in theory contain multiple entry points, so we have to specify
@@ -482,7 +482,7 @@ fn main() {
                             // This error tends to happen when the user is manually resizing the window.
                             // Simply restarting the loop is the easiest way to fix this issue.
                             Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                            Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
                         };
 
                     swapchain = new_swapchain;
@@ -510,7 +510,7 @@ fn main() {
                             recreate_swapchain = true;
                             return;
                         }
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
                     };
 
                 // acquire_next_image can be successful, but suboptimal. This means that the swapchain image
@@ -601,7 +601,7 @@ fn main() {
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                     Err(e) => {
-                        panic!("Failed to flush future: {:?}", e);
+                        panic!("Failed to flush future: {e:?}");
                         // previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }
