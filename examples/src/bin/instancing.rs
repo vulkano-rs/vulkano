@@ -15,7 +15,7 @@
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -191,10 +191,12 @@ fn main() {
         },
     ];
     let vertex_buffer = {
-        CpuAccessibleBuffer::from_iter(
+        Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::VERTEX_BUFFER,
-            false,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
             vertices,
         )
         .unwrap()
@@ -223,10 +225,12 @@ fn main() {
         }
         data
     };
-    let instance_buffer = CpuAccessibleBuffer::from_iter(
+    let instance_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::VERTEX_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
         instances,
     )
     .unwrap();

@@ -11,7 +11,7 @@ use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryCommandBufferAbstract,
@@ -33,7 +33,7 @@ pub struct FractalComputePipeline {
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    palette: Arc<CpuAccessibleBuffer<[[f32; 4]]>>,
+    palette: Subbuffer<[[f32; 4]]>,
     palette_size: i32,
     end_color: [f32; 4],
 }
@@ -55,10 +55,12 @@ impl FractalComputePipeline {
             [1.0, 0.0, 1.0, 1.0],
         ];
         let palette_size = colors.len() as i32;
-        let palette = CpuAccessibleBuffer::from_iter(
+        let palette = Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::STORAGE_BUFFER,
-            false,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
             colors,
         )
         .unwrap();
@@ -98,11 +100,13 @@ impl FractalComputePipeline {
             let a = rand::thread_rng().gen::<f32>();
             colors.push([r, g, b, a]);
         }
-        self.palette = CpuAccessibleBuffer::from_iter(
+        self.palette = Buffer::from_iter(
             &self.memory_allocator,
-            BufferUsage::STORAGE_BUFFER,
-            false,
-            colors.into_iter(),
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            colors,
         )
         .unwrap();
     }

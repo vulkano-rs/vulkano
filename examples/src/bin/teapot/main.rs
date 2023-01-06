@@ -13,7 +13,7 @@ use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{
         allocator::{CpuBufferAllocator, CpuBufferAllocatorCreateInfo},
-        BufferUsage, CpuAccessibleBuffer, TypedBufferAccess,
+        Buffer, BufferAllocateInfo, BufferUsage,
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
@@ -161,24 +161,30 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+    let vertex_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::VERTEX_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
         POSITIONS,
     )
     .unwrap();
-    let normals_buffer = CpuAccessibleBuffer::from_iter(
+    let normals_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::VERTEX_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
         NORMALS,
     )
     .unwrap();
-    let index_buffer = CpuAccessibleBuffer::from_iter(
+    let index_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::INDEX_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::INDEX_BUFFER,
+            ..Default::default()
+        },
         INDICES,
     )
     .unwrap();
@@ -303,7 +309,10 @@ fn main() {
                         proj: proj.into(),
                     };
 
-                    uniform_buffer.from_data(uniform_data).unwrap()
+                    let subbuffer = uniform_buffer.allocate_sized().unwrap();
+                    *subbuffer.write().unwrap() = uniform_data;
+
+                    subbuffer
                 };
 
                 let layout = pipeline.layout().set_layouts().get(0).unwrap();

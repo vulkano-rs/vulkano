@@ -10,7 +10,7 @@
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
@@ -74,8 +74,8 @@ pub struct PixelsDrawPipeline {
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    vertices: Arc<CpuAccessibleBuffer<[TexturedVertex]>>,
-    indices: Arc<CpuAccessibleBuffer<[u32]>>,
+    vertices: Subbuffer<[TexturedVertex]>,
+    indices: Subbuffer<[u32]>,
 }
 
 impl PixelsDrawPipeline {
@@ -87,18 +87,22 @@ impl PixelsDrawPipeline {
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
-        let vertex_buffer = CpuAccessibleBuffer::<[TexturedVertex]>::from_iter(
+        let vertex_buffer = Buffer::from_iter(
             memory_allocator,
-            BufferUsage::VERTEX_BUFFER,
-            false,
-            vertices.into_iter(),
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            vertices,
         )
         .unwrap();
-        let index_buffer = CpuAccessibleBuffer::<[u32]>::from_iter(
+        let index_buffer = Buffer::from_iter(
             memory_allocator,
-            BufferUsage::INDEX_BUFFER,
-            false,
-            indices.into_iter(),
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            indices,
         )
         .unwrap();
 

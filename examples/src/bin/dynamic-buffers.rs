@@ -16,7 +16,7 @@
 
 use std::{iter::repeat, mem::size_of};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
@@ -164,18 +164,22 @@ fn main() {
         aligned_data
     };
 
-    let input_buffer = CpuAccessibleBuffer::from_iter(
+    let input_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::UNIFORM_BUFFER,
-        false,
-        aligned_data.into_iter(),
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::UNIFORM_BUFFER,
+            ..Default::default()
+        },
+        aligned_data,
     )
     .unwrap();
 
-    let output_buffer = CpuAccessibleBuffer::from_iter(
+    let output_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::STORAGE_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
         (0..12).map(|_| 0u32),
     )
     .unwrap();

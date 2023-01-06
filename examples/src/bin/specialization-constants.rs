@@ -10,7 +10,7 @@
 // TODO: Give a paragraph about what specialization are and what problems they solve
 
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
@@ -134,10 +134,12 @@ fn main() {
 
     let data_buffer = {
         let data_iter = 0..65536u32;
-        CpuAccessibleBuffer::from_iter(
+        Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::STORAGE_BUFFER,
-            false,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
             data_iter,
         )
         .unwrap()

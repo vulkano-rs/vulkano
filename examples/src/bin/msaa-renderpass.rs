@@ -67,7 +67,7 @@
 use bytemuck::{Pod, Zeroable};
 use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         CopyImageToBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
@@ -286,10 +286,12 @@ fn main() {
             position: [0.5, -0.25],
         },
     ];
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+    let vertex_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::VERTEX_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
         vertices,
     )
     .unwrap();
@@ -316,10 +318,12 @@ fn main() {
 
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device, Default::default());
 
-    let buf = CpuAccessibleBuffer::from_iter(
+    let buf = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::TRANSFER_DST,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
         (0..1024 * 1024 * 4).map(|_| 0u8),
     )
     .unwrap();

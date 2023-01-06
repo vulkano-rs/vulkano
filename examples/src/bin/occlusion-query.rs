@@ -14,7 +14,7 @@
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -209,18 +209,20 @@ fn main() {
             color: [0.0, 1.0, 0.0],
         },
     ];
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+    let vertex_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::VERTEX_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
         vertices,
     )
     .unwrap();
 
     // Create three buffer slices, one for each triangle.
-    let triangle1 = vertex_buffer.slice::<Vertex>(0..3).unwrap();
-    let triangle2 = vertex_buffer.slice::<Vertex>(3..6).unwrap();
-    let triangle3 = vertex_buffer.slice::<Vertex>(6..9).unwrap();
+    let triangle1 = vertex_buffer.clone().slice(0..3).unwrap();
+    let triangle2 = vertex_buffer.clone().slice(3..6).unwrap();
+    let triangle3 = vertex_buffer.slice(6..9).unwrap();
 
     // Create a query pool for occlusion queries, with 3 slots.
     let query_pool = QueryPool::new(

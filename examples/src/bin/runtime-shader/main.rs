@@ -22,7 +22,7 @@
 use bytemuck::{Pod, Zeroable};
 use std::{fs::File, io::Read, sync::Arc};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -236,10 +236,12 @@ fn main() {
             color: [0.0, 0.0, 1.0],
         },
     ];
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+    let vertex_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::VERTEX_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
         vertices,
     )
     .unwrap();

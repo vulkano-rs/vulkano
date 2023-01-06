@@ -336,7 +336,9 @@ fn main() {
                 let num_vertices = data.len() as u32;
 
                 // Allocate a new subbuffer using the buffer allocator.
-                let buffer = buffer_allocator.from_iter(data.iter().copied()).unwrap();
+                let buffer = buffer_allocator.allocate_unsized(data.len() as _).unwrap();
+                buffer.write().unwrap().copy_from_slice(&data);
+
                 let mut builder = AutoCommandBufferBuilder::primary(
                     &command_buffer_allocator,
                     queue.queue_family_index(),

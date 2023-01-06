@@ -10,7 +10,7 @@
 use cgmath::{Matrix4, Vector3};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
@@ -37,7 +37,7 @@ use super::LightingVertex;
 
 pub struct PointLightingSystem {
     gfx_queue: Arc<Queue>,
-    vertex_buffer: Arc<CpuAccessibleBuffer<[LightingVertex]>>,
+    vertex_buffer: Subbuffer<[LightingVertex]>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
@@ -66,15 +66,15 @@ impl PointLightingSystem {
                 position: [3.0, -1.0],
             },
         ];
-        let vertex_buffer = {
-            CpuAccessibleBuffer::from_iter(
-                memory_allocator,
-                BufferUsage::VERTEX_BUFFER,
-                false,
-                vertices,
-            )
-            .expect("failed to create buffer")
-        };
+        let vertex_buffer = Buffer::from_iter(
+            memory_allocator,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            vertices,
+        )
+        .expect("failed to create buffer");
 
         let pipeline = {
             let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
