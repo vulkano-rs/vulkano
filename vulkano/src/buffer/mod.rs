@@ -32,12 +32,12 @@
 //! - A [`DeviceLocalBuffer`] designates a buffer usually located in video memory and whose content
 //!   can't be directly accessed by your application. Accessing this buffer from the GPU is
 //!   generally faster compared to accessing a CPU-accessible buffer.
-//! - A [`CpuBufferAllocator`] can be used to transfer data between the CPU and the GPU at a high
+//! - A [`SubbufferAllocator`] can be used to transfer data between the CPU and the GPU at a high
 //!   rate.
 //! - A [`CpuAccessibleBuffer`] is a simple buffer that can be used to prototype.
 //!
 //! Here is a quick way to choose which buffer to use. Do you often need to read or write the
-//! content of the buffer? If so, use a `CpuBufferAllocator`. Otherwise, do you need to have access
+//! content of the buffer? If so, use a `SubbufferAllocator`. Otherwise, do you need to have access
 //! to the buffer on the CPU? Then use `CpuAccessibleBuffer`. Otherwise, use a `DeviceLocalBuffer`.
 //!
 //! Another example: if a buffer is under constant access by the GPU but you need to read its
@@ -71,7 +71,7 @@
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module
 //! for how to create a buffer view.
 //!
-//! [`CpuBufferAllocator`]: allocator::CpuBufferAllocator
+//! [`SubbufferAllocator`]: allocator::SubbufferAllocator
 
 pub use self::{subbuffer::Subbuffer, usage::BufferUsage};
 use self::{

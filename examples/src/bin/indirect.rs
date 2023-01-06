@@ -28,7 +28,7 @@ use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
-        allocator::{CpuBufferAllocator, CpuBufferAllocatorCreateInfo},
+        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
         BufferUsage,
     },
     command_buffer::{
@@ -251,16 +251,16 @@ fn main() {
 
     // Each frame we generate a new set of vertices and each frame we need a new
     // DrawIndirectCommand struct to set the number of vertices to draw.
-    let indirect_args_pool = CpuBufferAllocator::new(
+    let indirect_args_pool = SubbufferAllocator::new(
         memory_allocator.clone(),
-        CpuBufferAllocatorCreateInfo {
+        SubbufferAllocatorCreateInfo {
             buffer_usage: BufferUsage::INDIRECT_BUFFER | BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
     );
-    let vertex_pool = CpuBufferAllocator::new(
+    let vertex_pool = SubbufferAllocator::new(
         memory_allocator,
-        CpuBufferAllocatorCreateInfo {
+        SubbufferAllocatorCreateInfo {
             buffer_usage: BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
             ..Default::default()
         },

@@ -74,7 +74,7 @@ const MAX_ARENAS: usize = 32;
 /// # Examples
 ///
 /// ```
-/// use vulkano::buffer::allocator::CpuBufferAllocator;
+/// use vulkano::buffer::allocator::SubbufferAllocator;
 /// use vulkano::command_buffer::{
 ///     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
 /// };
@@ -84,7 +84,7 @@ const MAX_ARENAS: usize = 32;
 /// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 ///
 /// // Create the buffer allocator.
-/// let buffer_allocator = CpuBufferAllocator::new(memory_allocator.clone(), Default::default());
+/// let buffer_allocator = SubbufferAllocator::new(memory_allocator.clone(), Default::default());
 ///
 /// for n in 0..25u32 {
 ///     // Each loop allocates a new subbuffer and stores `data` in it.
@@ -111,17 +111,17 @@ const MAX_ARENAS: usize = 32;
 /// }
 /// ```
 #[derive(Debug)]
-pub struct CpuBufferAllocator<A = Arc<StandardMemoryAllocator>> {
-    state: UnsafeCell<CpuBufferAllocatorState<A>>,
+pub struct SubbufferAllocator<A = Arc<StandardMemoryAllocator>> {
+    state: UnsafeCell<SubbufferAllocatorState<A>>,
 }
 
-impl<A> CpuBufferAllocator<A>
+impl<A> SubbufferAllocator<A>
 where
     A: MemoryAllocator,
 {
-    /// Creates a new `CpuBufferAllocator`.
-    pub fn new(memory_allocator: A, create_info: CpuBufferAllocatorCreateInfo) -> Self {
-        let CpuBufferAllocatorCreateInfo {
+    /// Creates a new `SubbufferAllocator`.
+    pub fn new(memory_allocator: A, create_info: SubbufferAllocatorCreateInfo) -> Self {
+        let SubbufferAllocatorCreateInfo {
             arena_size,
             buffer_usage,
             memory_usage,
@@ -143,8 +143,8 @@ where
         .map(|alignment| DeviceAlignment::new(alignment).unwrap())
         .unwrap_or(DeviceAlignment::MIN);
 
-        CpuBufferAllocator {
-            state: UnsafeCell::new(CpuBufferAllocatorState {
+        SubbufferAllocator {
+            state: UnsafeCell::new(SubbufferAllocatorState {
                 memory_allocator,
                 buffer_usage,
                 memory_usage,
@@ -242,7 +242,7 @@ where
 }
 
 #[derive(Debug)]
-struct CpuBufferAllocatorState<A> {
+struct SubbufferAllocatorState<A> {
     memory_allocator: A,
     buffer_usage: BufferUsage,
     memory_usage: MemoryUsage,
@@ -258,7 +258,7 @@ struct CpuBufferAllocatorState<A> {
     reserve: Option<Arc<ArrayQueue<Arc<Buffer>>>>,
 }
 
-impl<A> CpuBufferAllocatorState<A>
+impl<A> SubbufferAllocatorState<A>
 where
     A: MemoryAllocator,
 {
@@ -374,8 +374,8 @@ impl Hash for Arena {
     }
 }
 
-/// Parameters to create a new [`CpuBufferAllocator`].
-pub struct CpuBufferAllocatorCreateInfo {
+/// Parameters to create a new [`SubbufferAllocator`].
+pub struct SubbufferAllocatorCreateInfo {
     /// Initial size of an arena in bytes.
     ///
     /// Ideally this should fit all the data you need to update per frame. So for example, if you
@@ -400,10 +400,10 @@ pub struct CpuBufferAllocatorCreateInfo {
     pub _ne: crate::NonExhaustive,
 }
 
-impl Default for CpuBufferAllocatorCreateInfo {
+impl Default for SubbufferAllocatorCreateInfo {
     #[inline]
     fn default() -> Self {
-        CpuBufferAllocatorCreateInfo {
+        SubbufferAllocatorCreateInfo {
             arena_size: 0,
             buffer_usage: BufferUsage::TRANSFER_SRC,
             memory_usage: MemoryUsage::Upload,
@@ -421,7 +421,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer_allocator = CpuBufferAllocator::new(memory_allocator, Default::default());
+        let buffer_allocator = SubbufferAllocator::new(memory_allocator, Default::default());
         assert_eq!(buffer_allocator.arena_size(), 0);
 
         buffer_allocator.reserve(83).unwrap();
@@ -433,7 +433,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer_allocator = CpuBufferAllocator::new(memory_allocator, Default::default());
+        let buffer_allocator = SubbufferAllocator::new(memory_allocator, Default::default());
         assert_eq!(buffer_allocator.arena_size(), 0);
 
         buffer_allocator.allocate_sized::<u32>().unwrap();

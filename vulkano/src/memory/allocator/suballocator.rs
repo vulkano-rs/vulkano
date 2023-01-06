@@ -932,17 +932,17 @@ impl Display for SuballocationCreationError {
 /// });
 /// ```
 ///
-/// For use in allocating arenas for [`CpuBufferAllocator`]:
+/// For use in allocating arenas for [`SubbufferAllocator`]:
 ///
 /// ```
 /// use std::sync::Arc;
-/// use vulkano::buffer::allocator::CpuBufferAllocator;
+/// use vulkano::buffer::allocator::SubbufferAllocator;
 /// use vulkano::memory::allocator::StandardMemoryAllocator;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 ///
 /// // We need to wrap the allocator in an `Arc` so that we can share ownership of it.
 /// let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-/// let buffer_allocator = CpuBufferAllocator::new(memory_allocator.clone(), Default::default());
+/// let buffer_allocator = SubbufferAllocator::new(memory_allocator.clone(), Default::default());
 ///
 /// // You can continue using `memory_allocator` for other things.
 /// ```
@@ -990,7 +990,7 @@ impl Display for SuballocationCreationError {
 /// [alignment requirements]: super#alignment
 /// [`GenericMemoryAllocator`]: super::GenericMemoryAllocator
 /// [`StandardMemoryAllocator`]: super::StandardMemoryAllocator
-/// [`CpuBufferAllocator`]: crate::buffer::allocator::CpuBufferAllocator
+/// [`SubbufferAllocator`]: crate::buffer::allocator::SubbufferAllocator
 #[derive(Debug)]
 pub struct FreeListAllocator {
     region: MemoryAlloc,

@@ -12,7 +12,7 @@ use examples::{Normal, Position, INDICES, NORMALS, POSITIONS};
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{
-        allocator::{CpuBufferAllocator, CpuBufferAllocatorCreateInfo},
+        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
         Buffer, BufferAllocateInfo, BufferUsage,
     },
     command_buffer::{
@@ -189,9 +189,9 @@ fn main() {
     )
     .unwrap();
 
-    let uniform_buffer = CpuBufferAllocator::new(
+    let uniform_buffer = SubbufferAllocator::new(
         memory_allocator.clone(),
-        CpuBufferAllocatorCreateInfo {
+        SubbufferAllocatorCreateInfo {
             buffer_usage: BufferUsage::UNIFORM_BUFFER,
             ..Default::default()
         },
