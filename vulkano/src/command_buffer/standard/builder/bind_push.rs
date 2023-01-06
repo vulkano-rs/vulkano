@@ -9,7 +9,7 @@
 
 use super::{CommandBufferBuilder, RenderPassStateType, SetOrPush};
 use crate::{
-    buffer::{BufferAccess, BufferContents, BufferUsage, TypedBufferAccess},
+    buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{allocator::CommandBufferAllocator, commands::bind_push::BindPushError},
     descriptor_set::{
         check_descriptor_write, layout::DescriptorType, DescriptorBindingResources,
@@ -275,20 +275,16 @@ where
     ///
     /// [`BufferUsage::INDEX_BUFFER`]: crate::buffer::BufferUsage::INDEX_BUFFER
     /// [`index_type_uint8`]: crate::device::Features::index_type_uint8
-    pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Arc<Ib>) -> &mut Self
-    where
-        Ib: TypedBufferAccess<Content = [I]> + 'static,
-        I: Index + 'static,
-    {
-        self.validate_bind_index_buffer(&index_buffer, I::ty())
+    pub fn bind_index_buffer<I: Index>(&mut self, index_buffer: Subbuffer<[I]>) -> &mut Self {
+        self.validate_bind_index_buffer(index_buffer.as_bytes(), I::ty())
             .unwrap();
 
-        unsafe { self.bind_index_buffer_unchecked(index_buffer, I::ty()) }
+        unsafe { self.bind_index_buffer_unchecked(index_buffer.into_bytes(), I::ty()) }
     }
 
     fn validate_bind_index_buffer(
         &self,
-        index_buffer: &dyn BufferAccess,
+        index_buffer: &Subbuffer<[u8]>,
         index_type: IndexType,
     ) -> Result<(), BindPushError> {
         let queue_family_properties = self.queue_family_properties();
@@ -305,7 +301,11 @@ where
         assert_eq!(self.device(), index_buffer.device());
 
         // VUID-vkCmdBindIndexBuffer-buffer-00433
-        if !index_buffer.usage().intersects(BufferUsage::INDEX_BUFFER) {
+        if !index_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDEX_BUFFER)
+        {
             return Err(BindPushError::IndexBufferMissingUsage);
         }
 
@@ -329,16 +329,14 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn bind_index_buffer_unchecked(
         &mut self,
-        buffer: Arc<dyn BufferAccess>,
+        buffer: Subbuffer<[u8]>,
         index_type: IndexType,
     ) -> &mut Self {
-        let buffer_inner = buffer.inner();
-
         let fns = self.device().fns();
         (fns.v1_0.cmd_bind_index_buffer)(
             self.handle(),
-            buffer_inner.buffer.handle(),
-            buffer_inner.offset,
+            buffer.buffer().handle(),
+            buffer.offset(),
             index_type.into(),
         );
 
@@ -530,7 +528,7 @@ where
     fn validate_bind_vertex_buffers(
         &self,
         first_binding: u32,
-        vertex_buffers: &[Arc<dyn BufferAccess>],
+        vertex_buffers: &[Subbuffer<[u8]>],
     ) -> Result<(), BindPushError> {
         let queue_family_properties = self.queue_family_properties();
 
@@ -566,7 +564,11 @@ where
             assert_eq!(self.device(), buffer.device());
 
             // VUID-vkCmdBindVertexBuffers-pBuffers-00627
-            if !buffer.usage().intersects(BufferUsage::VERTEX_BUFFER) {
+            if !buffer
+                .buffer()
+                .usage()
+                .intersects(BufferUsage::VERTEX_BUFFER)
+            {
                 return Err(BindPushError::VertexBufferMissingUsage);
             }
         }
@@ -588,10 +590,7 @@ where
 
         let (buffers_vk, offsets_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) = buffers
             .iter()
-            .map(|buffer| {
-                let buffer_inner = buffer.inner();
-                (buffer_inner.buffer.handle(), buffer_inner.offset)
-            })
+            .map(|buffer| (buffer.buffer().handle(), buffer.offset()))
             .unzip();
 
         let fns = self.device().fns();

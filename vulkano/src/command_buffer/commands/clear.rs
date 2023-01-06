@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::{BufferAccess, BufferContents, BufferUsage, TypedBufferAccess},
+    buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
@@ -399,8 +399,6 @@ where
             _ne: _,
         } = fill_buffer_info;
 
-        let dst_buffer_inner = dst_buffer.inner();
-
         // VUID-vkCmdFillBuffer-commonparent
         assert_eq!(device, dst_buffer.device());
 
@@ -408,7 +406,11 @@ where
         assert!(size != 0);
 
         // VUID-vkCmdFillBuffer-dstBuffer-00029
-        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
             return Err(ClearError::MissingUsage {
                 usage: "transfer_dst",
             });
@@ -425,10 +427,10 @@ where
         }
 
         // VUID-vkCmdFillBuffer-dstOffset-00025
-        if (dst_buffer_inner.offset + dst_offset) % 4 != 0 {
+        if (dst_buffer.offset() + dst_offset) % 4 != 0 {
             return Err(ClearError::OffsetNotAlignedForBuffer {
                 region_index: 0,
-                offset: dst_buffer_inner.offset + dst_offset,
+                offset: dst_buffer.offset() + dst_offset,
                 required_alignment: 4,
             });
         }
@@ -450,14 +452,13 @@ where
     /// # Panics
     ///
     /// - Panics if `dst_buffer` was not created from the same device as `self`.
-    pub fn update_buffer<B, D, Dd>(
+    pub fn update_buffer<D, Dd>(
         &mut self,
         data: Dd,
-        dst_buffer: Arc<B>,
+        dst_buffer: Subbuffer<D>,
         dst_offset: DeviceSize,
     ) -> Result<&mut Self, ClearError>
     where
-        B: TypedBufferAccess<Content = D> + 'static,
         D: BufferContents + ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
@@ -473,7 +474,7 @@ where
     fn validate_update_buffer<D>(
         &self,
         data: &D,
-        dst_buffer: &dyn BufferAccess,
+        dst_buffer: &Subbuffer<impl ?Sized>,
         dst_offset: DeviceSize,
     ) -> Result<(), ClearError>
     where
@@ -496,8 +497,6 @@ where
             return Err(ClearError::NotSupportedByQueueFamily);
         }
 
-        let dst_buffer_inner = dst_buffer.inner();
-
         // VUID-vkCmdUpdateBuffer-commonparent
         assert_eq!(device, dst_buffer.device());
 
@@ -505,7 +504,11 @@ where
         assert!(size_of_val(data) != 0);
 
         // VUID-vkCmdUpdateBuffer-dstBuffer-00034
-        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
             return Err(ClearError::MissingUsage {
                 usage: "transfer_dst",
             });
@@ -522,10 +525,10 @@ where
         }
 
         // VUID-vkCmdUpdateBuffer-dstOffset-00036
-        if (dst_buffer_inner.offset + dst_offset) % 4 != 0 {
+        if (dst_buffer.offset() + dst_offset) % 4 != 0 {
             return Err(ClearError::OffsetNotAlignedForBuffer {
                 region_index: 0,
-                offset: dst_buffer_inner.offset + dst_offset,
+                offset: dst_buffer.offset() + dst_offset,
                 required_alignment: 4,
             });
         }
@@ -761,7 +764,7 @@ impl SyncCommandBufferBuilder {
     pub unsafe fn update_buffer<D, Dd>(
         &mut self,
         data: Dd,
-        dst_buffer: Arc<dyn BufferAccess>,
+        dst_buffer: Subbuffer<D>,
         dst_offset: DeviceSize,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
@@ -770,7 +773,7 @@ impl SyncCommandBufferBuilder {
     {
         struct Cmd<Dd> {
             data: Dd,
-            dst_buffer: Arc<dyn BufferAccess>,
+            dst_buffer: Subbuffer<[u8]>,
             dst_offset: DeviceSize,
         }
 
@@ -784,10 +787,11 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.update_buffer(self.data.deref(), self.dst_buffer.as_ref(), self.dst_offset);
+                out.update_buffer(self.data.deref(), &self.dst_buffer, self.dst_offset);
             }
         }
 
+        let dst_buffer = dst_buffer.into_bytes();
         let command_index = self.commands.len();
         let command_name = "update_buffer";
         let resources = [(
@@ -910,12 +914,10 @@ impl UnsafeCommandBufferBuilder {
             _ne: _,
         } = fill_buffer_info;
 
-        let dst_buffer_inner = dst_buffer.inner();
-
         let fns = self.device.fns();
         (fns.v1_0.cmd_fill_buffer)(
             self.handle,
-            dst_buffer_inner.buffer.handle(),
+            dst_buffer.buffer().handle(),
             dst_offset,
             size,
             data,
@@ -926,18 +928,16 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn update_buffer<D>(
         &mut self,
         data: &D,
-        dst_buffer: &dyn BufferAccess,
+        dst_buffer: &Subbuffer<impl ?Sized>,
         dst_offset: DeviceSize,
     ) where
         D: BufferContents + ?Sized,
     {
-        let dst_buffer_inner = dst_buffer.inner();
-
         let fns = self.device.fns();
         (fns.v1_0.cmd_update_buffer)(
             self.handle,
-            dst_buffer_inner.buffer.handle(),
-            dst_buffer_inner.offset + dst_offset,
+            dst_buffer.buffer().handle(),
+            dst_buffer.offset() + dst_offset,
             size_of_val(data) as DeviceSize,
             data.as_bytes().as_ptr() as *const _,
         );
@@ -1047,7 +1047,7 @@ pub struct FillBufferInfo {
     /// The buffer to fill.
     ///
     /// There is no default value.
-    pub dst_buffer: Arc<dyn BufferAccess>,
+    pub dst_buffer: Subbuffer<[u8]>,
 
     /// The offset in bytes from the start of `dst_buffer` that filling will start from.
     ///
@@ -1070,7 +1070,8 @@ pub struct FillBufferInfo {
 impl FillBufferInfo {
     /// Returns a `FillBufferInfo` with the specified `dst_buffer`.
     #[inline]
-    pub fn dst_buffer(dst_buffer: Arc<dyn BufferAccess>) -> Self {
+    pub fn dst_buffer(dst_buffer: Subbuffer<impl ?Sized>) -> Self {
+        let dst_buffer = dst_buffer.into_bytes();
         let size = dst_buffer.size() & !3;
 
         Self {

@@ -273,11 +273,8 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     ///   [`protected_memory`] feature must be enabled on the device.
     /// - If `memory_type_index` refers to a memory type with the [`device_coherent`] flag set,
     ///   then the [`device_coherent_memory`] feature must be enabled on the device.
-    /// - `create_info.size` must not be zero.
-    /// - `create_info.size` must not exceed the size of the heap that the memory type
+    /// - `create_info.layout.size()` must not exceed the size of the heap that the memory type
     ///   corresponding to `memory_type_index` resides in.
-    /// - `create_info.alignment` must not be zero.
-    /// - `create_info.alignment` must be a power of two.
     ///
     /// [`protected`]: MemoryPropertyFlags::protected
     /// [`protected_memory`]: crate::device::Features::protected_memory
@@ -301,9 +298,6 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     ///
     /// # Safety
     ///
-    /// - `create_info.requirements.size` must not be zero.
-    /// - `create_info.requirements.alignment` must not be zero.
-    /// - `create_info.requirements.alignment` must be a power of two.
     /// - If `create_info.dedicated_allocation` is `Some` then `create_info.requirements.size` must
     ///   match the memory requirements of the resource.
     /// - If `create_info.dedicated_allocation` is `Some` then the device the resource was created

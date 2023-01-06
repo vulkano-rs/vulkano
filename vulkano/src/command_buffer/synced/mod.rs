@@ -75,7 +75,7 @@ use super::{
     CommandBufferResourcesUsage, SecondaryCommandBufferResourcesUsage,
 };
 use crate::{
-    buffer::BufferAccess,
+    buffer::Subbuffer,
     device::{Device, DeviceOwned},
     image::{ImageAccess, ImageLayout, ImageSubresourceRange},
     sync::PipelineMemoryAccess,
@@ -140,7 +140,7 @@ unsafe impl DeviceOwned for SyncCommandBuffer {
 #[derive(Clone)]
 pub(super) enum Resource {
     Buffer {
-        buffer: Arc<dyn BufferAccess>,
+        buffer: Subbuffer<[u8]>,
         range: Range<DeviceSize>,
         memory: PipelineMemoryAccess,
     },
@@ -173,7 +173,7 @@ impl Debug for dyn Command {
 mod tests {
     use super::*;
     use crate::{
-        buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
+        buffer::{Buffer, BufferAllocateInfo, BufferUsage},
         command_buffer::{
             allocator::{
                 CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
@@ -237,11 +237,13 @@ mod tests {
 
             let memory_allocator = StandardMemoryAllocator::new_default(device);
             // Create a tiny test buffer
-            let buffer = DeviceLocalBuffer::from_data(
+            let buffer = Buffer::from_data(
                 &memory_allocator,
+                BufferAllocateInfo {
+                    buffer_usage: BufferUsage::TRANSFER_DST,
+                    ..Default::default()
+                },
                 0u32,
-                BufferUsage::TRANSFER_DST,
-                &mut cbb,
             )
             .unwrap();
 
@@ -350,10 +352,12 @@ mod tests {
             .unwrap();
 
             let memory_allocator = StandardMemoryAllocator::new_default(device);
-            let buf = CpuAccessibleBuffer::from_data(
+            let buf = Buffer::from_data(
                 &memory_allocator,
-                BufferUsage::VERTEX_BUFFER,
-                false,
+                BufferAllocateInfo {
+                    buffer_usage: BufferUsage::VERTEX_BUFFER,
+                    ..Default::default()
+                },
                 0u32,
             )
             .unwrap();

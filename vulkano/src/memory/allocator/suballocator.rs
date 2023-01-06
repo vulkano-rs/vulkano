@@ -22,7 +22,7 @@ use crate::{
     device::{Device, DeviceOwned},
     image::ImageTiling,
     memory::{DeviceMemory, MemoryPropertyFlags},
-    DeviceSize, NonZeroDeviceSize, OomError, VulkanError, VulkanObject,
+    DeviceSize, NonZeroDeviceSize, VulkanError, VulkanObject,
 };
 use crossbeam_queue::ArrayQueue;
 use parking_lot::Mutex;
@@ -204,6 +204,17 @@ impl MemoryAlloc {
             .map(|ptr| slice::from_raw_parts_mut(ptr.as_ptr().cast(), self.size as usize))
     }
 
+    pub(crate) unsafe fn read(&self, range: Range<DeviceSize>) -> Option<&[u8]> {
+        debug_assert!(!range.is_empty() && range.end <= self.size);
+
+        self.mapped_ptr.map(|ptr| {
+            slice::from_raw_parts(
+                ptr.as_ptr().add(range.start as usize).cast(),
+                (range.end - range.start) as usize,
+            )
+        })
+    }
+
     pub(crate) unsafe fn write(&self, range: Range<DeviceSize>) -> Option<&mut [u8]> {
         debug_assert!(!range.is_empty() && range.end <= self.size);
 
@@ -243,7 +254,7 @@ impl MemoryAlloc {
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), OomError> {
+    pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
         // VUID-VkMappedMemoryRange-memory-00684
         if let Some(atom_size) = self.atom_size {
             let range = self.create_memory_range(range, atom_size);
@@ -283,7 +294,7 @@ impl MemoryAlloc {
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), OomError> {
+    pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
         // VUID-VkMappedMemoryRange-memory-00684
         if let Some(atom_size) = self.atom_size {
             let range = self.create_memory_range(range, atom_size);

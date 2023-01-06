@@ -9,7 +9,7 @@
 
 use super::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorType};
 use crate::{
-    buffer::{view::BufferViewAbstract, BufferAccess, BufferInner, BufferUsage},
+    buffer::{view::BufferView, BufferUsage, Subbuffer},
     device::DeviceOwned,
     image::{view::ImageViewType, ImageAspects, ImageType, ImageUsage, ImageViewAbstract},
     sampler::{Sampler, SamplerImageViewIncompatibleError},
@@ -72,7 +72,7 @@ impl WriteDescriptorSet {
     /// of zero will be valid, which is probably not what you want.
     /// Use [`buffer_with_range`](Self::buffer_with_range) instead.
     #[inline]
-    pub fn buffer(binding: u32, buffer: Arc<dyn BufferAccess>) -> Self {
+    pub fn buffer(binding: u32, buffer: Subbuffer<impl ?Sized>) -> Self {
         let range = 0..buffer.size();
         Self::buffer_with_range_array(binding, 0, [(buffer, range)])
     }
@@ -84,7 +84,7 @@ impl WriteDescriptorSet {
     pub fn buffer_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = Arc<dyn BufferAccess>>,
+        elements: impl IntoIterator<Item = Subbuffer<impl ?Sized>>,
     ) -> Self {
         Self::buffer_with_range_array(
             binding,
@@ -109,7 +109,7 @@ impl WriteDescriptorSet {
     #[inline]
     pub fn buffer_with_range(
         binding: u32,
-        buffer: Arc<dyn BufferAccess>,
+        buffer: Subbuffer<impl ?Sized>,
         range: Range<DeviceSize>,
     ) -> Self {
         Self::buffer_with_range_array(binding, 0, [(buffer, range)])
@@ -122,10 +122,14 @@ impl WriteDescriptorSet {
     pub fn buffer_with_range_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = (Arc<dyn BufferAccess>, Range<DeviceSize>)>,
+        elements: impl IntoIterator<Item = (Subbuffer<impl ?Sized>, Range<DeviceSize>)>,
     ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
+        let elements: SmallVec<_> = elements
+            .into_iter()
+            .map(|(buffer, range)| (buffer.into_bytes(), range))
+            .collect();
         assert!(!elements.is_empty());
+
         Self {
             binding,
             first_array_element,
@@ -135,7 +139,7 @@ impl WriteDescriptorSet {
 
     /// Write a single buffer view to array element 0.
     #[inline]
-    pub fn buffer_view(binding: u32, buffer_view: Arc<dyn BufferViewAbstract>) -> Self {
+    pub fn buffer_view(binding: u32, buffer_view: Arc<BufferView>) -> Self {
         Self::buffer_view_array(binding, 0, [buffer_view])
     }
 
@@ -143,7 +147,7 @@ impl WriteDescriptorSet {
     pub fn buffer_view_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = Arc<dyn BufferViewAbstract>>,
+        elements: impl IntoIterator<Item = Arc<BufferView>>,
     ) -> Self {
         let elements: SmallVec<_> = elements.into_iter().collect();
         assert!(!elements.is_empty());
@@ -265,14 +269,12 @@ impl WriteDescriptorSet {
                     elements
                         .iter()
                         .map(|(buffer, range)| {
-                            let BufferInner { buffer, offset } = buffer.inner();
-
                             debug_assert!(!range.is_empty());
-                            debug_assert!(range.end <= buffer.size());
+                            debug_assert!(range.end <= buffer.buffer().size());
 
                             ash::vk::DescriptorBufferInfo {
-                                buffer: buffer.handle(),
-                                offset: offset + range.start,
+                                buffer: buffer.buffer().handle(),
+                                offset: buffer.offset() + range.start,
                                 range: range.end - range.start,
                             }
                         })
@@ -375,8 +377,8 @@ impl WriteDescriptorSet {
 /// The elements held by a `WriteDescriptorSet`.
 pub enum WriteDescriptorSetElements {
     None(u32),
-    Buffer(SmallVec<[(Arc<dyn BufferAccess>, Range<DeviceSize>); 1]>),
-    BufferView(SmallVec<[Arc<dyn BufferViewAbstract>; 1]>),
+    Buffer(SmallVec<[(Subbuffer<[u8]>, Range<DeviceSize>); 1]>),
+    BufferView(SmallVec<[Arc<BufferView>; 1]>),
     ImageView(SmallVec<[Arc<dyn ImageViewAbstract>; 1]>),
     ImageViewSampler(SmallVec<[(Arc<dyn ImageViewAbstract>, Arc<Sampler>); 1]>),
     Sampler(SmallVec<[Arc<Sampler>; 1]>),
@@ -797,6 +799,7 @@ pub(crate) fn check_descriptor_write<'a>(
 
                 if !buffer_view
                     .buffer()
+                    .buffer()
                     .usage()
                     .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
                 {
@@ -826,6 +829,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 // TODO: storage_texel_buffer_atomic
                 if !buffer_view
                     .buffer()
+                    .buffer()
                     .usage()
                     .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
                 {
@@ -852,7 +856,11 @@ pub(crate) fn check_descriptor_write<'a>(
             for (index, (buffer, range)) in elements.iter().enumerate() {
                 assert_eq!(device, buffer.device());
 
-                if !buffer.usage().intersects(BufferUsage::UNIFORM_BUFFER) {
+                if !buffer
+                    .buffer()
+                    .usage()
+                    .intersects(BufferUsage::UNIFORM_BUFFER)
+                {
                     return Err(DescriptorSetUpdateError::MissingUsage {
                         binding: write.binding(),
                         index: descriptor_range_start + index as u32,
@@ -887,7 +895,11 @@ pub(crate) fn check_descriptor_write<'a>(
             for (index, (buffer, range)) in elements.iter().enumerate() {
                 assert_eq!(device, buffer.device());
 
-                if !buffer.usage().intersects(BufferUsage::STORAGE_BUFFER) {
+                if !buffer
+                    .buffer()
+                    .usage()
+                    .intersects(BufferUsage::STORAGE_BUFFER)
+                {
                     return Err(DescriptorSetUpdateError::MissingUsage {
                         binding: write.binding(),
                         index: descriptor_range_start + index as u32,

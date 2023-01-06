@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::{BufferUsage, TypedBufferAccess},
+    buffer::{BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
         auto::QueryState,
@@ -456,23 +456,17 @@ where
     /// [`query_pool.ty().result_len()`]: crate::query::QueryType::result_len
     /// [`QueryResultFlags::WITH_AVAILABILITY`]: crate::query::QueryResultFlags::WITH_AVAILABILITY
     /// [`get_results`]: crate::query::QueriesRange::get_results
-    pub fn copy_query_pool_results<D, T>(
+    pub fn copy_query_pool_results<T>(
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-        destination: Arc<D>,
+        destination: Subbuffer<[T]>,
         flags: QueryResultFlags,
     ) -> Result<&mut Self, QueryError>
     where
-        D: TypedBufferAccess<Content = [T]> + 'static,
         T: QueryResultElement,
     {
-        self.validate_copy_query_pool_results(
-            &query_pool,
-            queries.clone(),
-            destination.as_ref(),
-            flags,
-        )?;
+        self.validate_copy_query_pool_results(&query_pool, queries.clone(), &destination, flags)?;
 
         unsafe {
             let per_query_len = query_pool.query_type().result_len()
@@ -485,15 +479,14 @@ where
         Ok(self)
     }
 
-    fn validate_copy_query_pool_results<D, T>(
+    fn validate_copy_query_pool_results<T>(
         &self,
         query_pool: &QueryPool,
         queries: Range<u32>,
-        destination: &D,
+        destination: &Subbuffer<[T]>,
         flags: QueryResultFlags,
     ) -> Result<(), QueryError>
     where
-        D: ?Sized + TypedBufferAccess<Content = [T]>,
         T: QueryResultElement,
     {
         let queue_family_properties = self.queue_family_properties();
@@ -512,17 +505,16 @@ where
         }
 
         let device = self.device();
-        let buffer_inner = destination.inner();
 
         // VUID-vkCmdCopyQueryPoolResults-commonparent
-        assert_eq!(device, buffer_inner.buffer.device());
+        assert_eq!(device, destination.buffer().device());
         assert_eq!(device, query_pool.device());
 
         assert!(destination.len() > 0);
 
         // VUID-vkCmdCopyQueryPoolResults-flags-00822
         // VUID-vkCmdCopyQueryPoolResults-flags-00823
-        debug_assert!(buffer_inner.offset % std::mem::size_of::<T>() as DeviceSize == 0);
+        debug_assert!(destination.offset() % std::mem::size_of::<T>() as DeviceSize == 0);
 
         // VUID-vkCmdCopyQueryPoolResults-firstQuery-00820
         // VUID-vkCmdCopyQueryPoolResults-firstQuery-00821
@@ -544,8 +536,8 @@ where
         }
 
         // VUID-vkCmdCopyQueryPoolResults-dstBuffer-00825
-        if !buffer_inner
-            .buffer
+        if !destination
+            .buffer()
             .usage()
             .intersects(BufferUsage::TRANSFER_DST)
         {
@@ -714,29 +706,24 @@ impl SyncCommandBufferBuilder {
     ///
     /// # Safety
     /// `stride` must be at least the number of bytes that will be written by each query.
-    pub unsafe fn copy_query_pool_results<D, T>(
+    pub unsafe fn copy_query_pool_results(
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-        destination: Arc<D>,
+        destination: Subbuffer<[impl QueryResultElement]>,
         stride: DeviceSize,
         flags: QueryResultFlags,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        D: TypedBufferAccess<Content = [T]> + 'static,
-        T: QueryResultElement,
-    {
-        struct Cmd<D> {
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd<T> {
             query_pool: Arc<QueryPool>,
             queries: Range<u32>,
-            destination: Arc<D>,
+            destination: Subbuffer<[T]>,
             stride: DeviceSize,
             flags: QueryResultFlags,
         }
 
-        impl<D, T> Command for Cmd<D>
+        impl<T> Command for Cmd<T>
         where
-            D: TypedBufferAccess<Content = [T]> + 'static,
             T: QueryResultElement,
         {
             fn name(&self) -> &'static str {
@@ -746,7 +733,7 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_query_pool_results(
                     self.query_pool.queries_range(self.queries.clone()).unwrap(),
-                    self.destination.as_ref(),
+                    &self.destination,
                     self.stride,
                     self.flags,
                 );
@@ -763,7 +750,7 @@ impl SyncCommandBufferBuilder {
                 secondary_use_ref: None,
             },
             Resource::Buffer {
-                buffer: destination.clone(),
+                buffer: destination.as_bytes().clone(),
                 range: 0..destination.size(), // TODO:
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages::ALL_TRANSFER,
@@ -870,24 +857,22 @@ impl UnsafeCommandBufferBuilder {
     }
 
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
-    pub unsafe fn copy_query_pool_results<D, T>(
+    pub unsafe fn copy_query_pool_results<T>(
         &mut self,
         queries: QueriesRange<'_>,
-        destination: &D,
+        destination: &Subbuffer<[T]>,
         stride: DeviceSize,
         flags: QueryResultFlags,
     ) where
-        D: TypedBufferAccess<Content = [T]>,
         T: QueryResultElement,
     {
-        let destination = destination.inner();
         let range = queries.range();
-        debug_assert!(destination.offset < destination.buffer.size());
+        debug_assert!(destination.offset() < destination.buffer().size());
         debug_assert!(destination
-            .buffer
+            .buffer()
             .usage()
             .intersects(BufferUsage::TRANSFER_DST));
-        debug_assert!(destination.offset % size_of::<T>() as DeviceSize == 0);
+        debug_assert!(destination.offset() % size_of::<T>() as DeviceSize == 0);
         debug_assert!(stride % size_of::<T>() as DeviceSize == 0);
 
         let fns = self.device.fns();
@@ -896,8 +881,8 @@ impl UnsafeCommandBufferBuilder {
             queries.pool().handle(),
             range.start,
             range.end - range.start,
-            destination.buffer.handle(),
-            destination.offset,
+            destination.buffer().handle(),
+            destination.offset(),
             stride,
             ash::vk::QueryResultFlags::from(flags) | T::FLAG,
         );

@@ -138,7 +138,7 @@ pub use self::{
     },
 };
 use crate::{
-    buffer::{sys::Buffer, BufferAccess},
+    buffer::{Buffer, Subbuffer},
     format::Format,
     image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange, SampleCount},
     macros::vulkan_enum,
@@ -620,7 +620,7 @@ pub struct SecondaryCommandBufferResourcesUsage {
 #[derive(Debug)]
 pub(crate) struct SecondaryCommandBufferBufferUsage {
     pub(crate) use_ref: ResourceUseRef,
-    pub(crate) buffer: Arc<dyn BufferAccess>,
+    pub(crate) buffer: Subbuffer<[u8]>,
     pub(crate) range: Range<DeviceSize>,
     pub(crate) memory: PipelineMemoryAccess,
 }

@@ -863,7 +863,7 @@ enum SubmitState {
 mod tests {
     use super::*;
     use crate::{
-        buffer::{BufferUsage, CpuAccessibleBuffer},
+        buffer::{Buffer, BufferAllocateInfo, BufferUsage},
         command_buffer::{
             synced::SyncCommandBufferBuilderError, BufferCopy, CopyBufferInfoTyped, CopyError,
             ExecuteCommandsError,
@@ -897,18 +897,22 @@ mod tests {
         let queue = queues.next().unwrap();
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
-        let source = CpuAccessibleBuffer::from_iter(
+        let source = Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::TRANSFER_SRC,
-            true,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
             [1_u32, 2].iter().copied(),
         )
         .unwrap();
 
-        let destination = CpuAccessibleBuffer::from_iter(
+        let destination = Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::TRANSFER_DST,
-            true,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
             [0_u32, 10, 20, 3, 4].iter().copied(),
         )
         .unwrap();
@@ -1026,10 +1030,12 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
-        let source = CpuAccessibleBuffer::from_iter(
+        let source = Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
-            true,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
             [0_u32, 1, 2, 3].iter().copied(),
         )
         .unwrap();
@@ -1074,10 +1080,12 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
-        let source = CpuAccessibleBuffer::from_iter(
+        let source = Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
-            true,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
             [0_u32, 1, 2, 3].iter().copied(),
         )
         .unwrap();

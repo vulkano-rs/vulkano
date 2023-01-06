@@ -9,21 +9,13 @@
 
 //! Efficiently suballocates buffers into smaller subbuffers.
 
-use super::{
-    sys::{Buffer, BufferCreateInfo, RawBuffer},
-    BufferAccess, BufferAccessObject, BufferContents, BufferError, BufferInner, BufferUsage,
-    TypedBufferAccess,
-};
+use super::{Buffer, BufferError, BufferMemory, BufferUsage, Subbuffer};
 use crate::{
-    buffer::sys::BufferMemory,
-    device::{Device, DeviceOwned},
-    memory::{
-        allocator::{
-            align_up, AllocationCreateInfo, AllocationCreationError, AllocationType,
-            DeviceAlignment, DeviceLayout, MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
-            StandardMemoryAllocator,
-        },
-        DedicatedAllocation,
+    buffer::BufferAllocateInfo,
+    device::DeviceOwned,
+    memory::allocator::{
+        align_up, AllocationCreationError, DeviceAlignment, DeviceLayout, MemoryAllocator,
+        MemoryUsage, StandardMemoryAllocator,
     },
     DeviceSize,
 };
@@ -32,18 +24,12 @@ use std::{
     alloc::Layout,
     cell::UnsafeCell,
     cmp,
-    marker::PhantomData,
-    mem::{align_of, ManuallyDrop},
-    num::NonZeroU64,
-    ptr,
+    hash::{Hash, Hasher},
+    mem::ManuallyDrop,
     sync::Arc,
 };
 
 const MAX_ARENAS: usize = 32;
-
-// TODO: Add `CpuSubbuffer::read` to read the content of a subbuffer.
-//       But that's hard to do because we must prevent `increase_gpu_lock` from working while a
-//       a buffer is locked.
 
 /// Efficiently suballocates buffers into smaller subbuffers.
 ///
@@ -133,10 +119,6 @@ where
     A: MemoryAllocator,
 {
     /// Creates a new `CpuBufferAllocator`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `create_info.memory_usage` is [`MemoryUsage::GpuOnly`].
     pub fn new(memory_allocator: A, create_info: CpuBufferAllocatorCreateInfo) -> Self {
         let CpuBufferAllocatorCreateInfo {
             arena_size,
@@ -144,8 +126,6 @@ where
             memory_usage,
             _ne: _,
         } = create_info;
-
-        assert!(memory_usage != MemoryUsage::GpuOnly);
 
         let properties = memory_allocator.device().physical_device().properties();
         let buffer_alignment = [
@@ -208,104 +188,55 @@ where
         Ok(())
     }
 
-    /// Allocates a subbuffer and writes `data` in it.
+    /// Allocates a subbuffer for sized data.
     ///
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `T` has an alignment greater than `64`.
-    pub fn from_data<T>(&self, data: T) -> Result<Arc<CpuSubbuffer<T>>, AllocationCreationError>
-    where
-        T: BufferContents,
-    {
-        assert!(align_of::<T>() <= 64);
-
+    pub fn allocate_sized<T>(&self) -> Result<Subbuffer<T>, AllocationCreationError> {
         let layout = DeviceLayout::from_layout(Layout::new::<T>())
             .expect("can't allocate memory for zero-sized types");
-        let size = layout.size();
 
-        let state = unsafe { &mut *self.state.get() };
-        let offset = state.allocate(layout)?;
-        let arena = state.arena.as_ref().unwrap().clone();
-        let allocation = match arena.inner.memory() {
-            BufferMemory::Normal(a) => a,
-            BufferMemory::Sparse => unreachable!(),
-        };
-
-        unsafe {
-            let bytes = allocation.write(offset..offset + size).unwrap();
-            let mapping = T::from_bytes_mut(bytes).unwrap();
-
-            ptr::write(mapping, data);
-
-            if let Some(atom_size) = allocation.atom_size() {
-                let size = align_up(size, atom_size);
-                let end = cmp::min(offset + size, allocation.size());
-                allocation.flush_range(offset..end).unwrap();
-            }
-        }
-
-        Ok(Arc::new(CpuSubbuffer {
-            id: CpuSubbuffer::<T>::next_id(),
-            offset,
-            size,
-            arena,
-            _marker: PhantomData,
-        }))
+        self.allocate(layout)
+            .map(|subbuffer| unsafe { subbuffer.reinterpret() })
     }
 
-    /// Allocates a subbuffer and writes all elements of `iter` in it.
+    /// Allocates a subbuffer for unsized data.
     ///
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `T` has an alignment greater than `64`.
-    pub fn from_iter<T, I>(
+    /// - Panics if `len` is zero.
+    pub fn allocate_unsized<T>(
         &self,
-        iter: I,
-    ) -> Result<Arc<CpuSubbuffer<[T]>>, AllocationCreationError>
-    where
-        [T]: BufferContents,
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        assert!(align_of::<T>() <= 64);
+        len: DeviceSize,
+    ) -> Result<Subbuffer<[T]>, AllocationCreationError> {
+        let layout =
+            DeviceLayout::from_layout(Layout::array::<T>(len.try_into().unwrap()).unwrap())
+                .expect("can't allocate memory for zero-sized types");
 
-        let iter = iter.into_iter();
-        let layout = DeviceLayout::from_layout(Layout::array::<T>(iter.len()).unwrap())
-            .expect("can't allocate memory for zero-sized types");
-        let size = layout.size();
+        self.allocate(layout)
+            .map(|subbuffer| unsafe { subbuffer.reinterpret() })
+    }
+
+    /// Allocates a subbuffer with the given `layout`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `layout.alignment()` exceeds `64`.
+    pub fn allocate(
+        &self,
+        layout: DeviceLayout,
+    ) -> Result<Subbuffer<[u8]>, AllocationCreationError> {
+        assert!(layout.alignment().as_devicesize() <= 64);
 
         let state = unsafe { &mut *self.state.get() };
         let offset = state.allocate(layout)?;
         let arena = state.arena.as_ref().unwrap().clone();
-        let allocation = match arena.inner.memory() {
-            BufferMemory::Normal(a) => a,
-            BufferMemory::Sparse => unreachable!(),
-        };
 
-        unsafe {
-            let bytes = allocation.write(offset..offset + size).unwrap();
-            let mapping = <[T]>::from_bytes_mut(bytes).unwrap();
-
-            for (o, i) in mapping.iter_mut().zip(iter) {
-                ptr::write(o, i);
-            }
-
-            if let Some(atom_size) = allocation.atom_size() {
-                let size = align_up(size, atom_size);
-                let end = cmp::min(offset + size, allocation.size());
-                allocation.flush_range(offset..end).unwrap();
-            }
-        }
-
-        Ok(Arc::new(CpuSubbuffer {
-            id: CpuSubbuffer::<T>::next_id(),
-            offset,
-            size,
-            arena,
-            _marker: PhantomData,
-        }))
+        Ok(Subbuffer::from_arena(arena, offset, layout.size()))
     }
 }
 
@@ -349,7 +280,7 @@ where
             }
 
             let arena = self.arena.as_ref().unwrap();
-            let allocation = match arena.inner.memory() {
+            let allocation = match arena.buffer.memory() {
                 BufferMemory::Normal(a) => a,
                 BufferMemory::Sparse => unreachable!(),
             };
@@ -381,69 +312,64 @@ where
             .pop()
             .map(Ok)
             .unwrap_or_else(|| self.create_arena())
-            .map(|inner| {
+            .map(|buffer| {
                 Arc::new(Arena {
-                    inner: ManuallyDrop::new(inner),
+                    buffer: ManuallyDrop::new(buffer),
                     reserve: reserve.clone(),
                 })
             })
     }
 
     fn create_arena(&self) -> Result<Arc<Buffer>, AllocationCreationError> {
-        let raw_buffer = RawBuffer::new(
-            self.memory_allocator.device().clone(),
-            BufferCreateInfo {
-                size: self.arena_size,
-                usage: self.buffer_usage,
+        Buffer::new(
+            &self.memory_allocator,
+            BufferAllocateInfo {
+                buffer_usage: self.buffer_usage,
+                memory_usage: self.memory_usage,
                 ..Default::default()
             },
+            DeviceLayout::from_size_alignment(self.arena_size, 1).unwrap(),
         )
         .map_err(|err| match err {
             BufferError::AllocError(err) => err,
-            // We don't use sparse-binding, therefore the other errors can't happen.
+            // We don't use sparse-binding, concurrent sharing or external memory, therefore the
+            // other errors can't happen.
             _ => unreachable!(),
-        })?;
-        let requirements = *raw_buffer.memory_requirements();
-        let create_info = AllocationCreateInfo {
-            requirements,
-            allocation_type: AllocationType::Linear,
-            usage: self.memory_usage,
-            allocate_preference: MemoryAllocatePreference::Unknown,
-            dedicated_allocation: Some(DedicatedAllocation::Buffer(&raw_buffer)),
-            ..Default::default()
-        };
-
-        match unsafe { self.memory_allocator.allocate_unchecked(create_info) } {
-            Ok(mut allocation) => {
-                debug_assert!(
-                    allocation.offset() % requirements.layout.alignment().as_nonzero() == 0
-                );
-                debug_assert!(allocation.size() == requirements.layout.size());
-
-                allocation.shrink(self.arena_size);
-                let inner = Arc::new(
-                    unsafe { raw_buffer.bind_memory_unchecked(allocation) }
-                        .map_err(|(err, _, _)| err)?,
-                );
-
-                Ok(inner)
-            }
-            Err(err) => Err(err),
-        }
+        })
     }
 }
 
 #[derive(Debug)]
-struct Arena {
-    inner: ManuallyDrop<Arc<Buffer>>,
+pub(super) struct Arena {
+    buffer: ManuallyDrop<Arc<Buffer>>,
     // Where we return the arena in our `Drop` impl.
     reserve: Arc<ArrayQueue<Arc<Buffer>>>,
 }
 
+impl Arena {
+    pub(super) fn buffer(&self) -> &Arc<Buffer> {
+        &self.buffer
+    }
+}
+
 impl Drop for Arena {
     fn drop(&mut self) {
-        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
-        let _ = self.reserve.push(inner);
+        let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) };
+        let _ = self.reserve.push(buffer);
+    }
+}
+
+impl PartialEq for Arena {
+    fn eq(&self, other: &Self) -> bool {
+        self.buffer == other.buffer
+    }
+}
+
+impl Eq for Arena {}
+
+impl Hash for Arena {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.buffer.hash(state);
     }
 }
 
@@ -485,62 +411,6 @@ impl Default for CpuBufferAllocatorCreateInfo {
     }
 }
 
-/// A subbuffer allocated using a [`CpuBufferAllocator`].
-#[derive(Debug)]
-pub struct CpuSubbuffer<T: ?Sized> {
-    id: NonZeroU64,
-    // Offset within the arena.
-    offset: DeviceSize,
-    // Size of the subbuffer.
-    size: DeviceSize,
-    // We need to keep a reference to the arena so it won't be reset.
-    arena: Arc<Arena>,
-    _marker: PhantomData<Box<T>>,
-}
-
-unsafe impl<T> BufferAccess for CpuSubbuffer<T>
-where
-    T: BufferContents + ?Sized,
-{
-    fn inner(&self) -> BufferInner<'_> {
-        BufferInner {
-            buffer: &self.arena.inner,
-            offset: self.offset,
-        }
-    }
-
-    fn size(&self) -> DeviceSize {
-        self.size
-    }
-}
-
-impl<T> BufferAccessObject for Arc<CpuSubbuffer<T>>
-where
-    T: BufferContents + ?Sized,
-{
-    fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
-        self.clone()
-    }
-}
-
-unsafe impl<T> TypedBufferAccess for CpuSubbuffer<T>
-where
-    T: BufferContents + ?Sized,
-{
-    type Content = T;
-}
-
-unsafe impl<T> DeviceOwned for CpuSubbuffer<T>
-where
-    T: ?Sized,
-{
-    fn device(&self) -> &Arc<Device> {
-        self.arena.inner.device()
-    }
-}
-
-crate::impl_id_counter!(CpuSubbuffer<T>);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -565,7 +435,7 @@ mod tests {
         let buffer_allocator = CpuBufferAllocator::new(memory_allocator, Default::default());
         assert_eq!(buffer_allocator.arena_size(), 0);
 
-        buffer_allocator.from_data(12u32).unwrap();
+        buffer_allocator.allocate_sized::<u32>().unwrap();
         assert_eq!(buffer_allocator.arena_size(), 8);
     }
 }

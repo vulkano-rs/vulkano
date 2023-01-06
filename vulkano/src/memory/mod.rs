@@ -91,19 +91,23 @@
 //! get memory from that pool. By default if you don't specify any pool when creating a buffer or
 //! an image, an instance of `StandardMemoryPool` that is shared by the `Device` object is used.
 
-use self::allocator::DeviceLayout;
+use self::allocator::{DeviceAlignment, DeviceLayout};
 pub use self::device_memory::{
     DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
     MappedDeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryImportInfo, MemoryMapError,
 };
 use crate::{
-    buffer::{sys::RawBuffer, BufferAccess},
+    buffer::{sys::RawBuffer, Subbuffer},
     image::{sys::RawImage, ImageAccess, ImageAspects},
     macros::vulkan_bitflags,
     sync::semaphore::Semaphore,
     DeviceSize,
 };
-use std::{num::NonZeroU64, sync::Arc};
+use std::{
+    num::NonZeroU64,
+    ops::{Bound, Range, RangeBounds, RangeTo},
+    sync::Arc,
+};
 
 pub mod allocator;
 mod device_memory;
@@ -409,7 +413,7 @@ pub struct BindSparseInfo {
     /// The bind operations to perform for buffers.
     ///
     /// The default value is empty.
-    pub buffer_binds: Vec<(Arc<dyn BufferAccess>, Vec<SparseBufferMemoryBind>)>,
+    pub buffer_binds: Vec<(Subbuffer<[u8]>, Vec<SparseBufferMemoryBind>)>,
 
     /// The bind operations to perform for images with an opaque memory layout.
     ///
@@ -555,4 +559,31 @@ pub struct SparseImageMemoryBind {
     ///
     /// The default value is `None`.
     pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
+}
+
+#[inline(always)]
+pub(crate) fn is_aligned(offset: DeviceSize, alignment: DeviceAlignment) -> bool {
+    offset & (alignment.as_devicesize() - 1) == 0
+}
+
+/// Performs bounds-checking of a Vulkan memory range. Analog of `std::slice::range`.
+pub(crate) fn range(
+    range: impl RangeBounds<DeviceSize>,
+    bounds: RangeTo<DeviceSize>,
+) -> Option<Range<DeviceSize>> {
+    let len = bounds.end;
+
+    let start = match range.start_bound() {
+        Bound::Included(&start) => start,
+        Bound::Excluded(start) => start.checked_add(1)?,
+        Bound::Unbounded => 0,
+    };
+
+    let end = match range.end_bound() {
+        Bound::Included(end) => end.checked_add(1)?,
+        Bound::Excluded(&end) => end,
+        Bound::Unbounded => len,
+    };
+
+    (start <= end && end <= len).then_some(Range { start, end })
 }

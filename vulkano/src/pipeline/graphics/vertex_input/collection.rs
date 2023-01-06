@@ -7,157 +7,61 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::{BufferAccess, BufferAccessObject};
-use std::sync::Arc;
+use crate::buffer::Subbuffer;
+use std::mem;
 
 /// A collection of vertex buffers.
 pub trait VertexBuffersCollection {
     /// Converts `self` into a list of buffers.
     // TODO: better than a Vec
-    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>>;
+    fn into_vec(self) -> Vec<Subbuffer<[u8]>>;
 }
 
 impl VertexBuffersCollection for () {
     #[inline]
-    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
+    fn into_vec(self) -> Vec<Subbuffer<[u8]>> {
         Vec::new()
     }
 }
 
-impl<T: BufferAccessObject> VertexBuffersCollection for T {
-    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
-        vec![self.as_buffer_access_object()]
+impl<T: ?Sized> VertexBuffersCollection for Subbuffer<T> {
+    fn into_vec(self) -> Vec<Subbuffer<[u8]>> {
+        vec![self.into_bytes()]
     }
 }
 
-impl<T: BufferAccessObject> VertexBuffersCollection for Vec<T> {
-    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
-        self.into_iter()
-            .map(|src| src.as_buffer_access_object())
-            .collect()
+impl<T: ?Sized> VertexBuffersCollection for Vec<Subbuffer<T>> {
+    fn into_vec(self) -> Vec<Subbuffer<[u8]>> {
+        assert!(mem::size_of::<Subbuffer<T>>() == mem::size_of::<Subbuffer<[u8]>>());
+        assert!(mem::align_of::<Subbuffer<T>>() == mem::align_of::<Subbuffer<[u8]>>());
+
+        // SAFETY: All `Subbuffer`s share the same layout.
+        unsafe { mem::transmute::<Vec<Subbuffer<T>>, Vec<Subbuffer<[u8]>>>(self) }
     }
 }
 
-impl<T: BufferAccessObject, const N: usize> VertexBuffersCollection for [T; N] {
-    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
-        self.into_iter()
-            .map(|src| src.as_buffer_access_object())
-            .collect()
+impl<T, const N: usize> VertexBuffersCollection for [Subbuffer<T>; N] {
+    fn into_vec(self) -> Vec<Subbuffer<[u8]>> {
+        self.into_iter().map(Subbuffer::into_bytes).collect()
     }
 }
 
 macro_rules! impl_collection {
-    ($first:ident $(, $others:ident)+) => (
-        impl<$first$(, $others)+> VertexBuffersCollection for ($first, $($others),+)
-            where $first: BufferAccessObject
-                  $(, $others: BufferAccessObject)*
+    ($first:ident $(, $others:ident)*) => (
+        impl<$first: ?Sized $(, $others: ?Sized)*> VertexBuffersCollection
+            for (Subbuffer<$first>, $(Subbuffer<$others>),*)
         {
             #[inline]
             #[allow(non_snake_case)]
-            fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
+            fn into_vec(self) -> Vec<Subbuffer<[u8]>> {
                 let ($first, $($others,)*) = self;
-                vec![$first.as_buffer_access_object() $(, $others.as_buffer_access_object())+]
+                vec![$first.into_bytes() $(, $others.into_bytes())*]
             }
         }
 
-        impl_collection!($($others),+);
+        impl_collection!($($others),*);
     );
-
-    ($i:ident) => ();
+    () => {}
 }
 
 impl_collection!(Z, Y, X, W, V, U, T, S, R, Q, P, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);
-
-#[cfg(test)]
-mod tests {
-    use super::VertexBuffersCollection;
-    use crate::{
-        buffer::{BufferAccess, BufferAccessObject, BufferInner},
-        device::{Device, DeviceOwned},
-        DeviceSize,
-    };
-    use std::sync::Arc;
-
-    struct DummyBufferA {}
-    struct DummyBufferB {}
-
-    unsafe impl BufferAccess for DummyBufferA {
-        fn inner(&self) -> BufferInner<'_> {
-            unimplemented!()
-        }
-
-        fn size(&self) -> DeviceSize {
-            unimplemented!()
-        }
-    }
-
-    unsafe impl DeviceOwned for DummyBufferA {
-        fn device(&self) -> &Arc<Device> {
-            unimplemented!()
-        }
-    }
-
-    impl BufferAccessObject for Arc<DummyBufferA> {
-        fn as_buffer_access_object(self: &Arc<DummyBufferA>) -> Arc<dyn BufferAccess> {
-            self.clone()
-        }
-    }
-
-    unsafe impl BufferAccess for DummyBufferB {
-        fn inner(&self) -> BufferInner<'_> {
-            unimplemented!()
-        }
-
-        fn size(&self) -> DeviceSize {
-            unimplemented!()
-        }
-    }
-
-    unsafe impl DeviceOwned for DummyBufferB {
-        fn device(&self) -> &Arc<Device> {
-            unimplemented!()
-        }
-    }
-
-    impl BufferAccessObject for Arc<DummyBufferB> {
-        fn as_buffer_access_object(self: &Arc<DummyBufferB>) -> Arc<dyn BufferAccess> {
-            self.clone()
-        }
-    }
-
-    fn takes_collection<C: VertexBuffersCollection>(_: C) {}
-
-    #[test]
-    fn vertex_buffer_collection() {
-        let concrete_a = Arc::new(DummyBufferA {});
-        let concrete_b = Arc::new(DummyBufferB {});
-        let concrete_aa = Arc::new(DummyBufferA {});
-        let dynamic_a = concrete_a.clone() as Arc<dyn BufferAccess>;
-        let dynamic_b = concrete_b.clone() as Arc<dyn BufferAccess>;
-
-        // Concrete/Dynamic alone are valid
-        takes_collection(concrete_a.clone());
-        takes_collection(dynamic_a.clone());
-
-        // Tuples of any variation are valid
-        takes_collection((concrete_a.clone(), concrete_b.clone()));
-        takes_collection((concrete_a.clone(), dynamic_b.clone()));
-        takes_collection((dynamic_a.clone(), dynamic_b.clone()));
-
-        // Vec need all the same type
-        takes_collection(vec![concrete_a.clone(), concrete_aa.clone()]);
-        takes_collection(vec![dynamic_a.clone(), dynamic_b.clone()]);
-        // But casting the first or starting off with a dynamic will allow all variations
-        takes_collection(vec![
-            concrete_a.clone() as Arc<dyn BufferAccess>,
-            concrete_b.clone(),
-        ]);
-        takes_collection(vec![dynamic_a.clone(), concrete_b.clone()]);
-
-        // Arrays are similar to Vecs
-        takes_collection([concrete_a.clone(), concrete_aa]);
-        takes_collection([dynamic_a.clone(), dynamic_b.clone()]);
-        takes_collection([concrete_a as Arc<dyn BufferAccess>, concrete_b.clone()]);
-        takes_collection([dynamic_a.clone(), concrete_b]);
-    }
-}

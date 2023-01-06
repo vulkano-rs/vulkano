@@ -12,7 +12,7 @@ use super::{
     RenderPassState, RenderPassStateAttachmentInfo, RenderPassStateType, ResourcesState,
 };
 use crate::{
-    buffer::{view::BufferViewAbstract, BufferAccess, BufferUsage, TypedBufferAccess},
+    buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator, commands::pipeline::DescriptorResourceInvalidError,
         DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand,
@@ -162,16 +162,16 @@ where
     #[inline]
     pub unsafe fn dispatch_indirect(
         &mut self,
-        indirect_buffer: Arc<impl TypedBufferAccess<Content = [DispatchIndirectCommand]> + 'static>,
+        indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
     ) -> Result<&mut Self, PipelineExecutionError> {
-        self.validate_dispatch_indirect(&indirect_buffer)?;
+        self.validate_dispatch_indirect(indirect_buffer.as_bytes())?;
 
-        unsafe { Ok(self.dispatch_indirect_unchecked(indirect_buffer)) }
+        unsafe { Ok(self.dispatch_indirect_unchecked(indirect_buffer.into_bytes())) }
     }
 
     fn validate_dispatch_indirect(
         &self,
-        indirect_buffer: &dyn BufferAccess,
+        indirect_buffer: &Subbuffer<[u8]>,
     ) -> Result<(), PipelineExecutionError> {
         let queue_family_properties = self.queue_family_properties();
 
@@ -208,15 +208,13 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn dispatch_indirect_unchecked(
         &mut self,
-        indirect_buffer: Arc<dyn BufferAccess>,
+        indirect_buffer: Subbuffer<[u8]>,
     ) -> &mut Self {
-        let indirect_buffer_inner = indirect_buffer.inner();
-
         let fns = self.device().fns();
         (fns.v1_0.cmd_dispatch_indirect)(
             self.handle(),
-            indirect_buffer_inner.buffer.handle(),
-            indirect_buffer_inner.offset,
+            indirect_buffer.buffer().handle(),
+            indirect_buffer.offset(),
         );
 
         let command_index = self.next_command_index;
@@ -400,18 +398,20 @@ where
     #[inline]
     pub unsafe fn draw_indirect(
         &mut self,
-        indirect_buffer: Arc<impl TypedBufferAccess<Content = [DrawIndirectCommand]> + 'static>,
+        indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
     ) -> Result<&mut Self, PipelineExecutionError> {
         let draw_count = indirect_buffer.len() as u32;
         let stride = size_of::<DrawIndirectCommand>() as u32;
-        self.validate_draw_indirect(&indirect_buffer, draw_count, stride)?;
+        self.validate_draw_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        unsafe { Ok(self.draw_indirect_unchecked(indirect_buffer, draw_count, stride)) }
+        unsafe {
+            Ok(self.draw_indirect_unchecked(indirect_buffer.into_bytes(), draw_count, stride))
+        }
     }
 
     fn validate_draw_indirect(
         &self,
-        indirect_buffer: &dyn BufferAccess,
+        indirect_buffer: &Subbuffer<[u8]>,
         draw_count: u32,
         _stride: u32,
     ) -> Result<(), PipelineExecutionError> {
@@ -471,17 +471,15 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_indirect_unchecked(
         &mut self,
-        indirect_buffer: Arc<dyn BufferAccess>,
+        indirect_buffer: Subbuffer<[u8]>,
         draw_count: u32,
         stride: u32,
     ) -> &mut Self {
-        let indirect_buffer_inner = indirect_buffer.inner();
-
         let fns = self.device().fns();
         (fns.v1_0.cmd_draw_indirect)(
             self.handle(),
-            indirect_buffer_inner.buffer.handle(),
-            indirect_buffer_inner.offset,
+            indirect_buffer.buffer().handle(),
+            indirect_buffer.offset(),
             draw_count,
             stride,
         );
@@ -726,20 +724,24 @@ where
     #[inline]
     pub unsafe fn draw_indexed_indirect(
         &mut self,
-        indirect_buffer: Arc<
-            impl TypedBufferAccess<Content = [DrawIndexedIndirectCommand]> + 'static,
-        >,
+        indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
     ) -> Result<&mut Self, PipelineExecutionError> {
         let draw_count = indirect_buffer.len() as u32;
         let stride = size_of::<DrawIndexedIndirectCommand>() as u32;
-        self.validate_draw_indexed_indirect(&indirect_buffer, draw_count, stride)?;
+        self.validate_draw_indexed_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        unsafe { Ok(self.draw_indexed_indirect_unchecked(indirect_buffer, draw_count, stride)) }
+        unsafe {
+            Ok(self.draw_indexed_indirect_unchecked(
+                indirect_buffer.into_bytes(),
+                draw_count,
+                stride,
+            ))
+        }
     }
 
     fn validate_draw_indexed_indirect(
         &self,
-        indirect_buffer: &dyn BufferAccess,
+        indirect_buffer: &Subbuffer<[u8]>,
         draw_count: u32,
         _stride: u32,
     ) -> Result<(), PipelineExecutionError> {
@@ -800,17 +802,15 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_indexed_indirect_unchecked(
         &mut self,
-        indirect_buffer: Arc<dyn BufferAccess>,
+        indirect_buffer: Subbuffer<[u8]>,
         draw_count: u32,
         stride: u32,
     ) -> &mut Self {
-        let indirect_buffer_inner = indirect_buffer.inner();
-
         let fns = self.device().fns();
         (fns.v1_0.cmd_draw_indexed_indirect)(
             self.handle(),
-            indirect_buffer_inner.buffer.handle(),
-            indirect_buffer_inner.offset,
+            indirect_buffer.buffer().handle(),
+            indirect_buffer.offset(),
             draw_count,
             stride,
         );
@@ -898,13 +898,17 @@ where
 
     fn validate_indirect_buffer(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &Subbuffer<impl ?Sized>,
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDispatchIndirect-commonparent
         assert_eq!(self.device(), buffer.device());
 
         // VUID-vkCmdDispatchIndirect-buffer-02709
-        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
+        if !buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
             return Err(PipelineExecutionError::IndirectBufferMissingUsage);
         }
 
@@ -996,9 +1000,9 @@ where
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
             let check_buffer =
-                |_index: u32, (_buffer, _range): &(Arc<dyn BufferAccess>, Range<DeviceSize>)| Ok(());
+                |_index: u32, (_buffer, _range): &(Subbuffer<[u8]>, Range<DeviceSize>)| Ok(());
 
-            let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
+            let check_buffer_view = |index: u32, buffer_view: &Arc<BufferView>| {
                 for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
                     .chain(binding_reqs.descriptors.get(&None))
                 {
@@ -2072,18 +2076,17 @@ fn record_descriptor_sets_access(
 
                     for (index, element) in elements.iter().enumerate() {
                         if let Some((buffer, range)) = element {
-                            let buffer_inner = buffer.inner();
                             let dynamic_offset = dynamic_offsets[index] as DeviceSize;
                             let (use_ref, stage_access_iter) = use_iter(index as u32);
 
                             let mut range = range.clone();
-                            range.start += buffer_inner.offset + dynamic_offset;
-                            range.end += buffer_inner.offset + dynamic_offset;
+                            range.start += buffer.offset() + dynamic_offset;
+                            range.end += buffer.offset() + dynamic_offset;
 
                             for stage_access in stage_access_iter {
                                 resources_usage_state.record_buffer_access(
                                     &use_ref,
-                                    buffer_inner.buffer,
+                                    buffer.buffer(),
                                     range.clone(),
                                     stage_access,
                                 );
@@ -2093,17 +2096,16 @@ fn record_descriptor_sets_access(
                 } else {
                     for (index, element) in elements.iter().enumerate() {
                         if let Some((buffer, range)) = element {
-                            let buffer_inner = buffer.inner();
                             let (use_ref, stage_access_iter) = use_iter(index as u32);
 
                             let mut range = range.clone();
-                            range.start += buffer_inner.offset;
-                            range.end += buffer_inner.offset;
+                            range.start += buffer.offset();
+                            range.end += buffer.offset();
 
                             for stage_access in stage_access_iter {
                                 resources_usage_state.record_buffer_access(
                                     &use_ref,
-                                    buffer_inner.buffer,
+                                    buffer.buffer(),
                                     range.clone(),
                                     stage_access,
                                 );
@@ -2116,17 +2118,16 @@ fn record_descriptor_sets_access(
                 for (index, element) in elements.iter().enumerate() {
                     if let Some(buffer_view) = element {
                         let buffer = buffer_view.buffer();
-                        let buffer_inner = buffer.inner();
                         let (use_ref, stage_access_iter) = use_iter(index as u32);
 
                         let mut range = buffer_view.range();
-                        range.start += buffer_inner.offset;
-                        range.end += buffer_inner.offset;
+                        range.start += buffer.offset();
+                        range.end += buffer.offset();
 
                         for stage_access in stage_access_iter {
                             resources_usage_state.record_buffer_access(
                                 &use_ref,
-                                buffer_inner.buffer,
+                                buffer.buffer(),
                                 range.clone(),
                                 stage_access,
                             );
@@ -2205,12 +2206,11 @@ fn record_vertex_buffers_access(
     resources_usage_state: &mut ResourcesState,
     command_index: usize,
     command_name: &'static str,
-    vertex_buffers_state: &HashMap<u32, Arc<dyn BufferAccess>>,
+    vertex_buffers_state: &HashMap<u32, Subbuffer<[u8]>>,
     pipeline: &GraphicsPipeline,
 ) {
     for &binding in pipeline.vertex_input_state().bindings.keys() {
         let buffer = &vertex_buffers_state[&binding];
-        let buffer_inner = buffer.inner();
         let use_ref = ResourceUseRef {
             command_index,
             command_name,
@@ -2219,11 +2219,11 @@ fn record_vertex_buffers_access(
         };
 
         let mut range = 0..buffer.size(); // TODO: take range from draw command
-        range.start += buffer_inner.offset;
-        range.end += buffer_inner.offset;
+        range.start += buffer.offset();
+        range.end += buffer.offset();
         resources_usage_state.record_buffer_access(
             &use_ref,
-            buffer_inner.buffer,
+            buffer.buffer(),
             range,
             PipelineStageAccess::VertexAttributeInput_VertexAttributeRead,
         );
@@ -2234,10 +2234,9 @@ fn record_index_buffer_access(
     resources_usage_state: &mut ResourcesState,
     command_index: usize,
     command_name: &'static str,
-    index_buffer_state: &Option<(Arc<dyn BufferAccess>, IndexType)>,
+    index_buffer_state: &Option<(Subbuffer<[u8]>, IndexType)>,
 ) {
     let buffer = &index_buffer_state.as_ref().unwrap().0;
-    let buffer_inner = buffer.inner();
     let use_ref = ResourceUseRef {
         command_index,
         command_name,
@@ -2246,11 +2245,11 @@ fn record_index_buffer_access(
     };
 
     let mut range = 0..buffer.size(); // TODO: take range from draw command
-    range.start += buffer_inner.offset;
-    range.end += buffer_inner.offset;
+    range.start += buffer.offset();
+    range.end += buffer.offset();
     resources_usage_state.record_buffer_access(
         &use_ref,
-        buffer_inner.buffer,
+        buffer.buffer(),
         range,
         PipelineStageAccess::IndexInput_IndexRead,
     );
@@ -2260,9 +2259,8 @@ fn record_indirect_buffer_access(
     resources_usage_state: &mut ResourcesState,
     command_index: usize,
     command_name: &'static str,
-    buffer: &Arc<dyn BufferAccess>,
+    buffer: &Subbuffer<[u8]>,
 ) {
-    let buffer_inner = buffer.inner();
     let use_ref = ResourceUseRef {
         command_index,
         command_name,
@@ -2271,11 +2269,11 @@ fn record_indirect_buffer_access(
     };
 
     let mut range = 0..buffer.size(); // TODO: take range from draw command
-    range.start += buffer_inner.offset;
-    range.end += buffer_inner.offset;
+    range.start += buffer.offset();
+    range.end += buffer.offset();
     resources_usage_state.record_buffer_access(
         &use_ref,
-        buffer_inner.buffer,
+        buffer.buffer(),
         range,
         PipelineStageAccess::DrawIndirect_IndirectCommandRead,
     );

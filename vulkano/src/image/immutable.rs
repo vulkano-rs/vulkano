@@ -14,7 +14,7 @@ use super::{
     ImageLayout, ImageSubresourceLayers, ImageUsage, MipmapsCount,
 };
 use crate::{
-    buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferError, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
         BufferImageCopy, CommandBufferBeginError, CopyBufferToImageInfo, ImageBlit,
@@ -189,8 +189,21 @@ impl ImmutableImage {
         I::IntoIter: ExactSizeIterator,
         A: CommandBufferAllocator,
     {
-        let source =
-            CpuAccessibleBuffer::from_iter(allocator, BufferUsage::TRANSFER_SRC, false, iter)?;
+        let source = Buffer::from_iter(
+            allocator,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::TRANSFER_SRC,
+                memory_usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+            iter,
+        )
+        .map_err(|err| match err {
+            BufferError::AllocError(err) => err,
+            // We don't use sparse-binding, concurrent sharing or external memory, therefore the
+            // other errors can't happen.
+            _ => unreachable!(),
+        })?;
 
         ImmutableImage::from_buffer(
             allocator,
@@ -213,7 +226,7 @@ impl ImmutableImage {
     /// normal. If it is not executed, the image contents will be left undefined.
     pub fn from_buffer<L, A>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        source: Arc<dyn BufferAccess>,
+        source: Subbuffer<impl ?Sized>,
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,

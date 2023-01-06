@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::{view::BufferViewAbstract, BufferAccess, BufferUsage, TypedBufferAccess},
+    buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
         auto::{RenderPassState, RenderPassStateType},
@@ -123,11 +123,8 @@ where
     /// pipeline, such as descriptor sets, must have been set beforehand.
     pub fn dispatch_indirect<Inb>(
         &mut self,
-        indirect_buffer: Arc<Inb>,
-    ) -> Result<&mut Self, PipelineExecutionError>
-    where
-        Inb: TypedBufferAccess<Content = [DispatchIndirectCommand]> + 'static,
-    {
+        indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
+    ) -> Result<&mut Self, PipelineExecutionError> {
         self.validate_dispatch_indirect(&indirect_buffer)?;
 
         unsafe {
@@ -139,7 +136,7 @@ where
 
     fn validate_dispatch_indirect(
         &self,
-        indirect_buffer: &dyn BufferAccess,
+        indirect_buffer: &Subbuffer<impl ?Sized>,
     ) -> Result<(), PipelineExecutionError> {
         let queue_family_properties = self.queue_family_properties();
 
@@ -252,11 +249,8 @@ where
     /// vertex buffers.
     pub fn draw_indirect<Inb>(
         &mut self,
-        indirect_buffer: Arc<Inb>,
-    ) -> Result<&mut Self, PipelineExecutionError>
-    where
-        Inb: TypedBufferAccess<Content = [DrawIndirectCommand]> + Send + Sync + 'static,
-    {
+        indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
+    ) -> Result<&mut Self, PipelineExecutionError> {
         let draw_count = indirect_buffer.len() as u32;
         let stride = size_of::<DrawIndirectCommand>() as u32;
         self.validate_draw_indirect(&indirect_buffer, draw_count, stride)?;
@@ -277,7 +271,7 @@ where
 
     fn validate_draw_indirect(
         &self,
-        indirect_buffer: &dyn BufferAccess,
+        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
         draw_count: u32,
         _stride: u32,
     ) -> Result<(), PipelineExecutionError> {
@@ -441,11 +435,8 @@ where
     /// vertex buffers.
     pub fn draw_indexed_indirect<Inb>(
         &mut self,
-        indirect_buffer: Arc<Inb>,
-    ) -> Result<&mut Self, PipelineExecutionError>
-    where
-        Inb: TypedBufferAccess<Content = [DrawIndexedIndirectCommand]> + 'static,
-    {
+        indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
+    ) -> Result<&mut Self, PipelineExecutionError> {
         let draw_count = indirect_buffer.len() as u32;
         let stride = size_of::<DrawIndexedIndirectCommand>() as u32;
         self.validate_draw_indexed_indirect(&indirect_buffer, draw_count, stride)?;
@@ -466,7 +457,7 @@ where
 
     fn validate_draw_indexed_indirect(
         &self,
-        indirect_buffer: &dyn BufferAccess,
+        indirect_buffer: &Subbuffer<impl ?Sized>,
         draw_count: u32,
         _stride: u32,
     ) -> Result<(), PipelineExecutionError> {
@@ -548,13 +539,17 @@ where
 
     fn validate_indirect_buffer(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &Subbuffer<impl ?Sized>,
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDispatchIndirect-commonparent
         assert_eq!(self.device(), buffer.device());
 
         // VUID-vkCmdDispatchIndirect-buffer-02709
-        if !buffer.usage().intersects(BufferUsage::INDIRECT_BUFFER) {
+        if !buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
             return Err(PipelineExecutionError::IndirectBufferMissingUsage);
         }
 
@@ -648,9 +643,9 @@ where
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
             let check_buffer =
-                |_index: u32, (_buffer, _range): &(Arc<dyn BufferAccess>, Range<DeviceSize>)| Ok(());
+                |_index: u32, (_buffer, _range): &(Subbuffer<[u8]>, Range<DeviceSize>)| Ok(());
 
-            let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
+            let check_buffer_view = |index: u32, buffer_view: &Arc<BufferView>| {
                 for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
                     .chain(binding_reqs.descriptors.get(&None))
                 {
@@ -1718,10 +1713,10 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn dispatch_indirect(
         &mut self,
-        indirect_buffer: Arc<dyn BufferAccess>,
+        indirect_buffer: Subbuffer<impl ?Sized>,
     ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
-            indirect_buffer: Arc<dyn BufferAccess>,
+            indirect_buffer: Subbuffer<[u8]>,
         }
 
         impl Command for Cmd {
@@ -1730,10 +1725,11 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.dispatch_indirect(self.indirect_buffer.as_ref());
+                out.dispatch_indirect(&self.indirect_buffer);
             }
         }
 
+        let indirect_buffer = indirect_buffer.into_bytes();
         let command_index = self.commands.len();
         let command_name = "dispatch_indirect";
         let pipeline = self
@@ -1898,12 +1894,12 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn draw_indirect(
         &mut self,
-        indirect_buffer: Arc<dyn BufferAccess>,
+        indirect_buffer: Subbuffer<impl ?Sized>,
         draw_count: u32,
         stride: u32,
     ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
-            indirect_buffer: Arc<dyn BufferAccess>,
+            indirect_buffer: Subbuffer<[u8]>,
             draw_count: u32,
             stride: u32,
         }
@@ -1914,10 +1910,11 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.draw_indirect(self.indirect_buffer.as_ref(), self.draw_count, self.stride);
+                out.draw_indirect(&self.indirect_buffer, self.draw_count, self.stride);
             }
         }
 
+        let indirect_buffer = indirect_buffer.into_bytes();
         let command_index = self.commands.len();
         let command_name = "draw_indirect";
         let pipeline = self
@@ -1958,12 +1955,12 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn draw_indexed_indirect(
         &mut self,
-        indirect_buffer: Arc<dyn BufferAccess>,
+        indirect_buffer: Subbuffer<impl ?Sized>,
         draw_count: u32,
         stride: u32,
     ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
-            indirect_buffer: Arc<dyn BufferAccess>,
+            indirect_buffer: Subbuffer<[u8]>,
             draw_count: u32,
             stride: u32,
         }
@@ -1974,14 +1971,11 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.draw_indexed_indirect(
-                    self.indirect_buffer.as_ref(),
-                    self.draw_count,
-                    self.stride,
-                );
+                out.draw_indexed_indirect(&self.indirect_buffer, self.draw_count, self.stride);
             }
         }
 
+        let indirect_buffer = indirect_buffer.into_bytes();
         let command_index = self.commands.len();
         let command_name = "draw_indexed_indirect";
         let pipeline = self
@@ -2091,7 +2085,7 @@ impl SyncCommandBufferBuilder {
                 [memory_read, memory_write].into_iter().flatten()
             };
             let buffer_resource =
-                |(index, buffer, range): (u32, Arc<dyn BufferAccess>, Range<DeviceSize>)| {
+                |(index, buffer, range): (u32, Subbuffer<[u8]>, Range<DeviceSize>)| {
                     memory_iter(index).map(move |memory| {
                         (
                             ResourceUseRef {
@@ -2188,7 +2182,11 @@ impl SyncCommandBufferBuilder {
                         (elements.iter().enumerate())
                             .filter_map(|(index, element)| {
                                 element.as_ref().map(|buffer_view| {
-                                    (index as u32, buffer_view.buffer(), buffer_view.range())
+                                    (
+                                        index as u32,
+                                        buffer_view.buffer().clone(),
+                                        buffer_view.range(),
+                                    )
                                 })
                             })
                             .flat_map(buffer_resource),
@@ -2295,7 +2293,7 @@ impl SyncCommandBufferBuilder {
         resources: &mut Vec<(ResourceUseRef, Resource)>,
         command_index: usize,
         command_name: &'static str,
-        indirect_buffer: &Arc<dyn BufferAccess>,
+        indirect_buffer: &Subbuffer<[u8]>,
     ) {
         resources.push((
             ResourceUseRef {
@@ -2343,18 +2341,17 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
     #[inline]
-    pub unsafe fn dispatch_indirect(&mut self, buffer: &dyn BufferAccess) {
+    pub unsafe fn dispatch_indirect(&mut self, buffer: &Subbuffer<impl ?Sized>) {
         let fns = self.device.fns();
 
-        let inner = buffer.inner();
-        debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner
-            .buffer
+        debug_assert!(buffer.offset() < buffer.buffer().size());
+        debug_assert!(buffer
+            .buffer()
             .usage()
             .intersects(BufferUsage::INDIRECT_BUFFER));
-        debug_assert_eq!(inner.offset % 4, 0);
+        debug_assert_eq!(buffer.offset() % 4, 0);
 
-        (fns.v1_0.cmd_dispatch_indirect)(self.handle, inner.buffer.handle(), inner.offset);
+        (fns.v1_0.cmd_dispatch_indirect)(self.handle, buffer.buffer().handle(), buffer.offset());
     }
 
     /// Calls `vkCmdDraw` on the builder.
@@ -2401,7 +2398,7 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn draw_indirect(
         &mut self,
-        buffer: &dyn BufferAccess,
+        buffer: &Subbuffer<impl ?Sized>,
         draw_count: u32,
         stride: u32,
     ) {
@@ -2413,17 +2410,16 @@ impl UnsafeCommandBufferBuilder {
                     && stride as usize >= size_of::<ash::vk::DrawIndirectCommand>()
         );
 
-        let inner = buffer.inner();
-        debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner
-            .buffer
+        debug_assert!(buffer.offset() < buffer.buffer().size());
+        debug_assert!(buffer
+            .buffer()
             .usage()
             .intersects(BufferUsage::INDIRECT_BUFFER));
 
         (fns.v1_0.cmd_draw_indirect)(
             self.handle,
-            inner.buffer.handle(),
-            inner.offset,
+            buffer.buffer().handle(),
+            buffer.offset(),
             draw_count,
             stride,
         );
@@ -2433,23 +2429,22 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn draw_indexed_indirect(
         &mut self,
-        buffer: &dyn BufferAccess,
+        buffer: &Subbuffer<impl ?Sized>,
         draw_count: u32,
         stride: u32,
     ) {
         let fns = self.device.fns();
 
-        let inner = buffer.inner();
-        debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner
-            .buffer
+        debug_assert!(buffer.offset() < buffer.buffer().size());
+        debug_assert!(buffer
+            .buffer()
             .usage()
             .intersects(BufferUsage::INDIRECT_BUFFER));
 
         (fns.v1_0.cmd_draw_indexed_indirect)(
             self.handle,
-            inner.buffer.handle(),
-            inner.offset,
+            buffer.buffer().handle(),
+            buffer.offset(),
             draw_count,
             stride,
         );

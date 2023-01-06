@@ -12,7 +12,7 @@ use super::{
     FillBufferInfo,
 };
 use crate::{
-    buffer::{BufferAccess, BufferContents, BufferUsage, TypedBufferAccess},
+    buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{allocator::CommandBufferAllocator, ResourceInCommand, ResourceUseRef},
     device::{DeviceOwned, QueueFlags},
     format::FormatFeatures,
@@ -21,7 +21,7 @@ use crate::{
     DeviceSize, RequiresOneOf, Version, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{mem::size_of_val, sync::Arc};
+use std::mem::size_of_val;
 
 impl<L, A> CommandBufferBuilder<L, A>
 where
@@ -534,8 +534,6 @@ where
             _ne: _,
         } = fill_buffer_info;
 
-        let dst_buffer_inner = dst_buffer.inner();
-
         // VUID-vkCmdFillBuffer-commonparent
         assert_eq!(device, dst_buffer.device());
 
@@ -543,7 +541,11 @@ where
         assert!(size != 0);
 
         // VUID-vkCmdFillBuffer-dstBuffer-00029
-        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
             return Err(ClearError::MissingUsage {
                 usage: "transfer_dst",
             });
@@ -560,10 +562,10 @@ where
         }
 
         // VUID-vkCmdFillBuffer-dstOffset-00025
-        if (dst_buffer_inner.offset + dst_offset) % 4 != 0 {
+        if (dst_buffer.offset() + dst_offset) % 4 != 0 {
             return Err(ClearError::OffsetNotAlignedForBuffer {
                 region_index: 0,
-                offset: dst_buffer_inner.offset + dst_offset,
+                offset: dst_buffer.offset() + dst_offset,
                 required_alignment: 4,
             });
         }
@@ -592,12 +594,10 @@ where
             _ne: _,
         } = fill_buffer_info;
 
-        let dst_buffer_inner = dst_buffer.inner();
-
         let fns = self.device().fns();
         (fns.v1_0.cmd_fill_buffer)(
             self.handle(),
-            dst_buffer_inner.buffer.handle(),
+            dst_buffer.buffer().handle(),
             dst_offset,
             size,
             data,
@@ -613,11 +613,11 @@ where
         };
 
         let mut dst_range = dst_offset..dst_offset + size;
-        dst_range.start += dst_buffer_inner.offset;
-        dst_range.end += dst_buffer_inner.offset;
+        dst_range.start += dst_buffer.offset();
+        dst_range.end += dst_buffer.offset();
         self.resources_usage_state.record_buffer_access(
             &use_ref,
-            dst_buffer_inner.buffer,
+            dst_buffer.buffer(),
             dst_range,
             PipelineStageAccess::Clear_TransferWrite,
         );
@@ -639,25 +639,26 @@ where
     /// - Appropriate synchronization must be provided for all buffers
     ///   that are accessed by the command.
     #[inline]
-    pub unsafe fn update_buffer<B, D>(
+    pub unsafe fn update_buffer<D>(
         &mut self,
         data: &D,
-        dst_buffer: Arc<B>,
+        dst_buffer: Subbuffer<D>,
         dst_offset: DeviceSize,
     ) -> Result<&mut Self, ClearError>
     where
-        B: TypedBufferAccess<Content = D> + 'static,
         D: BufferContents + ?Sized,
     {
-        self.validate_update_buffer(data, &dst_buffer, dst_offset)?;
+        self.validate_update_buffer(data.as_bytes(), dst_buffer.as_bytes(), dst_offset)?;
 
-        unsafe { Ok(self.update_buffer_unchecked(data, dst_buffer, dst_offset)) }
+        unsafe {
+            Ok(self.update_buffer_unchecked(data.as_bytes(), dst_buffer.into_bytes(), dst_offset))
+        }
     }
 
     fn validate_update_buffer(
         &self,
-        data: &impl ?Sized,
-        dst_buffer: &dyn BufferAccess,
+        data: &[u8],
+        dst_buffer: &Subbuffer<[u8]>,
         dst_offset: DeviceSize,
     ) -> Result<(), ClearError> {
         let device = self.device();
@@ -677,8 +678,6 @@ where
             return Err(ClearError::NotSupportedByQueueFamily);
         }
 
-        let dst_buffer_inner = dst_buffer.inner();
-
         // VUID-vkCmdUpdateBuffer-commonparent
         assert_eq!(device, dst_buffer.device());
 
@@ -686,7 +685,11 @@ where
         assert!(size_of_val(data) != 0);
 
         // VUID-vkCmdUpdateBuffer-dstBuffer-00034
-        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
             return Err(ClearError::MissingUsage {
                 usage: "transfer_dst",
             });
@@ -703,10 +706,10 @@ where
         }
 
         // VUID-vkCmdUpdateBuffer-dstOffset-00036
-        if (dst_buffer_inner.offset + dst_offset) % 4 != 0 {
+        if (dst_buffer.offset() + dst_offset) % 4 != 0 {
             return Err(ClearError::OffsetNotAlignedForBuffer {
                 region_index: 0,
-                offset: dst_buffer_inner.offset + dst_offset,
+                offset: dst_buffer.offset() + dst_offset,
                 required_alignment: 4,
             });
         }
@@ -736,17 +739,15 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn update_buffer_unchecked(
         &mut self,
-        data: &(impl BufferContents + ?Sized),
-        dst_buffer: Arc<dyn BufferAccess>,
+        data: &[u8],
+        dst_buffer: Subbuffer<[u8]>,
         dst_offset: DeviceSize,
     ) -> &mut Self {
-        let dst_buffer_inner = dst_buffer.inner();
-
         let fns = self.device().fns();
         (fns.v1_0.cmd_update_buffer)(
             self.handle(),
-            dst_buffer_inner.buffer.handle(),
-            dst_buffer_inner.offset + dst_offset,
+            dst_buffer.buffer().handle(),
+            dst_buffer.offset() + dst_offset,
             size_of_val(data) as DeviceSize,
             data.as_bytes().as_ptr() as *const _,
         );
@@ -761,11 +762,11 @@ where
         };
 
         let mut dst_range = dst_offset..dst_offset + size_of_val(data) as DeviceSize;
-        dst_range.start += dst_buffer_inner.offset;
-        dst_range.end += dst_buffer_inner.offset;
+        dst_range.start += dst_buffer.offset();
+        dst_range.end += dst_buffer.offset();
         self.resources_usage_state.record_buffer_access(
             &use_ref,
-            dst_buffer_inner.buffer,
+            dst_buffer.buffer(),
             dst_range,
             PipelineStageAccess::Clear_TransferWrite,
         );
