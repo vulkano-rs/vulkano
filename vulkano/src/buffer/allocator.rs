@@ -12,7 +12,7 @@
 use super::{Buffer, BufferError, BufferMemory, BufferUsage, Subbuffer};
 use crate::{
     buffer::BufferAllocateInfo,
-    device::DeviceOwned,
+    device::{Device, DeviceOwned},
     memory::allocator::{
         align_up, AllocationCreationError, DeviceAlignment, DeviceLayout, MemoryAllocator,
         MemoryUsage, StandardMemoryAllocator,
@@ -238,6 +238,15 @@ where
         let arena = state.arena.as_ref().unwrap().clone();
 
         Ok(Subbuffer::from_arena(arena, offset, layout.size()))
+    }
+}
+
+unsafe impl<A> DeviceOwned for SubbufferAllocator<A>
+where
+    A: MemoryAllocator,
+{
+    fn device(&self) -> &Arc<Device> {
+        unsafe { &*self.state.get() }.memory_allocator.device()
     }
 }
 
