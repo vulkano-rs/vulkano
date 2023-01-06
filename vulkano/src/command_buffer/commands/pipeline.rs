@@ -121,14 +121,14 @@ where
     /// A compute pipeline must have been bound using
     /// [`bind_pipeline_compute`](Self::bind_pipeline_compute). Any resources used by the compute
     /// pipeline, such as descriptor sets, must have been set beforehand.
-    pub fn dispatch_indirect<Inb>(
+    pub fn dispatch_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
     ) -> Result<&mut Self, PipelineExecutionError> {
-        self.validate_dispatch_indirect(&indirect_buffer)?;
+        self.validate_dispatch_indirect(indirect_buffer.as_bytes())?;
 
         unsafe {
-            self.inner.dispatch_indirect(indirect_buffer)?;
+            self.inner.dispatch_indirect(indirect_buffer.into_bytes())?;
         }
 
         Ok(self)
@@ -136,7 +136,7 @@ where
 
     fn validate_dispatch_indirect(
         &self,
-        indirect_buffer: &Subbuffer<impl ?Sized>,
+        indirect_buffer: &Subbuffer<[u8]>,
     ) -> Result<(), PipelineExecutionError> {
         let queue_family_properties = self.queue_family_properties();
 
@@ -247,17 +247,17 @@ where
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the vertex and instance
     /// ranges of each `DrawIndirectCommand` in the indirect buffer must be in range of the bound
     /// vertex buffers.
-    pub fn draw_indirect<Inb>(
+    pub fn draw_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
     ) -> Result<&mut Self, PipelineExecutionError> {
         let draw_count = indirect_buffer.len() as u32;
         let stride = size_of::<DrawIndirectCommand>() as u32;
-        self.validate_draw_indirect(&indirect_buffer, draw_count, stride)?;
+        self.validate_draw_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
         unsafe {
             self.inner
-                .draw_indirect(indirect_buffer, draw_count, stride)?;
+                .draw_indirect(indirect_buffer.into_bytes(), draw_count, stride)?;
         }
 
         if let RenderPassStateType::BeginRendering(state) =
@@ -271,7 +271,7 @@ where
 
     fn validate_draw_indirect(
         &self,
-        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
+        indirect_buffer: &Subbuffer<[u8]>,
         draw_count: u32,
         _stride: u32,
     ) -> Result<(), PipelineExecutionError> {
@@ -433,17 +433,17 @@ where
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the instance ranges of
     /// each `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound
     /// vertex buffers.
-    pub fn draw_indexed_indirect<Inb>(
+    pub fn draw_indexed_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
     ) -> Result<&mut Self, PipelineExecutionError> {
         let draw_count = indirect_buffer.len() as u32;
         let stride = size_of::<DrawIndexedIndirectCommand>() as u32;
-        self.validate_draw_indexed_indirect(&indirect_buffer, draw_count, stride)?;
+        self.validate_draw_indexed_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
         unsafe {
             self.inner
-                .draw_indexed_indirect(indirect_buffer, draw_count, stride)?;
+                .draw_indexed_indirect(indirect_buffer.into_bytes(), draw_count, stride)?;
         }
 
         if let RenderPassStateType::BeginRendering(state) =
@@ -457,7 +457,7 @@ where
 
     fn validate_draw_indexed_indirect(
         &self,
-        indirect_buffer: &Subbuffer<impl ?Sized>,
+        indirect_buffer: &Subbuffer<[u8]>,
         draw_count: u32,
         _stride: u32,
     ) -> Result<(), PipelineExecutionError> {
@@ -539,7 +539,7 @@ where
 
     fn validate_indirect_buffer(
         &self,
-        buffer: &Subbuffer<impl ?Sized>,
+        buffer: &Subbuffer<[u8]>,
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDispatchIndirect-commonparent
         assert_eq!(self.device(), buffer.device());
@@ -1713,7 +1713,7 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn dispatch_indirect(
         &mut self,
-        indirect_buffer: Subbuffer<impl ?Sized>,
+        indirect_buffer: Subbuffer<[u8]>,
     ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
             indirect_buffer: Subbuffer<[u8]>,
@@ -1894,7 +1894,7 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn draw_indirect(
         &mut self,
-        indirect_buffer: Subbuffer<impl ?Sized>,
+        indirect_buffer: Subbuffer<[u8]>,
         draw_count: u32,
         stride: u32,
     ) -> Result<(), SyncCommandBufferBuilderError> {
@@ -1955,7 +1955,7 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn draw_indexed_indirect(
         &mut self,
-        indirect_buffer: Subbuffer<impl ?Sized>,
+        indirect_buffer: Subbuffer<[u8]>,
         draw_count: u32,
         stride: u32,
     ) -> Result<(), SyncCommandBufferBuilderError> {
@@ -2341,7 +2341,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
     #[inline]
-    pub unsafe fn dispatch_indirect(&mut self, buffer: &Subbuffer<impl ?Sized>) {
+    pub unsafe fn dispatch_indirect(&mut self, buffer: &Subbuffer<[u8]>) {
         let fns = self.device.fns();
 
         debug_assert!(buffer.offset() < buffer.buffer().size());
@@ -2396,12 +2396,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndirect` on the builder.
     #[inline]
-    pub unsafe fn draw_indirect(
-        &mut self,
-        buffer: &Subbuffer<impl ?Sized>,
-        draw_count: u32,
-        stride: u32,
-    ) {
+    pub unsafe fn draw_indirect(&mut self, buffer: &Subbuffer<[u8]>, draw_count: u32, stride: u32) {
         let fns = self.device.fns();
 
         debug_assert!(
@@ -2429,7 +2424,7 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn draw_indexed_indirect(
         &mut self,
-        buffer: &Subbuffer<impl ?Sized>,
+        buffer: &Subbuffer<[u8]>,
         draw_count: u32,
         stride: u32,
     ) {
