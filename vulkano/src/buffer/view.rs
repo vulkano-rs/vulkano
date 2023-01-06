@@ -19,21 +19,23 @@
 //!
 //! ```
 //! # use std::sync::Arc;
-//! use vulkano::buffer::DeviceLocalBuffer;
-//! use vulkano::buffer::BufferUsage;
+//! use vulkano::buffer::{Buffer, BufferAllocateInfo, BufferUsage};
 //! use vulkano::buffer::view::{BufferView, BufferViewCreateInfo};
 //! use vulkano::format::Format;
 //!
 //! # let queue: Arc<vulkano::device::Queue> = return;
 //! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
-//! let buffer = DeviceLocalBuffer::<[u32]>::array(
+//! let buffer = Buffer::new_unsized::<u32>(
 //!     &memory_allocator,
+//!     BufferAllocateInfo {
+//!         buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
+//!         ..Default::default()
+//!     },
 //!     128,
-//!     BufferUsage::STORAGE_TEXEL_BUFFER,
-//!     [queue.queue_family_index()],
 //! )
 //! .unwrap();
-//! let _view = BufferView::new(
+//!
+//! let view = BufferView::new(
 //!     buffer,
 //!     BufferViewCreateInfo {
 //!         format: Some(Format::R32_UINT),

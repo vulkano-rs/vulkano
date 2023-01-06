@@ -89,7 +89,8 @@ const MAX_ARENAS: usize = 32;
 /// for n in 0..25u32 {
 ///     // Each loop allocates a new subbuffer and stores `data` in it.
 ///     let data: [f32; 4] = [1.0, 0.5, n as f32 / 24.0, 0.0];
-///     let subbuffer = buffer_allocator.from_data(data).unwrap();
+///     let subbuffer = buffer_allocator.allocate_sized().unwrap();
+///     *subbuffer.write().unwrap() = data;
 ///
 ///     // You can then use `subbuffer` as if it was an entirely separate buffer.
 ///     AutoCommandBufferBuilder::primary(

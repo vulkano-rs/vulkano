@@ -80,10 +80,9 @@
 //! #     #[format(R32G32B32_SFLOAT)]
 //! #     position: [f32; 3]
 //! # };
-//! # use vulkano::buffer::TypedBufferAccess;
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
-//! # let vertex_buffer: std::sync::Arc<vulkano::buffer::CpuAccessibleBuffer<[PosVertex]>> = return;
+//! # let vertex_buffer: vulkano::buffer::Subbuffer<[PosVertex]> = return;
 //! # let render_pass_begin_info: vulkano::command_buffer::RenderPassBeginInfo = return;
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
 //! # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
