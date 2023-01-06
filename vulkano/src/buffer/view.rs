@@ -25,7 +25,7 @@
 //!
 //! # let queue: Arc<vulkano::device::Queue> = return;
 //! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
-//! let buffer = Buffer::new_unsized::<u32>(
+//! let buffer = Buffer::new_slice::<u32>(
 //!     &memory_allocator,
 //!     BufferAllocateInfo {
 //!         buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
@@ -436,7 +436,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer = Buffer::new_unsized::<[u8; 4]>(
+        let buffer = Buffer::new_slice::<[u8; 4]>(
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::UNIFORM_TEXEL_BUFFER,
@@ -462,7 +462,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer = Buffer::new_unsized::<[u8; 4]>(
+        let buffer = Buffer::new_slice::<[u8; 4]>(
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
@@ -488,7 +488,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer = Buffer::new_unsized::<u32>(
+        let buffer = Buffer::new_slice::<u32>(
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
@@ -514,7 +514,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer = Buffer::new_unsized::<[u8; 4]>(
+        let buffer = Buffer::new_slice::<[u8; 4]>(
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::TRANSFER_DST, // Dummy value
@@ -542,7 +542,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer = Buffer::new_unsized::<[f64; 4]>(
+        let buffer = Buffer::new_slice::<[f64; 4]>(
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER,

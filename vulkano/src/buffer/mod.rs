@@ -188,7 +188,7 @@ impl Buffer {
         I::IntoIter: ExactSizeIterator,
     {
         let iter = iter.into_iter();
-        let buffer = Buffer::new_unsized(allocator, allocate_info, iter.len().try_into().unwrap())?;
+        let buffer = Buffer::new_slice(allocator, allocate_info, iter.len().try_into().unwrap())?;
 
         for (o, i) in buffer.write()?.iter_mut().zip(iter) {
             unsafe { ptr::write(o, i) };
@@ -215,7 +215,7 @@ impl Buffer {
         Buffer::new(allocator, allocate_info, layout).map(Subbuffer::from_buffer)
     }
 
-    /// Creates a new uninitialized `Buffer` for unsized data. Returns a [`Subbuffer`] spanning the
+    /// Creates a new uninitialized `Buffer` for a slice. Returns a [`Subbuffer`] spanning the
     /// whole buffer.
     ///
     /// # Panics
@@ -223,7 +223,7 @@ impl Buffer {
     /// - Panics if `T` has zero size.
     /// - Panics if `T` has an alignment greater than `64`.
     /// - Panics if `len` is zero.
-    pub fn new_unsized<T>(
+    pub fn new_slice<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
         allocate_info: BufferAllocateInfo,
         len: DeviceSize,

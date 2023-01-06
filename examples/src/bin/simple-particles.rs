@@ -350,7 +350,7 @@ fn main() {
         .unwrap();
 
         // Create a buffer in device-local memory with enough space for `PARTICLE_COUNT` number of `Vertex`.
-        let device_local_buffer = Buffer::new_unsized::<Vertex>(
+        let device_local_buffer = Buffer::new_slice::<Vertex>(
             &memory_allocator,
             BufferAllocateInfo {
                 // Specify use as a storage buffer, vertex buffer, and transfer destination.

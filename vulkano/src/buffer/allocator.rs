@@ -203,14 +203,14 @@ where
             .map(|subbuffer| unsafe { subbuffer.reinterpret() })
     }
 
-    /// Allocates a subbuffer for unsized data.
+    /// Allocates a subbuffer for a slice.
     ///
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `T` has an alignment greater than `64`.
     /// - Panics if `len` is zero.
-    pub fn allocate_unsized<T>(
+    pub fn allocate_slice<T>(
         &self,
         len: DeviceSize,
     ) -> Result<Subbuffer<[T]>, AllocationCreationError> {
