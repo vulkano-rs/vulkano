@@ -287,6 +287,13 @@ vulkan_bitflags_enum! {
     SAMPLE_64, Sample64 = TYPE_64,
 }
 
+impl From<SampleCount> for u32 {
+    #[inline]
+    fn from(value: SampleCount) -> Self {
+        value as u32
+    }
+}
+
 impl TryFrom<u32> for SampleCount {
     type Error = ();
 
