@@ -78,6 +78,7 @@ Changes to memory allocation:
 - Added `DeviceLayout` and `DeviceAlignment`.
 - Added the type alias `NonZeroDeviceSize`.
 - Added `VertexBufferDescription` and three new methods to the `Vertex` trait that return it: `per_vertex`, `per_instance` and `per_instance_with_divisor`. This deprecates and replaces `BuffersDefinition`.
+- Implemented `From<SampleCount>` for `u32`.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
