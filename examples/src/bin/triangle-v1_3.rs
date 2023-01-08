@@ -16,10 +16,10 @@
 // and that you want to learn Vulkan. This means that for example it won't go into details about
 // what a vertex or a shader is.
 //
-// This version of the triangle example is written for Vulkan 1.3 and higher, using dynamic
-// rendering instead of render pass and framebuffer objects. If your device does not support
-// Vulkan 1.3, or if you want to see how to support older versions, see the original triangle
-// example.
+// This version of the triangle example is written using dynamic rendering instead of render pass
+// and framebuffer objects. If your device does not support Vulkan 1.3 or the
+// `khr_dynamic_rendering` extension, or if you want to see how to support older versions, see the
+// original triangle example.
 
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
@@ -101,7 +101,7 @@ fn main() {
     // Choose device extensions that we're going to use.
     // In order to present images to a surface, we need a `Swapchain`, which is provided by the
     // `khr_swapchain` extension.
-    let device_extensions = DeviceExtensions {
+    let mut device_extensions = DeviceExtensions {
         khr_swapchain: true,
         ..DeviceExtensions::empty()
     };
@@ -112,8 +112,9 @@ fn main() {
         .enumerate_physical_devices()
         .unwrap()
         .filter(|p| {
-            // For this example, we require at least Vulkan 1.3.
-            p.api_version() >= Version::V1_3
+            // For this example, we require at least Vulkan 1.3, or a device that has the
+            // `khr_dynamic_rendering` extension available.
+            p.api_version() >= Version::V1_3 || p.supported_extensions().khr_dynamic_rendering
         })
         .filter(|p| {
             // Some devices may not support the extensions or features that your application, or
@@ -177,6 +178,15 @@ fn main() {
         physical_device.properties().device_type,
     );
 
+    // If the selected device doesn't have Vulkan 1.3 available, then we need to enable the
+    // `khr_dynamic_rendering` extension manually. This extension became a core part of Vulkan
+    // in version 1.3 and later, so it's always available then and it does not need to be enabled.
+    // We can be sure that this extension will be available on the selected physical device,
+    // because we filtered out unsuitable devices in the device selection code above.
+    if physical_device.api_version() < Version::V1_3 {
+        device_extensions.khr_dynamic_rendering = true;
+    }
+
     // Now initializing the device. This is probably the most important object of Vulkan.
     //
     // The iterator of created queues is returned by the function alongside the device.
@@ -186,14 +196,16 @@ fn main() {
         DeviceCreateInfo {
             // A list of optional features and extensions that our program needs to work correctly.
             // Some parts of the Vulkan specs are optional and must be enabled manually at device
-            // creation. In this example the only thing we are going to need is the `khr_swapchain`
-            // extension that allows us to draw to a window.
+            // creation. In this example the only things we are going to need are the
+            // `khr_swapchain` extension that allows us to draw to a window, and
+            // `khr_dynamic_rendering` if we don't have Vulkan 1.3 available.
             enabled_extensions: device_extensions,
 
             // In order to render with Vulkan 1.3's dynamic rendering, we need to enable it here.
             // Otherwise, we are only allowed to render with a render pass object, as in the
-            // standard triangle example. The feature is required to be supported on Vulkan 1.3 and
-            // higher, so we don't need to check for support.
+            // standard triangle example. The feature is required to be supported by the device if
+            // it supports Vulkan 1.3 and higher, or if the `khr_dynamic_rendering` extension is
+            // available, so we don't need to check for support.
             enabled_features: Features {
                 dynamic_rendering: true,
                 ..Features::empty()
