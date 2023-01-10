@@ -235,15 +235,13 @@ where
     ///
     /// [`BufferUsage::INDEX_BUFFER`]: crate::buffer::BufferUsage::INDEX_BUFFER
     /// [`index_type_uint8`]: crate::device::Features::index_type_uint8
-    pub fn bind_index_buffer<I>(&mut self, index_buffer: Subbuffer<[I]>) -> &mut Self
-    where
-        I: Index + 'static,
-    {
-        self.validate_bind_index_buffer(&index_buffer, I::ty())
+    pub fn bind_index_buffer<I: Index>(&mut self, index_buffer: Subbuffer<[I]>) -> &mut Self {
+        self.validate_bind_index_buffer(index_buffer.as_bytes(), I::ty())
             .unwrap();
 
         unsafe {
-            self.inner.bind_index_buffer(index_buffer, I::ty());
+            self.inner
+                .bind_index_buffer(index_buffer.into_bytes(), I::ty());
         }
 
         self
@@ -251,7 +249,7 @@ where
 
     fn validate_bind_index_buffer(
         &self,
-        index_buffer: &Subbuffer<impl ?Sized>,
+        index_buffer: &Subbuffer<[u8]>,
         index_type: IndexType,
     ) -> Result<(), BindPushError> {
         let queue_family_properties = self.queue_family_properties();
@@ -727,11 +725,7 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer(
-        &mut self,
-        buffer: Subbuffer<impl ?Sized>,
-        index_type: IndexType,
-    ) {
+    pub unsafe fn bind_index_buffer(&mut self, buffer: Subbuffer<[u8]>, index_type: IndexType) {
         struct Cmd {
             buffer: Subbuffer<[u8]>,
             index_type: IndexType,
@@ -747,7 +741,6 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let buffer = buffer.into_bytes();
         self.current_state.index_buffer = Some((buffer.clone(), index_type));
         self.commands.push(Box::new(Cmd { buffer, index_type }));
     }
@@ -1024,9 +1017,9 @@ pub struct SyncCommandBufferBuilderBindVertexBuffer<'a> {
 impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
     /// Adds a buffer to the list.
     #[inline]
-    pub fn add(&mut self, buffer: Subbuffer<impl ?Sized>) {
+    pub fn add(&mut self, buffer: Subbuffer<[u8]>) {
         self.inner.add(&buffer);
-        self.buffers.push(buffer.into_bytes());
+        self.buffers.push(buffer);
     }
 
     #[inline]
@@ -1101,11 +1094,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer(
-        &mut self,
-        buffer: &Subbuffer<impl ?Sized>,
-        index_type: IndexType,
-    ) {
+    pub unsafe fn bind_index_buffer(&mut self, buffer: &Subbuffer<[u8]>, index_type: IndexType) {
         let fns = self.device.fns();
 
         debug_assert!(buffer.offset() < buffer.buffer().size());
@@ -1295,7 +1284,7 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
 
     /// Adds a buffer to the list.
     #[inline]
-    pub fn add(&mut self, subbuffer: &Subbuffer<impl ?Sized>) {
+    pub fn add(&mut self, subbuffer: &Subbuffer<[u8]>) {
         debug_assert!(subbuffer
             .buffer()
             .usage()

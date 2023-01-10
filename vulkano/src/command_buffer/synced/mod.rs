@@ -362,7 +362,7 @@ mod tests {
             )
             .unwrap();
             let mut buf_builder = sync.bind_vertex_buffers();
-            buf_builder.add(buf);
+            buf_builder.add(buf.into_bytes());
             buf_builder.submit(1);
 
             assert!(sync.state().vertex_buffer(0).is_none());

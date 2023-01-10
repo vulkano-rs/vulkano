@@ -462,7 +462,7 @@ where
         D: BufferContents + ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
-        self.validate_update_buffer(data.deref(), &dst_buffer, dst_offset)?;
+        self.validate_update_buffer(data.deref().as_bytes(), dst_buffer.as_bytes(), dst_offset)?;
 
         unsafe {
             self.inner.update_buffer(data, dst_buffer, dst_offset)?;
@@ -471,15 +471,12 @@ where
         Ok(self)
     }
 
-    fn validate_update_buffer<D>(
+    fn validate_update_buffer(
         &self,
-        data: &D,
-        dst_buffer: &Subbuffer<impl ?Sized>,
+        data: &[u8],
+        dst_buffer: &Subbuffer<[u8]>,
         dst_offset: DeviceSize,
-    ) -> Result<(), ClearError>
-    where
-        D: ?Sized,
-    {
+    ) -> Result<(), ClearError> {
         let device = self.device();
 
         // VUID-vkCmdUpdateBuffer-renderpass
@@ -787,7 +784,11 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.update_buffer(self.data.deref(), &self.dst_buffer, self.dst_offset);
+                out.update_buffer(
+                    self.data.deref().as_bytes(),
+                    &self.dst_buffer,
+                    self.dst_offset,
+                );
             }
         }
 
@@ -928,7 +929,7 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn update_buffer<D>(
         &mut self,
         data: &D,
-        dst_buffer: &Subbuffer<impl ?Sized>,
+        dst_buffer: &Subbuffer<D>,
         dst_offset: DeviceSize,
     ) where
         D: BufferContents + ?Sized,

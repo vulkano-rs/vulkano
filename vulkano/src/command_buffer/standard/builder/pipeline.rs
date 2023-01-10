@@ -166,7 +166,7 @@ where
     ) -> Result<&mut Self, PipelineExecutionError> {
         self.validate_dispatch_indirect(indirect_buffer.as_bytes())?;
 
-        unsafe { Ok(self.dispatch_indirect_unchecked(indirect_buffer.into_bytes())) }
+        unsafe { Ok(self.dispatch_indirect_unchecked(indirect_buffer)) }
     }
 
     fn validate_dispatch_indirect(
@@ -208,7 +208,7 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn dispatch_indirect_unchecked(
         &mut self,
-        indirect_buffer: Subbuffer<[u8]>,
+        indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
     ) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_dispatch_indirect)(
@@ -236,7 +236,7 @@ where
             &mut self.resources_usage_state,
             command_index,
             command_name,
-            &indirect_buffer,
+            indirect_buffer.as_bytes(),
         );
 
         self.resources.push(Box::new(indirect_buffer));
@@ -404,9 +404,7 @@ where
         let stride = size_of::<DrawIndirectCommand>() as u32;
         self.validate_draw_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        unsafe {
-            Ok(self.draw_indirect_unchecked(indirect_buffer.into_bytes(), draw_count, stride))
-        }
+        unsafe { Ok(self.draw_indirect_unchecked(indirect_buffer, draw_count, stride)) }
     }
 
     fn validate_draw_indirect(
@@ -471,7 +469,7 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_indirect_unchecked(
         &mut self,
-        indirect_buffer: Subbuffer<[u8]>,
+        indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
         draw_count: u32,
         stride: u32,
     ) -> &mut Self {
@@ -510,7 +508,7 @@ where
             &mut self.resources_usage_state,
             command_index,
             command_name,
-            &indirect_buffer,
+            indirect_buffer.as_bytes(),
         );
         record_subpass_attachments_access(
             &mut self.resources_usage_state,
@@ -730,13 +728,7 @@ where
         let stride = size_of::<DrawIndexedIndirectCommand>() as u32;
         self.validate_draw_indexed_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        unsafe {
-            Ok(self.draw_indexed_indirect_unchecked(
-                indirect_buffer.into_bytes(),
-                draw_count,
-                stride,
-            ))
-        }
+        unsafe { Ok(self.draw_indexed_indirect_unchecked(indirect_buffer, draw_count, stride)) }
     }
 
     fn validate_draw_indexed_indirect(
@@ -802,7 +794,7 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn draw_indexed_indirect_unchecked(
         &mut self,
-        indirect_buffer: Subbuffer<[u8]>,
+        indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
         draw_count: u32,
         stride: u32,
     ) -> &mut Self {
@@ -847,7 +839,7 @@ where
             &mut self.resources_usage_state,
             command_index,
             command_name,
-            &indirect_buffer,
+            indirect_buffer.as_bytes(),
         );
         record_subpass_attachments_access(
             &mut self.resources_usage_state,
@@ -898,7 +890,7 @@ where
 
     fn validate_indirect_buffer(
         &self,
-        buffer: &Subbuffer<impl ?Sized>,
+        buffer: &Subbuffer<[u8]>,
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDispatchIndirect-commonparent
         assert_eq!(self.device(), buffer.device());

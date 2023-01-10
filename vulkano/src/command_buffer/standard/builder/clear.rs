@@ -737,12 +737,15 @@ where
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn update_buffer_unchecked(
+    pub unsafe fn update_buffer_unchecked<D>(
         &mut self,
-        data: &[u8],
-        dst_buffer: Subbuffer<[u8]>,
+        data: &D,
+        dst_buffer: Subbuffer<D>,
         dst_offset: DeviceSize,
-    ) -> &mut Self {
+    ) -> &mut Self
+    where
+        D: BufferContents + ?Sized,
+    {
         let fns = self.device().fns();
         (fns.v1_0.cmd_update_buffer)(
             self.handle(),
