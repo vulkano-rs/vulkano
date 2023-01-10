@@ -71,6 +71,9 @@ const MAX_ARENAS: usize = 32;
 /// +-----+------+-------+-------+-------+---------+-------+-------+-------+------+---------+-----+
 /// ```
 ///
+/// Download or device-only usage is much the same. Try to make the arenas fit all the data you
+/// need to store at once.
+///
 /// # Examples
 ///
 /// ```

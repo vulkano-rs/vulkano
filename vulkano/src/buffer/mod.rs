@@ -21,34 +21,53 @@
 //! procedure. Each element is laid out in memory in the order of declaration and aligned to a
 //! multiple of their alignment.
 //!
-//! # Various kinds of buffers
+//! # Multiple levels of abstraction
 //!
-//! The low level implementation of a buffer is [`RawBuffer`](crate::buffer::sys::RawBuffer).
-//! This type makes it possible to use all the features that Vulkan is capable of.
+//! - The low-level implementation of a buffer is [`RawBuffer`], which corresponds directly to a
+//!   `VkBuffer`, and as such doesn't hold onto any memory.
+//! - [`Buffer`] is a `RawBuffer` with memory bound to it, and with state tracking.
+//! - [`Subbuffer`] is what you will use most of the time, as it is what all the APIs expect. It is
+//!   reference to a portion of a `Buffer`. `Subbuffer` also has a type parameter, which is a hint
+//!   for how the data in the portion of the buffer is going to be interpreted.
 //!
-//! Instead you are encouraged to use one of the high-level wrappers that vulkano provides. Which
-//! wrapper to use depends on the way you are going to use the buffer:
+//! # `Subbuffer` allocation
 //!
-//! - A [`DeviceLocalBuffer`] designates a buffer usually located in video memory and whose content
-//!   can't be directly accessed by your application. Accessing this buffer from the GPU is
-//!   generally faster compared to accessing a CPU-accessible buffer.
-//! - A [`SubbufferAllocator`] can be used to transfer data between the CPU and the GPU at a high
-//!   rate.
-//! - A [`CpuAccessibleBuffer`] is a simple buffer that can be used to prototype.
+//! There are two ways to get a `Subbuffer`:
 //!
-//! Here is a quick way to choose which buffer to use. Do you often need to read or write the
-//! content of the buffer? If so, use a `SubbufferAllocator`. Otherwise, do you need to have access
-//! to the buffer on the CPU? Then use `CpuAccessibleBuffer`. Otherwise, use a `DeviceLocalBuffer`.
+//! - By using the functions on `Buffer`, which create a new buffer and memory allocation each
+//!   time, and give you a `Subbuffer` that has an entire `Buffer` dedicated to it.
+//! - By using the [`SubbufferAllocator`], which creates `Subbuffer`s by suballocating existing
+//!   `Buffer`s such that the `Buffer`s can keep being reused.
 //!
-//! Another example: if a buffer is under constant access by the GPU but you need to read its
-//! content on the CPU from time to time, it may be a good idea to use a `DeviceLocalBuffer` as the
-//! main buffer and a `CpuAccessibleBuffer` for when you need to read it. Then whenever you need to
-//! read the main buffer, ask the GPU to copy from the device-local buffer to the CPU-accessible
-//! buffer, and read the CPU-accessible buffer instead.
+//! Which of these you should choose depends on the use case. For example, if you need to upload
+//! data to the device each frame, then you should use `SubbufferAllocator`. Same goes for if you
+//! need to download data very frequently, or if you need to allocate a lot of intermediary buffers
+//! that are only accessed by the device. On the other hand, if you need to upload some data just
+//! once, or you can keep reusing the same buffer (because its size is unchanging) it's best to
+//! use a dedicated `Buffer` for that.
+//!
+//! # Memory usage
+//!
+//! When allocating memory for a buffer, you have to specify a *memory usage*. This tells the
+//! memory allocator what memory type it should pick for the allocation.
+//!
+//! - [`MemoryUsage::GpuOnly`] will allocate a buffer that's usually located in device-local
+//!   memory and whose content can't be directly accessed by your application. Accessing this
+//!   buffer from the device is generally faster compared to accessing a buffer that's located in
+//!   host-visible memory.
+//! - [`MemoryUsage::Upload`] and [`MemoryUsage::Download`] both allocate from a host-visible
+//!   memory type, which means the buffer can be accessed directly from the host. Buffers allocated
+//!   with these memory usages are needed to get data to and from the device.
+//!
+//! Take for example a buffer that is under constant access by the device but you need to read its
+//! content on the host from time to time, it may be a good idea to use a device-local buffer as
+//! the main buffer and a host-visible buffer for when you need to read it. Then whenever you need
+//! to read the main buffer, ask the device to copy from the device-local buffer to the
+//! host-visible buffer, and read the host-visible buffer instead.
 //!
 //! # Buffer usage
 //!
-//! When you create a buffer object, you have to specify its *usage*. In other words, you have to
+//! When you create a buffer, you have to specify its *usage*. In other words, you have to
 //! specify the way it is going to be used. Trying to use a buffer in a way that wasn't specified
 //! when you created it will result in a runtime error.
 //!
@@ -68,10 +87,21 @@
 //! - As a storage texel buffer. Additionally, some data formats can be modified with atomic
 //!   operations.
 //!
-//! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module
+//! Using uniform/storage texel buffers requires creating a *buffer view*. See [the `view` module]
 //! for how to create a buffer view.
 //!
-//! [`SubbufferAllocator`]: allocator::SubbufferAllocator
+//! # A note on endianness
+//!
+//! The Vulkan specification requires that a Vulkan implementation has runtime support for the
+//! types [`u8`], [`u16`], [`u32`], [`u64`] as well as their signed versions, as well as [`f32`]
+//! and [`f64`] on the host, and that the representation and endianness of these types matches
+//! those on the device. This means that if you have for example a `Subbuffer<[u32]>`, you can be
+//! sure that it is represented the same way on the host as it is on the device, and you don't need
+//! to worry about converting the endianness.
+//!
+//! [`RawBuffer`]: self::sys::RawBuffer
+//! [`SubbufferAllocator`]: self::allocator::SubbufferAllocator
+//! [the `view` module]: self::view
 
 pub use self::{subbuffer::Subbuffer, usage::BufferUsage};
 use self::{
