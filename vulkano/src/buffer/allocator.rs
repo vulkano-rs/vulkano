@@ -134,6 +134,9 @@ where
         let properties = memory_allocator.device().physical_device().properties();
         let buffer_alignment = [
             buffer_usage
+                .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER)
+                .then_some(properties.min_texel_buffer_offset_alignment),
+            buffer_usage
                 .contains(BufferUsage::UNIFORM_BUFFER)
                 .then_some(properties.min_uniform_buffer_offset_alignment),
             buffer_usage
