@@ -345,7 +345,7 @@ impl Buffer {
         // VUID-vkGetBufferDeviceAddress-bufferDeviceAddress-03324
         if !device.enabled_features().buffer_device_address {
             return Err(BufferError::RequirementNotMet {
-                required_for: "`BufferAccess::raw_device_address`",
+                required_for: "`Buffer::device_address`",
                 requires_one_of: RequiresOneOf {
                     features: &["buffer_device_address"],
                     ..Default::default()
