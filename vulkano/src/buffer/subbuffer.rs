@@ -26,7 +26,27 @@ use std::{
 
 /// A subpart of a buffer.
 ///
-/// This type doesn't correspond to any Vulkan object, it exists for API convenience.
+/// This type doesn't correspond to any Vulkan object, it exists for API convenience. Most Vulkan
+/// functions that work with buffers take the buffer as argument as well as an offset and size
+/// within the buffer, which we can represent with a single subbuffer instead.
+///
+/// `Subbuffer` also has a type parameter, which is a hint for how the data is going to be
+/// interpreted by the host or device (or both). This is useful so that we can allocate
+/// (sub)buffers that are correctly aligned and have the correct size for their content, and for
+/// type-safety. For example, when reading/writing a subbuffer from the host, you can use
+/// [`Subbuffer::read`]/[`Subbuffer::write`] without worrying about the alignment and size being
+/// correct and about converting your data from/to raw bytes.
+///
+/// There are two ways to get a `Subbuffer`:
+///
+/// - By using the functions on [`Buffer`], which create a new buffer and memory allocation each
+///   time, and give you a `Subbuffer` that has an entire `Buffer` dedicated to it.
+/// - By using the [`SubbufferAllocator`], which creates `Subbuffer`s by suballocating existing
+///   `Buffer`s such that the `Buffer`s can keep being reused.
+///
+/// Alternatively, you can also create a `Buffer` manually and convert it to a `Subbuffer<[u8]>`.
+///
+/// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
 #[derive(Debug)]
 #[repr(C)]
 pub struct Subbuffer<T: ?Sized> {
