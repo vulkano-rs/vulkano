@@ -220,9 +220,9 @@ fn main() {
     .unwrap();
 
     // Create three buffer slices, one for each triangle.
-    let triangle1 = vertex_buffer.clone().slice(0..3).unwrap();
-    let triangle2 = vertex_buffer.clone().slice(3..6).unwrap();
-    let triangle3 = vertex_buffer.slice(6..9).unwrap();
+    let triangle1 = vertex_buffer.clone().slice(0..3);
+    let triangle2 = vertex_buffer.clone().slice(3..6);
+    let triangle3 = vertex_buffer.slice(6..9);
 
     // Create a query pool for occlusion queries, with 3 slots.
     let query_pool = QueryPool::new(
