@@ -641,25 +641,21 @@ where
     #[inline]
     pub unsafe fn update_buffer<D>(
         &mut self,
-        data: &D,
         dst_buffer: Subbuffer<D>,
-        dst_offset: DeviceSize,
+        data: &D,
     ) -> Result<&mut Self, ClearError>
     where
         D: BufferContents + ?Sized,
     {
-        self.validate_update_buffer(data.as_bytes(), dst_buffer.as_bytes(), dst_offset)?;
+        self.validate_update_buffer(dst_buffer.as_bytes(), data.as_bytes())?;
 
-        unsafe {
-            Ok(self.update_buffer_unchecked(data.as_bytes(), dst_buffer.into_bytes(), dst_offset))
-        }
+        unsafe { Ok(self.update_buffer_unchecked(dst_buffer.into_bytes(), data.as_bytes())) }
     }
 
     fn validate_update_buffer(
         &self,
-        data: &[u8],
         dst_buffer: &Subbuffer<[u8]>,
-        dst_offset: DeviceSize,
+        data: &[u8],
     ) -> Result<(), ClearError> {
         let device = self.device();
 
@@ -697,19 +693,19 @@ where
 
         // VUID-vkCmdUpdateBuffer-dstOffset-00032
         // VUID-vkCmdUpdateBuffer-dataSize-00033
-        if dst_offset + size_of_val(data) as DeviceSize > dst_buffer.size() {
+        if size_of_val(data) as DeviceSize > dst_buffer.size() {
             return Err(ClearError::RegionOutOfBufferBounds {
                 region_index: 0,
-                offset_range_end: dst_offset + size_of_val(data) as DeviceSize,
+                offset_range_end: size_of_val(data) as DeviceSize,
                 buffer_size: dst_buffer.size(),
             });
         }
 
         // VUID-vkCmdUpdateBuffer-dstOffset-00036
-        if (dst_buffer.offset() + dst_offset) % 4 != 0 {
+        if dst_buffer.offset() % 4 != 0 {
             return Err(ClearError::OffsetNotAlignedForBuffer {
                 region_index: 0,
-                offset: dst_buffer.offset() + dst_offset,
+                offset: dst_buffer.offset(),
                 required_alignment: 4,
             });
         }
@@ -739,9 +735,8 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn update_buffer_unchecked<D>(
         &mut self,
-        data: &D,
         dst_buffer: Subbuffer<D>,
-        dst_offset: DeviceSize,
+        data: &D,
     ) -> &mut Self
     where
         D: BufferContents + ?Sized,
@@ -750,7 +745,7 @@ where
         (fns.v1_0.cmd_update_buffer)(
             self.handle(),
             dst_buffer.buffer().handle(),
-            dst_buffer.offset() + dst_offset,
+            dst_buffer.offset(),
             size_of_val(data) as DeviceSize,
             data.as_bytes().as_ptr() as *const _,
         );
@@ -764,9 +759,7 @@ where
             secondary_use_ref: None,
         };
 
-        let mut dst_range = dst_offset..dst_offset + size_of_val(data) as DeviceSize;
-        dst_range.start += dst_buffer.offset();
-        dst_range.end += dst_buffer.offset();
+        let dst_range = dst_buffer.offset()..dst_buffer.offset() + size_of_val(data) as DeviceSize;
         self.resources_usage_state.record_buffer_access(
             &use_ref,
             dst_buffer.buffer(),

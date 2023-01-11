@@ -104,7 +104,7 @@ const MAX_ARENAS: usize = 32;
 ///     .unwrap()
 ///     // For the sake of the example we just call `update_buffer` on the buffer, even though
 ///     // it is pointless to do that.
-///     .update_buffer(&[0.2, 0.3, 0.4, 0.5], subbuffer.clone(), 0)
+///     .update_buffer(subbuffer.clone(), &[0.2, 0.3, 0.4, 0.5])
 ///     .unwrap()
 ///     .build().unwrap()
 ///     .execute(queue.clone())

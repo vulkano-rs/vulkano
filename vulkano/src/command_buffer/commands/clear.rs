@@ -454,18 +454,17 @@ where
     /// - Panics if `dst_buffer` was not created from the same device as `self`.
     pub fn update_buffer<D, Dd>(
         &mut self,
-        data: Dd,
         dst_buffer: Subbuffer<D>,
-        dst_offset: DeviceSize,
+        data: Dd,
     ) -> Result<&mut Self, ClearError>
     where
         D: BufferContents + ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
-        self.validate_update_buffer(data.deref().as_bytes(), dst_buffer.as_bytes(), dst_offset)?;
+        self.validate_update_buffer(dst_buffer.as_bytes(), data.deref().as_bytes())?;
 
         unsafe {
-            self.inner.update_buffer(data, dst_buffer, dst_offset)?;
+            self.inner.update_buffer(dst_buffer, data)?;
         }
 
         Ok(self)
@@ -473,9 +472,8 @@ where
 
     fn validate_update_buffer(
         &self,
-        data: &[u8],
         dst_buffer: &Subbuffer<[u8]>,
-        dst_offset: DeviceSize,
+        data: &[u8],
     ) -> Result<(), ClearError> {
         let device = self.device();
 
@@ -513,19 +511,19 @@ where
 
         // VUID-vkCmdUpdateBuffer-dstOffset-00032
         // VUID-vkCmdUpdateBuffer-dataSize-00033
-        if dst_offset + size_of_val(data) as DeviceSize > dst_buffer.size() {
+        if size_of_val(data) as DeviceSize > dst_buffer.size() {
             return Err(ClearError::RegionOutOfBufferBounds {
                 region_index: 0,
-                offset_range_end: dst_offset + size_of_val(data) as DeviceSize,
+                offset_range_end: size_of_val(data) as DeviceSize,
                 buffer_size: dst_buffer.size(),
             });
         }
 
         // VUID-vkCmdUpdateBuffer-dstOffset-00036
-        if (dst_buffer.offset() + dst_offset) % 4 != 0 {
+        if dst_buffer.offset() % 4 != 0 {
             return Err(ClearError::OffsetNotAlignedForBuffer {
                 region_index: 0,
-                offset: dst_buffer.offset() + dst_offset,
+                offset: dst_buffer.offset(),
                 required_alignment: 4,
             });
         }
@@ -760,18 +758,16 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdUpdateBuffer` on the builder.
     pub unsafe fn update_buffer<D, Dd>(
         &mut self,
-        data: Dd,
         dst_buffer: Subbuffer<D>,
-        dst_offset: DeviceSize,
+        data: Dd,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
         D: BufferContents + ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
         struct Cmd<Dd> {
-            data: Dd,
             dst_buffer: Subbuffer<[u8]>,
-            dst_offset: DeviceSize,
+            data: Dd,
         }
 
         impl<D, Dd> Command for Cmd<Dd>
@@ -784,11 +780,7 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.update_buffer(
-                    self.data.deref().as_bytes(),
-                    &self.dst_buffer,
-                    self.dst_offset,
-                );
+                out.update_buffer(&self.dst_buffer, self.data.deref().as_bytes());
             }
         }
 
@@ -804,7 +796,7 @@ impl SyncCommandBufferBuilder {
             },
             Resource::Buffer {
                 buffer: dst_buffer.clone(),
-                range: dst_offset..dst_offset + size_of_val(data.deref()) as DeviceSize,
+                range: 0..size_of_val(data.deref()) as DeviceSize,
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages::ALL_TRANSFER,
                     access: AccessFlags::TRANSFER_WRITE,
@@ -817,11 +809,7 @@ impl SyncCommandBufferBuilder {
             self.check_resource_conflicts(resource)?;
         }
 
-        self.commands.push(Box::new(Cmd {
-            data,
-            dst_buffer,
-            dst_offset,
-        }));
+        self.commands.push(Box::new(Cmd { dst_buffer, data }));
 
         for resource in resources {
             self.add_resource(resource);
@@ -926,19 +914,15 @@ impl UnsafeCommandBufferBuilder {
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
-    pub unsafe fn update_buffer<D>(
-        &mut self,
-        data: &D,
-        dst_buffer: &Subbuffer<D>,
-        dst_offset: DeviceSize,
-    ) where
+    pub unsafe fn update_buffer<D>(&mut self, dst_buffer: &Subbuffer<D>, data: &D)
+    where
         D: BufferContents + ?Sized,
     {
         let fns = self.device.fns();
         (fns.v1_0.cmd_update_buffer)(
             self.handle,
             dst_buffer.buffer().handle(),
-            dst_buffer.offset() + dst_offset,
+            dst_buffer.offset(),
             size_of_val(data) as DeviceSize,
             data.as_bytes().as_ptr() as *const _,
         );
