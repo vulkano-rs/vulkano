@@ -10,11 +10,16 @@
 use super::{allocator::Arena, Buffer, BufferContents, BufferError, BufferMemory};
 use crate::{
     device::{Device, DeviceOwned},
-    memory::{self, allocator::DeviceAlignment, is_aligned},
+    memory::{
+        self,
+        allocator::{align_up, DeviceAlignment, DeviceLayout},
+        is_aligned,
+    },
     DeviceSize, NonZeroDeviceSize,
 };
 use bytemuck::PodCastError;
 use std::{
+    alloc::Layout,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
@@ -318,26 +323,108 @@ impl<T> Subbuffer<[T]> {
         self.size / size_of::<T>() as DeviceSize
     }
 
-    /// Reduces the subbuffer to just one element of the slice, or returns [`None`] if the `index`
-    /// is out of bounds.
-    pub fn index(self, index: DeviceSize) -> Option<Subbuffer<T>> {
-        (index < self.len()).then_some(Subbuffer {
+    /// Reduces the subbuffer to just one element of the slice.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `index` is out of range.
+    pub fn index(self, index: DeviceSize) -> Subbuffer<T> {
+        assert!(index <= self.len());
+
+        unsafe { self.index_unchecked(index) }
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn index_unchecked(self, index: DeviceSize) -> Subbuffer<T> {
+        Subbuffer {
             offset: self.offset + index * size_of::<T>() as DeviceSize,
             size: size_of::<T>() as DeviceSize,
             parent: self.parent,
             marker: PhantomData,
-        })
+        }
     }
 
-    /// Reduces the subbuffer to just a range of the slice, or returns [`None`] if the `range` is
-    /// out of bounds.
-    pub fn slice(mut self, range: impl RangeBounds<DeviceSize>) -> Option<Subbuffer<[T]>> {
-        let Range { start, end } = memory::range(range, ..self.len())?;
+    /// Reduces the subbuffer to just a range of the slice.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `range` is out of bounds.
+    pub fn slice(mut self, range: impl RangeBounds<DeviceSize>) -> Subbuffer<[T]> {
+        let Range { start, end } = memory::range(range, ..self.len()).unwrap();
 
         self.offset += start * size_of::<T>() as DeviceSize;
         self.size = (end - start) * size_of::<T>() as DeviceSize;
 
-        Some(self)
+        self
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn slice_unchecked(mut self, range: impl RangeBounds<DeviceSize>) -> Subbuffer<[T]> {
+        let Range { start, end } = memory::range(range, ..self.len()).unwrap_unchecked();
+
+        self.offset += start * size_of::<T>() as DeviceSize;
+        self.size = (end - start) * size_of::<T>() as DeviceSize;
+
+        self
+    }
+
+    /// Splits the subbuffer into two at an index.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `mid` is out of bounds.
+    pub fn split_at(self, mid: DeviceSize) -> (Subbuffer<[T]>, Subbuffer<[T]>) {
+        assert!(mid <= self.len());
+
+        unsafe { self.split_at_unchecked(mid) }
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn split_at_unchecked(self, mid: DeviceSize) -> (Subbuffer<[T]>, Subbuffer<[T]>) {
+        (
+            self.clone().slice_unchecked(..mid),
+            self.slice_unchecked(mid..),
+        )
+    }
+}
+
+impl Subbuffer<[u8]> {
+    /// Casts the slice to a different element type while ensuring correct alignment for the type.
+    ///
+    /// The offset of the subbuffer is rounded up to the alignment of `T` and the size abjusted for
+    /// the padding, then the size is rounded down to the nearest multiple of `T`'s size.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the aligned offset would be out of bounds.
+    /// - Panics if `T` has zero size.
+    /// - Panics if `T` has an alignment greater than `64`.
+    pub fn cast_aligned<T>(self) -> Subbuffer<[T]> {
+        let layout = DeviceLayout::from_layout(Layout::new::<T>()).unwrap();
+        let aligned = self.align_to(layout);
+
+        unsafe { aligned.reinterpret() }
+    }
+
+    /// Aligns the subbuffer to the given `layout` by rounding the offset up to
+    /// `layout.alignment()` and adjusting the size for the padding, and then rounding the size
+    /// down to the nearest multiple of `layout.size()`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the aligned offset would be out of bounds.
+    /// - Panics if `layout.alignment()` exceeds `64`.
+    pub fn align_to(mut self, layout: DeviceLayout) -> Subbuffer<[u8]> {
+        assert!(layout.alignment().as_devicesize() <= 64);
+
+        let offset = self.memory_offset();
+        let padding_front = align_up(offset, layout.alignment()) - offset;
+
+        self.offset += padding_front;
+        self.size = self.size.checked_sub(padding_front).unwrap();
+        self.size -= self.size % layout.size();
+
+        self
     }
 }
 
@@ -376,6 +463,7 @@ fn assert_valid_type_param<T>() {
 }
 
 impl From<Arc<Buffer>> for Subbuffer<[u8]> {
+    #[inline]
     fn from(buffer: Arc<Buffer>) -> Self {
         Self::from_buffer(buffer)
     }
@@ -530,5 +618,128 @@ impl Display for WriteLockError {
                 WriteLockError::GpuLocked => "the buffer is already locked by the GPU",
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        buffer::{
+            sys::{BufferCreateInfo, RawBuffer},
+            BufferAllocateInfo, BufferUsage,
+        },
+        memory::{
+            allocator::{
+                AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAllocator, MemoryUsage,
+                StandardMemoryAllocator,
+            },
+            MemoryRequirements,
+        },
+    };
+
+    #[test]
+    fn split_at() {
+        let (device, _) = gfx_dev_and_queue!();
+        let allocator = StandardMemoryAllocator::new_default(device);
+
+        let buffer = Buffer::new_slice::<u32>(
+            &allocator,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            6,
+        )
+        .unwrap();
+
+        {
+            let (left, right) = buffer.clone().split_at(2);
+            assert!(left.len() == 2);
+            assert!(right.len() == 4);
+        }
+
+        {
+            let (left, right) = buffer.clone().split_at(6);
+            assert!(left.len() == 6);
+            assert!(right.len() == 0);
+        }
+
+        {
+            assert_should_panic!({ buffer.split_at(7) });
+        }
+    }
+
+    #[test]
+    fn aligned_cast() {
+        let (device, _) = gfx_dev_and_queue!();
+        let allocator = StandardMemoryAllocator::new_default(device.clone());
+
+        let raw_buffer = RawBuffer::new(
+            device,
+            BufferCreateInfo {
+                size: 32,
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut requirements = *raw_buffer.memory_requirements();
+        requirements.prefers_dedicated_allocation = false;
+        requirements.requires_dedicated_allocation = false;
+
+        // Allocate some junk in the same block as the buffer.
+        let _junk = allocator
+            .allocate(AllocationCreateInfo {
+                requirements: MemoryRequirements {
+                    layout: DeviceLayout::from_size_alignment(17, 1).unwrap(),
+                    ..requirements
+                },
+                allocation_type: AllocationType::Linear,
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            })
+            .unwrap();
+
+        let allocation = allocator
+            .allocate(AllocationCreateInfo {
+                requirements,
+                allocation_type: AllocationType::Linear,
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            })
+            .unwrap();
+
+        let buffer = unsafe { raw_buffer.bind_memory_unchecked(allocation) }.unwrap();
+        let buffer = Subbuffer::from(Arc::new(buffer));
+
+        assert!(buffer.memory_offset() >= 17);
+
+        {
+            #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+            #[repr(C, align(16))]
+            struct Test([u8; 16]);
+
+            let aligned = buffer.clone().cast_aligned::<Test>();
+            // If reading doesn't panic, then the data is aligned correctly.
+            aligned.read().unwrap();
+        }
+
+        {
+            let aligned = buffer.clone().cast_aligned::<[u8; 16]>();
+            assert!(aligned.size() % 16 == 0);
+        }
+
+        {
+            let layout = DeviceLayout::from_size_alignment(32, 16).unwrap();
+            let aligned = buffer.clone().align_to(layout);
+            assert!(is_aligned(aligned.memory_offset(), layout.alignment()));
+            assert!(aligned.size() == 0);
+        }
+
+        {
+            let layout = DeviceLayout::from_size_alignment(1, 64).unwrap();
+            assert_should_panic!({ buffer.align_to(layout) });
+        }
     }
 }
