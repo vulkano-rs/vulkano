@@ -106,6 +106,11 @@ impl<T: ?Sized> Subbuffer<T> {
         self.size
     }
 
+    /// Returns the range the subbuffer occupies, in bytes, relative to the buffer.
+    pub(crate) fn range(&self) -> Range<DeviceSize> {
+        self.offset..self.offset + self.size
+    }
+
     /// Returns the buffer that this subbuffer is a part of.
     pub fn buffer(&self) -> &Arc<Buffer> {
         match &self.parent {
@@ -188,7 +193,7 @@ where
             BufferMemory::Sparse => todo!("`Subbuffer::read` doesn't support sparse binding yet"),
         };
 
-        let range = self.offset..self.offset + self.size;
+        let range = self.range();
 
         if let Some(atom_size) = allocation.atom_size() {
             if !is_aligned(range.start, atom_size) || !is_aligned(range.end, atom_size) {
@@ -234,7 +239,7 @@ where
             BufferMemory::Sparse => todo!("`Subbuffer::write` doesn't support sparse binding yet"),
         };
 
-        let range = self.offset..self.offset + self.size;
+        let range = self.range();
 
         if let Some(atom_size) = allocation.atom_size() {
             if !is_aligned(range.start, atom_size) || !is_aligned(range.end, atom_size) {
@@ -513,7 +518,7 @@ pub struct BufferReadGuard<'a, T: ?Sized> {
 
 impl<T: ?Sized> Drop for BufferReadGuard<'_, T> {
     fn drop(&mut self) {
-        let range = self.subbuffer.offset..self.subbuffer.offset + self.subbuffer.size;
+        let range = self.subbuffer.range();
         let mut state = self.subbuffer.buffer().state();
         unsafe { state.cpu_read_unlock(range) };
     }
@@ -540,7 +545,7 @@ pub struct BufferWriteGuard<'a, T: ?Sized> {
 
 impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
     fn drop(&mut self) {
-        let range = self.subbuffer.offset..self.subbuffer.offset + self.subbuffer.size;
+        let range = self.subbuffer.range();
         let allocation = match self.subbuffer.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => unreachable!(),

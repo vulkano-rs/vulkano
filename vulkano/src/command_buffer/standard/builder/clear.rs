@@ -582,11 +582,10 @@ where
             secondary_use_ref: None,
         };
 
-        let dst_range = dst_buffer.offset()..dst_buffer.offset() + dst_buffer.size();
         self.resources_usage_state.record_buffer_access(
             &use_ref,
             dst_buffer.buffer(),
-            dst_range,
+            dst_buffer.range(),
             PipelineStageAccess::Clear_TransferWrite,
         );
 

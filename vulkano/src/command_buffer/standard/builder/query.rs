@@ -654,13 +654,10 @@ where
             secondary_use_ref: None,
         };
 
-        let mut dst_range = 0..dst_buffer.size(); // TODO:
-        dst_range.start += dst_buffer.offset();
-        dst_range.end += dst_buffer.offset();
         self.resources_usage_state.record_buffer_access(
             &use_ref,
             dst_buffer.buffer(),
-            dst_range,
+            dst_buffer.range(),
             PipelineStageAccess::Copy_TransferWrite,
         );
 
