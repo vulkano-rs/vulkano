@@ -111,6 +111,13 @@ impl<T: ?Sized> Subbuffer<T> {
         self.offset..self.offset + self.size
     }
 
+    /// Returns the range the subbuffer occupies, in bytes, relative to the [`DeviceMemory`] block.
+    fn memory_range(&self) -> Range<DeviceSize> {
+        let memory_offset = self.memory_offset();
+
+        memory_offset..memory_offset + self.size
+    }
+
     /// Returns the buffer that this subbuffer is a part of.
     pub fn buffer(&self) -> &Arc<Buffer> {
         match &self.parent {
@@ -193,13 +200,14 @@ where
             BufferMemory::Sparse => todo!("`Subbuffer::read` doesn't support sparse binding yet"),
         };
 
-        let range = self.range();
-
         if let Some(atom_size) = allocation.atom_size() {
+            let range = self.memory_range();
             if !is_aligned(range.start, atom_size) || !is_aligned(range.end, atom_size) {
                 return Err(BufferError::SubbufferNotAlignedToAtomSize { range, atom_size });
             }
         }
+
+        let range = self.range();
 
         let mut state = self.buffer().state();
         state.check_cpu_read(range.clone())?;
@@ -239,13 +247,14 @@ where
             BufferMemory::Sparse => todo!("`Subbuffer::write` doesn't support sparse binding yet"),
         };
 
-        let range = self.range();
-
         if let Some(atom_size) = allocation.atom_size() {
+            let range = self.memory_range();
             if !is_aligned(range.start, atom_size) || !is_aligned(range.end, atom_size) {
                 return Err(BufferError::SubbufferNotAlignedToAtomSize { range, atom_size });
             }
         }
+
+        let range = self.range();
 
         let mut state = self.buffer().state();
         state.check_cpu_write(range.clone())?;
