@@ -16,7 +16,7 @@ pub use crate::command_buffer::{
     BlitImageInfo, BufferCopy, BufferImageCopy, ClearAttachment, ClearColorImageInfo,
     ClearDepthStencilImageInfo, ClearError, ClearRect, CopyBufferInfo, CopyBufferInfoTyped,
     CopyBufferToImageInfo, CopyError, CopyErrorResource, CopyImageInfo, CopyImageToBufferInfo,
-    DebugUtilsError, ExecuteCommandsError, FillBufferInfo, ImageBlit, ImageCopy, ImageResolve,
+    DebugUtilsError, ExecuteCommandsError, ImageBlit, ImageCopy, ImageResolve,
     PipelineExecutionError, QueryError, RenderPassBeginInfo, RenderPassError,
     RenderingAttachmentInfo, RenderingAttachmentResolveInfo, RenderingInfo, ResolveImageInfo,
 };

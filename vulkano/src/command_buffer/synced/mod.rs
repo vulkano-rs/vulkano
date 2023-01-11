@@ -179,7 +179,7 @@ mod tests {
                 CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
             },
             sys::CommandBufferBeginInfo,
-            AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage, FillBufferInfo,
+            AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage,
             PrimaryCommandBufferAbstract,
         },
         descriptor_set::{
@@ -267,10 +267,7 @@ mod tests {
                     )
                     .unwrap();
                     builder
-                        .fill_buffer(FillBufferInfo {
-                            data: 42u32,
-                            ..FillBufferInfo::dst_buffer(buffer.clone())
-                        })
+                        .fill_buffer(buffer.clone().into_slice(), 42)
                         .unwrap();
                     Arc::new(builder.build().unwrap())
                 })

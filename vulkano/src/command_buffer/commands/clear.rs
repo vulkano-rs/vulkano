@@ -352,18 +352,23 @@ where
     /// - Panics if `dst_buffer` was not created from the same device as `self`.
     pub fn fill_buffer(
         &mut self,
-        fill_buffer_info: FillBufferInfo,
+        dst_buffer: Subbuffer<[u32]>,
+        data: u32,
     ) -> Result<&mut Self, ClearError> {
-        self.validate_fill_buffer(&fill_buffer_info)?;
+        self.validate_fill_buffer(&dst_buffer, data)?;
 
         unsafe {
-            self.inner.fill_buffer(fill_buffer_info)?;
+            self.inner.fill_buffer(dst_buffer, data)?;
         }
 
         Ok(self)
     }
 
-    fn validate_fill_buffer(&self, fill_buffer_info: &FillBufferInfo) -> Result<(), ClearError> {
+    fn validate_fill_buffer(
+        &self,
+        dst_buffer: &Subbuffer<[u32]>,
+        _data: u32,
+    ) -> Result<(), ClearError> {
         let device = self.device();
 
         // VUID-vkCmdFillBuffer-renderpass
@@ -391,19 +396,11 @@ where
             }
         }
 
-        let &FillBufferInfo {
-            data: _,
-            ref dst_buffer,
-            dst_offset,
-            size,
-            _ne: _,
-        } = fill_buffer_info;
-
         // VUID-vkCmdFillBuffer-commonparent
         assert_eq!(device, dst_buffer.device());
 
         // VUID-vkCmdFillBuffer-size-00026
-        assert!(size != 0);
+        assert!(dst_buffer.size() != 0);
 
         // VUID-vkCmdFillBuffer-dstBuffer-00029
         if !dst_buffer
@@ -418,31 +415,11 @@ where
 
         // VUID-vkCmdFillBuffer-dstOffset-00024
         // VUID-vkCmdFillBuffer-size-00027
-        if dst_offset + size > dst_buffer.size() {
-            return Err(ClearError::RegionOutOfBufferBounds {
-                region_index: 0,
-                offset_range_end: dst_offset + size,
-                buffer_size: dst_buffer.size(),
-            });
-        }
+        // Guaranteed by `Subbuffer`
 
         // VUID-vkCmdFillBuffer-dstOffset-00025
-        if (dst_buffer.offset() + dst_offset) % 4 != 0 {
-            return Err(ClearError::OffsetNotAlignedForBuffer {
-                region_index: 0,
-                offset: dst_buffer.offset() + dst_offset,
-                required_alignment: 4,
-            });
-        }
-
         // VUID-vkCmdFillBuffer-size-00028
-        if size % 4 != 0 {
-            return Err(ClearError::SizeNotAlignedForBuffer {
-                region_index: 0,
-                size,
-                required_alignment: 4,
-            });
-        }
+        // Guaranteed because we take `Subbuffer<[u32]>`
 
         Ok(())
     }
@@ -698,10 +675,12 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn fill_buffer(
         &mut self,
-        fill_buffer_info: FillBufferInfo,
+        dst_buffer: Subbuffer<[u32]>,
+        data: u32,
     ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
-            fill_buffer_info: FillBufferInfo,
+            dst_buffer: Subbuffer<[u32]>,
+            data: u32,
         }
 
         impl Command for Cmd {
@@ -710,17 +689,9 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.fill_buffer(&self.fill_buffer_info);
+                out.fill_buffer(&self.dst_buffer, self.data);
             }
         }
-
-        let &FillBufferInfo {
-            data: _,
-            ref dst_buffer,
-            dst_offset,
-            size,
-            _ne: _,
-        } = &fill_buffer_info;
 
         let command_index = self.commands.len();
         let command_name = "fill_buffer";
@@ -732,8 +703,8 @@ impl SyncCommandBufferBuilder {
                 secondary_use_ref: None,
             },
             Resource::Buffer {
-                buffer: dst_buffer.clone(),
-                range: dst_offset..dst_offset + size,
+                buffer: dst_buffer.as_bytes().clone(),
+                range: 0..dst_buffer.size(),
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages::ALL_TRANSFER,
                     access: AccessFlags::TRANSFER_WRITE,
@@ -746,7 +717,7 @@ impl SyncCommandBufferBuilder {
             self.check_resource_conflicts(resource)?;
         }
 
-        self.commands.push(Box::new(Cmd { fill_buffer_info }));
+        self.commands.push(Box::new(Cmd { dst_buffer, data }));
 
         for resource in resources {
             self.add_resource(resource);
@@ -894,21 +865,13 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdFillBuffer` on the builder.
     #[inline]
-    pub unsafe fn fill_buffer(&mut self, fill_buffer_info: &FillBufferInfo) {
-        let &FillBufferInfo {
-            data,
-            ref dst_buffer,
-            dst_offset,
-            size,
-            _ne: _,
-        } = fill_buffer_info;
-
+    pub unsafe fn fill_buffer(&mut self, dst_buffer: &Subbuffer<[u32]>, data: u32) {
         let fns = self.device.fns();
         (fns.v1_0.cmd_fill_buffer)(
             self.handle,
             dst_buffer.buffer().handle(),
-            dst_offset,
-            size,
+            dst_buffer.offset(),
+            dst_buffer.size(),
             data,
         );
     }
@@ -1016,54 +979,6 @@ impl ClearDepthStencilImageInfo {
             image_layout: ImageLayout::TransferDstOptimal,
             clear_value: ClearDepthStencilValue::default(),
             regions: smallvec![range],
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-/// Parameters to fill a region of a buffer with repeated copies of a value.
-#[derive(Clone, Debug)]
-pub struct FillBufferInfo {
-    /// The data to fill with.
-    ///
-    /// The default value is `0`.
-    pub data: u32,
-
-    /// The buffer to fill.
-    ///
-    /// There is no default value.
-    pub dst_buffer: Subbuffer<[u8]>,
-
-    /// The offset in bytes from the start of `dst_buffer` that filling will start from.
-    ///
-    /// This must be a multiple of 4.
-    ///
-    /// The default value is `0`.
-    pub dst_offset: DeviceSize,
-
-    /// The number of bytes to fill.
-    ///
-    /// This must be a multiple of 4.
-    ///
-    /// The default value is the size of `dst_buffer`,
-    /// rounded down to the nearest multiple of 4.
-    pub size: DeviceSize,
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl FillBufferInfo {
-    /// Returns a `FillBufferInfo` with the specified `dst_buffer`.
-    #[inline]
-    pub fn dst_buffer(dst_buffer: Subbuffer<impl ?Sized>) -> Self {
-        let dst_buffer = dst_buffer.into_bytes();
-        let size = dst_buffer.size() & !3;
-
-        Self {
-            data: 0,
-            dst_buffer,
-            dst_offset: 0,
-            size,
             _ne: crate::NonExhaustive(()),
         }
     }

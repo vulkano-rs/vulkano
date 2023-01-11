@@ -116,7 +116,7 @@ pub use self::{
         SecondaryAutoCommandBuffer,
     },
     commands::{
-        clear::{ClearColorImageInfo, ClearDepthStencilImageInfo, ClearError, FillBufferInfo},
+        clear::{ClearColorImageInfo, ClearDepthStencilImageInfo, ClearError},
         copy::{
             BlitImageInfo, BufferCopy, BufferImageCopy, CopyBufferInfo, CopyBufferInfoTyped,
             CopyBufferToImageInfo, CopyError, CopyErrorResource, CopyImageInfo,

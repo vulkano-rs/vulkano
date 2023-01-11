@@ -7,10 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{
-    ClearColorImageInfo, ClearDepthStencilImageInfo, ClearError, CommandBufferBuilder,
-    FillBufferInfo,
-};
+use super::{ClearColorImageInfo, ClearDepthStencilImageInfo, ClearError, CommandBufferBuilder};
 use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{allocator::CommandBufferAllocator, ResourceInCommand, ResourceUseRef},
@@ -491,14 +488,19 @@ where
     #[inline]
     pub unsafe fn fill_buffer(
         &mut self,
-        fill_buffer_info: FillBufferInfo,
+        dst_buffer: Subbuffer<[u32]>,
+        data: u32,
     ) -> Result<&mut Self, ClearError> {
-        self.validate_fill_buffer(&fill_buffer_info)?;
+        self.validate_fill_buffer(&dst_buffer, data)?;
 
-        unsafe { Ok(self.fill_buffer_unchecked(fill_buffer_info)) }
+        unsafe { Ok(self.fill_buffer_unchecked(dst_buffer, data)) }
     }
 
-    fn validate_fill_buffer(&self, fill_buffer_info: &FillBufferInfo) -> Result<(), ClearError> {
+    fn validate_fill_buffer(
+        &self,
+        dst_buffer: &Subbuffer<[u32]>,
+        _data: u32,
+    ) -> Result<(), ClearError> {
         let device = self.device();
 
         // VUID-vkCmdFillBuffer-renderpass
@@ -526,19 +528,11 @@ where
             }
         }
 
-        let &FillBufferInfo {
-            data: _,
-            ref dst_buffer,
-            dst_offset,
-            size,
-            _ne: _,
-        } = fill_buffer_info;
-
         // VUID-vkCmdFillBuffer-commonparent
         assert_eq!(device, dst_buffer.device());
 
         // VUID-vkCmdFillBuffer-size-00026
-        assert!(size != 0);
+        assert!(dst_buffer.size() != 0);
 
         // VUID-vkCmdFillBuffer-dstBuffer-00029
         if !dst_buffer
@@ -553,31 +547,11 @@ where
 
         // VUID-vkCmdFillBuffer-dstOffset-00024
         // VUID-vkCmdFillBuffer-size-00027
-        if dst_offset + size > dst_buffer.size() {
-            return Err(ClearError::RegionOutOfBufferBounds {
-                region_index: 0,
-                offset_range_end: dst_offset + size,
-                buffer_size: dst_buffer.size(),
-            });
-        }
+        // Guaranteed by `Subbuffer`
 
         // VUID-vkCmdFillBuffer-dstOffset-00025
-        if (dst_buffer.offset() + dst_offset) % 4 != 0 {
-            return Err(ClearError::OffsetNotAlignedForBuffer {
-                region_index: 0,
-                offset: dst_buffer.offset() + dst_offset,
-                required_alignment: 4,
-            });
-        }
-
         // VUID-vkCmdFillBuffer-size-00028
-        if size % 4 != 0 {
-            return Err(ClearError::SizeNotAlignedForBuffer {
-                region_index: 0,
-                size,
-                required_alignment: 4,
-            });
-        }
+        // Guaranteed because we take `Subbuffer<[u32]>`
 
         // TODO: sync check
 
@@ -585,21 +559,17 @@ where
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn fill_buffer_unchecked(&mut self, fill_buffer_info: FillBufferInfo) -> &mut Self {
-        let FillBufferInfo {
-            data,
-            dst_buffer,
-            dst_offset,
-            size,
-            _ne: _,
-        } = fill_buffer_info;
-
+    pub unsafe fn fill_buffer_unchecked(
+        &mut self,
+        dst_buffer: Subbuffer<[u32]>,
+        data: u32,
+    ) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_fill_buffer)(
             self.handle(),
             dst_buffer.buffer().handle(),
-            dst_offset,
-            size,
+            dst_buffer.offset(),
+            dst_buffer.size(),
             data,
         );
 
@@ -612,9 +582,7 @@ where
             secondary_use_ref: None,
         };
 
-        let mut dst_range = dst_offset..dst_offset + size;
-        dst_range.start += dst_buffer.offset();
-        dst_range.end += dst_buffer.offset();
+        let dst_range = dst_buffer.offset()..dst_buffer.offset() + dst_buffer.size();
         self.resources_usage_state.record_buffer_access(
             &use_ref,
             dst_buffer.buffer(),
