@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::{BufferAccess, BufferContents, BufferUsage, TypedBufferAccess},
+    buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
         auto::RenderPassStateType,
@@ -235,16 +235,13 @@ where
     ///
     /// [`BufferUsage::INDEX_BUFFER`]: crate::buffer::BufferUsage::INDEX_BUFFER
     /// [`index_type_uint8`]: crate::device::Features::index_type_uint8
-    pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Arc<Ib>) -> &mut Self
-    where
-        Ib: TypedBufferAccess<Content = [I]> + 'static,
-        I: Index + 'static,
-    {
-        self.validate_bind_index_buffer(&index_buffer, I::ty())
+    pub fn bind_index_buffer<I: Index>(&mut self, index_buffer: Subbuffer<[I]>) -> &mut Self {
+        self.validate_bind_index_buffer(index_buffer.as_bytes(), I::ty())
             .unwrap();
 
         unsafe {
-            self.inner.bind_index_buffer(index_buffer, I::ty());
+            self.inner
+                .bind_index_buffer(index_buffer.into_bytes(), I::ty());
         }
 
         self
@@ -252,7 +249,7 @@ where
 
     fn validate_bind_index_buffer(
         &self,
-        index_buffer: &dyn BufferAccess,
+        index_buffer: &Subbuffer<[u8]>,
         index_type: IndexType,
     ) -> Result<(), BindPushError> {
         let queue_family_properties = self.queue_family_properties();
@@ -269,7 +266,11 @@ where
         assert_eq!(self.device(), index_buffer.device());
 
         // VUID-vkCmdBindIndexBuffer-buffer-00433
-        if !index_buffer.usage().intersects(BufferUsage::INDEX_BUFFER) {
+        if !index_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDEX_BUFFER)
+        {
             return Err(BindPushError::IndexBufferMissingUsage);
         }
 
@@ -440,7 +441,7 @@ where
     fn validate_bind_vertex_buffers(
         &self,
         first_binding: u32,
-        vertex_buffers: &[Arc<dyn BufferAccess>],
+        vertex_buffers: &[Subbuffer<[u8]>],
     ) -> Result<(), BindPushError> {
         let queue_family_properties = self.queue_family_properties();
 
@@ -476,7 +477,11 @@ where
             assert_eq!(self.device(), buffer.device());
 
             // VUID-vkCmdBindVertexBuffers-pBuffers-00627
-            if !buffer.usage().intersects(BufferUsage::VERTEX_BUFFER) {
+            if !buffer
+                .buffer()
+                .usage()
+                .intersects(BufferUsage::VERTEX_BUFFER)
+            {
                 return Err(BindPushError::VertexBufferMissingUsage);
             }
         }
@@ -720,13 +725,9 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer(
-        &mut self,
-        buffer: Arc<dyn BufferAccess>,
-        index_type: IndexType,
-    ) {
+    pub unsafe fn bind_index_buffer(&mut self, buffer: Subbuffer<[u8]>, index_type: IndexType) {
         struct Cmd {
-            buffer: Arc<dyn BufferAccess>,
+            buffer: Subbuffer<[u8]>,
             index_type: IndexType,
         }
 
@@ -736,7 +737,7 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_index_buffer(self.buffer.as_ref(), self.index_type);
+                out.bind_index_buffer(&self.buffer, self.index_type);
             }
         }
 
@@ -1010,14 +1011,14 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
 pub struct SyncCommandBufferBuilderBindVertexBuffer<'a> {
     builder: &'a mut SyncCommandBufferBuilder,
     inner: UnsafeCommandBufferBuilderBindVertexBuffer,
-    buffers: SmallVec<[Arc<dyn BufferAccess>; 4]>,
+    buffers: SmallVec<[Subbuffer<[u8]>; 4]>,
 }
 
 impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
     /// Adds a buffer to the list.
     #[inline]
-    pub fn add(&mut self, buffer: Arc<dyn BufferAccess>) {
-        self.inner.add(buffer.as_ref());
+    pub fn add(&mut self, buffer: Subbuffer<[u8]>) {
+        self.inner.add(&buffer);
         self.buffers.push(buffer);
     }
 
@@ -1026,7 +1027,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
         struct Cmd {
             first_set: u32,
             inner: Mutex<Option<UnsafeCommandBufferBuilderBindVertexBuffer>>,
-            _buffers: SmallVec<[Arc<dyn BufferAccess>; 4]>,
+            _buffers: SmallVec<[Subbuffer<[u8]>; 4]>,
         }
 
         impl Command for Cmd {
@@ -1093,17 +1094,19 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer(&mut self, buffer: &dyn BufferAccess, index_type: IndexType) {
+    pub unsafe fn bind_index_buffer(&mut self, buffer: &Subbuffer<[u8]>, index_type: IndexType) {
         let fns = self.device.fns();
 
-        let inner = buffer.inner();
-        debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner.buffer.usage().intersects(BufferUsage::INDEX_BUFFER));
+        debug_assert!(buffer.offset() < buffer.buffer().size());
+        debug_assert!(buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDEX_BUFFER));
 
         (fns.v1_0.cmd_bind_index_buffer)(
             self.handle,
-            inner.buffer.handle(),
-            inner.offset,
+            buffer.buffer().handle(),
+            buffer.offset(),
             index_type.into(),
         );
     }
@@ -1281,11 +1284,13 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
 
     /// Adds a buffer to the list.
     #[inline]
-    pub fn add(&mut self, buffer: &dyn BufferAccess) {
-        let inner = buffer.inner();
-        debug_assert!(inner.buffer.usage().intersects(BufferUsage::VERTEX_BUFFER));
-        self.raw_buffers.push(inner.buffer.handle());
-        self.offsets.push(inner.offset);
+    pub fn add(&mut self, subbuffer: &Subbuffer<[u8]>) {
+        debug_assert!(subbuffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::VERTEX_BUFFER));
+        self.raw_buffers.push(subbuffer.buffer().handle());
+        self.offsets.push(subbuffer.offset());
     }
 }
 

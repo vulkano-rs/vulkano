@@ -15,7 +15,7 @@ pub use crate::command_buffer::commands::{
     secondary::SyncCommandBufferBuilderExecuteCommands,
 };
 use crate::{
-    buffer::{sys::Buffer, BufferAccess},
+    buffer::{Buffer, Subbuffer},
     command_buffer::{
         pool::CommandPoolAlloc,
         sys::{CommandBufferBeginInfo, UnsafeCommandBufferBuilder},
@@ -235,7 +235,7 @@ impl SyncCommandBufferBuilder {
 
     fn find_buffer_conflict(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &Subbuffer<[u8]>,
         mut range: Range<DeviceSize>,
         memory: &PipelineMemoryAccess,
     ) -> Option<ResourceUseRef> {
@@ -244,11 +244,10 @@ impl SyncCommandBufferBuilder {
         let last_allowed_barrier_index =
             self.latest_render_pass_enter.unwrap_or(self.commands.len());
 
-        let inner = buffer.inner();
-        range.start += inner.offset;
-        range.end += inner.offset;
+        range.start += buffer.offset();
+        range.end += buffer.offset();
 
-        let range_map = self.buffers2.get(inner.buffer)?;
+        let range_map = self.buffers2.get(buffer.buffer())?;
 
         for (_range, state) in range_map
             .range(&range)
@@ -376,7 +375,7 @@ impl SyncCommandBufferBuilder {
     fn add_buffer(
         &mut self,
         use_ref: ResourceUseRef,
-        buffer: Arc<dyn BufferAccess>,
+        buffer: Subbuffer<[u8]>,
         mut range: Range<DeviceSize>,
         memory: PipelineMemoryAccess,
     ) {
@@ -395,16 +394,15 @@ impl SyncCommandBufferBuilder {
             .latest_render_pass_enter
             .unwrap_or(self.commands.len() - 1);
 
-        let inner = buffer.inner();
-        range.start += inner.offset;
-        range.end += inner.offset;
+        range.start += buffer.offset();
+        range.end += buffer.offset();
 
         let range_map = self
             .buffers2
-            .entry(inner.buffer.clone())
+            .entry(buffer.buffer().clone())
             .or_insert_with(|| {
                 [(
-                    0..inner.buffer.size(),
+                    0..buffer.buffer().size(),
                     BufferState {
                         resource_uses: Vec::new(),
                         memory: PipelineMemoryAccess::default(),
@@ -442,7 +440,7 @@ impl SyncCommandBufferBuilder {
                             dst_stages: PipelineStages::ALL_COMMANDS,
                             dst_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
                             range: range.clone(),
-                            ..BufferMemoryBarrier::buffer(inner.buffer.clone())
+                            ..BufferMemoryBarrier::buffer(buffer.buffer().clone())
                         };
 
                         self.pending_barrier.buffer_memory_barriers.push(barrier);
@@ -490,7 +488,7 @@ impl SyncCommandBufferBuilder {
                             dst_stages: memory.stages,
                             dst_access: memory.access,
                             range: range.clone(),
-                            ..BufferMemoryBarrier::buffer(inner.buffer.clone())
+                            ..BufferMemoryBarrier::buffer(buffer.buffer().clone())
                         });
 
                     // Update state.
@@ -984,10 +982,10 @@ struct ImageState {
 #[derive(Default)]
 pub(in crate::command_buffer) struct CurrentState {
     pub(in crate::command_buffer) descriptor_sets: HashMap<PipelineBindPoint, DescriptorSetState>,
-    pub(in crate::command_buffer) index_buffer: Option<(Arc<dyn BufferAccess>, IndexType)>,
+    pub(in crate::command_buffer) index_buffer: Option<(Subbuffer<[u8]>, IndexType)>,
     pub(in crate::command_buffer) pipeline_compute: Option<Arc<ComputePipeline>>,
     pub(in crate::command_buffer) pipeline_graphics: Option<Arc<GraphicsPipeline>>,
-    pub(in crate::command_buffer) vertex_buffers: HashMap<u32, Arc<dyn BufferAccess>>,
+    pub(in crate::command_buffer) vertex_buffers: HashMap<u32, Subbuffer<[u8]>>,
 
     pub(in crate::command_buffer) push_constants: RangeSet<u32>,
     pub(in crate::command_buffer) push_constants_pipeline_layout: Option<Arc<PipelineLayout>>,
@@ -1226,7 +1224,7 @@ impl<'a> CommandBufferBuilderState<'a> {
 
     /// Returns the index buffer currently bound, or `None` if nothing has been bound yet.
     #[inline]
-    pub fn index_buffer(&self) -> Option<(&'a Arc<dyn BufferAccess>, IndexType)> {
+    pub fn index_buffer(&self) -> Option<(&'a Subbuffer<[u8]>, IndexType)> {
         self.current_state
             .index_buffer
             .as_ref()
@@ -1248,7 +1246,7 @@ impl<'a> CommandBufferBuilderState<'a> {
     /// Returns the vertex buffer currently bound to a given binding slot number, or `None` if
     /// nothing has been bound yet.
     #[inline]
-    pub fn vertex_buffer(&self, binding_num: u32) -> Option<&'a Arc<dyn BufferAccess>> {
+    pub fn vertex_buffer(&self, binding_num: u32) -> Option<&'a Subbuffer<[u8]>> {
         self.current_state.vertex_buffers.get(&binding_num)
     }
 

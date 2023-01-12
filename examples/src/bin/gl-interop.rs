@@ -15,7 +15,7 @@ mod linux {
         time::Instant,
     };
     use vulkano::{
-        buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+        buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
             CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
@@ -409,7 +409,7 @@ mod linux {
         Arc<vulkano::sampler::Sampler>,
         Arc<GraphicsPipeline>,
         StandardMemoryAllocator,
-        Arc<CpuAccessibleBuffer<[MyVertex]>>,
+        Subbuffer<[MyVertex]>,
     ) {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = vulkano_win::required_extensions(&library);
@@ -567,10 +567,12 @@ mod linux {
                 position: [0.5, 0.5],
             },
         ];
-        let vertex_buffer = CpuAccessibleBuffer::<[MyVertex]>::from_iter(
+        let vertex_buffer = Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::VERTEX_BUFFER,
-            false,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
             vertices,
         )
         .unwrap();

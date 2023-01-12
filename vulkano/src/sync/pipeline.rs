@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::sys::Buffer,
+    buffer::Buffer,
     descriptor_set::layout::DescriptorType,
     device::{Device, QueueFlags},
     image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},

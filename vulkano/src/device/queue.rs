@@ -9,7 +9,7 @@
 
 use super::{Device, DeviceOwned};
 use crate::{
-    buffer::{sys::BufferState, BufferAccess},
+    buffer::BufferState,
     command_buffer::{
         CommandBufferResourcesUsage, CommandBufferState, CommandBufferUsage, SemaphoreSubmitInfo,
         SubmitInfo,
@@ -226,7 +226,7 @@ impl<'a> QueueGuard<'a> {
                         .map(|(buffer, memory_binds)| {
                             (
                                 ash::vk::SparseBufferMemoryBindInfo {
-                                    buffer: buffer.inner().buffer.handle(),
+                                    buffer: buffer.buffer().handle(),
                                     bind_count: 0,
                                     p_binds: ptr::null(),
                                 },
@@ -1445,7 +1445,7 @@ impl<'a> States<'a> {
             }
 
             for (buffer, _) in buffer_binds {
-                let buffer = &buffer.inner().buffer;
+                let buffer = buffer.buffer();
                 buffers
                     .entry(buffer.handle())
                     .or_insert_with(|| buffer.state());

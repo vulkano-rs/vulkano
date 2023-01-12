@@ -11,7 +11,7 @@
 // and then we use `copy_buffer_dimensions` to copy the first half of the input buffer to the second half.
 
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferCopy,
         CommandBufferUsage, CopyBufferInfoTyped,
@@ -126,10 +126,14 @@ fn main() {
     let data_buffer = {
         // we intitialize half of the array and leave the other half to 0, we will use copy later to fill it
         let data_iter = (0..65536u32).map(|n| if n < 65536 / 2 { n } else { 0 });
-        CpuAccessibleBuffer::from_iter(
+        Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
-            false,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::STORAGE_BUFFER
+                    | BufferUsage::TRANSFER_SRC
+                    | BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
             data_iter,
         )
         .unwrap()

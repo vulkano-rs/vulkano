@@ -16,12 +16,12 @@ pub use crate::command_buffer::{
     BlitImageInfo, BufferCopy, BufferImageCopy, ClearAttachment, ClearColorImageInfo,
     ClearDepthStencilImageInfo, ClearError, ClearRect, CopyBufferInfo, CopyBufferInfoTyped,
     CopyBufferToImageInfo, CopyError, CopyErrorResource, CopyImageInfo, CopyImageToBufferInfo,
-    DebugUtilsError, ExecuteCommandsError, FillBufferInfo, ImageBlit, ImageCopy, ImageResolve,
+    DebugUtilsError, ExecuteCommandsError, ImageBlit, ImageCopy, ImageResolve,
     PipelineExecutionError, QueryError, RenderPassBeginInfo, RenderPassError,
     RenderingAttachmentInfo, RenderingAttachmentResolveInfo, RenderingInfo, ResolveImageInfo,
 };
 use crate::{
-    buffer::{sys::Buffer, BufferAccess},
+    buffer::{Buffer, Subbuffer},
     command_buffer::{
         allocator::{
             CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
@@ -670,10 +670,10 @@ struct CommandBufferBuilderState {
 
     // Bind/push
     descriptor_sets: HashMap<PipelineBindPoint, DescriptorSetState>,
-    index_buffer: Option<(Arc<dyn BufferAccess>, IndexType)>,
+    index_buffer: Option<(Subbuffer<[u8]>, IndexType)>,
     pipeline_compute: Option<Arc<ComputePipeline>>,
     pipeline_graphics: Option<Arc<GraphicsPipeline>>,
-    vertex_buffers: HashMap<u32, Arc<dyn BufferAccess>>,
+    vertex_buffers: HashMap<u32, Subbuffer<[u8]>>,
     push_constants: RangeSet<u32>,
     push_constants_pipeline_layout: Option<Arc<PipelineLayout>>,
 

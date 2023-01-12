@@ -10,7 +10,7 @@
 use cgmath::Vector3;
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
@@ -38,7 +38,7 @@ use super::LightingVertex;
 /// Allows applying a directional light source to a scene.
 pub struct DirectionalLightingSystem {
     gfx_queue: Arc<Queue>,
-    vertex_buffer: Arc<CpuAccessibleBuffer<[LightingVertex]>>,
+    vertex_buffer: Subbuffer<[LightingVertex]>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
@@ -68,10 +68,12 @@ impl DirectionalLightingSystem {
             },
         ];
         let vertex_buffer = {
-            CpuAccessibleBuffer::from_iter(
+            Buffer::from_iter(
                 memory_allocator,
-                BufferUsage::VERTEX_BUFFER,
-                false,
+                BufferAllocateInfo {
+                    buffer_usage: BufferUsage::VERTEX_BUFFER,
+                    ..Default::default()
+                },
                 vertices,
             )
             .expect("failed to create buffer")

@@ -10,12 +10,13 @@
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
+use vulkano::buffer::{BufferAllocateInfo, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::image::{ImageUsage, StorageImage};
 use vulkano::memory::allocator::MemoryAllocator;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferUsage},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer},
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::Queue,
@@ -36,19 +37,18 @@ pub struct GameOfLifeComputePipeline {
     compute_life_pipeline: Arc<ComputePipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    life_in: Arc<CpuAccessibleBuffer<[u32]>>,
-    life_out: Arc<CpuAccessibleBuffer<[u32]>>,
+    life_in: Subbuffer<[u32]>,
+    life_out: Subbuffer<[u32]>,
     image: DeviceImageView,
 }
 
-fn rand_grid(
-    memory_allocator: &impl MemoryAllocator,
-    size: [u32; 2],
-) -> Arc<CpuAccessibleBuffer<[u32]>> {
-    CpuAccessibleBuffer::from_iter(
+fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 2]) -> Subbuffer<[u32]> {
+    Buffer::from_iter(
         memory_allocator,
-        BufferUsage::STORAGE_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
         (0..(size[0] * size[1]))
             .map(|_| rand::thread_rng().gen_range(0u32..=1))
             .collect::<Vec<u32>>(),

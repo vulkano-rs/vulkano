@@ -29,7 +29,7 @@
 
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
@@ -192,7 +192,7 @@ fn main() {
     fn run_shader(
         pipeline: Arc<ComputePipeline>,
         queue: Arc<Queue>,
-        data_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
+        data_buffer: Subbuffer<[u32]>,
         parameters: shaders::ty::Parameters,
         command_buffer_allocator: &StandardCommandBufferAllocator,
         descriptor_set_allocator: &StandardDescriptorSetAllocator,
@@ -241,10 +241,12 @@ fn main() {
     // Preparing test data array `[0, 1, 2, 3....]`
     let data_buffer = {
         let data_iter = 0..65536u32;
-        CpuAccessibleBuffer::from_iter(
+        Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::STORAGE_BUFFER,
-            false,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
             data_iter,
         )
         .unwrap()

@@ -86,7 +86,7 @@ pub use self::{
 };
 use self::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
 use crate::{
-    buffer::{view::BufferViewAbstract, BufferAccess},
+    buffer::{view::BufferView, Subbuffer},
     descriptor_set::layout::DescriptorType,
     device::DeviceOwned,
     image::view::ImageViewAbstract,
@@ -342,8 +342,8 @@ impl DescriptorSetResources {
 #[derive(Clone)]
 pub enum DescriptorBindingResources {
     None(Elements<()>),
-    Buffer(Elements<(Arc<dyn BufferAccess>, Range<DeviceSize>)>),
-    BufferView(Elements<Arc<dyn BufferViewAbstract>>),
+    Buffer(Elements<(Subbuffer<[u8]>, Range<DeviceSize>)>),
+    BufferView(Elements<Arc<BufferView>>),
     ImageView(Elements<Arc<dyn ImageViewAbstract>>),
     ImageViewSampler(Elements<(Arc<dyn ImageViewAbstract>, Arc<Sampler>)>),
     Sampler(Elements<Arc<Sampler>>),

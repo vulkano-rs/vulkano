@@ -14,6 +14,7 @@ use crate::{
     pipeline::{PartialStateMode, StateMode},
     DeviceSize,
 };
+use bytemuck::Pod;
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
 #[derive(Clone, Copy, Debug)]
@@ -198,7 +199,7 @@ impl PrimitiveTopologyClass {
 }
 
 /// Trait for types that can be used as indices by the GPU.
-pub unsafe trait Index {
+pub unsafe trait Index: Pod + Sync + Send {
     /// Returns the type of data.
     fn ty() -> IndexType;
 }

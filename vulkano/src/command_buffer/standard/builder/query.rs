@@ -9,7 +9,7 @@
 
 use super::{CommandBufferBuilder, QueryError, QueryState};
 use crate::{
-    buffer::{BufferAccess, BufferUsage, TypedBufferAccess},
+    buffer::{BufferUsage, Subbuffer},
     command_buffer::{allocator::CommandBufferAllocator, ResourceInCommand, ResourceUseRef},
     device::{DeviceOwned, QueueFlags},
     query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags, QueryType},
@@ -519,21 +519,21 @@ where
     /// [`query_pool.ty().result_len()`]: crate::query::QueryType::result_len
     /// [`QueryResultFlags::WITH_AVAILABILITY`]: crate::query::QueryResultFlags::WITH_AVAILABILITY
     /// [`get_results`]: crate::query::QueriesRange::get_results
-    pub unsafe fn copy_query_pool_results<D, T>(
+    pub unsafe fn copy_query_pool_results<T>(
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-        dst_buffer: Arc<D>,
+        dst_buffer: Subbuffer<[T]>,
         flags: QueryResultFlags,
     ) -> Result<&mut Self, QueryError>
     where
-        D: TypedBufferAccess<Content = [T]> + 'static,
         T: QueryResultElement,
     {
         self.validate_copy_query_pool_results(
             &query_pool,
             queries.clone(),
-            dst_buffer.as_ref(),
+            dst_buffer.as_bytes(),
+            std::mem::size_of::<T>() as DeviceSize,
             flags,
         )?;
 
@@ -546,17 +546,14 @@ where
         }
     }
 
-    fn validate_copy_query_pool_results<D, T>(
+    fn validate_copy_query_pool_results(
         &self,
         query_pool: &QueryPool,
         queries: Range<u32>,
-        dst_buffer: &D,
+        dst_buffer: &Subbuffer<[u8]>,
+        element_size: DeviceSize,
         flags: QueryResultFlags,
-    ) -> Result<(), QueryError>
-    where
-        D: ?Sized + TypedBufferAccess<Content = [T]>,
-        T: QueryResultElement,
-    {
+    ) -> Result<(), QueryError> {
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdCopyQueryPoolResults-commandBuffer-cmdpool
@@ -573,17 +570,16 @@ where
         }
 
         let device = self.device();
-        let buffer_inner = dst_buffer.inner();
 
         // VUID-vkCmdCopyQueryPoolResults-commonparent
-        assert_eq!(device, buffer_inner.buffer.device());
+        assert_eq!(device, dst_buffer.buffer().device());
         assert_eq!(device, query_pool.device());
 
         assert!(dst_buffer.len() > 0);
 
         // VUID-vkCmdCopyQueryPoolResults-flags-00822
         // VUID-vkCmdCopyQueryPoolResults-flags-00823
-        debug_assert!(buffer_inner.offset % std::mem::size_of::<T>() as DeviceSize == 0);
+        debug_assert!(dst_buffer.offset() % element_size == 0);
 
         // VUID-vkCmdCopyQueryPoolResults-firstQuery-00820
         // VUID-vkCmdCopyQueryPoolResults-firstQuery-00821
@@ -605,8 +601,8 @@ where
         }
 
         // VUID-vkCmdCopyQueryPoolResults-dstBuffer-00825
-        if !buffer_inner
-            .buffer
+        if !dst_buffer
+            .buffer()
             .usage()
             .intersects(BufferUsage::TRANSFER_DST)
         {
@@ -626,28 +622,25 @@ where
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn copy_query_pool_results_unchecked<D, T>(
+    pub unsafe fn copy_query_pool_results_unchecked<T>(
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-        dst_buffer: Arc<D>,
+        dst_buffer: Subbuffer<[T]>,
         stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> &mut Self
     where
-        D: TypedBufferAccess<Content = [T]> + 'static,
         T: QueryResultElement,
     {
-        let dst_buffer_inner = dst_buffer.inner();
-
         let fns = self.device().fns();
         (fns.v1_0.cmd_copy_query_pool_results)(
             self.handle(),
             query_pool.handle(),
             queries.start,
             queries.end - queries.start,
-            dst_buffer_inner.buffer.handle(),
-            dst_buffer_inner.offset,
+            dst_buffer.buffer().handle(),
+            dst_buffer.offset(),
             stride,
             ash::vk::QueryResultFlags::from(flags) | T::FLAG,
         );
@@ -661,13 +654,10 @@ where
             secondary_use_ref: None,
         };
 
-        let mut dst_range = 0..dst_buffer.size(); // TODO:
-        dst_range.start += dst_buffer_inner.offset;
-        dst_range.end += dst_buffer_inner.offset;
         self.resources_usage_state.record_buffer_access(
             &use_ref,
-            dst_buffer_inner.buffer,
-            dst_range,
+            dst_buffer.buffer(),
+            dst_buffer.range(),
             PipelineStageAccess::Copy_TransferWrite,
         );
 

@@ -12,7 +12,7 @@ use super::{
     SurfaceTransforms, SwapchainPresentInfo,
 };
 use crate::{
-    buffer::sys::Buffer,
+    buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
     format::Format,
     image::{

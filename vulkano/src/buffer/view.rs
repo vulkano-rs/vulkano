@@ -19,21 +19,23 @@
 //!
 //! ```
 //! # use std::sync::Arc;
-//! use vulkano::buffer::DeviceLocalBuffer;
-//! use vulkano::buffer::BufferUsage;
+//! use vulkano::buffer::{Buffer, BufferAllocateInfo, BufferUsage};
 //! use vulkano::buffer::view::{BufferView, BufferViewCreateInfo};
 //! use vulkano::format::Format;
 //!
 //! # let queue: Arc<vulkano::device::Queue> = return;
 //! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
-//! let buffer = DeviceLocalBuffer::<[u32]>::array(
+//! let buffer = Buffer::new_slice::<u32>(
 //!     &memory_allocator,
+//!     BufferAllocateInfo {
+//!         buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
+//!         ..Default::default()
+//!     },
 //!     128,
-//!     BufferUsage::STORAGE_TEXEL_BUFFER,
-//!     [queue.queue_family_index()],
 //! )
 //! .unwrap();
-//! let _view = BufferView::new(
+//!
+//! let view = BufferView::new(
 //!     buffer,
 //!     BufferViewCreateInfo {
 //!         format: Some(Format::R32_UINT),
@@ -43,7 +45,7 @@
 //! .unwrap();
 //! ```
 
-use super::{BufferAccess, BufferAccessObject, BufferInner, BufferUsage};
+use super::{BufferUsage, Subbuffer};
 use crate::{
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
@@ -52,7 +54,6 @@ use crate::{
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
     mem::MaybeUninit,
     num::NonZeroU64,
     ops::Range,
@@ -63,12 +64,9 @@ use std::{
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
 #[derive(Debug)]
-pub struct BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
+pub struct BufferView {
     handle: ash::vk::BufferView,
-    buffer: Arc<B>,
+    subbuffer: Subbuffer<[u8]>,
     id: NonZeroU64,
 
     format: Option<Format>,
@@ -76,24 +74,27 @@ where
     range: Range<DeviceSize>,
 }
 
-impl<B> BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
+impl BufferView {
     /// Creates a new `BufferView`.
+    #[inline]
     pub fn new(
-        buffer: Arc<B>,
+        subbuffer: Subbuffer<impl ?Sized>,
         create_info: BufferViewCreateInfo,
-    ) -> Result<Arc<BufferView<B>>, BufferViewCreationError> {
+    ) -> Result<Arc<BufferView>, BufferViewCreationError> {
+        Self::new_inner(subbuffer.into_bytes(), create_info)
+    }
+
+    fn new_inner(
+        subbuffer: Subbuffer<[u8]>,
+        create_info: BufferViewCreateInfo,
+    ) -> Result<Arc<BufferView>, BufferViewCreationError> {
         let BufferViewCreateInfo { format, _ne: _ } = create_info;
 
+        let buffer = subbuffer.buffer();
         let device = buffer.device();
         let properties = device.physical_device().properties();
-        let size = buffer.size();
-        let BufferInner {
-            buffer: inner_buffer,
-            offset,
-        } = buffer.inner();
+        let size = subbuffer.size();
+        let offset = subbuffer.offset();
 
         // No VUID, but seems sensible?
         let format = format.unwrap();
@@ -102,7 +103,7 @@ where
         format.validate_device(device)?;
 
         // VUID-VkBufferViewCreateInfo-buffer-00932
-        if !inner_buffer
+        if !buffer
             .usage()
             .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER)
         {
@@ -118,18 +119,14 @@ where
         };
 
         // VUID-VkBufferViewCreateInfo-buffer-00933
-        if inner_buffer
-            .usage()
-            .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
+        if buffer.usage().intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
             && !format_features.intersects(FormatFeatures::UNIFORM_TEXEL_BUFFER)
         {
             return Err(BufferViewCreationError::UnsupportedFormat);
         }
 
         // VUID-VkBufferViewCreateInfo-buffer-00934
-        if inner_buffer
-            .usage()
-            .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
+        if buffer.usage().intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
             && !format_features.intersects(FormatFeatures::STORAGE_TEXEL_BUFFER)
         {
             return Err(BufferViewCreationError::UnsupportedFormat);
@@ -161,10 +158,7 @@ where
                 block_size
             };
 
-            if inner_buffer
-                .usage()
-                .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
-            {
+            if buffer.usage().intersects(BufferUsage::STORAGE_TEXEL_BUFFER) {
                 let mut required_alignment = properties
                     .storage_texel_buffer_offset_alignment_bytes
                     .unwrap();
@@ -185,10 +179,7 @@ where
                 }
             }
 
-            if inner_buffer
-                .usage()
-                .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
-            {
+            if buffer.usage().intersects(BufferUsage::UNIFORM_TEXEL_BUFFER) {
                 let mut required_alignment = properties
                     .uniform_texel_buffer_offset_alignment_bytes
                     .unwrap();
@@ -222,7 +213,7 @@ where
 
         let create_info = ash::vk::BufferViewCreateInfo {
             flags: ash::vk::BufferViewCreateFlags::empty(),
-            buffer: inner_buffer.handle(),
+            buffer: buffer.handle(),
             format: format.into(),
             offset,
             range: size,
@@ -245,7 +236,7 @@ where
 
         Ok(Arc::new(BufferView {
             handle,
-            buffer,
+            subbuffer,
             id: Self::next_id(),
             format: Some(format),
             format_features,
@@ -254,20 +245,37 @@ where
     }
 
     /// Returns the buffer associated to this view.
-    pub fn buffer(&self) -> &Arc<B> {
-        &self.buffer
+    #[inline]
+    pub fn buffer(&self) -> &Subbuffer<[u8]> {
+        &self.subbuffer
+    }
+
+    /// Returns the format of this view.
+    #[inline]
+    pub fn format(&self) -> Option<Format> {
+        self.format
+    }
+
+    /// Returns the features supported by this view’s format.
+    #[inline]
+    pub fn format_features(&self) -> FormatFeatures {
+        self.format_features
+    }
+
+    /// Returns the byte range of the wrapped buffer that this view exposes.
+    #[inline]
+    pub fn range(&self) -> Range<DeviceSize> {
+        self.range.clone()
     }
 }
 
-impl<B> Drop for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
+impl Drop for BufferView {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
-            let fns = self.buffer.inner().buffer.device().fns();
+            let fns = self.subbuffer.device().fns();
             (fns.v1_0.destroy_buffer_view)(
-                self.buffer.inner().buffer.device().handle(),
+                self.subbuffer.device().handle(),
                 self.handle,
                 ptr::null(),
             );
@@ -275,27 +283,23 @@ where
     }
 }
 
-unsafe impl<B> VulkanObject for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
+unsafe impl VulkanObject for BufferView {
     type Handle = ash::vk::BufferView;
 
+    #[inline]
     fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
 
-unsafe impl<B> DeviceOwned for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
+unsafe impl DeviceOwned for BufferView {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.buffer.device()
+        self.subbuffer.device()
     }
 }
 
-crate::impl_id_counter!(BufferView<B: BufferAccess + ?Sized>);
+crate::impl_id_counter!(BufferView);
 
 /// Parameters to create a new `BufferView`.
 #[derive(Clone, Debug)]
@@ -417,82 +421,29 @@ impl From<RequirementNotMet> for BufferViewCreationError {
     }
 }
 
-pub unsafe trait BufferViewAbstract:
-    VulkanObject<Handle = ash::vk::BufferView> + DeviceOwned + Send + Sync
-{
-    /// Returns the wrapped buffer that this buffer view was created from.
-    fn buffer(&self) -> Arc<dyn BufferAccess>;
-
-    /// Returns the format of the buffer view.
-    fn format(&self) -> Option<Format>;
-
-    /// Returns the features supported by the buffer view's format.
-    fn format_features(&self) -> FormatFeatures;
-
-    /// Returns the byte range of the wrapped buffer that this view exposes.
-    fn range(&self) -> Range<DeviceSize>;
-}
-
-unsafe impl<B> BufferViewAbstract for BufferView<B>
-where
-    B: BufferAccess + ?Sized + 'static,
-    Arc<B>: BufferAccessObject,
-{
-    fn buffer(&self) -> Arc<dyn BufferAccess> {
-        self.buffer.as_buffer_access_object()
-    }
-
-    fn format(&self) -> Option<Format> {
-        self.format
-    }
-
-    fn format_features(&self) -> FormatFeatures {
-        self.format_features
-    }
-
-    fn range(&self) -> Range<DeviceSize> {
-        self.range.clone()
-    }
-}
-
-impl PartialEq for dyn BufferViewAbstract {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle() == other.handle() && self.device() == other.device()
-    }
-}
-
-impl Eq for dyn BufferViewAbstract {}
-
-impl Hash for dyn BufferViewAbstract {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle().hash(state);
-        self.device().hash(state);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{BufferView, BufferViewCreateInfo, BufferViewCreationError};
     use crate::{
-        buffer::{BufferUsage, DeviceLocalBuffer},
+        buffer::{Buffer, BufferAllocateInfo, BufferUsage},
         format::Format,
-        memory::allocator::StandardMemoryAllocator,
+        memory::allocator::{MemoryUsage, StandardMemoryAllocator},
     };
 
     #[test]
     fn create_uniform() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let usage = BufferUsage::UNIFORM_TEXEL_BUFFER;
-
-        let buffer = DeviceLocalBuffer::<[[u8; 4]]>::array(
+        let buffer = Buffer::new_slice::<[u8; 4]>(
             &memory_allocator,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::UNIFORM_TEXEL_BUFFER,
+                memory_usage: MemoryUsage::GpuOnly,
+                ..Default::default()
+            },
             128,
-            usage,
-            [queue.queue_family_index()],
         )
         .unwrap();
         BufferView::new(
@@ -508,16 +459,17 @@ mod tests {
     #[test]
     fn create_storage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let usage = BufferUsage::STORAGE_TEXEL_BUFFER;
-
-        let buffer = DeviceLocalBuffer::<[[u8; 4]]>::array(
+        let buffer = Buffer::new_slice::<[u8; 4]>(
             &memory_allocator,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
+                memory_usage: MemoryUsage::GpuOnly,
+                ..Default::default()
+            },
             128,
-            usage,
-            [queue.queue_family_index()],
         )
         .unwrap();
         BufferView::new(
@@ -533,16 +485,17 @@ mod tests {
     #[test]
     fn create_storage_atomic() {
         // `VK_FORMAT_R32_UINT` guaranteed to be a supported format for atomics
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let usage = BufferUsage::STORAGE_TEXEL_BUFFER;
-
-        let buffer = DeviceLocalBuffer::<[u32]>::array(
+        let buffer = Buffer::new_slice::<u32>(
             &memory_allocator,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
+                memory_usage: MemoryUsage::GpuOnly,
+                ..Default::default()
+            },
             128,
-            usage,
-            [queue.queue_family_index()],
         )
         .unwrap();
         BufferView::new(
@@ -558,14 +511,17 @@ mod tests {
     #[test]
     fn wrong_usage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer = DeviceLocalBuffer::<[[u8; 4]]>::array(
+        let buffer = Buffer::new_slice::<[u8; 4]>(
             &memory_allocator,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::TRANSFER_DST, // Dummy value
+                memory_usage: MemoryUsage::GpuOnly,
+                ..Default::default()
+            },
             128,
-            BufferUsage::TRANSFER_DST, // Dummy value
-            [queue.queue_family_index()],
         )
         .unwrap();
 
@@ -583,16 +539,17 @@ mod tests {
 
     #[test]
     fn unsupported_format() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let usage = BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER;
-
-        let buffer = DeviceLocalBuffer::<[[f64; 4]]>::array(
+        let buffer = Buffer::new_slice::<[f64; 4]>(
             &memory_allocator,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER,
+                memory_usage: MemoryUsage::GpuOnly,
+                ..Default::default()
+            },
             128,
-            usage,
-            [queue.queue_family_index()],
         )
         .unwrap();
 

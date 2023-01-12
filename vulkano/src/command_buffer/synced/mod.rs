@@ -75,7 +75,7 @@ use super::{
     CommandBufferResourcesUsage, SecondaryCommandBufferResourcesUsage,
 };
 use crate::{
-    buffer::BufferAccess,
+    buffer::Subbuffer,
     device::{Device, DeviceOwned},
     image::{ImageAccess, ImageLayout, ImageSubresourceRange},
     sync::PipelineMemoryAccess,
@@ -140,7 +140,7 @@ unsafe impl DeviceOwned for SyncCommandBuffer {
 #[derive(Clone)]
 pub(super) enum Resource {
     Buffer {
-        buffer: Arc<dyn BufferAccess>,
+        buffer: Subbuffer<[u8]>,
         range: Range<DeviceSize>,
         memory: PipelineMemoryAccess,
     },
@@ -173,13 +173,13 @@ impl Debug for dyn Command {
 mod tests {
     use super::*;
     use crate::{
-        buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
+        buffer::{Buffer, BufferAllocateInfo, BufferUsage},
         command_buffer::{
             allocator::{
                 CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
             },
             sys::CommandBufferBeginInfo,
-            AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage, FillBufferInfo,
+            AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage,
             PrimaryCommandBufferAbstract,
         },
         descriptor_set::{
@@ -237,11 +237,13 @@ mod tests {
 
             let memory_allocator = StandardMemoryAllocator::new_default(device);
             // Create a tiny test buffer
-            let buffer = DeviceLocalBuffer::from_data(
+            let buffer = Buffer::from_data(
                 &memory_allocator,
+                BufferAllocateInfo {
+                    buffer_usage: BufferUsage::TRANSFER_DST,
+                    ..Default::default()
+                },
                 0u32,
-                BufferUsage::TRANSFER_DST,
-                &mut cbb,
             )
             .unwrap();
 
@@ -265,10 +267,7 @@ mod tests {
                     )
                     .unwrap();
                     builder
-                        .fill_buffer(FillBufferInfo {
-                            data: 42u32,
-                            ..FillBufferInfo::dst_buffer(buffer.clone())
-                        })
+                        .fill_buffer(buffer.clone().into_slice(), 42)
                         .unwrap();
                     Arc::new(builder.build().unwrap())
                 })
@@ -350,15 +349,17 @@ mod tests {
             .unwrap();
 
             let memory_allocator = StandardMemoryAllocator::new_default(device);
-            let buf = CpuAccessibleBuffer::from_data(
+            let buf = Buffer::from_data(
                 &memory_allocator,
-                BufferUsage::VERTEX_BUFFER,
-                false,
+                BufferAllocateInfo {
+                    buffer_usage: BufferUsage::VERTEX_BUFFER,
+                    ..Default::default()
+                },
                 0u32,
             )
             .unwrap();
             let mut buf_builder = sync.bind_vertex_buffers();
-            buf_builder.add(buf);
+            buf_builder.add(buf.into_bytes());
             buf_builder.submit(1);
 
             assert!(sync.state().vertex_buffer(0).is_none());

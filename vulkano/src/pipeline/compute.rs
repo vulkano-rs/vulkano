@@ -396,7 +396,7 @@ impl From<VulkanError> for ComputePipelineCreationError {
 #[cfg(test)]
 mod tests {
     use crate::{
-        buffer::{BufferUsage, CpuAccessibleBuffer},
+        buffer::{Buffer, BufferAllocateInfo, BufferUsage},
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         },
@@ -487,10 +487,12 @@ mod tests {
         .unwrap();
 
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
-        let data_buffer = CpuAccessibleBuffer::from_data(
+        let data_buffer = Buffer::from_data(
             &memory_allocator,
-            BufferUsage::STORAGE_BUFFER,
-            false,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
             0,
         )
         .unwrap();

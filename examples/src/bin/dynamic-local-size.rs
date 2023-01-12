@@ -16,7 +16,7 @@
 
 use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         CopyImageToBufferInfo,
@@ -223,10 +223,12 @@ fn main() {
     )
     .unwrap();
 
-    let buf = CpuAccessibleBuffer::from_iter(
+    let buf = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::TRANSFER_DST,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
         (0..1024 * 1024 * 4).map(|_| 0u8),
     )
     .unwrap();

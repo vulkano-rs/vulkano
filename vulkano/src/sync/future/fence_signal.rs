@@ -9,7 +9,7 @@
 
 use super::{AccessCheckError, FlushError, GpuFuture};
 use crate::{
-    buffer::sys::Buffer,
+    buffer::Buffer,
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
     device::{Device, DeviceOwned, Queue, QueueFlags},
     image::{sys::Image, ImageLayout},

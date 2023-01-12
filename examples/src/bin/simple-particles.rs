@@ -7,16 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! A minimal particle-sandbox to demonstrate a reasonable use-case for a `DeviceLocalBuffer`.
-//! We gain significant runtime performance by copying the inital vertex values to the GPU using
-//! a `CpuAccessibleBuffer` and then moving the data to a `DeviceLocalBuffer` to be accessed soley
+//! A minimal particle-sandbox to demonstrate a reasonable use-case for a device-local buffer.
+//! We gain significant runtime performance by writing the inital vertex values to the GPU using
+//! a staging buffer and then copying the data to a device-local buffer to be accessed solely
 //! by the GPU through the compute shader and as a vertex array.
-//!
 
 use bytemuck::{Pod, Zeroable};
 use std::{sync::Arc, time::SystemTime};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         CopyBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
@@ -30,7 +29,7 @@ use vulkano::{
     },
     image::{view::ImageView, ImageUsage},
     instance::{Instance, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -336,21 +335,33 @@ fn main() {
             }
         });
 
-        // Create a CPU accessible buffer initialized with the vertex data.
-        let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
+        // Create a CPU-accessible buffer initialized with the vertex data.
+        let temporary_accessible_buffer = Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::TRANSFER_SRC, // Specify this buffer will be used as a transfer source.
-            false,
+            BufferAllocateInfo {
+                // Specify this buffer will be used as a transfer source.
+                buffer_usage: BufferUsage::TRANSFER_SRC,
+                // Specify this buffer will be used for uploading to the GPU.
+                memory_usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
             vertices,
         )
         .unwrap();
 
-        // Create a buffer array on the GPU with enough space for `PARTICLE_COUNT` number of `Vertex`.
-        let device_local_buffer = DeviceLocalBuffer::<[Vertex]>::array(
+        // Create a buffer in device-local memory with enough space for `PARTICLE_COUNT` number of `Vertex`.
+        let device_local_buffer = Buffer::new_slice::<Vertex>(
             &memory_allocator,
+            BufferAllocateInfo {
+                // Specify use as a storage buffer, vertex buffer, and transfer destination.
+                buffer_usage: BufferUsage::STORAGE_BUFFER
+                    | BufferUsage::TRANSFER_DST
+                    | BufferUsage::VERTEX_BUFFER,
+                // Specify this buffer will only be used by the device.
+                memory_usage: MemoryUsage::GpuOnly,
+                ..Default::default()
+            },
             PARTICLE_COUNT as vulkano::DeviceSize,
-            BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST | BufferUsage::VERTEX_BUFFER, // Specify use as a storage buffer, vertex buffer, and transfer destination.
-            device.active_queue_family_indices().iter().copied(),
         )
         .unwrap();
 

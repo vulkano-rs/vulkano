@@ -101,7 +101,7 @@ use super::{
     semaphore::Semaphore,
 };
 use crate::{
-    buffer::sys::Buffer,
+    buffer::Buffer,
     command_buffer::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
         ResourceUseRef, SubmitInfo,

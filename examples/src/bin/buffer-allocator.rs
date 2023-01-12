@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// Modified triangle example to show `CpuBufferAllocator`.
+// Modified triangle example to show `SubbufferAllocator`.
 
 use bytemuck::{Pod, Zeroable};
 use std::{
@@ -16,7 +16,7 @@ use std::{
 };
 use vulkano::{
     buffer::{
-        allocator::{CpuBufferAllocator, CpuBufferAllocatorCreateInfo},
+        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
         BufferUsage,
     },
     command_buffer::{
@@ -165,9 +165,9 @@ fn main() {
 
     // Using a buffer allocator allows multiple buffers to be "in-flight" simultaneously and is
     // suited to highly dynamic data like vertex, index and uniform buffers.
-    let buffer_allocator = CpuBufferAllocator::new(
+    let buffer_allocator = SubbufferAllocator::new(
         memory_allocator,
-        CpuBufferAllocatorCreateInfo {
+        SubbufferAllocatorCreateInfo {
             // We want to use the allocated subbuffers as vertex buffers.
             buffer_usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
@@ -336,7 +336,9 @@ fn main() {
                 let num_vertices = data.len() as u32;
 
                 // Allocate a new subbuffer using the buffer allocator.
-                let buffer = buffer_allocator.from_iter(data.iter().copied()).unwrap();
+                let buffer = buffer_allocator.allocate_slice(data.len() as _).unwrap();
+                buffer.write().unwrap().copy_from_slice(&data);
+
                 let mut builder = AutoCommandBufferBuilder::primary(
                     &command_buffer_allocator,
                     queue.queue_family_index(),

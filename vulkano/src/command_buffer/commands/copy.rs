@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::{BufferAccess, BufferUsage, TypedBufferAccess},
+    buffer::{BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
@@ -84,15 +84,16 @@ where
             _ne: _,
         } = copy_buffer_info;
 
-        let src_buffer_inner = src_buffer.inner();
-        let dst_buffer_inner = dst_buffer.inner();
-
         // VUID-VkCopyBufferInfo2-commonparent
         assert_eq!(device, src_buffer.device());
         assert_eq!(device, dst_buffer.device());
 
         // VUID-VkCopyBufferInfo2-srcBuffer-00118
-        if !src_buffer.usage().intersects(BufferUsage::TRANSFER_SRC) {
+        if !src_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_SRC)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -100,14 +101,18 @@ where
         }
 
         // VUID-VkCopyBufferInfo2-dstBuffer-00120
-        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
             });
         }
 
-        let same_buffer = src_buffer_inner.buffer == dst_buffer_inner.buffer;
+        let same_buffer = src_buffer.buffer() == dst_buffer.buffer();
         let mut overlap_indices = None;
 
         for (region_index, region) in regions.iter().enumerate() {
@@ -146,14 +151,14 @@ where
             // VUID-VkCopyBufferInfo2-pRegions-00117
             if same_buffer {
                 let src_region_index = region_index;
-                let src_range = src_buffer_inner.offset + src_offset
-                    ..src_buffer_inner.offset + src_offset + size;
+                let src_range =
+                    src_buffer.offset() + src_offset..src_buffer.offset() + src_offset + size;
 
                 for (dst_region_index, dst_region) in regions.iter().enumerate() {
                     let &BufferCopy { dst_offset, .. } = dst_region;
 
-                    let dst_range = dst_buffer_inner.offset + dst_offset
-                        ..dst_buffer_inner.offset + dst_offset + size;
+                    let dst_range =
+                        dst_buffer.offset() + dst_offset..dst_buffer.offset() + dst_offset + size;
 
                     if src_range.start >= dst_range.end || dst_range.start >= src_range.end {
                         // The regions do not overlap
@@ -941,7 +946,6 @@ where
         assert_eq!(device, src_buffer.device());
         assert_eq!(device, dst_image.device());
 
-        let buffer_inner = src_buffer.inner();
         let mut image_aspects = dst_image.format().aspects();
 
         // VUID-VkCopyBufferToImageInfo2-commandBuffer-04477
@@ -954,7 +958,11 @@ where
         }
 
         // VUID-VkCopyBufferToImageInfo2-srcBuffer-00174
-        if !src_buffer.usage().intersects(BufferUsage::TRANSFER_SRC) {
+        if !src_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_SRC)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -1302,11 +1310,11 @@ where
             // VUID-VkCopyBufferToImageInfo2-bufferOffset-01558
             // VUID-VkCopyBufferToImageInfo2-bufferOffset-01559
             // VUID-VkCopyBufferToImageInfo2-srcImage-04053
-            if (buffer_inner.offset + buffer_offset) % buffer_offset_alignment != 0 {
+            if (src_buffer.offset() + buffer_offset) % buffer_offset_alignment != 0 {
                 return Err(CopyError::OffsetNotAlignedForBuffer {
                     resource: CopyErrorResource::Source,
                     region_index,
-                    offset: buffer_inner.offset + buffer_offset,
+                    offset: src_buffer.offset() + buffer_offset,
                     required_alignment: buffer_offset_alignment,
                 });
             }
@@ -1380,7 +1388,6 @@ where
         assert_eq!(device, dst_buffer.device());
         assert_eq!(device, src_image.device());
 
-        let buffer_inner = dst_buffer.inner();
         let mut image_aspects = src_image.format().aspects();
 
         // VUID-VkCopyImageToBufferInfo2-srcImage-00186
@@ -1392,7 +1399,11 @@ where
         }
 
         // VUID-VkCopyImageToBufferInfo2-dstBuffer-00191
-        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -1730,11 +1741,11 @@ where
             // VUID-VkCopyImageToBufferInfo2-bufferOffset-01559
             // VUID-VkCopyImageToBufferInfo2-bufferOffset-00206
             // VUID-VkCopyImageToBufferInfo2-srcImage-04053
-            if (buffer_inner.offset + buffer_offset) % buffer_offset_alignment != 0 {
+            if (dst_buffer.offset() + buffer_offset) % buffer_offset_alignment != 0 {
                 return Err(CopyError::OffsetNotAlignedForBuffer {
                     resource: CopyErrorResource::Destination,
                     region_index,
-                    offset: buffer_inner.offset + buffer_offset,
+                    offset: dst_buffer.offset() + buffer_offset,
                     required_alignment: buffer_offset_alignment,
                 });
             }
@@ -3195,9 +3206,6 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let src_buffer_inner = src_buffer.inner();
-        let dst_buffer_inner = dst_buffer.inner();
-
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_3
@@ -3214,8 +3222,8 @@ impl UnsafeCommandBufferBuilder {
                     } = region;
 
                     ash::vk::BufferCopy2 {
-                        src_offset: src_offset + src_buffer_inner.offset,
-                        dst_offset: dst_offset + dst_buffer_inner.offset,
+                        src_offset: src_offset + src_buffer.offset(),
+                        dst_offset: dst_offset + dst_buffer.offset(),
                         size,
                         ..Default::default()
                     }
@@ -3223,8 +3231,8 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let copy_buffer_info = ash::vk::CopyBufferInfo2 {
-                src_buffer: src_buffer_inner.buffer.handle(),
-                dst_buffer: dst_buffer_inner.buffer.handle(),
+                src_buffer: src_buffer.buffer().handle(),
+                dst_buffer: dst_buffer.buffer().handle(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
                 ..Default::default()
@@ -3247,8 +3255,8 @@ impl UnsafeCommandBufferBuilder {
                     } = region;
 
                     ash::vk::BufferCopy {
-                        src_offset: src_offset + src_buffer_inner.offset,
-                        dst_offset: dst_offset + dst_buffer_inner.offset,
+                        src_offset: src_offset + src_buffer.offset(),
+                        dst_offset: dst_offset + dst_buffer.offset(),
                         size,
                     }
                 })
@@ -3256,8 +3264,8 @@ impl UnsafeCommandBufferBuilder {
 
             (fns.v1_0.cmd_copy_buffer)(
                 self.handle,
-                src_buffer_inner.buffer.handle(),
-                dst_buffer_inner.buffer.handle(),
+                src_buffer.buffer().handle(),
+                dst_buffer.buffer().handle(),
                 regions.len() as u32,
                 regions.as_ptr(),
             );
@@ -3429,7 +3437,6 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let src_buffer_inner = src_buffer.inner();
         let dst_image_inner = dst_image.inner();
 
         let fns = self.device.fns();
@@ -3456,7 +3463,7 @@ impl UnsafeCommandBufferBuilder {
                     image_subresource.mip_level += dst_image_inner.first_mipmap_level;
 
                     ash::vk::BufferImageCopy2 {
-                        buffer_offset: buffer_offset + src_buffer_inner.offset,
+                        buffer_offset: buffer_offset + src_buffer.offset(),
                         buffer_row_length,
                         buffer_image_height,
                         image_subresource: image_subresource.into(),
@@ -3476,7 +3483,7 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             let copy_buffer_to_image_info = ash::vk::CopyBufferToImageInfo2 {
-                src_buffer: src_buffer_inner.buffer.handle(),
+                src_buffer: src_buffer.buffer().handle(),
                 dst_image: dst_image_inner.image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
@@ -3512,7 +3519,7 @@ impl UnsafeCommandBufferBuilder {
                     image_subresource.mip_level += dst_image_inner.first_mipmap_level;
 
                     ash::vk::BufferImageCopy {
-                        buffer_offset: buffer_offset + src_buffer_inner.offset,
+                        buffer_offset: buffer_offset + src_buffer.offset(),
                         buffer_row_length,
                         buffer_image_height,
                         image_subresource: image_subresource.into(),
@@ -3532,7 +3539,7 @@ impl UnsafeCommandBufferBuilder {
 
             (fns.v1_0.cmd_copy_buffer_to_image)(
                 self.handle,
-                src_buffer_inner.buffer.handle(),
+                src_buffer.buffer().handle(),
                 dst_image_inner.image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
@@ -3563,7 +3570,6 @@ impl UnsafeCommandBufferBuilder {
         }
 
         let src_image_inner = src_image.inner();
-        let dst_buffer_inner = dst_buffer.inner();
 
         let fns = self.device.fns();
 
@@ -3589,7 +3595,7 @@ impl UnsafeCommandBufferBuilder {
                     image_subresource.mip_level += src_image_inner.first_mipmap_level;
 
                     ash::vk::BufferImageCopy2 {
-                        buffer_offset: buffer_offset + dst_buffer_inner.offset,
+                        buffer_offset: buffer_offset + dst_buffer.offset(),
                         buffer_row_length,
                         buffer_image_height,
                         image_subresource: image_subresource.into(),
@@ -3611,7 +3617,7 @@ impl UnsafeCommandBufferBuilder {
             let copy_image_to_buffer_info = ash::vk::CopyImageToBufferInfo2 {
                 src_image: src_image_inner.image.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_buffer: dst_buffer_inner.buffer.handle(),
+                dst_buffer: dst_buffer.buffer().handle(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
                 ..Default::default()
@@ -3644,7 +3650,7 @@ impl UnsafeCommandBufferBuilder {
                     image_subresource.mip_level += src_image_inner.first_mipmap_level;
 
                     ash::vk::BufferImageCopy {
-                        buffer_offset: buffer_offset + dst_buffer_inner.offset,
+                        buffer_offset: buffer_offset + dst_buffer.offset(),
                         buffer_row_length,
                         buffer_image_height,
                         image_subresource: image_subresource.into(),
@@ -3666,7 +3672,7 @@ impl UnsafeCommandBufferBuilder {
                 self.handle,
                 src_image_inner.image.handle(),
                 src_image_layout.into(),
-                dst_buffer_inner.buffer.handle(),
+                dst_buffer.buffer().handle(),
                 regions.len() as u32,
                 regions.as_ptr(),
             );
@@ -3989,12 +3995,12 @@ pub struct CopyBufferInfo {
     /// The buffer to copy from.
     ///
     /// There is no default value.
-    pub src_buffer: Arc<dyn BufferAccess>,
+    pub src_buffer: Subbuffer<[u8]>,
 
     /// The buffer to copy to.
     ///
     /// There is no default value.
-    pub dst_buffer: Arc<dyn BufferAccess>,
+    pub dst_buffer: Subbuffer<[u8]>,
 
     /// The regions of both buffers to copy between, specified in bytes.
     ///
@@ -4008,7 +4014,7 @@ pub struct CopyBufferInfo {
 impl CopyBufferInfo {
     /// Returns a `CopyBufferInfo` with the specified `src_buffer` and `dst_buffer`.
     #[inline]
-    pub fn buffers(src_buffer: Arc<dyn BufferAccess>, dst_buffer: Arc<dyn BufferAccess>) -> Self {
+    pub fn buffers(src_buffer: Subbuffer<impl ?Sized>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
         let region = BufferCopy {
             src_offset: 0,
             dst_offset: 0,
@@ -4017,8 +4023,8 @@ impl CopyBufferInfo {
         };
 
         Self {
-            src_buffer,
-            dst_buffer,
+            src_buffer: src_buffer.into_bytes(),
+            dst_buffer: dst_buffer.into_bytes(),
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }
@@ -4029,20 +4035,16 @@ impl CopyBufferInfo {
 ///
 /// The fields of `regions` represent elements of `T`.
 #[derive(Clone, Debug)]
-pub struct CopyBufferInfoTyped<S, D, T>
-where
-    S: TypedBufferAccess<Content = [T]>,
-    D: TypedBufferAccess<Content = [T]>,
-{
+pub struct CopyBufferInfoTyped<T> {
     /// The buffer to copy from.
     ///
     /// There is no default value.
-    pub src_buffer: Arc<S>,
+    pub src_buffer: Subbuffer<[T]>,
 
     /// The buffer to copy to.
     ///
     /// There is no default value.
-    pub dst_buffer: Arc<D>,
+    pub dst_buffer: Subbuffer<[T]>,
 
     /// The regions of both buffers to copy between, specified in elements of `T`.
     ///
@@ -4053,13 +4055,9 @@ where
     pub _ne: crate::NonExhaustive,
 }
 
-impl<S, D, T> CopyBufferInfoTyped<S, D, T>
-where
-    S: TypedBufferAccess<Content = [T]>,
-    D: TypedBufferAccess<Content = [T]>,
-{
+impl<T> CopyBufferInfoTyped<T> {
     /// Returns a `CopyBufferInfoTyped` with the specified `src_buffer` and `dst_buffer`.
-    pub fn buffers(src_buffer: Arc<S>, dst_buffer: Arc<D>) -> Self {
+    pub fn buffers(src_buffer: Subbuffer<[T]>, dst_buffer: Subbuffer<[T]>) -> Self {
         let region = BufferCopy {
             size: min(src_buffer.len(), dst_buffer.len()),
             ..Default::default()
@@ -4074,12 +4072,8 @@ where
     }
 }
 
-impl<S, D, T> From<CopyBufferInfoTyped<S, D, T>> for CopyBufferInfo
-where
-    S: TypedBufferAccess<Content = [T]> + 'static,
-    D: TypedBufferAccess<Content = [T]> + 'static,
-{
-    fn from(typed: CopyBufferInfoTyped<S, D, T>) -> Self {
+impl<T> From<CopyBufferInfoTyped<T>> for CopyBufferInfo {
+    fn from(typed: CopyBufferInfoTyped<T>) -> Self {
         let CopyBufferInfoTyped {
             src_buffer,
             dst_buffer,
@@ -4094,8 +4088,8 @@ where
         }
 
         Self {
-            src_buffer,
-            dst_buffer,
+            src_buffer: src_buffer.as_bytes().clone(),
+            dst_buffer: dst_buffer.as_bytes().clone(),
             regions,
             _ne: crate::NonExhaustive(()),
         }
@@ -4278,7 +4272,7 @@ pub struct CopyBufferToImageInfo {
     /// The buffer to copy from.
     ///
     /// There is no default value.
-    pub src_buffer: Arc<dyn BufferAccess>,
+    pub src_buffer: Subbuffer<[u8]>,
 
     /// The image to copy to.
     ///
@@ -4308,7 +4302,7 @@ impl CopyBufferToImageInfo {
     /// `dst_image`.
     #[inline]
     pub fn buffer_image(
-        src_buffer: Arc<dyn BufferAccess>,
+        src_buffer: Subbuffer<impl ?Sized>,
         dst_image: Arc<dyn ImageAccess>,
     ) -> Self {
         let region = BufferImageCopy {
@@ -4318,7 +4312,7 @@ impl CopyBufferToImageInfo {
         };
 
         Self {
-            src_buffer,
+            src_buffer: src_buffer.into_bytes(),
             dst_image,
             dst_image_layout: ImageLayout::TransferDstOptimal,
             regions: smallvec![region],
@@ -4347,7 +4341,7 @@ pub struct CopyImageToBufferInfo {
     /// The buffer to copy to.
     ///
     /// There is no default value.
-    pub dst_buffer: Arc<dyn BufferAccess>,
+    pub dst_buffer: Subbuffer<[u8]>,
 
     /// The regions of the image and buffer to copy between.
     ///
@@ -4364,7 +4358,7 @@ impl CopyImageToBufferInfo {
     #[inline]
     pub fn image_buffer(
         src_image: Arc<dyn ImageAccess>,
-        dst_buffer: Arc<dyn BufferAccess>,
+        dst_buffer: Subbuffer<impl ?Sized>,
     ) -> Self {
         let region = BufferImageCopy {
             image_subresource: src_image.subresource_layers(),
@@ -4375,7 +4369,7 @@ impl CopyImageToBufferInfo {
         Self {
             src_image,
             src_image_layout: ImageLayout::TransferSrcOptimal,
-            dst_buffer,
+            dst_buffer: dst_buffer.into_bytes(),
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }

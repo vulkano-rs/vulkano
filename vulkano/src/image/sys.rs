@@ -19,7 +19,7 @@ use super::{
     SampleCounts, SparseImageMemoryRequirements,
 };
 use crate::{
-    buffer::cpu_access::{ReadLockError, WriteLockError},
+    buffer::subbuffer::{ReadLockError, WriteLockError},
     cache::OnceCache,
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},

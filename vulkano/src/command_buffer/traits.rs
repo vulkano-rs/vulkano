@@ -12,7 +12,7 @@ use super::{
     CommandBufferUsage, SecondaryCommandBufferResourcesUsage, SemaphoreSubmitInfo, SubmitInfo,
 };
 use crate::{
-    buffer::sys::Buffer,
+    buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
     image::{sys::Image, ImageLayout},
     swapchain::Swapchain,

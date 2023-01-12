@@ -14,9 +14,9 @@
 //! in a small position offset.
 
 use bytemuck::{Pod, Zeroable};
-use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
+use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
         CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo, SubpassContents,
@@ -165,10 +165,12 @@ fn main() {
             position: [0.25, -0.1],
         },
     ];
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+    let vertex_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferUsage::VERTEX_BUFFER,
-        false,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
         vertices,
     )
     .unwrap();
@@ -276,10 +278,12 @@ fn main() {
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     let create_buffer = || {
-        CpuAccessibleBuffer::from_iter(
+        Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::TRANSFER_DST,
-            false,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
             (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),
         )
         .unwrap()
@@ -367,12 +371,7 @@ fn main() {
     );
 }
 
-fn write_image_buffer_to_file(
-    buffer: Arc<CpuAccessibleBuffer<[u8]>>,
-    path: &str,
-    width: u32,
-    height: u32,
-) {
+fn write_image_buffer_to_file(buffer: Subbuffer<[u8]>, path: &str, width: u32, height: u32) {
     let buffer_content = buffer.read().unwrap();
     let path = Path::new(path);
     let file = File::create(path).unwrap();

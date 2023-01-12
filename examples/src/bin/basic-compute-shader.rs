@@ -14,7 +14,7 @@
 // GPU", or *GPGPU*. This is what this example demonstrates.
 
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
@@ -156,10 +156,12 @@ fn main() {
         // Iterator that produces the data.
         let data_iter = 0..65536u32;
         // Builds the buffer and fills it with this iterator.
-        CpuAccessibleBuffer::from_iter(
+        Buffer::from_iter(
             &memory_allocator,
-            BufferUsage::STORAGE_BUFFER,
-            false,
+            BufferAllocateInfo {
+                buffer_usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
             data_iter,
         )
         .unwrap()

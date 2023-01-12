@@ -13,7 +13,7 @@ use super::{
     ImageCopy, ResolveImageInfo,
 };
 use crate::{
-    buffer::{BufferAccess, BufferUsage},
+    buffer::BufferUsage,
     command_buffer::{
         allocator::CommandBufferAllocator, ImageBlit, ImageResolve, ResourceInCommand,
         ResourceUseRef,
@@ -82,15 +82,16 @@ where
             _ne: _,
         } = copy_buffer_info;
 
-        let src_buffer_inner = src_buffer.inner();
-        let dst_buffer_inner = dst_buffer.inner();
-
         // VUID-VkCopyBufferInfo2-commonparent
         assert_eq!(device, src_buffer.device());
         assert_eq!(device, dst_buffer.device());
 
         // VUID-VkCopyBufferInfo2-srcBuffer-00118
-        if !src_buffer.usage().intersects(BufferUsage::TRANSFER_SRC) {
+        if !src_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_SRC)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -98,14 +99,18 @@ where
         }
 
         // VUID-VkCopyBufferInfo2-dstBuffer-00120
-        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
             });
         }
 
-        let same_buffer = src_buffer_inner.buffer == dst_buffer_inner.buffer;
+        let same_buffer = src_buffer.buffer() == dst_buffer.buffer();
         let mut overlap_indices = None;
 
         for (region_index, region) in regions.iter().enumerate() {
@@ -144,14 +149,14 @@ where
             // VUID-VkCopyBufferInfo2-pRegions-00117
             if same_buffer {
                 let src_region_index = region_index;
-                let src_range = src_buffer_inner.offset + src_offset
-                    ..src_buffer_inner.offset + src_offset + size;
+                let src_range =
+                    src_buffer.offset() + src_offset..src_buffer.offset() + src_offset + size;
 
                 for (dst_region_index, dst_region) in regions.iter().enumerate() {
                     let &BufferCopy { dst_offset, .. } = dst_region;
 
-                    let dst_range = dst_buffer_inner.offset + dst_offset
-                        ..dst_buffer_inner.offset + dst_offset + size;
+                    let dst_range =
+                        dst_buffer.offset() + dst_offset..dst_buffer.offset() + dst_offset + size;
 
                     if src_range.start >= dst_range.end || dst_range.start >= src_range.end {
                         // The regions do not overlap
@@ -193,9 +198,6 @@ where
             return self;
         }
 
-        let src_buffer_inner = src_buffer.inner();
-        let dst_buffer_inner = dst_buffer.inner();
-
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3
@@ -212,8 +214,8 @@ where
                     } = region;
 
                     ash::vk::BufferCopy2 {
-                        src_offset: src_offset + src_buffer_inner.offset,
-                        dst_offset: dst_offset + dst_buffer_inner.offset,
+                        src_offset: src_offset + src_buffer.offset(),
+                        dst_offset: dst_offset + dst_buffer.offset(),
                         size,
                         ..Default::default()
                     }
@@ -221,8 +223,8 @@ where
                 .collect();
 
             let copy_buffer_info = ash::vk::CopyBufferInfo2 {
-                src_buffer: src_buffer_inner.buffer.handle(),
-                dst_buffer: dst_buffer_inner.buffer.handle(),
+                src_buffer: src_buffer.buffer().handle(),
+                dst_buffer: dst_buffer.buffer().handle(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
                 ..Default::default()
@@ -245,8 +247,8 @@ where
                     } = region;
 
                     ash::vk::BufferCopy {
-                        src_offset: src_offset + src_buffer_inner.offset,
-                        dst_offset: dst_offset + dst_buffer_inner.offset,
+                        src_offset: src_offset + src_buffer.offset(),
+                        dst_offset: dst_offset + dst_buffer.offset(),
                         size,
                     }
                 })
@@ -254,8 +256,8 @@ where
 
             (fns.v1_0.cmd_copy_buffer)(
                 self.handle(),
-                src_buffer_inner.buffer.handle(),
-                dst_buffer_inner.buffer.handle(),
+                src_buffer.buffer().handle(),
+                dst_buffer.buffer().handle(),
                 regions.len() as u32,
                 regions.as_ptr(),
             );
@@ -285,21 +287,21 @@ where
             } = region;
 
             let mut src_range = src_offset..src_offset + size;
-            src_range.start += src_buffer_inner.offset;
-            src_range.end += src_buffer_inner.offset;
+            src_range.start += src_buffer.offset();
+            src_range.end += src_buffer.offset();
             self.resources_usage_state.record_buffer_access(
                 &src_use_ref,
-                src_buffer_inner.buffer,
+                src_buffer.buffer(),
                 src_range,
                 PipelineStageAccess::Copy_TransferRead,
             );
 
             let mut dst_range = dst_offset..dst_offset + size;
-            dst_range.start += dst_buffer_inner.offset;
-            dst_range.end += dst_buffer_inner.offset;
+            dst_range.start += dst_buffer.offset();
+            dst_range.end += dst_buffer.offset();
             self.resources_usage_state.record_buffer_access(
                 &dst_use_ref,
-                dst_buffer_inner.buffer,
+                dst_buffer.buffer(),
                 dst_range,
                 PipelineStageAccess::Copy_TransferWrite,
             );
@@ -1286,7 +1288,6 @@ where
         assert_eq!(device, src_buffer.device());
         assert_eq!(device, dst_image.device());
 
-        let buffer_inner = src_buffer.inner();
         let mut image_aspects = dst_image.format().aspects();
 
         // VUID-VkCopyBufferToImageInfo2-commandBuffer-04477
@@ -1299,7 +1300,11 @@ where
         }
 
         // VUID-VkCopyBufferToImageInfo2-srcBuffer-00174
-        if !src_buffer.usage().intersects(BufferUsage::TRANSFER_SRC) {
+        if !src_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_SRC)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -1647,11 +1652,11 @@ where
             // VUID-VkCopyBufferToImageInfo2-bufferOffset-01558
             // VUID-VkCopyBufferToImageInfo2-bufferOffset-01559
             // VUID-VkCopyBufferToImageInfo2-srcImage-04053
-            if (buffer_inner.offset + buffer_offset) % buffer_offset_alignment != 0 {
+            if (src_buffer.offset() + buffer_offset) % buffer_offset_alignment != 0 {
                 return Err(CopyError::OffsetNotAlignedForBuffer {
                     resource: CopyErrorResource::Source,
                     region_index,
-                    offset: buffer_inner.offset + buffer_offset,
+                    offset: src_buffer.offset() + buffer_offset,
                     required_alignment: buffer_offset_alignment,
                 });
             }
@@ -1692,7 +1697,6 @@ where
             return self;
         }
 
-        let src_buffer_inner = src_buffer.inner();
         let dst_image_inner = dst_image.inner();
 
         let fns = self.device().fns();
@@ -1719,7 +1723,7 @@ where
                     image_subresource.mip_level += dst_image_inner.first_mipmap_level;
 
                     ash::vk::BufferImageCopy2 {
-                        buffer_offset: buffer_offset + src_buffer_inner.offset,
+                        buffer_offset: buffer_offset + src_buffer.offset(),
                         buffer_row_length,
                         buffer_image_height,
                         image_subresource: image_subresource.into(),
@@ -1739,7 +1743,7 @@ where
                 .collect();
 
             let copy_buffer_to_image_info = ash::vk::CopyBufferToImageInfo2 {
-                src_buffer: src_buffer_inner.buffer.handle(),
+                src_buffer: src_buffer.buffer().handle(),
                 dst_image: dst_image_inner.image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
@@ -1775,7 +1779,7 @@ where
                     image_subresource.mip_level += dst_image_inner.first_mipmap_level;
 
                     ash::vk::BufferImageCopy {
-                        buffer_offset: buffer_offset + src_buffer_inner.offset,
+                        buffer_offset: buffer_offset + src_buffer.offset(),
                         buffer_row_length,
                         buffer_image_height,
                         image_subresource: image_subresource.into(),
@@ -1795,7 +1799,7 @@ where
 
             (fns.v1_0.cmd_copy_buffer_to_image)(
                 self.handle(),
-                src_buffer_inner.buffer.handle(),
+                src_buffer.buffer().handle(),
                 dst_image_inner.image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
@@ -1832,11 +1836,11 @@ where
             } = region;
 
             let mut src_range = buffer_offset..buffer_offset + buffer_copy_size;
-            src_range.start += src_buffer_inner.offset;
-            src_range.end += src_buffer_inner.offset;
+            src_range.start += src_buffer.offset();
+            src_range.end += src_buffer.offset();
             self.resources_usage_state.record_buffer_access(
                 &src_use_ref,
-                src_buffer_inner.buffer,
+                src_buffer.buffer(),
                 src_range,
                 PipelineStageAccess::Copy_TransferRead,
             );
@@ -1915,7 +1919,6 @@ where
         assert_eq!(device, dst_buffer.device());
         assert_eq!(device, src_image.device());
 
-        let buffer_inner = dst_buffer.inner();
         let mut image_aspects = src_image.format().aspects();
 
         // VUID-VkCopyImageToBufferInfo2-srcImage-00186
@@ -1927,7 +1930,11 @@ where
         }
 
         // VUID-VkCopyImageToBufferInfo2-dstBuffer-00191
-        if !dst_buffer.usage().intersects(BufferUsage::TRANSFER_DST) {
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -2265,11 +2272,11 @@ where
             // VUID-VkCopyImageToBufferInfo2-bufferOffset-01559
             // VUID-VkCopyImageToBufferInfo2-bufferOffset-00206
             // VUID-VkCopyImageToBufferInfo2-srcImage-04053
-            if (buffer_inner.offset + buffer_offset) % buffer_offset_alignment != 0 {
+            if (dst_buffer.offset() + buffer_offset) % buffer_offset_alignment != 0 {
                 return Err(CopyError::OffsetNotAlignedForBuffer {
                     resource: CopyErrorResource::Destination,
                     region_index,
-                    offset: buffer_inner.offset + buffer_offset,
+                    offset: dst_buffer.offset() + buffer_offset,
                     required_alignment: buffer_offset_alignment,
                 });
             }
@@ -2313,7 +2320,6 @@ where
         }
 
         let src_image_inner = src_image.inner();
-        let dst_buffer_inner = dst_buffer.inner();
 
         let fns = self.device().fns();
 
@@ -2339,7 +2345,7 @@ where
                     image_subresource.mip_level += src_image_inner.first_mipmap_level;
 
                     ash::vk::BufferImageCopy2 {
-                        buffer_offset: buffer_offset + dst_buffer_inner.offset,
+                        buffer_offset: buffer_offset + dst_buffer.offset(),
                         buffer_row_length,
                         buffer_image_height,
                         image_subresource: image_subresource.into(),
@@ -2361,7 +2367,7 @@ where
             let copy_image_to_buffer_info = ash::vk::CopyImageToBufferInfo2 {
                 src_image: src_image_inner.image.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_buffer: dst_buffer_inner.buffer.handle(),
+                dst_buffer: dst_buffer.buffer().handle(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
                 ..Default::default()
@@ -2394,7 +2400,7 @@ where
                     image_subresource.mip_level += src_image_inner.first_mipmap_level;
 
                     ash::vk::BufferImageCopy {
-                        buffer_offset: buffer_offset + dst_buffer_inner.offset,
+                        buffer_offset: buffer_offset + dst_buffer.offset(),
                         buffer_row_length,
                         buffer_image_height,
                         image_subresource: image_subresource.into(),
@@ -2416,7 +2422,7 @@ where
                 self.handle(),
                 src_image_inner.image.handle(),
                 src_image_layout.into(),
-                dst_buffer_inner.buffer.handle(),
+                dst_buffer.buffer().handle(),
                 regions.len() as u32,
                 regions.as_ptr(),
             );
@@ -2464,11 +2470,11 @@ where
             );
 
             let mut dst_range = buffer_offset..buffer_offset + buffer_copy_size;
-            dst_range.start += dst_buffer_inner.offset;
-            dst_range.end += dst_buffer_inner.offset;
+            dst_range.start += dst_buffer.offset();
+            dst_range.end += dst_buffer.offset();
             self.resources_usage_state.record_buffer_access(
                 &dst_use_ref,
-                dst_buffer_inner.buffer,
+                dst_buffer.buffer(),
                 dst_range,
                 PipelineStageAccess::Copy_TransferWrite,
             );
