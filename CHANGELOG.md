@@ -27,9 +27,10 @@ Changes to two swapchain bitflag types:
   - `SupportedSurfaceTransforms` is renamed to `SurfaceTransforms`.
   - `SupportedCompositeAlpha` is renamed to `CompositeAlphas`.
 
-Changes to CPU buffer allocation:
-- Replaced `CpuBufferPool` with `CpuBufferAllocator`, which is now marked `!Sync` and no longer has a `T` type parameter. The type parameter was moved to the methods, to allow one allocator to allocate as many types of buffers as needed.
-- Merged `CpuBufferPoolChunk` and `CpuBufferPoolSubbuffer` into `CpuSubbuffer`.'
+Changes to buffers:
+- Merged `CpuAccessibleBuffer`, `DeviceLocalBuffer`, `BufferSlice`, `CpuBufferPoolChunk`, `CpuBufferPoolSubbuffer` into `Subbuffer`.
+- Removed `BufferAccess`, `TypedBufferAccess`, `BufferAccessObject`, `BufferInner` and `BufferViewAbstract`.
+- Replaced `CpuBufferPool` with `SubbufferAllocator`, which is now marked `!Sync` and no longer has a `T` type parameter. The type parameter was moved to the methods, to allow one allocator to allocate as many types of buffers as needed.
 
 Changes to `DescriptorRequirements`:
 - The struct has been split into two levels: the per-binding `DescriptorBindingRequirements`, and the per-descriptor-index `DescriptorRequirements`.
@@ -58,6 +59,10 @@ Changes to memory allocation:
 - `MemoryRequirements::{size, alignment}` fields have been replaced with a single `layout` field.
 - `Suballocator::allocate_unchecked` has been removed.
 
+  # Breaking changes
+- Changes to CPU buffer allocation:
+- - Replaced `CpuBufferPool` with `CpuBufferAllocator`, which is now marked `!Sync` and no longer has a `T` type parameter. The type parameter was moved to the methods, to allow one allocator to allocate as many types of buffers as needed.
+
 ### Additions
 - Added `CpuBufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
@@ -79,6 +84,7 @@ Changes to memory allocation:
 - Added the type alias `NonZeroDeviceSize`.
 - Added `VertexBufferDescription` and three new methods to the `Vertex` trait that return it: `per_vertex`, `per_instance` and `per_instance_with_divisor`. This deprecates and replaces `BuffersDefinition`.
 - Implemented `From<SampleCount>` for `u32`.
+- Added `BufferAllocateInfo`.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
