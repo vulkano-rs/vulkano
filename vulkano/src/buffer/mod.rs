@@ -288,7 +288,7 @@ impl Buffer {
                 size: layout.size(),
                 usage: allocate_info.buffer_usage,
                 external_memory_handle_types: allocate_info.external_memory_handle_types,
-                ..Default::default()
+                _ne: crate::NonExhaustive(()),
             },
         )?;
         let mut requirements = *raw_buffer.memory_requirements();
@@ -299,7 +299,7 @@ impl Buffer {
             usage: allocate_info.memory_usage,
             dedicated_allocation: Some(DedicatedAllocation::Buffer(&raw_buffer)),
             allocate_preference: allocate_info.allocate_preference,
-            ..Default::default()
+            _ne: crate::NonExhaustive(()),
         };
 
         let mut allocation = unsafe { allocator.allocate_unchecked(create_info) }?;
