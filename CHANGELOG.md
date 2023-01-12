@@ -59,10 +59,6 @@ Changes to memory allocation:
 - `MemoryRequirements::{size, alignment}` fields have been replaced with a single `layout` field.
 - `Suballocator::allocate_unchecked` has been removed.
 
-  # Breaking changes
-- Changes to CPU buffer allocation:
-- - Replaced `CpuBufferPool` with `CpuBufferAllocator`, which is now marked `!Sync` and no longer has a `T` type parameter. The type parameter was moved to the methods, to allow one allocator to allocate as many types of buffers as needed.
-
 ### Additions
 - Added `CpuBufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
