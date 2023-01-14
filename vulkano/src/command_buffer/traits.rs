@@ -49,8 +49,9 @@ pub unsafe trait PrimaryCommandBufferAbstract:
     ///
     /// The command buffer is not actually executed until you call `flush()` on the object.
     /// You are encouraged to chain together as many futures as possible before calling `flush()`,
-    /// and call `.then_signal_future()` before doing so. Note however that once you called
-    /// `execute()` there is no way to cancel the execution, even if you didn't flush yet.
+    /// and call `.then_signal_future()` before doing so. Note however that once you have called
+    /// `execute()` there is no way to cancel the execution, even if you haven't called `flush()`
+    /// yet.
     ///
     /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
     /// > concrete type.
@@ -79,8 +80,9 @@ pub unsafe trait PrimaryCommandBufferAbstract:
     ///
     /// The command buffer is not actually executed until you call `flush()` on the object.
     /// You are encouraged to chain together as many futures as possible before calling `flush()`,
-    /// and call `.then_signal_future()` before doing so. Note however that once you called
-    /// `execute()` there is no way to cancel the execution, even if you didn't flush yet.
+    /// and call `.then_signal_future()` before doing so. Note however that once you have called
+    /// `execute()` there is no way to cancel the execution, even if you haven't called `flush()`
+    /// yet.
     ///
     /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
     /// > concrete type.
