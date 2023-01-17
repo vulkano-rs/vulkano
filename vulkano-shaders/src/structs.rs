@@ -94,7 +94,7 @@ pub(super) fn write_structs<'a, L: LinAlgType>(
                 }
             } else {
                 quote! {
-                    #[derive(::vulkano::buffer::subbuffer::BufferContents)]
+                    #[derive(::vulkano::buffer::BufferContents)]
                     #struct_body
                 }
             })

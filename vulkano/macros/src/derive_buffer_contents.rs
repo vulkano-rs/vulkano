@@ -26,7 +26,7 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
             .type_params()
             .map(|param| {
                 let param_ident = &param.ident;
-                parse_quote!(#param_ident: ::#crate_ident::buffer::subbuffer::BufferContents)
+                parse_quote!(#param_ident: ::#crate_ident::buffer::BufferContents)
             })
             .collect::<Vec<WherePredicate>>();
         ast.generics
@@ -78,13 +78,13 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
     let mut field_types = fields.iter().map(|field| &field.ty);
     let first_field_type = field_types.next().unwrap();
     let mut layout = quote! {
-        <#first_field_type as ::#crate_ident::buffer::subbuffer::BufferContents>::LAYOUT
+        <#first_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT
     };
     for field_type in field_types {
         layout = quote! {
             // TODO: Replace with `Option::unwrap` once its constness is stabilized.
             if let ::std::option::Option::Some(layout) =
-                #layout.extend(<#field_type as ::#crate_ident::buffer::subbuffer::BufferContents>::LAYOUT)
+                #layout.extend(<#field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT)
             {
                 layout
             } else {
@@ -95,8 +95,8 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
 
     Ok(quote! {
         #[allow(unsafe_code)]
-        unsafe impl #impl_generics ::#crate_ident::buffer::subbuffer::BufferContents for #struct_ident #type_generics #where_clause {
-            const LAYOUT: ::#crate_ident::buffer::subbuffer::BufferContentsLayout = #layout;
+        unsafe impl #impl_generics ::#crate_ident::buffer::BufferContents for #struct_ident #type_generics #where_clause {
+            const LAYOUT: ::#crate_ident::buffer::BufferContentsLayout = #layout;
 
             #[inline(always)]
             unsafe fn from_ffi(data: *const ::std::ffi::c_void, range: usize) -> *const Self {
@@ -106,14 +106,14 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
                     len: usize,
                 }
 
-                let alignment = <Self as ::#crate_ident::buffer::subbuffer::BufferContents>::LAYOUT
+                let alignment = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
                     .alignment()
                     .as_devicesize() as usize;
                 ::std::debug_assert!(data as usize % alignment == 0);
 
-                let padded_head_size = <Self as ::#crate_ident::buffer::subbuffer::BufferContents>::LAYOUT
+                let padded_head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
                     .padded_head_size() as usize;
-                let element_size = <Self as ::#crate_ident::buffer::subbuffer::BufferContents>::LAYOUT
+                let element_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
                     .element_size()
                     .unwrap() as usize;
 
@@ -157,14 +157,14 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
                     len: usize,
                 }
 
-                let alignment = <Self as ::#crate_ident::buffer::subbuffer::BufferContents>::LAYOUT
+                let alignment = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
                     .alignment()
                     .as_devicesize() as usize;
                 ::std::debug_assert!(data as usize % alignment == 0);
 
-                let padded_head_size = <Self as ::#crate_ident::buffer::subbuffer::BufferContents>::LAYOUT
+                let padded_head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
                     .padded_head_size() as usize;
-                let element_size = <Self as ::#crate_ident::buffer::subbuffer::BufferContents>::LAYOUT
+                let element_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
                     .element_size()
                     .unwrap() as usize;
 

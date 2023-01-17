@@ -104,7 +104,7 @@
 //! [the `view` module]: self::view
 
 pub use self::{
-    subbuffer::{BufferContents, Subbuffer},
+    subbuffer::{BufferContents, BufferContentsLayout, Subbuffer},
     usage::BufferUsage,
 };
 use self::{
