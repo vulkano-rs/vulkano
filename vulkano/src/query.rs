@@ -513,7 +513,7 @@ impl From<RequirementNotMet> for GetResultsError {
 /// # Safety
 /// This is implemented for `u32` and `u64`. Unless you really know what you're doing, you should
 /// not implement this trait for any other type.
-pub unsafe trait QueryResultElement: BufferContents {
+pub unsafe trait QueryResultElement: BufferContents + Sized {
     const FLAG: ash::vk::QueryResultFlags;
 }
 

@@ -199,7 +199,7 @@ impl PrimitiveTopologyClass {
 }
 
 /// Trait for types that can be used as indices by the GPU.
-pub unsafe trait Index: BufferContents {
+pub unsafe trait Index: BufferContents + Sized {
     /// Returns the type of data.
     fn ty() -> IndexType;
 }

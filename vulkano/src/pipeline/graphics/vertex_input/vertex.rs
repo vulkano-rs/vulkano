@@ -37,7 +37,7 @@ pub use vulkano_macros::Vertex;
 ///     proj: [f32; 16],
 /// }
 /// ```
-pub unsafe trait Vertex: BufferContents {
+pub unsafe trait Vertex: BufferContents + Sized {
     /// Returns the information about this Vertex type.
     fn per_vertex() -> VertexBufferDescription;
 
