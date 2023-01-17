@@ -33,6 +33,19 @@ use std::{
     sync::Arc,
 };
 
+/// Derives `BufferContents` *for unsized types*.
+///
+/// Using this macro on sized types will result in a compilation error. You should derive
+/// [`AnyBitPattern`] (or [`Pod`]) for sized types. This is due to the fact that it's impossible to
+/// determine if a type is sized from the derive input alone, because the last field of the struct
+/// doesn't have to be a primitive type, which would mean that the macro doesn't have sufficient
+/// information to figure out the sizedness of the struct as a whole. On the other hand, there's
+/// also no way to generate code that could reflect on the sizedness of the struct, and have
+/// different implementations of the trait in both cases.
+///
+/// [`Pod`]: bytemuck::Pod
+pub use vulkano_macros::BufferContents;
+
 /// A subpart of a buffer.
 ///
 /// This type doesn't correspond to any Vulkan object, it exists for API convenience. Most Vulkan
