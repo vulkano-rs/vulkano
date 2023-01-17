@@ -635,6 +635,154 @@ impl Display for WriteLockError {
     }
 }
 
+/// Describes the layout required for a type so that it can be read from/written to a buffer. This
+/// is used to allocate (sub)buffers generically.
+///
+/// This is similar to [`DeviceLayout`] except that this exists for the sole purpose of describing
+/// the layout of buffer contents specifically. Which means for example that the sizedness of the
+/// type is captured, as well as the layout of the head and tail if the layout is for unsized data,
+/// in order to be able to represent everything that Vulkan can stuff in a buffer.
+///
+/// `BufferContentsLayout` also has an additional invariant compared to `DeviceLayout`: the
+/// alignment of the data must not exceed `64`. This is because that's the guaranteed alignment
+/// that all `DeviceMemory` blocks must be aligned to at minimum, and hence any greater alignment
+/// can't be guaranteed. Other than that, the invariant that sizes must be non-zero applies here as
+/// well, for both sized data and the element type of unsized data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BufferContentsLayout(BufferContentsLayoutInner);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum BufferContentsLayoutInner {
+    Sized(DeviceLayout),
+    Unsized {
+        head_layout: Option<DeviceLayout>,
+        element_layout: DeviceLayout,
+    },
+}
+
+impl BufferContentsLayout {
+    /// Returns the size of the head (sized part), padded to the alignment of the element type if
+    /// the data is unsized. If the data has no sized part, then this will return 0.
+    #[inline]
+    pub const fn padded_head_size(&self) -> DeviceSize {
+        match &self.0 {
+            BufferContentsLayoutInner::Sized(sized) => sized.size(),
+            BufferContentsLayoutInner::Unsized {
+                head_layout: None, ..
+            } => 0,
+            BufferContentsLayoutInner::Unsized {
+                head_layout: Some(head_layout),
+                element_layout,
+            } => {
+                // `BufferContentsLayout`'s invariant guarantees that the alignment of the element
+                // type doesn't exceed 64, which together with the overflow invariant of
+                // `DeviceLayout` means that this can't overflow.
+                head_layout.size() + head_layout.padding_needed_for(element_layout.alignment())
+            }
+        }
+    }
+
+    /// Returns the size of the element type if the data is unsized, or returns [`None`].
+    /// Guaranteed to be non-zero.
+    #[inline]
+    pub const fn element_size(&self) -> Option<DeviceSize> {
+        match &self.0 {
+            BufferContentsLayoutInner::Sized(_) => None,
+            BufferContentsLayoutInner::Unsized { element_layout, .. } => {
+                Some(element_layout.size())
+            }
+        }
+    }
+
+    /// Returns the alignment required for the data. Guaranteed to not exceed `64`.
+    #[inline]
+    pub const fn alignment(&self) -> DeviceAlignment {
+        match &self.0 {
+            BufferContentsLayoutInner::Sized(sized) => sized.alignment(),
+            BufferContentsLayoutInner::Unsized {
+                head_layout: None,
+                element_layout,
+            } => element_layout.alignment(),
+            BufferContentsLayoutInner::Unsized {
+                head_layout: Some(head_layout),
+                element_layout,
+            } => DeviceAlignment::max(head_layout.alignment(), element_layout.alignment()),
+        }
+    }
+
+    /// Returns the [`DeviceLayout`] for the data for the given `len`, or returns [`None`] on
+    /// arithmetic overflow or if the total size would exceed [`DeviceLayout::MAX_SIZE`].
+    #[inline]
+    pub fn layout_for_len(&self, len: NonZeroDeviceSize) -> Option<DeviceLayout> {
+        match &self.0 {
+            BufferContentsLayoutInner::Sized(sized) => Some(*sized),
+            BufferContentsLayoutInner::Unsized {
+                head_layout,
+                element_layout,
+            } => {
+                let (tail_layout, _) = element_layout.repeat(len)?;
+
+                if let Some(head_layout) = head_layout {
+                    head_layout
+                        .extend(tail_layout)
+                        .map(|(layout, _)| layout.pad_to_alignment())
+                } else {
+                    Some(tail_layout)
+                }
+            }
+        }
+    }
+
+    /// Extends the **sized** `self` by `next`. This is intended for use by the derive macro only.
+    #[doc(hidden)]
+    #[inline]
+    pub const fn extend(&self, next: Self) -> Option<Self> {
+        let layout = match &self.0 {
+            BufferContentsLayoutInner::Sized(sized) => sized,
+            _ => panic!("expected a sized layout"),
+        };
+
+        match next.0 {
+            BufferContentsLayoutInner::Sized(sized) => {
+                if let Some((layout, _)) = layout.extend(sized) {
+                    Some(Self(BufferContentsLayoutInner::Sized(layout)))
+                } else {
+                    None
+                }
+            }
+            BufferContentsLayoutInner::Unsized {
+                head_layout: None,
+                element_layout,
+            } => Some(Self(BufferContentsLayoutInner::Unsized {
+                head_layout: Some(*layout),
+                element_layout,
+            })),
+            BufferContentsLayoutInner::Unsized {
+                head_layout: Some(head_layout),
+                element_layout,
+            } => {
+                if let Some((layout, _)) = layout.extend(head_layout) {
+                    Some(Self(BufferContentsLayoutInner::Unsized {
+                        head_layout: Some(layout),
+                        element_layout,
+                    }))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub(super) fn unwrap_sized(self) -> DeviceLayout {
+        match self.0 {
+            BufferContentsLayoutInner::Sized(sized) => sized,
+            BufferContentsLayoutInner::Unsized { .. } => {
+                panic!("called `BufferContentsLayout::unwrap_sized` on an unsized layout");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
