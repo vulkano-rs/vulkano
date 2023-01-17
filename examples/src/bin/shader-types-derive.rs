@@ -91,29 +91,21 @@ impl Display for crate::ty::Foo {
 fn main() {
     use crate::ty::*;
 
-    // Prints "Foo { x: 0.0, z: [100.0, 200.0, 300.0] }" skipping "_dummyX" fields.
+    // Prints "Foo { x: 0.0, z: [100.0, 200.0, 300.0] }".
     println!(
         "{}",
         Foo {
             z: [100.0, 200.0, 300.0],
-
             ..Default::default()
-        }
+        },
     );
 
     let mut bar = Bar {
         y: [5.1, 6.2],
-
-        // Fills all fields with zeroes including "_dummyX" fields, so we don't
-        // have to maintain them manually anymore.
+        // Fills all fields with zeroes.
         ..Default::default()
     };
 
-    // The data inside "_dummyX" has no use, but we still can fill it with
-    // something different from zeroes.
-    bar._dummy0 = [5; 8];
-
-    // Objects are equal since "_dummyX" fields ignoring during comparison
     assert_eq!(
         Bar {
             y: [5.1, 6.2],
@@ -127,7 +119,7 @@ fn main() {
     bar.foo.x = 125.0;
 
     // Since we put `Serialize` and `Deserialize` traits to derives list we can
-    // serialize and deserialize Shader data
+    // serialize and deserialize shader data
 
     let serialized = to_string_pretty(&bar, PrettyConfig::default()).unwrap();
 

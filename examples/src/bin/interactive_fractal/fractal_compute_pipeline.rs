@@ -148,7 +148,6 @@ impl FractalComputePipeline {
             palette_size: self.palette_size,
             max_iters: max_iters as i32,
             is_julia: is_julia as u32,
-            _dummy0: [0u8; 8], // Required for alignment
         };
         builder
             .bind_pipeline_compute(self.pipeline.clone())
