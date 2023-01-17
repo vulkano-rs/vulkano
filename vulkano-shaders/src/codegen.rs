@@ -25,8 +25,8 @@ use vulkano::shader::{
 
 pub(super) fn path_to_str(path: &Path) -> &str {
     path.to_str().expect(
-        "Could not stringify the file to be included. Make sure the path consists of \
-                 valid unicode characters.",
+        "could not stringify the file to be included. Make sure the path consists of valid \
+        unicode characters",
     )
 }
 
@@ -50,19 +50,18 @@ fn include_callback(
             {
                 let requested_source_name = requested_source_path
                     .file_name()
-                    .expect("Could not get the name of the requested source file.")
+                    .expect("could not get the name of the requested source file")
                     .to_string_lossy();
                 let requested_source_directory = requested_source_path
                     .parent()
-                    .expect("Could not get the directory of the requested source file.")
+                    .expect("could not get the directory of the requested source file")
                     .to_string_lossy();
 
                 return Err(format!(
-                    "Usage of relative paths in imports in embedded GLSL is not \
-                                    allowed, try using `#include <{}>` and adding the directory \
-                                    `{}` to the `include` array in your `shader!` macro call \
-                                    instead.",
-                    requested_source_name, requested_source_directory
+                    "usage of relative paths in imports in embedded GLSL is not allowed, try \
+                    using `#include <{}>` and adding the directory `{}` to the `include` array in \
+                    your `shader!` macro call instead",
+                    requested_source_name, requested_source_directory,
                 ));
             }
 
@@ -77,17 +76,17 @@ fn include_callback(
             }
             .unwrap_or_else(|| {
                 panic!(
-                    "The file `{}` does not reside in a directory. This is \
-                                        an implementation error.",
-                    contained_within_path_raw
+                    "the file `{}` does not reside in a directory, this is an implementation \
+                    error",
+                    contained_within_path_raw,
                 )
             });
             resolved_path.push(requested_source_path);
 
             if !resolved_path.is_file() {
                 return Err(format!(
-                    "Invalid inclusion path `{}`, the path does not point to a file.",
-                    requested_source_path_raw
+                    "invalid inclusion path `{}`, the path does not point to a file",
+                    requested_source_path_raw,
                 ));
             }
 
@@ -101,11 +100,10 @@ fn include_callback(
                 // in the relative include directive or when using absolute paths in a standard
                 // include directive.
                 return Err(format!(
-                    "No such file found, as specified by the absolute path. \
-                                    Keep in mind, that absolute paths cannot be used with \
-                                    inclusion from standard directories (`#include <...>`), try \
-                                    using `#include \"...\"` instead. Requested path: {}",
-                    requested_source_path_raw
+                    "no such file found as specified by the absolute path; keep in mind that \
+                    absolute paths cannot be used with inclusion from standard directories \
+                    (`#include <...>`), try using `#include \"...\"` instead; requested path: {}",
+                    requested_source_path_raw,
                 ));
             }
 
@@ -118,8 +116,8 @@ fn include_callback(
                 found_requested_source_path
             } else {
                 return Err(format!(
-                    "Could not include the file `{}` from any include directories.",
-                    requested_source_path_raw
+                    "could not include the file `{}` from any include directories",
+                    requested_source_path_raw,
                 ));
             }
         }
@@ -128,9 +126,8 @@ fn include_callback(
     let file_to_include_string = path_to_str(file_to_include.as_path()).to_string();
     let content = read_file_to_string(file_to_include.as_path()).map_err(|_| {
         format!(
-            "Could not read the contents of file `{}` to be included in the \
-                              shader source.",
-            &file_to_include_string
+            "could not read the contents of file `{}` to be included in the shader source",
+            file_to_include_string,
         )
     })?;
 
@@ -261,7 +258,7 @@ pub(super) fn reflect<'a, L: LinAlgType>(
         #[inline]
         #[allow(unsafe_code)]
         pub fn #load_name(device: ::std::sync::Arc<::vulkano::device::Device>)
-            -> Result<::std::sync::Arc<::vulkano::shader::ShaderModule>, ::vulkano::shader::ShaderCreationError>
+            -> ::std::result::Result<::std::sync::Arc<::vulkano::shader::ShaderModule>, ::vulkano::shader::ShaderCreationError>
         {
             let _bytes = ( #( #include_bytes),* );
 

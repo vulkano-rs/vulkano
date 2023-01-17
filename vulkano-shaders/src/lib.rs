@@ -1,5 +1,5 @@
 //! The procedural macro for vulkano's shader system.
-//! Manages the compile-time compilation of GLSL into SPIR-V and generation of assosciated rust code.
+//! Manages the compile-time compilation of GLSL into SPIR-V and generation of associated Rust code.
 //!
 //! # Cargo features
 //!
@@ -211,7 +211,7 @@
 //!
 //! ## `dump: true`
 //!
-//! The crate fails to compile but prints the generated rust code to stdout.
+//! The crate fails to compile but prints the generated Rust code to stdout.
 //!
 //! [`cgmath`]: https://crates.io/crates/cgmath
 //! [`nalgebra`]: https://crates.io/crates/nalgebra
@@ -299,11 +299,11 @@ fn shader_inner<L: LinAlgType>(input: proc_macro::TokenStream) -> proc_macro::To
 
             let bytes = if full_path.is_file() {
                 fs::read(full_path)
-                    .unwrap_or_else(|_| panic!("Error reading source from {:?}", path))
+                    .unwrap_or_else(|_| panic!("error reading source from {:?}", path))
             } else {
                 panic!(
-                    "File {:?} was not found; note that the path must be relative to your Cargo.toml",
-                    path
+                    "file {:?} was not found; note that the path must be relative to your Cargo.toml",
+                    path,
                 );
             };
 
@@ -325,12 +325,16 @@ fn shader_inner<L: LinAlgType>(input: proc_macro::TokenStream) -> proc_macro::To
                 SourceKind::Path(path) => {
                     let full_path = root_path.join(&path);
                     let source_code = read_file_to_string(&full_path)
-                        .unwrap_or_else(|_| panic!("Error reading source from {:?}", path));
+                        .unwrap_or_else(|_| panic!("error reading source from {:?}", path));
 
                     if full_path.is_file() {
                         (Some(path.clone()), Some(full_path), source_code)
                     } else {
-                        panic!("File {:?} was not found; note that the path must be relative to your Cargo.toml", path);
+                        panic!(
+                            "file {:?} was not found; note that the path must be relative to \
+                            your Cargo.toml",
+                            path,
+                        );
                     }
                 }
                 SourceKind::Bytes(_) => unreachable!(),
@@ -362,7 +366,7 @@ fn shader_inner<L: LinAlgType>(input: proc_macro::TokenStream) -> proc_macro::To
                     if is_single {
                         panic!("{}", e.replace("(s): ", "(s):\n"))
                     } else {
-                        panic!("Shader {:?} {}", prefix, e.replace("(s): ", "(s):\n"))
+                        panic!("shader {:?} {}", prefix, e.replace("(s): ", "(s):\n"))
                     }
                 }
             };
@@ -432,10 +436,8 @@ impl Default for TypesMeta {
     fn default() -> Self {
         Self {
             custom_derives: vec![
-                parse_quote! { Clone },
-                parse_quote! { Copy },
-                parse_quote! { bytemuck::Pod },
-                parse_quote! { bytemuck::Zeroable },
+                parse_quote! { ::std::clone::Clone },
+                parse_quote! { ::std::marker::Copy },
             ],
             partial_eq: false,
             debug: false,
@@ -472,25 +474,25 @@ impl RegisteredType {
     fn assert_signatures(&self, type_name: &str, target_type: &Self) {
         if self.signature.len() > target_type.signature.len() {
             panic!(
-                "Shaders {shader_a:} and {shader_b:} declare structs with the \
+                "shaders {shader_a:} and {shader_b:} declare structs with the \
                 same name \"`{type_name:}\", but the struct from {shader_a:} shader \
                 contains extra field \"{field:}\"",
                 shader_a = self.shader,
                 shader_b = target_type.shader,
                 type_name = type_name,
-                field = self.signature[target_type.signature.len()].0
+                field = self.signature[target_type.signature.len()].0,
             );
         }
 
         if self.signature.len() < target_type.signature.len() {
             panic!(
-                "Shaders {shader_a:} and {shader_b:} declare structs with the \
+                "shaders {shader_a:} and {shader_b:} declare structs with the \
                 same name \"{type_name:}\", but the struct from {shader_b:} shader \
                 contains extra field \"{field:}\"",
                 shader_a = self.shader,
                 shader_b = target_type.shader,
                 type_name = type_name,
-                field = target_type.signature[self.signature.len()].0
+                field = target_type.signature[self.signature.len()].0,
             );
         }
 
@@ -503,7 +505,7 @@ impl RegisteredType {
         for (index, ((a_name, a_type), (b_name, b_type))) in comparison {
             if a_name != b_name || a_type != b_type {
                 panic!(
-                    "Shaders {shader_a:} and {shader_b:} declare structs with the \
+                    "shaders {shader_a:} and {shader_b:} declare structs with the \
                     same name \"{type_name:}\", but the struct from {shader_a:} shader \
                     contains field \"{a_name:}\" of type \"{a_type:}\" in position {index:}, \
                     whereas the same struct from {shader_b:} contains field \"{b_name:}\" \
@@ -553,7 +555,7 @@ impl Parse for MacroInput {
             match name {
                 "ty" => {
                     if output.0.is_some() {
-                        panic!("Only one `ty` can be defined")
+                        panic!("only one `ty` can be defined");
                     }
 
                     let ty: LitStr = input.parse()?;
@@ -570,8 +572,11 @@ impl Parse for MacroInput {
                         "miss" => ShaderKind::Miss,
                         "intersection" => ShaderKind::Intersection,
                         "callable" => ShaderKind::Callable,
-                        _ => panic!(concat!("Unexpected shader type, valid values: vertex, fragment, geometry, tess_ctrl, ",
-											"tess_eval, compute, raygen, anyhit, closesthit, miss, intersection, callable"))
+                        _ => panic!(
+                            "unexpected shader type, valid values: vertex, fragment, geometry, \
+                            tess_ctrl, tess_eval, compute, raygen, anyhit, closesthit, miss, \
+                            intersection, callable",
+                        ),
                     };
 
                     output.0 = Some(ty);
@@ -580,8 +585,8 @@ impl Parse for MacroInput {
                 "bytes" => {
                     if output.1.is_some() {
                         panic!(
-                            "Only one of `src`, `path`, or `bytes` can be defined per Shader entry"
-                        )
+                            "only one of `src`, `path`, or `bytes` can be defined per shader entry",
+                        );
                     }
 
                     let path: LitStr = input.parse()?;
@@ -591,8 +596,8 @@ impl Parse for MacroInput {
                 "path" => {
                     if output.1.is_some() {
                         panic!(
-                            "Only one of `src`, `path`, or `bytes` can be defined per Shader entry"
-                        )
+                            "only one of `src`, `path`, or `bytes` can be defined per shader entry",
+                        );
                     }
 
                     let path: LitStr = input.parse()?;
@@ -601,14 +606,16 @@ impl Parse for MacroInput {
 
                 "src" => {
                     if output.1.is_some() {
-                        panic!("Only one of `src`, `path`, `bytes` can be defined per Shader entry")
+                        panic!(
+                            "only one of `src`, `path`, `bytes` can be defined per shader entry",
+                        );
                     }
 
                     let src: LitStr = input.parse()?;
                     output.1 = Some(SourceKind::Src(src.value()));
                 }
 
-                other => unreachable!("Unexpected entry key {:?}", other),
+                other => unreachable!("unexpected entry key: {:?}", other),
             }
 
             Ok(())
@@ -622,7 +629,7 @@ impl Parse for MacroInput {
             match name.as_str() {
                 "bytes" | "src" | "path" | "ty" => {
                     if shaders.len() > 1 || (shaders.len() == 1 && !shaders.contains_key("")) {
-                        panic!("Only one of `shaders`, `src`, `path`, or `bytes` can be defined");
+                        panic!("only one of `shaders`, `src`, `path`, or `bytes` can be defined");
                     }
 
                     parse_shader_fields(
@@ -635,7 +642,7 @@ impl Parse for MacroInput {
                 }
                 "shaders" => {
                     if !shaders.is_empty() {
-                        panic!("Only one of `shaders`, `src`, `path`, or `bytes` can be defined");
+                        panic!("only one of `shaders`, `src`, `path`, or `bytes` can be defined");
                     }
 
                     let in_braces;
@@ -649,7 +656,7 @@ impl Parse for MacroInput {
                             in_braces.parse::<Token![:]>()?;
 
                             if shared_constants.is_some() {
-                                panic!("Only one `shared_constants` can be defined")
+                                panic!("only one `shared_constants` can be defined");
                             }
                             let independent_constants_lit: LitBool = in_braces.parse()?;
                             shared_constants = Some(independent_constants_lit.value);
@@ -662,7 +669,7 @@ impl Parse for MacroInput {
                         }
 
                         if shaders.contains_key(&prefix) {
-                            panic!("Shader entry {:?} already defined", prefix);
+                            panic!("shader entry {:?} already defined", prefix);
                         }
 
                         in_braces.parse::<Token![:]>()?;
@@ -686,7 +693,7 @@ impl Parse for MacroInput {
                                     )?;
                                 }
 
-                                name => panic!("Unknown Shader definition field {:?}", name),
+                                name => panic!("unknown shader definition field: {:?}", name),
                             }
 
                             if !in_shader_definition.is_empty() {
@@ -699,14 +706,20 @@ impl Parse for MacroInput {
                         }
 
                         match shaders.get(&prefix).unwrap() {
-                            (None, _) => panic!("Please specify shader's {} type e.g. `ty: \"vertex\"`", prefix),
-                            (_, None) => panic!("Please specify shader's {} source e.g. `path: \"entry_point.glsl\"`", prefix),
-                            _ => ()
+                            (None, _) => panic!(
+                                r#"please specify shader's {} type e.g. `ty: "vertex"`"#,
+                                prefix,
+                            ),
+                            (_, None) => panic!(
+                                r#"please specify shader's {} source e.g. `path: "entry_point.glsl"`"#,
+                                prefix,
+                            ),
+                            _ => (),
                         }
                     }
 
                     if shaders.is_empty() {
-                        panic!("At least one Shader entry must be defined");
+                        panic!("at least one shader entry must be defined");
                     }
                 }
                 "define" => {
@@ -729,14 +742,14 @@ impl Parse for MacroInput {
                 }
                 "dump" => {
                     if dump.is_some() {
-                        panic!("Only one `dump` can be defined")
+                        panic!("only one `dump` can be defined");
                     }
                     let dump_lit: LitBool = input.parse()?;
                     dump = Some(dump_lit.value);
                 }
                 "exact_entrypoint_interface" => {
                     if exact_entrypoint_interface.is_some() {
-                        panic!("Only one `dump` can be defined")
+                        panic!("only one `dump` can be defined");
                     }
                     let lit: LitBool = input.parse()?;
                     exact_entrypoint_interface = Some(lit.value);
@@ -765,7 +778,7 @@ impl Parse for MacroInput {
                         "1.4" => SpirvVersion::V1_4,
                         "1.5" => SpirvVersion::V1_5,
                         "1.6" => SpirvVersion::V1_6,
-                        _ => panic!("Unknown SPIR-V version: {}", version.value()),
+                        _ => panic!("unknown SPIR-V version: {}", version.value()),
                     });
                 }
                 "types_meta" => {
@@ -792,8 +805,9 @@ impl Parse for MacroInput {
                                             match derive_ident.to_string().as_str() {
                                                 "PartialEq" => {
                                                     if meta.partial_eq {
-                                                        return Err(in_brackets
-                                                            .error("Duplicate PartialEq derive"));
+                                                        return Err(in_brackets.error(
+                                                            "duplicate `PartialEq` derive",
+                                                        ));
                                                     }
 
                                                     meta.partial_eq = true;
@@ -803,7 +817,7 @@ impl Parse for MacroInput {
                                                 "Debug" => {
                                                     if meta.debug {
                                                         return Err(in_brackets
-                                                            .error("Duplicate Debug derive"));
+                                                            .error("duplicate `Debug` derive"));
                                                     }
 
                                                     meta.debug = true;
@@ -813,7 +827,7 @@ impl Parse for MacroInput {
                                                 "Display" => {
                                                     if meta.display {
                                                         return Err(in_brackets
-                                                            .error("Duplicate Display derive"));
+                                                            .error("duplicate `Display` derive"));
                                                     }
 
                                                     meta.display = true;
@@ -823,7 +837,7 @@ impl Parse for MacroInput {
                                                 "Default" => {
                                                     if meta.default {
                                                         return Err(in_brackets
-                                                            .error("Duplicate Default derive"));
+                                                            .error("duplicate `Default` derive"));
                                                     }
 
                                                     meta.default = true;
@@ -843,14 +857,14 @@ impl Parse for MacroInput {
                                                 .any(|candidate| *candidate == path)
                                             {
                                                 return Err(
-                                                    in_braces.error("Duplicate derive declaration")
+                                                    in_braces.error("duplicate derive declaration")
                                                 );
                                             }
 
                                             meta.custom_derives.push(path);
                                         }
                                     }
-                                    _ => return Err(in_brackets.error("Unsupported syntax")),
+                                    _ => return Err(in_brackets.error("unsupported syntax")),
                                 }
                             }
 
@@ -861,7 +875,7 @@ impl Parse for MacroInput {
                             let impl_trait: TypeImplTrait = in_braces.parse()?;
 
                             if meta.impls.iter().any(|candidate| candidate == &impl_trait) {
-                                return Err(in_braces.error("Duplicate \"impl\" declaration"));
+                                return Err(in_braces.error("duplicate `impl` declaration"));
                             }
 
                             meta.impls.push(impl_trait);
@@ -873,7 +887,7 @@ impl Parse for MacroInput {
                             let item_use: ItemUse = in_braces.parse()?;
 
                             if meta.uses.iter().any(|candidate| candidate == &item_use) {
-                                return Err(in_braces.error("Duplicate \"use\" declaration"));
+                                return Err(in_braces.error("duplicate `use` declaration"));
                             }
 
                             meta.uses.push(item_use);
@@ -881,7 +895,10 @@ impl Parse for MacroInput {
                             continue;
                         }
 
-                        return Err(in_braces.error("Type meta must by \"use a::b::c\", \"#[derive(Type1, Type2, ..)]\" or \"impl Type\""));
+                        return Err(in_braces.error(
+                            "type meta must by `use a::b::c`, `#[derive(Type1, Type2, ..)]` \
+                            or `impl Type`",
+                        ));
                     }
 
                     types_meta = Some(meta);
@@ -892,10 +909,10 @@ impl Parse for MacroInput {
                         "1.0" => EnvVersion::Vulkan1_0,
                         "1.1" => EnvVersion::Vulkan1_1,
                         "1.2" => EnvVersion::Vulkan1_2,
-                        _ => panic!("Unknown Vulkan version: {}", version.value()),
+                        _ => panic!("unknown Vulkan version: {}", version.value()),
                     });
                 }
-                name => panic!("Unknown field {:?}", name),
+                name => panic!("unknown field: {:?}", name),
             }
 
             if !input.is_empty() {
@@ -904,13 +921,15 @@ impl Parse for MacroInput {
         }
 
         if shaders.is_empty() {
-            panic!("Please specify at least one shader e.g. `ty: \"vertex\", src: \"glsl source code\"`");
+            panic!(
+                r#"please specify at least one shader e.g. `ty: "vertex", src: "glsl source code"`"#,
+            );
         }
 
         match shaders.get("") {
-            Some((None, _)) => panic!("Please specify shader's type e.g. `ty: \"vertex\"`"),
+            Some((None, _)) => panic!(r#"please specify shader's type e.g. `ty: "vertex"`"#),
             Some((_, None)) => {
-                panic!("Please specify shader's source e.g. `src: \"glsl source code\"`")
+                panic!(r#"please specify shader's source e.g. `src: "glsl source code"`"#)
             }
             _ => (),
         }
@@ -964,7 +983,7 @@ impl LinAlgType for CGMath {
         // Fall back to arrays for anything else.
         if matches!(component_count, 1 | 2 | 3 | 4) {
             let ty = format_ident!("{}", format!("Vector{}", component_count));
-            quote! { cgmath::#ty<#component_type> }
+            quote! { ::cgmath::#ty<#component_type> }
         } else {
             StdArray::vector(component_type, component_count)
         }
@@ -975,7 +994,7 @@ impl LinAlgType for CGMath {
         // Fall back to arrays for anything else.
         if row_count == column_count && matches!(column_count, 2 | 3 | 4) {
             let ty = format_ident!("{}", format!("Matrix{}", column_count));
-            quote! { cgmath::#ty<#component_type> }
+            quote! { ::cgmath::#ty<#component_type> }
         } else {
             StdArray::matrix(component_type, row_count, column_count)
         }
@@ -986,10 +1005,10 @@ struct Nalgebra;
 
 impl LinAlgType for Nalgebra {
     fn vector(component_type: &TokenStream, component_count: usize) -> TokenStream {
-        quote! { nalgebra::base::SVector<#component_type, #component_count> }
+        quote! { ::nalgebra::base::SVector<#component_type, #component_count> }
     }
 
     fn matrix(component_type: &TokenStream, row_count: usize, column_count: usize) -> TokenStream {
-        quote! { nalgebra::base::SMatrix<#component_type, #row_count, #column_count> }
+        quote! { ::nalgebra::base::SMatrix<#component_type, #row_count, #column_count> }
     }
 }

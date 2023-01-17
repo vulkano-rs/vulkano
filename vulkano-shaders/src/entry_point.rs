@@ -301,7 +301,7 @@ fn write_interface(interface: &ShaderInterface) -> TokenStream {
                         num_elements: #num_elements,
                         is_64bit: #is_64bit,
                     },
-                    name: Some(::std::borrow::Cow::Borrowed(#name))
+                    name: ::std::option::Option::Some(::std::borrow::Cow::Borrowed(#name))
                 },
             }
         },

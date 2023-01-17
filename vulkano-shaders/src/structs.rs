@@ -66,13 +66,37 @@ pub(super) fn write_structs<'a, L: LinAlgType>(
             Some(if is_sized {
                 let derives = write_derives(types_meta);
                 let impls = write_impls(types_meta, struct_name, &rust_members);
+                let bounds = rust_members
+                    .iter()
+                    .map(|Member { ty, .. }| quote!(#ty: ::vulkano::bytemuck::AnyBitPattern));
+
                 quote! {
                     #derives
                     #struct_body
                     #(#impls)*
+
+                    // SAFETY: All that's required for deriving `AnyBitPattern` is that all the
+                    // fields are `AnyBitPattern`, which we enforce with the bounds.
+                    #[allow(unsafe_code)]
+                    unsafe impl ::vulkano::bytemuck::AnyBitPattern for #struct_ident
+                    where
+                        #(#bounds,)*
+                    {
+                    }
+
+                    // SAFETY: `AnyBitPattern` implies `Zeroable`.
+                    #[allow(unsafe_code)]
+                    unsafe impl ::vulkano::bytemuck::Zeroable for #struct_ident
+                    where
+                        Self: ::vulkano::bytemuck::AnyBitPattern
+                    {
+                    }
                 }
             } else {
-                struct_body
+                quote! {
+                    #[derive(::vulkano::buffer::subbuffer::BufferContents)]
+                    #struct_body
+                }
             })
         })
         .collect()
@@ -93,12 +117,7 @@ fn write_struct_members<L: LinAlgType>(
 ) -> (Vec<Member>, bool) {
     let mut rust_members = Vec::with_capacity(members.len());
 
-    // Dummy members will be named `_dummyN` where `N` is determined by this variable.
-    let mut next_dummy_num = 0;
-
-    // Contains the offset of the next field.
-    // Equals to `None` if there's a runtime-sized field in there.
-    let mut current_rust_offset = Some(0);
+    let mut is_sized = true;
 
     for (member_index, (&member, member_info)) in members
         .iter()
@@ -106,7 +125,7 @@ fn write_struct_members<L: LinAlgType>(
         .enumerate()
     {
         // Compute infos about the member.
-        let (ty, signature, rust_size, rust_align) = type_from_id::<L>(spirv, member);
+        let (ty, signature, rust_size, _) = type_from_id::<L>(spirv, member);
         let member_name = member_info
             .iter_name()
             .find_map(|instruction| match instruction {
@@ -115,50 +134,7 @@ fn write_struct_members<L: LinAlgType>(
             })
             .unwrap_or_else(|| Cow::from(format!("__unnamed{}", member_index)));
 
-        // Finding offset of the current member, as requested by the SPIR-V code.
-        let spirv_offset = member_info
-            .iter_decoration()
-            .find_map(|instruction| match instruction {
-                Instruction::MemberDecorate {
-                    decoration: Decoration::Offset { byte_offset },
-                    ..
-                } => Some(*byte_offset as usize),
-                _ => None,
-            })
-            .unwrap();
-
-        // We need to add a dummy field if necessary.
-        {
-            let current_rust_offset = current_rust_offset
-                .as_mut()
-                .expect("Found runtime-sized member in non-final position");
-
-            // Updating current_rust_offset to take the alignment of the next field into account
-            *current_rust_offset = if *current_rust_offset == 0 {
-                0
-            } else {
-                (1 + (*current_rust_offset - 1) / rust_align) * rust_align
-            };
-
-            if spirv_offset != *current_rust_offset {
-                let diff = spirv_offset.checked_sub(*current_rust_offset).unwrap();
-                rust_members.push(Member {
-                    name: format_ident!("_dummy{}", next_dummy_num.to_string()),
-                    is_dummy: true,
-                    ty: quote! { [u8; #diff] },
-                    signature: Cow::from(format!("[u8; {}]", diff)),
-                });
-                next_dummy_num += 1;
-                *current_rust_offset += diff;
-            }
-        }
-
-        // Updating `current_rust_offset`.
-        if let Some(s) = rust_size {
-            *current_rust_offset.as_mut().unwrap() += s;
-        } else {
-            current_rust_offset = None;
-        }
+        is_sized = rust_size.is_some();
 
         rust_members.push(Member {
             name: Ident::new(&member_name, Span::call_site()),
@@ -168,24 +144,7 @@ fn write_struct_members<L: LinAlgType>(
         });
     }
 
-    // Adding the final padding members, if the struct is sized.
-    if let Some(cur_size) = current_rust_offset {
-        // Try to determine the total size of the struct.
-        if let Some(req_size) = struct_size_from_array_stride(spirv, struct_id) {
-            let diff = req_size.checked_sub(cur_size as u32).unwrap();
-
-            if diff >= 1 {
-                rust_members.push(Member {
-                    name: Ident::new(&format!("_dummy{}", next_dummy_num), Span::call_site()),
-                    is_dummy: true,
-                    ty: quote! { [u8; #diff as usize] },
-                    signature: Cow::from(format!("[u8; {}]", diff)),
-                });
-            }
-        }
-    }
-
-    (rust_members, current_rust_offset.is_some())
+    (rust_members, is_sized)
 }
 
 fn register_struct(
@@ -258,7 +217,7 @@ fn write_impls<'a>(
                 });
 
             quote! {
-                impl PartialEq for #struct_ident {
+                impl ::std::cmp::PartialEq for #struct_ident {
                     fn eq(&self, other: &Self) -> bool {
                         #( #fields )*
                         true
@@ -277,10 +236,9 @@ fn write_impls<'a>(
             });
 
         quote! {
-            impl std::fmt::Debug for #struct_ident {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                    f
-                        .debug_struct(#struct_name)
+            impl ::std::fmt::Debug for #struct_ident {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                    f.debug_struct(#struct_name)
                         #( #fields )*
                         .finish()
                 }
@@ -288,31 +246,21 @@ fn write_impls<'a>(
         }
     }))
     .chain(types_meta.display.then(|| {
-        let fields = rust_members
-            .iter()
-            .filter(|Member { is_dummy, .. }| !is_dummy)
-            .map(|Member { name, .. }| {
-                let name_string = LitStr::new(name.to_string().as_ref(), name.span());
-                quote! { .field(#name_string, &self.#name) }
-            });
-
         quote! {
-            impl std::fmt::Display for #struct_ident {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                    f
-                        .debug_struct(#struct_name)
-                        #( #fields )*
-                        .finish()
+            impl ::std::fmt::Display for #struct_ident {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                    ::std::fmt::Debug::fmt(self, f)
                 }
             }
         }
     }))
     .chain(types_meta.default.then(|| {
         quote! {
-            impl Default for #struct_ident {
+            #[allow(unsafe_code)]
+            impl ::std::default::Default for #struct_ident {
                 fn default() -> Self {
                     unsafe {
-                        std::mem::MaybeUninit::<Self>::zeroed().assume_init()
+                        ::std::mem::MaybeUninit::<Self>::zeroed().assume_init()
                     }
                 }
             }
@@ -402,145 +350,75 @@ pub(super) fn type_from_id<L: LinAlgType>(
 
     match id_info.instruction() {
         Instruction::TypeBool { .. } => {
-            panic!("Can't put booleans in structs")
+            panic!("can't put booleans in structs")
         }
         Instruction::TypeInt {
             width, signedness, ..
         } => match (width, signedness) {
-            (8, 1) => {
-                #[repr(C)]
-                struct Foo {
-                    data: i8,
-                    after: u8,
-                }
-                (
-                    quote! {i8},
-                    Cow::from("i8"),
-                    Some(std::mem::size_of::<i8>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            (8, 0) => {
-                #[repr(C)]
-                struct Foo {
-                    data: u8,
-                    after: u8,
-                }
-                (
-                    quote! {u8},
-                    Cow::from("u8"),
-                    Some(std::mem::size_of::<u8>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            (16, 1) => {
-                #[repr(C)]
-                struct Foo {
-                    data: i16,
-                    after: u8,
-                }
-                (
-                    quote! {i16},
-                    Cow::from("i16"),
-                    Some(std::mem::size_of::<i16>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            (16, 0) => {
-                #[repr(C)]
-                struct Foo {
-                    data: u16,
-                    after: u8,
-                }
-                (
-                    quote! {u16},
-                    Cow::from("u16"),
-                    Some(std::mem::size_of::<u16>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            (32, 1) => {
-                #[repr(C)]
-                struct Foo {
-                    data: i32,
-                    after: u8,
-                }
-                (
-                    quote! {i32},
-                    Cow::from("i32"),
-                    Some(std::mem::size_of::<i32>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            (32, 0) => {
-                #[repr(C)]
-                struct Foo {
-                    data: u32,
-                    after: u8,
-                }
-                (
-                    quote! {u32},
-                    Cow::from("u32"),
-                    Some(std::mem::size_of::<u32>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            (64, 1) => {
-                #[repr(C)]
-                struct Foo {
-                    data: i64,
-                    after: u8,
-                }
-                (
-                    quote! {i64},
-                    Cow::from("i64"),
-                    Some(std::mem::size_of::<i64>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            (64, 0) => {
-                #[repr(C)]
-                struct Foo {
-                    data: u64,
-                    after: u8,
-                }
-                (
-                    quote! {u64},
-                    Cow::from("u64"),
-                    Some(std::mem::size_of::<u64>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            _ => panic!("No Rust equivalent for an integer of width {}", width),
+            (8, 1) => (
+                quote! {i8},
+                Cow::from("i8"),
+                Some(mem::size_of::<i8>()),
+                mem::align_of::<i8>(),
+            ),
+            (8, 0) => (
+                quote! {u8},
+                Cow::from("u8"),
+                Some(mem::size_of::<u8>()),
+                mem::align_of::<u8>(),
+            ),
+            (16, 1) => (
+                quote! {i16},
+                Cow::from("i16"),
+                Some(mem::size_of::<i16>()),
+                mem::align_of::<i16>(),
+            ),
+            (16, 0) => (
+                quote! {u16},
+                Cow::from("u16"),
+                Some(mem::size_of::<u16>()),
+                mem::align_of::<u16>(),
+            ),
+            (32, 1) => (
+                quote! {i32},
+                Cow::from("i32"),
+                Some(mem::size_of::<i32>()),
+                mem::align_of::<i32>(),
+            ),
+            (32, 0) => (
+                quote! {u32},
+                Cow::from("u32"),
+                Some(mem::size_of::<u32>()),
+                mem::align_of::<u32>(),
+            ),
+            (64, 1) => (
+                quote! {i64},
+                Cow::from("i64"),
+                Some(mem::size_of::<i64>()),
+                mem::align_of::<i64>(),
+            ),
+            (64, 0) => (
+                quote! {u64},
+                Cow::from("u64"),
+                Some(mem::size_of::<u64>()),
+                mem::align_of::<u64>(),
+            ),
+            _ => panic!("no Rust equivalent for an integer of width {}", width),
         },
         Instruction::TypeFloat { width, .. } => match width {
-            32 => {
-                #[repr(C)]
-                struct Foo {
-                    data: f32,
-                    after: u8,
-                }
-                (
-                    quote! {f32},
-                    Cow::from("f32"),
-                    Some(std::mem::size_of::<f32>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            64 => {
-                #[repr(C)]
-                struct Foo {
-                    data: f64,
-                    after: u8,
-                }
-                (
-                    quote! {f64},
-                    Cow::from("f64"),
-                    Some(std::mem::size_of::<f64>()),
-                    mem::align_of::<Foo>(),
-                )
-            }
-            _ => panic!("No Rust equivalent for a floating-point of width {}", width),
+            32 => (
+                quote! {f32},
+                Cow::from("f32"),
+                Some(mem::size_of::<f32>()),
+                mem::align_of::<f32>(),
+            ),
+            64 => (
+                quote! {f64},
+                Cow::from("f64"),
+                Some(mem::size_of::<f64>()),
+                mem::align_of::<f64>(),
+            ),
+            _ => panic!("no Rust equivalent for a floating-point of width {}", width),
         },
         &Instruction::TypeVector {
             component_type,
@@ -591,7 +469,7 @@ pub(super) fn type_from_id<L: LinAlgType>(
             let size = element_size.map(|s| s * row_count * column_count);
             let item = Cow::from(format!(
                 "[[{}; {}]; {}]",
-                element_item, row_count, column_count
+                element_item, row_count, column_count,
             ));
 
             (ty, item, size, align)
@@ -625,10 +503,12 @@ pub(super) fn type_from_id<L: LinAlgType>(
                 })
                 .unwrap();
             if stride as usize > element_size {
-                panic!("Not possible to generate a rust array with the correct alignment since the SPIR-V \
-                            ArrayStride is larger than the size of the array element in rust. Try wrapping \
-                            the array element in a struct or rounding up the size of a vector or matrix \
-                            (e.g. increase a vec3 to a vec4)")
+                panic!(
+                    "not possible to generate a Rust array with the correct alignment since the \
+                    SPIR-V ArrayStride is larger than the size of the array element in Rust. Try \
+                    wrapping the array element in a struct or rounding up the size of a vector or \
+                    matrix (e.g. increase a vec3 to a vec4)",
+                );
             }
 
             (
@@ -704,7 +584,7 @@ pub(super) fn type_from_id<L: LinAlgType>(
 
             (name, name_string, size, align)
         }
-        _ => panic!("Type #{} not found", type_id),
+        _ => panic!("type #{} not found", type_id),
     }
 }
 
@@ -777,7 +657,7 @@ pub(super) fn write_specialization_constants<'a, L: LinAlgType>(
                 ),
                 _ => type_from_id::<L>(spirv, result_type_id),
             };
-        let rust_size = rust_size.expect("Found runtime-sized specialization constant");
+        let rust_size = rust_size.expect("found runtime-sized specialization constant");
 
         let id_info = spirv.id(result_id);
 
@@ -882,14 +762,15 @@ pub(super) fn write_specialization_constants<'a, L: LinAlgType>(
     }
 
     quote! {
-        #[derive(Debug, Copy, Clone)]
+        #[derive(::std::clone::Clone, ::std::marker::Copy, ::std::fmt::Debug)]
         #[allow(non_snake_case)]
         #[repr(C)]
         pub struct #struct_name {
             #( #struct_members ),*
         }
 
-        impl Default for #struct_name {
+        impl ::std::default::Default for #struct_name {
+            #[inline]
             fn default() -> #struct_name {
                 #struct_name {
                     #( #struct_member_defaults ),*
@@ -897,7 +778,9 @@ pub(super) fn write_specialization_constants<'a, L: LinAlgType>(
             }
         }
 
+        #[allow(unsafe_code)]
         unsafe impl ::vulkano::shader::SpecializationConstants for #struct_name {
+            #[inline(always)]
             fn descriptors() -> &'static [::vulkano::shader::SpecializationMapEntry] {
                 static DESCRIPTORS: [::vulkano::shader::SpecializationMapEntry; #num_map_entries] = [
                     #( #map_entries ),*
