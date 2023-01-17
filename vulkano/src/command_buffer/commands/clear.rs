@@ -400,7 +400,7 @@ where
         assert_eq!(device, dst_buffer.device());
 
         // VUID-vkCmdFillBuffer-size-00026
-        assert!(dst_buffer.size() != 0);
+        // Guaranteed by `Subbuffer`
 
         // VUID-vkCmdFillBuffer-dstBuffer-00029
         if !dst_buffer

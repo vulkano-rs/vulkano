@@ -389,7 +389,7 @@ impl<T> Subbuffer<[T]> {
     ///
     /// # Panics
     ///
-    /// - Panics if `index` is out of range.
+    /// - Panics if `index` is out of bounds.
     pub fn index(self, index: DeviceSize) -> Subbuffer<T> {
         assert!(index <= self.len());
 
@@ -411,11 +411,13 @@ impl<T> Subbuffer<[T]> {
     /// # Panics
     ///
     /// - Panics if `range` is out of bounds.
+    /// - Panics if `range` is empty.
     pub fn slice(mut self, range: impl RangeBounds<DeviceSize>) -> Subbuffer<[T]> {
         let Range { start, end } = memory::range(range, ..self.len()).unwrap();
 
         self.offset += start * size_of::<T>() as DeviceSize;
         self.size = (end - start) * size_of::<T>() as DeviceSize;
+        assert!(self.size != 0);
 
         self
     }
@@ -426,6 +428,7 @@ impl<T> Subbuffer<[T]> {
 
         self.offset += start * size_of::<T>() as DeviceSize;
         self.size = (end - start) * size_of::<T>() as DeviceSize;
+        debug_assert!(self.size != 0);
 
         self
     }
@@ -434,9 +437,10 @@ impl<T> Subbuffer<[T]> {
     ///
     /// # Panics
     ///
-    /// - Panics if `mid` is out of bounds.
+    /// - Panics if `mid` is not greater than `0`.
+    /// - Panics if `mid` is not less than `self.len()`.
     pub fn split_at(self, mid: DeviceSize) -> (Subbuffer<[T]>, Subbuffer<[T]>) {
-        assert!(mid <= self.len());
+        assert!(0 < mid && mid < self.len());
 
         unsafe { self.split_at_unchecked(mid) }
     }
@@ -451,6 +455,17 @@ impl<T> Subbuffer<[T]> {
 }
 
 impl Subbuffer<[u8]> {
+    /// Creates a new `Subbuffer<[u8]>` spanning the whole buffer.
+    #[inline]
+    pub fn new(buffer: Arc<Buffer>) -> Self {
+        Subbuffer {
+            offset: 0,
+            size: buffer.size(),
+            parent: SubbufferParent::Buffer(buffer),
+            marker: PhantomData,
+        }
+    }
+
     /// Casts the slice to a different element type while ensuring correct alignment for the type.
     ///
     /// The offset of the subbuffer is rounded up to the alignment of `T` and the size abjusted for
@@ -978,13 +993,17 @@ mod tests {
         }
 
         {
-            let (left, right) = buffer.clone().split_at(6);
-            assert!(left.len() == 6);
-            assert!(right.len() == 0);
+            let (left, right) = buffer.clone().split_at(5);
+            assert!(left.len() == 5);
+            assert!(right.len() == 1);
         }
 
         {
-            assert_should_panic!({ buffer.split_at(7) });
+            assert_should_panic!({ buffer.clone().split_at(0) });
+        }
+
+        {
+            assert_should_panic!({ buffer.split_at(6) });
         }
     }
 
