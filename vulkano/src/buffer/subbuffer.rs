@@ -778,13 +778,7 @@ where
 {
     const LAYOUT: BufferContentsLayout = BufferContentsLayout(BufferContentsLayoutInner::Unsized {
         head_layout: None,
-        element_layout: {
-            if let BufferContentsLayout(BufferContentsLayoutInner::Sized(layout)) = T::LAYOUT {
-                layout
-            } else {
-                unreachable!()
-            }
-        },
+        element_layout: T::LAYOUT.unwrap_sized(),
     });
 
     #[inline(always)]
@@ -944,7 +938,7 @@ impl BufferContentsLayout {
         }
     }
 
-    pub(super) fn unwrap_sized(self) -> DeviceLayout {
+    pub(super) const fn unwrap_sized(self) -> DeviceLayout {
         match self.0 {
             BufferContentsLayoutInner::Sized(sized) => sized,
             BufferContentsLayoutInner::Unsized { .. } => {
