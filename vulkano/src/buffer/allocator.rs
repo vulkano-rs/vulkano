@@ -9,7 +9,7 @@
 
 //! Efficiently suballocates buffers into smaller subbuffers.
 
-use super::{Buffer, BufferError, BufferMemory, BufferUsage, Subbuffer};
+use super::{Buffer, BufferContents, BufferError, BufferMemory, BufferUsage, Subbuffer};
 use crate::{
     buffer::BufferAllocateInfo,
     device::{Device, DeviceOwned},
@@ -17,11 +17,10 @@ use crate::{
         align_up, AllocationCreationError, DeviceAlignment, DeviceLayout, MemoryAllocator,
         MemoryUsage, StandardMemoryAllocator,
     },
-    DeviceSize,
+    DeviceSize, NonZeroDeviceSize,
 };
 use crossbeam_queue::ArrayQueue;
 use std::{
-    alloc::Layout,
     cell::UnsafeCell,
     cmp,
     hash::{Hash, Hasher},
@@ -196,36 +195,50 @@ where
     }
 
     /// Allocates a subbuffer for sized data.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `T` has zero size.
-    /// - Panics if `T` has an alignment greater than `64`.
-    pub fn allocate_sized<T>(&self) -> Result<Subbuffer<T>, AllocationCreationError> {
-        let layout = DeviceLayout::from_layout(Layout::new::<T>())
-            .expect("can't allocate memory for zero-sized types");
+    pub fn allocate_sized<T>(&self) -> Result<Subbuffer<T>, AllocationCreationError>
+    where
+        T: BufferContents,
+    {
+        let layout = T::LAYOUT.unwrap_sized();
 
-        self.allocate(layout)
-            .map(|subbuffer| unsafe { subbuffer.reinterpret() })
+        unsafe { &mut *self.state.get() }
+            .allocate(layout)
+            .map(|subbuffer| unsafe { subbuffer.reinterpret_unchecked() })
     }
 
     /// Allocates a subbuffer for a slice.
     ///
     /// # Panics
     ///
-    /// - Panics if `T` has zero size.
-    /// - Panics if `T` has an alignment greater than `64`.
     /// - Panics if `len` is zero.
     pub fn allocate_slice<T>(
         &self,
         len: DeviceSize,
-    ) -> Result<Subbuffer<[T]>, AllocationCreationError> {
-        let layout =
-            DeviceLayout::from_layout(Layout::array::<T>(len.try_into().unwrap()).unwrap())
-                .expect("can't allocate memory for zero-sized types");
+    ) -> Result<Subbuffer<[T]>, AllocationCreationError>
+    where
+        T: BufferContents,
+    {
+        self.allocate_unsized(len)
+    }
 
-        self.allocate(layout)
-            .map(|subbuffer| unsafe { subbuffer.reinterpret() })
+    /// Allocates a subbuffer for unsized data.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `len` is zero.
+    pub fn allocate_unsized<T>(
+        &self,
+        len: DeviceSize,
+    ) -> Result<Subbuffer<T>, AllocationCreationError>
+    where
+        T: BufferContents + ?Sized,
+    {
+        let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
+        let layout = T::LAYOUT.layout_for_len(len).unwrap();
+
+        unsafe { &mut *self.state.get() }
+            .allocate(layout)
+            .map(|subbuffer| unsafe { subbuffer.reinterpret_unchecked() })
     }
 
     /// Allocates a subbuffer with the given `layout`.
@@ -239,11 +252,7 @@ where
     ) -> Result<Subbuffer<[u8]>, AllocationCreationError> {
         assert!(layout.alignment().as_devicesize() <= 64);
 
-        let state = unsafe { &mut *self.state.get() };
-        let offset = state.allocate(layout)?;
-        let arena = state.arena.as_ref().unwrap().clone();
-
-        Ok(Subbuffer::from_arena(arena, offset, layout.size()))
+        unsafe { &mut *self.state.get() }.allocate(layout)
     }
 }
 
@@ -277,7 +286,10 @@ impl<A> SubbufferAllocatorState<A>
 where
     A: MemoryAllocator,
 {
-    fn allocate(&mut self, layout: DeviceLayout) -> Result<DeviceSize, AllocationCreationError> {
+    fn allocate(
+        &mut self,
+        layout: DeviceLayout,
+    ) -> Result<Subbuffer<[u8]>, AllocationCreationError> {
         let size = layout.size();
         let alignment = cmp::max(layout.alignment(), self.buffer_alignment);
 
@@ -310,7 +322,7 @@ where
                 let offset = offset - arena_offset;
                 self.free_start = offset + size;
 
-                return Ok(offset);
+                return Ok(Subbuffer::from_arena(arena.clone(), offset, layout.size()));
             }
 
             // We reached the end of the arena, grab the next one.

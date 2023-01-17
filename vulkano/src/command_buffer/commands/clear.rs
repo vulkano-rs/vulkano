@@ -438,7 +438,10 @@ where
         D: BufferContents + ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
-        self.validate_update_buffer(dst_buffer.as_bytes(), data.deref().as_bytes())?;
+        self.validate_update_buffer(
+            dst_buffer.as_bytes(),
+            size_of_val(data.deref()) as DeviceSize,
+        )?;
 
         unsafe {
             self.inner.update_buffer(dst_buffer, data)?;
@@ -450,7 +453,7 @@ where
     fn validate_update_buffer(
         &self,
         dst_buffer: &Subbuffer<[u8]>,
-        data: &[u8],
+        data_size: DeviceSize,
     ) -> Result<(), ClearError> {
         let device = self.device();
 
@@ -473,7 +476,7 @@ where
         assert_eq!(device, dst_buffer.device());
 
         // VUID-vkCmdUpdateBuffer-dataSize-arraylength
-        assert!(size_of_val(data) != 0);
+        assert!(data_size != 0);
 
         // VUID-vkCmdUpdateBuffer-dstBuffer-00034
         if !dst_buffer
@@ -488,10 +491,10 @@ where
 
         // VUID-vkCmdUpdateBuffer-dstOffset-00032
         // VUID-vkCmdUpdateBuffer-dataSize-00033
-        if size_of_val(data) as DeviceSize > dst_buffer.size() {
+        if data_size > dst_buffer.size() {
             return Err(ClearError::RegionOutOfBufferBounds {
                 region_index: 0,
-                offset_range_end: size_of_val(data) as DeviceSize,
+                offset_range_end: data_size,
                 buffer_size: dst_buffer.size(),
             });
         }
@@ -506,18 +509,18 @@ where
         }
 
         // VUID-vkCmdUpdateBuffer-dataSize-00037
-        if size_of_val(data) > 65536 {
+        if data_size > 65536 {
             return Err(ClearError::DataTooLarge {
-                size: size_of_val(data) as DeviceSize,
+                size: data_size,
                 max: 65536,
             });
         }
 
         // VUID-vkCmdUpdateBuffer-dataSize-00038
-        if size_of_val(data) % 4 != 0 {
+        if data_size % 4 != 0 {
             return Err(ClearError::SizeNotAlignedForBuffer {
                 region_index: 0,
-                size: size_of_val(data) as DeviceSize,
+                size: data_size,
                 required_alignment: 4,
             });
         }
@@ -736,12 +739,12 @@ impl SyncCommandBufferBuilder {
         D: BufferContents + ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
-        struct Cmd<Dd> {
-            dst_buffer: Subbuffer<[u8]>,
+        struct Cmd<D: ?Sized, Dd> {
+            dst_buffer: Subbuffer<D>,
             data: Dd,
         }
 
-        impl<D, Dd> Command for Cmd<Dd>
+        impl<D, Dd> Command for Cmd<D, Dd>
         where
             D: BufferContents + ?Sized,
             Dd: SafeDeref<Target = D> + Send + Sync + 'static,
@@ -751,11 +754,10 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.update_buffer(&self.dst_buffer, self.data.deref().as_bytes());
+                out.update_buffer(&self.dst_buffer, self.data.deref());
             }
         }
 
-        let dst_buffer = dst_buffer.into_bytes();
         let command_index = self.commands.len();
         let command_name = "update_buffer";
         let resources = [(
@@ -766,7 +768,7 @@ impl SyncCommandBufferBuilder {
                 secondary_use_ref: None,
             },
             Resource::Buffer {
-                buffer: dst_buffer.clone(),
+                buffer: dst_buffer.as_bytes().clone(),
                 range: 0..size_of_val(data.deref()) as DeviceSize,
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages::ALL_TRANSFER,
@@ -887,7 +889,7 @@ impl UnsafeCommandBufferBuilder {
             dst_buffer.buffer().handle(),
             dst_buffer.offset(),
             size_of_val(data) as DeviceSize,
-            data.as_bytes().as_ptr() as *const _,
+            data as *const _ as *const _,
         );
     }
 }

@@ -11,7 +11,7 @@ use super::align_up;
 use crate::{DeviceSize, NonZeroDeviceSize};
 use std::{
     alloc::Layout,
-    cmp::{self, Ordering},
+    cmp::Ordering,
     error::Error,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
@@ -102,14 +102,10 @@ impl DeviceLayout {
     /// exceed [`DeviceLayout::MAX_SIZE`] when rounded up to the nearest multiple of `alignment`.
     #[inline]
     pub const fn from_size_alignment(size: DeviceSize, alignment: DeviceSize) -> Option<Self> {
-        if let (Some(size), Some(alignment)) = (
-            NonZeroDeviceSize::new(size),
-            DeviceAlignment::new(alignment),
-        ) {
-            DeviceLayout::new(size, alignment)
-        } else {
-            None
-        }
+        let size = tri!(NonZeroDeviceSize::new(size));
+        let alignment = tri!(DeviceAlignment::new(alignment));
+
+        DeviceLayout::new(size, alignment)
     }
 
     /// Creates a new `DeviceLayout` from the given `size` and `alignment` without doing any
@@ -183,8 +179,8 @@ impl DeviceLayout {
     /// Returns [`None`] if `self.size()` would overflow [`DeviceLayout::MAX_SIZE`] when rounded up
     /// to the nearest multiple of `alignment`.
     #[inline]
-    pub fn align_to(&self, alignment: DeviceAlignment) -> Option<Self> {
-        DeviceLayout::new(self.size, cmp::max(self.alignment, alignment))
+    pub const fn align_to(&self, alignment: DeviceAlignment) -> Option<Self> {
+        DeviceLayout::new(self.size, DeviceAlignment::max(self.alignment, alignment))
     }
 
     /// Returns the amount of padding that needs to be added to `self.size()` such that the result
@@ -220,11 +216,12 @@ impl DeviceLayout {
     /// returns [`None`] on arithmetic overflow or when the total size would exceed
     /// [`DeviceLayout::MAX_SIZE`].
     #[inline]
-    pub fn repeat(&self, n: NonZeroDeviceSize) -> Option<(Self, DeviceSize)> {
+    pub const fn repeat(&self, n: NonZeroDeviceSize) -> Option<(Self, DeviceSize)> {
         let stride = self.padded_size();
-        let size = stride.checked_mul(n)?;
+        let size = tri!(stride.checked_mul(n));
+        let layout = tri!(DeviceLayout::new(size, self.alignment));
 
-        DeviceLayout::new(size, self.alignment).map(|layout| (layout, stride.get()))
+        Some((layout, stride.get()))
     }
 
     /// Creates a new `DeviceLayout` describing the record for `self` followed by `next`, including
@@ -242,13 +239,14 @@ impl DeviceLayout {
     ///
     /// [`pad_to_alignment`]: Self::pad_to_alignment
     #[inline]
-    pub fn extend(&self, next: Self) -> Option<(Self, DeviceSize)> {
+    pub const fn extend(&self, next: Self) -> Option<(Self, DeviceSize)> {
         let padding = self.padding_needed_for(next.alignment);
-        let offset = self.size.checked_add(padding)?;
-        let size = offset.checked_add(next.size())?;
-        let alignment = cmp::max(self.alignment, next.alignment);
+        let offset = tri!(self.size.checked_add(padding));
+        let size = tri!(offset.checked_add(next.size()));
+        let alignment = DeviceAlignment::max(self.alignment, next.alignment);
+        let layout = tri!(DeviceLayout::new(size, alignment));
 
-        DeviceLayout::new(size, alignment).map(|layout| (layout, offset.get()))
+        Some((layout, offset.get()))
     }
 }
 
@@ -373,6 +371,16 @@ impl DeviceAlignment {
     #[inline]
     pub const fn log2(self) -> u32 {
         self.as_nonzero().trailing_zeros()
+    }
+
+    // TODO: Replace with `Ord::max` once its constness is stabilized.
+    #[inline(always)]
+    pub(crate) const fn max(self, other: Self) -> Self {
+        if self.as_devicesize() >= other.as_devicesize() {
+            self
+        } else {
+            other
+        }
     }
 }
 
@@ -522,3 +530,15 @@ impl Display for TryFromIntError {
         f.write_str("attempted to convert a non-power-of-two integer to a `DeviceAlignment`")
     }
 }
+
+// TODO: Replace with `?` operator once its constness is stabilized.
+macro_rules! tri {
+    ($e:expr) => {
+        if let Some(val) = $e {
+            val
+        } else {
+            return None;
+        }
+    };
+}
+use tri;

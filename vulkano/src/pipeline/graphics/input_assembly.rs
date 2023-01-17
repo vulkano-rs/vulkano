@@ -10,11 +10,11 @@
 //! Configures how input vertices are assembled into primitives.
 
 use crate::{
+    buffer::BufferContents,
     macros::vulkan_enum,
     pipeline::{PartialStateMode, StateMode},
     DeviceSize,
 };
-use bytemuck::Pod;
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
 #[derive(Clone, Copy, Debug)]
@@ -199,7 +199,7 @@ impl PrimitiveTopologyClass {
 }
 
 /// Trait for types that can be used as indices by the GPU.
-pub unsafe trait Index: Pod + Sync + Send {
+pub unsafe trait Index: BufferContents {
     /// Returns the type of data.
     fn ty() -> IndexType;
 }

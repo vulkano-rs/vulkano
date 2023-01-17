@@ -8,8 +8,7 @@
 // according to those terms.
 
 use super::VertexInputRate;
-use crate::format::Format;
-use bytemuck::Pod;
+use crate::{buffer::BufferContents, format::Format};
 use std::collections::HashMap;
 pub use vulkano_macros::Vertex;
 
@@ -38,10 +37,12 @@ pub use vulkano_macros::Vertex;
 ///     proj: [f32; 16],
 /// }
 /// ```
-pub unsafe trait Vertex: Pod + Send + Sync + 'static {
+pub unsafe trait Vertex: BufferContents {
     /// Returns the information about this Vertex type.
     fn per_vertex() -> VertexBufferDescription;
+
     fn per_instance() -> VertexBufferDescription;
+
     fn per_instance_with_divisor(divisor: u32) -> VertexBufferDescription;
 }
 
@@ -100,6 +101,7 @@ pub struct VertexMemberInfo {
 }
 
 impl VertexMemberInfo {
+    #[inline]
     pub fn num_components(&self) -> u32 {
         self.format
             .components()

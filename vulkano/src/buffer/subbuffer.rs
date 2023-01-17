@@ -7,7 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{allocator::Arena, Buffer, BufferContents, BufferError, BufferMemory};
+//! A subpart of a buffer.
+
+use super::{allocator::Arena, Buffer, BufferError, BufferMemory};
 use crate::{
     device::{Device, DeviceOwned},
     memory::{
@@ -17,15 +19,17 @@ use crate::{
     },
     DeviceSize, NonZeroDeviceSize,
 };
-use bytemuck::PodCastError;
+use bytemuck::{AnyBitPattern, PodCastError};
 use std::{
     alloc::Layout,
     error::Error,
+    ffi::c_void,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::{self, align_of, size_of},
     ops::{Deref, DerefMut, Range, RangeBounds},
+    ptr::{self, NonNull},
     sync::Arc,
 };
 
@@ -68,15 +72,6 @@ enum SubbufferParent {
 }
 
 impl<T: ?Sized> Subbuffer<T> {
-    pub(super) fn from_buffer(buffer: Arc<Buffer>) -> Self {
-        Subbuffer {
-            offset: 0,
-            size: buffer.size(),
-            parent: SubbufferParent::Buffer(buffer),
-            marker: PhantomData,
-        }
-    }
-
     pub(super) fn from_arena(arena: Arc<Arena>, offset: DeviceSize, size: DeviceSize) -> Self {
         Subbuffer {
             offset,
@@ -126,6 +121,20 @@ impl<T: ?Sized> Subbuffer<T> {
         }
     }
 
+    /// Returns the mapped pointer to the start of the subbuffer if the memory is host-visible,
+    /// otherwise returns [`None`].
+    pub fn mapped_ptr(&self) -> Option<NonNull<c_void>> {
+        match self.buffer().memory() {
+            BufferMemory::Normal(a) => a.mapped_ptr().map(|ptr| {
+                // SAFETY: The original address came from the Vulkan implementation, and allocation
+                // sizes are guaranteed to not exceed `isize::MAX` when there's a mapped pointer,
+                // so the offset better be in range.
+                unsafe { NonNull::new_unchecked(ptr.as_ptr().add(self.offset as usize)) }
+            }),
+            BufferMemory::Sparse => unreachable!(),
+        }
+    }
+
     /// Returns the device address for this subbuffer.
     pub fn device_address(&self) -> Result<NonZeroDeviceSize, BufferError> {
         self.buffer().device_address().map(|ptr| {
@@ -136,46 +145,31 @@ impl<T: ?Sized> Subbuffer<T> {
         })
     }
 
-    /// Changes the `T` generic parameter of the subbffer to the desired type.
-    ///
-    /// You should **always** prefer the safe functions [`try_from_bytes`], [`into_bytes`],
-    /// [`try_cast`], [`try_cast_slice`] or [`into_slice`].
-    ///
-    /// # Safety
-    ///
-    /// - Correct offset and size must be ensured before using this `Subbuffer` on the device.
-    ///
-    /// [`try_from_bytes`]: Self::try_from_bytes
-    /// [`into_bytes`]: Self::into_bytes
-    /// [`try_cast`]: Self::try_cast
-    /// [`try_cast_slice`]: Self::try_cast_slice
-    /// [`into_slice`]: Self::into_slice
-    pub unsafe fn reinterpret<U: ?Sized>(self) -> Subbuffer<U> {
-        // SAFETY: All `Subbuffer`s share the same layout.
-        mem::transmute::<Subbuffer<T>, Subbuffer<U>>(self)
-    }
-
-    /// Same as [`reinterpret`], except it works with a reference to the subbuffer.
-    ///
-    /// [`reinterpret`]: Self::reinterpret
-    pub unsafe fn reinterpret_ref<U: ?Sized>(&self) -> &Subbuffer<U> {
-        assert!(size_of::<Subbuffer<T>>() == size_of::<Subbuffer<U>>());
-        assert!(align_of::<Subbuffer<T>>() == align_of::<Subbuffer<U>>());
-
-        // SAFETY: All `Subbuffer`s share the same layout.
-        mem::transmute::<&Subbuffer<T>, &Subbuffer<U>>(self)
-    }
-
     /// Casts the subbuffer to a slice of raw bytes.
     pub fn into_bytes(self) -> Subbuffer<[u8]> {
-        unsafe { self.reinterpret() }
+        unsafe { self.reinterpret_unchecked_inner() }
     }
 
     /// Same as [`into_bytes`], except it works with a reference to the subbuffer.
     ///
     /// [`into_bytes`]: Self::into_bytes
     pub fn as_bytes(&self) -> &Subbuffer<[u8]> {
-        unsafe { self.reinterpret_ref() }
+        unsafe { self.reinterpret_ref_unchecked_inner() }
+    }
+
+    #[inline(always)]
+    unsafe fn reinterpret_unchecked_inner<U: ?Sized>(self) -> Subbuffer<U> {
+        // SAFETY: All `Subbuffer`s share the same layout.
+        mem::transmute::<Subbuffer<T>, Subbuffer<U>>(self)
+    }
+
+    #[inline(always)]
+    unsafe fn reinterpret_ref_unchecked_inner<U: ?Sized>(&self) -> &Subbuffer<U> {
+        assert!(size_of::<Subbuffer<T>>() == size_of::<Subbuffer<U>>());
+        assert!(align_of::<Subbuffer<T>>() == align_of::<Subbuffer<U>>());
+
+        // SAFETY: All `Subbuffer`s share the same layout.
+        mem::transmute::<&Subbuffer<T>, &Subbuffer<U>>(self)
     }
 }
 
@@ -183,6 +177,54 @@ impl<T> Subbuffer<T>
 where
     T: BufferContents + ?Sized,
 {
+    /// Changes the `T` generic parameter of the subbffer to the desired type without checking if
+    /// the contents are correctly aligned and sized.
+    ///
+    /// **NEVER use this function** unless you absolutely have to, and even then, open an issue on
+    /// GitHub instead. **An unaligned / incorrectly sized subbuffer is undefined behavior _both on
+    /// the Rust and the Vulkan side!_**
+    ///
+    /// # Safety
+    ///
+    /// - `self.memory_offset()` must be properly aligned for `U`.
+    /// - `self.size()` must be valid for `U`, which means:
+    ///   - If `U` is sized, the size must match exactly.
+    ///   - If `U` is unsized, then the subbuffer size minus the size of the head (sized part) of
+    ///     the DST padded to the alignment of the element type of the slice, must be evenly
+    ///     divisible by the size of the element type.
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reinterpret_unchecked<U>(self) -> Subbuffer<U>
+    where
+        U: BufferContents + ?Sized,
+    {
+        let element_size = U::LAYOUT.element_size().unwrap_or(1);
+        debug_assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
+        debug_assert!(self.size >= U::LAYOUT.padded_head_size());
+        debug_assert!((self.size - U::LAYOUT.padded_head_size()) % element_size == 0);
+
+        self.reinterpret_unchecked_inner()
+    }
+
+    /// Same as [`reinterpret_unchecked`], except it works with a reference to the subbuffer.
+    ///
+    /// # Safety
+    ///
+    /// Please read the safety docs on [`reinterpret_unchecked`] carefully.
+    ///
+    /// [`reinterpret_unchecked`]: Self::reinterpret_unchecked
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reinterpret_ref_unchecked<U>(&self) -> &Subbuffer<U>
+    where
+        U: BufferContents + ?Sized,
+    {
+        let element_size = U::LAYOUT.element_size().unwrap_or(1);
+        debug_assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
+        debug_assert!(self.size >= U::LAYOUT.padded_head_size());
+        debug_assert!((self.size - U::LAYOUT.padded_head_size()) % element_size == 0);
+
+        self.reinterpret_ref_unchecked_inner()
+    }
+
     /// Locks the subbuffer in order to read its content from the host.
     ///
     /// If the subbuffer is currently used in exclusive mode by the device, this function will
@@ -219,11 +261,12 @@ where
             // lock, so there will be no new data and this call will do nothing.
             // TODO: probably still more efficient to call it only if we're the first to acquire a
             // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            unsafe { allocation.invalidate_range(range.clone()) }?;
+            unsafe { allocation.invalidate_range(range) }?;
         }
 
-        let bytes = unsafe { allocation.read(range) }.ok_or(BufferError::MemoryNotHostVisible)?;
-        let data = T::from_bytes(bytes).unwrap();
+        let mapped_ptr = self.mapped_ptr().ok_or(BufferError::MemoryNotHostVisible)?;
+        // SAFETY: `Subbuffer` guarantees that its contents are layed out correctly for `T`.
+        let data = unsafe { &*T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
 
         Ok(BufferReadGuard {
             subbuffer: self,
@@ -261,11 +304,12 @@ where
         unsafe { state.cpu_write_lock(range.clone()) };
 
         if allocation.atom_size().is_some() {
-            unsafe { allocation.invalidate_range(range.clone()) }?;
+            unsafe { allocation.invalidate_range(range) }?;
         }
 
-        let bytes = unsafe { allocation.write(range) }.ok_or(BufferError::MemoryNotHostVisible)?;
-        let data = T::from_bytes_mut(bytes).unwrap();
+        let mapped_ptr = self.mapped_ptr().ok_or(BufferError::MemoryNotHostVisible)?;
+        // SAFETY: `Subbuffer` guarantees that its contents are layed out correctly for `T`.
+        let data = unsafe { &mut *T::from_ffi_mut(mapped_ptr.as_ptr(), self.size as usize) };
 
         Ok(BufferWriteGuard {
             subbuffer: self,
@@ -277,7 +321,14 @@ where
 impl<T> Subbuffer<T> {
     /// Converts the subbuffer to a slice of one element.
     pub fn into_slice(self) -> Subbuffer<[T]> {
-        unsafe { self.reinterpret() }
+        unsafe { self.reinterpret_unchecked_inner() }
+    }
+
+    /// Same as [`into_slice`], except it works with a reference to the subbuffer.
+    ///
+    /// [`into_slice`]: Self::into_slice
+    pub fn as_slice(&self) -> &Subbuffer<[T]> {
+        unsafe { self.reinterpret_ref_unchecked_inner() }
     }
 }
 
@@ -286,35 +337,21 @@ where
     T: BufferContents,
 {
     /// Tries to cast a subbuffer of raw bytes to a `Subbuffer<T>`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `T` has zero size.
-    /// - Panics if `T` has an alignment greater than `64`.
     pub fn try_from_bytes(subbuffer: Subbuffer<[u8]>) -> Result<Self, PodCastError> {
-        assert_valid_type_param::<T>();
-
         if subbuffer.size() != size_of::<T>() as DeviceSize {
             Err(PodCastError::SizeMismatch)
         } else if !is_aligned(subbuffer.memory_offset(), DeviceAlignment::of::<T>()) {
             Err(PodCastError::TargetAlignmentGreaterAndInputNotAligned)
         } else {
-            Ok(unsafe { subbuffer.reinterpret() })
+            Ok(unsafe { subbuffer.reinterpret_unchecked() })
         }
     }
 
     /// Tries to cast the subbuffer to a different type.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `U` has zero size.
-    /// - Panics if `U` has an alignment greater than `64`.
     pub fn try_cast<U>(self) -> Result<Subbuffer<U>, PodCastError>
     where
         U: BufferContents,
     {
-        assert_valid_type_param::<U>();
-
         if size_of::<U>() != size_of::<T>() {
             Err(PodCastError::SizeMismatch)
         } else if align_of::<U>() > align_of::<T>()
@@ -322,7 +359,7 @@ where
         {
             Err(PodCastError::TargetAlignmentGreaterAndInputNotAligned)
         } else {
-            Ok(unsafe { self.reinterpret() })
+            Ok(unsafe { self.reinterpret_unchecked() })
         }
     }
 }
@@ -330,9 +367,7 @@ where
 impl<T> Subbuffer<[T]> {
     /// Returns the number of elements in the slice.
     pub fn len(&self) -> DeviceSize {
-        assert_valid_type_param::<T>();
-
-        debug_assert!(self.size() % size_of::<T>() as DeviceSize == 0);
+        debug_assert!(self.size % size_of::<T>() as DeviceSize == 0);
 
         self.size / size_of::<T>() as DeviceSize
     }
@@ -411,13 +446,14 @@ impl Subbuffer<[u8]> {
     /// # Panics
     ///
     /// - Panics if the aligned offset would be out of bounds.
-    /// - Panics if `T` has zero size.
-    /// - Panics if `T` has an alignment greater than `64`.
-    pub fn cast_aligned<T>(self) -> Subbuffer<[T]> {
+    pub fn cast_aligned<T>(self) -> Subbuffer<[T]>
+    where
+        T: BufferContents,
+    {
         let layout = DeviceLayout::from_layout(Layout::new::<T>()).unwrap();
         let aligned = self.align_to(layout);
 
-        unsafe { aligned.reinterpret() }
+        unsafe { aligned.reinterpret_unchecked() }
     }
 
     /// Aligns the subbuffer to the given `layout` by rounding the offset up to
@@ -428,6 +464,7 @@ impl Subbuffer<[u8]> {
     ///
     /// - Panics if the aligned offset would be out of bounds.
     /// - Panics if `layout.alignment()` exceeds `64`.
+    #[inline]
     pub fn align_to(mut self, layout: DeviceLayout) -> Subbuffer<[u8]> {
         assert!(layout.alignment().as_devicesize() <= 64);
 
@@ -444,20 +481,13 @@ impl Subbuffer<[u8]> {
 
 impl<T> Subbuffer<[T]>
 where
-    [T]: BufferContents,
+    T: BufferContents,
 {
     /// Tries to cast the slice to a different element type.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `U` has zero size.
-    /// - Panics if `U` has an alignment greater than `64`.
     pub fn try_cast_slice<U>(self) -> Result<Subbuffer<[U]>, PodCastError>
     where
-        [U]: BufferContents,
+        U: BufferContents,
     {
-        assert_valid_type_param::<U>();
-
         if size_of::<U>() != size_of::<T>() && self.size() % size_of::<U>() as DeviceSize != 0 {
             Err(PodCastError::OutputSliceWouldHaveSlop)
         } else if align_of::<U>() > align_of::<T>()
@@ -465,21 +495,15 @@ where
         {
             Err(PodCastError::TargetAlignmentGreaterAndInputNotAligned)
         } else {
-            Ok(unsafe { self.reinterpret() })
+            Ok(unsafe { self.reinterpret_unchecked() })
         }
     }
-}
-
-#[inline(always)]
-fn assert_valid_type_param<T>() {
-    assert!(size_of::<T>() != 0);
-    assert!(align_of::<T>() <= 64);
 }
 
 impl From<Arc<Buffer>> for Subbuffer<[u8]> {
     #[inline]
     fn from(buffer: Arc<Buffer>) -> Self {
-        Self::from_buffer(buffer)
+        Self::new(buffer)
     }
 }
 
@@ -632,6 +656,125 @@ impl Display for WriteLockError {
                 WriteLockError::GpuLocked => "the buffer is already locked by the GPU",
             }
         )
+    }
+}
+
+/// Trait for types of data that can be put in a buffer.
+///
+/// This trait is not intended to be implemented manually (ever) and attempting so will make you
+/// one sad individual very quickly. Rather, if your type is sized, you should derive
+/// [`AnyBitPattern`] which will automatically implement `BufferContents` for it, and by extension
+/// for a slice of the type as well. If your data is unsized, then you should use [the
+/// `BufferContents` derive macro], which exists specifically for that purpose.
+///
+/// [the `BufferContents` derive macro]: vulkano_macros::BufferContents
+//
+// If you absolutely *must* implement this trait by hand, here are the safety requirements (but
+// please open an issue on GitHub instead):
+//
+// - The type must be a struct and all fields must implement `BufferContents`.
+// - `LAYOUT` must be the correct layout for the type, which also means the type must either be
+//   sized or if it's unsized then its metadata must be the same as that of a slice. Implementing
+//   `BufferContents` for any other kind of DST is instantaneous horrifically undefined behavior.
+// - `from_ffi` and `from_ffi_mut` must create a pointer with the same address as the `data`
+//   parameter that is passed in. The pointer is expected to be aligned properly already.
+// - `from_ffi` must create a pointer that is expected to be valid for reads for exactly `range`
+//   bytes, similarly `from_ffi_mut` must create a pointer that is expected to be valid for reads
+//   and writes for exactly `range` bytes. The `data` and `range` are expected to be valid for the
+//   `LAYOUT`.
+pub unsafe trait BufferContents: Send + Sync + 'static {
+    /// The layout of the contents.
+    const LAYOUT: BufferContentsLayout;
+
+    /// Creates a pointer to `Self` from a pointer to the start of the data and a range in bytes.
+    ///
+    /// # Safety
+    ///
+    /// - If `Self` is sized, then `range` must match the size exactly.
+    /// - If `Self` is unsized, then the `range` minus the size of the head (sized part) of the DST
+    ///   padded to the alignment of the element type of the slice, must be evenly divisible by
+    ///   the size of the element type.
+    #[doc(hidden)]
+    unsafe fn from_ffi(data: *const c_void, range: usize) -> *const Self;
+
+    /// Creates a pointer to `Self` from a pointer to the start of the data and a range in bytes.
+    ///
+    /// # Safety
+    ///
+    /// - If `Self` is sized, then `range` must match the size exactly.
+    /// - If `Self` is unsized, then the `range` minus the size of the head (sized part) of the DST
+    ///   padded to the alignment of the element type of the slice, must be evenly divisible by
+    ///   the size of the element type.
+    #[doc(hidden)]
+    unsafe fn from_ffi_mut(data: *mut c_void, range: usize) -> *mut Self;
+}
+
+unsafe impl<T> BufferContents for T
+where
+    T: AnyBitPattern + Send + Sync,
+{
+    const LAYOUT: BufferContentsLayout = BufferContentsLayout(BufferContentsLayoutInner::Sized(
+        // TODO: Replace with `Result::expect` once its constness is stabilized.
+        if let Ok(layout) = DeviceLayout::from_layout(Layout::new::<T>()) {
+            assert!(
+                layout.alignment().as_devicesize() <= 64,
+                "types with alignments above 64 are not valid buffer contents",
+            );
+
+            layout
+        } else {
+            panic!("zero-sized types are not valid buffer contents");
+        },
+    ));
+
+    #[inline(always)]
+    unsafe fn from_ffi(data: *const c_void, range: usize) -> *const Self {
+        debug_assert!(range == size_of::<T>());
+        debug_assert!(data as usize % align_of::<T>() == 0);
+
+        data.cast()
+    }
+
+    #[inline(always)]
+    unsafe fn from_ffi_mut(data: *mut c_void, range: usize) -> *mut Self {
+        debug_assert!(range == size_of::<T>());
+        debug_assert!(data as usize % align_of::<T>() == 0);
+
+        data.cast()
+    }
+}
+
+unsafe impl<T> BufferContents for [T]
+where
+    T: BufferContents,
+{
+    const LAYOUT: BufferContentsLayout = BufferContentsLayout(BufferContentsLayoutInner::Unsized {
+        head_layout: None,
+        element_layout: {
+            if let BufferContentsLayout(BufferContentsLayoutInner::Sized(layout)) = T::LAYOUT {
+                layout
+            } else {
+                unreachable!()
+            }
+        },
+    });
+
+    #[inline(always)]
+    unsafe fn from_ffi(data: *const c_void, range: usize) -> *const Self {
+        debug_assert!(range % size_of::<T>() == 0);
+        debug_assert!(data as usize % align_of::<T>() == 0);
+        let len = range / size_of::<T>();
+
+        ptr::slice_from_raw_parts(data.cast(), len)
+    }
+
+    #[inline(always)]
+    unsafe fn from_ffi_mut(data: *mut c_void, range: usize) -> *mut Self {
+        debug_assert!(range % size_of::<T>() == 0);
+        debug_assert!(data as usize % align_of::<T>() == 0);
+        let len = range / size_of::<T>();
+
+        ptr::slice_from_raw_parts_mut(data.cast(), len)
     }
 }
 

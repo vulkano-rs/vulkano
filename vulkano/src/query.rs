@@ -14,11 +14,11 @@
 //! pool and the slot id within that query pool.
 
 use crate::{
+    buffer::BufferContents,
     device::{Device, DeviceOwned},
     macros::vulkan_bitflags,
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
-use bytemuck::Pod;
 use std::{
     error::Error,
     ffi::c_void,
@@ -513,7 +513,7 @@ impl From<RequirementNotMet> for GetResultsError {
 /// # Safety
 /// This is implemented for `u32` and `u64`. Unless you really know what you're doing, you should
 /// not implement this trait for any other type.
-pub unsafe trait QueryResultElement: Pod + Sync + Send {
+pub unsafe trait QueryResultElement: BufferContents {
     const FLAG: ash::vk::QueryResultFlags;
 }
 
