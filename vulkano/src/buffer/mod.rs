@@ -90,15 +90,6 @@
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See [the `view` module]
 //! for how to create a buffer view.
 //!
-//! # A note on endianness
-//!
-//! The Vulkan specification requires that a Vulkan implementation has runtime support for the
-//! types [`u8`], [`u16`], [`u32`], [`u64`] as well as their signed versions, as well as [`f32`]
-//! and [`f64`] on the host, and that the representation and endianness of these types matches
-//! those on the device. This means that if you have for example a `Subbuffer<[u32]>`, you can be
-//! sure that it is represented the same way on the host as it is on the device, and you don't need
-//! to worry about converting the endianness.
-//!
 //! [`RawBuffer`]: self::sys::RawBuffer
 //! [`SubbufferAllocator`]: self::allocator::SubbufferAllocator
 //! [the `view` module]: self::view
