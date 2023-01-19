@@ -34,37 +34,61 @@
 //! ## Layout of data
 //!
 //! When buffers, push constants or other user-provided data are accessed in shaders,
-//! the shader expects the values to be laid out according to specific rules.
-//! As in Rust, the location in memory (or offset from the start of a buffer) of each value
-//! accessed by a shader must be a multiple of a certain number, which is called its *alignment*.
-//! Values used in shaders do not necessarily have the same alignment as their counterparts in
-//! Rust or C. You must therefore make sure that your data is placed at the locations the shader
-//! expects, or it will read the wrong data and produce nonsense.
+//! the shader expects the values inside to be laid out in a specific way. For every uniform buffer,
+//! storage buffer or push constant block, the SPIR-V specification requires the SPIR-V code to
+//! provide an explicit *offset* for every member of a struct, indicating where it is placed
+//! relative to the start of the struct. If there are arrays or matrices among the variables, the
+//! SPIR-V code must also provide an explicit *stride* (the number of bytes between the start of
+//! each value) for them. When providing data to shaders, you must make sure that your data is
+//! placed at the locations indicated within the SPIR-V code, or the shader will read the wrong
+//! data and produce nonsense.
 //!
-//! Three sets of [alignment rules] are supported by Vulkan, listed from least to most
-//! restrictive:
+//! GLSL does not require you to give explicit offsets and/or strides to your variables (although
+//! it has the option to provide them if you wish). Instead, the shader compiler automatically
+//! assigns every variable an offset, increasing in the order you declare them in.
+//! To know the exact offsets that will be used, so that you can lay out your data appropriately,
+//! you must know the alignment rules that the shader compiler uses. The shader compiler will
+//! always give a variable the smallest offset that fits the alignment rules and doesn't overlap
+//! with the previous variable. The shader compiler uses default alignment rules depending on the
+//! type of block, but you can specify another layout by using the `layout` qualifier.
 //!
-//! - **Scalar alignment**, which is the same as the C alignment, expressed in Rust with the
+//! ## Alignment rules
+//!
+//! The offset of each variable from the start of a block, matrix or array must be a
+//! multiple of a certain number, which is called its *alignment*. The stride of an array or matrix
+//! must likewise be a multiple of this number. Regardless of whether the offset/stride is provided
+//! manually in the compiled SPIR-V code, or assigned automatically by the shader compiler, all
+//! variable offsets/strides in a shader must follow these alignment rules.
+//!
+//! Three sets of [alignment rules] are supported by Vulkan. Each one has a GLSL qualifier that
+//! you can place in front of a block, to make the shader compiler use that layout for the block.
+//! If you don't provide this qualifier, it will use a default alignment.
+//!
+//! - **Scalar alignment** (GLSL qualifier: `layout(scalar)`, requires the
+//!   [`GL_EXT_scalar_block_layout`] GLSL extension). This is the same as the C alignment,
+//!   expressed in Rust with the
 //!   [`#[repr(C)]`](https://doc.rust-lang.org/nomicon/other-reprs.html#reprc) attribute.
-//!   This is not used by default anywhere, but can be used for certain cases by enabling the
-//!   [`scalar_block_layout`] feature, and prefixing the block in GLSL with `layout(scalar)`
-//!   (this requires the [`GL_EXT_scalar_block_layout`] GLSL extension).
-//! - **Base alignment**, also known as **std430**.
-//!   This is used by default for all shader data except uniform buffers. It can also be used
-//!   for uniform buffers, by enabling the [`uniform_buffer_standard_layout`] feature, and
-//!   prefixing the block in GLSL with `layout(std430)`.
-//! - **Extended alignment**, also known as **std140**.
-//!   This is used by default for uniform buffers.
+//!   The shader compiler does not use this alignment by default, so you must use the GLSL
+//!   qualifier. You must also enable the [`scalar_block_layout`] feature in Vulkan.
+//! - **Base alignment**, also known as **std430** (GLSL qualifier: `layout(std430)`).
+//!   The shader compiler uses this alignment by default for all shader data except uniform buffers.
+//!   If you use the base alignment for a uniform buffer, you must also enable the
+//!   [`uniform_buffer_standard_layout`] feature in Vulkan.
+//! - **Extended alignment**, also known as **std140** (GLSL qualifier: `layout(std140)`).
+//!   The shader compiler uses this alignment by default for uniform buffers.
+//!
+//! Each alignment type is a subset of the ones above it, so if something adheres to the extended
+//! alignment rules, it also follows the rules for the base and scalar alignments.
 //!
 //! In all three of these alignment rules, a primitive/scalar value with a size of N bytes has an
-//! alignment of N, meaning that it must have an offset in the buffer/memory that is a multiple of
-//! its size, like in C or Rust. So, for example, a `float` (like a Rust `f32`) has a size of 4 bytes, and
-//! an alignment of 4.
+//! alignment of N, meaning that it must have an offset that is a multiple of its size,
+//! like in C or Rust. For example, a `float` (like a Rust `f32`) has a size of 4 bytes,
+//! and an alignment of 4.
 //!
 //! The differences between the alignment rules are in how compound types (vectors, matrices,
 //! arrays and structs) are expected to be laid out. For a compound type with an element whose
 //! alignment is N, the scalar alignment considers the alignment of the compound type to be also N.
-//! However, the base and extended alignment are stricter:
+//! However, the base and extended alignments are stricter:
 //!
 //! | GLSL type | Scalar         | Base           | Extended                                     |
 //! |-----------|----------------|----------------|----------------------------------------------|
@@ -75,25 +99,31 @@
 //! | array     | N              | N              | N, rounded up to multiple of 16              |
 //! | `struct`  | max of members | max of members | max of members, rounded up to multiple of 16 |
 //!
-//! A matrix `matCxR` is considered equivalent to an array of vectors `vecR[C]`.
+//! In the base and extended alignment, the alignment of a vector is the size of the whole vector,
+//! rather than the size of its individual elements as is the case in the scalar alignment.
+//! But note that `vec3` has the same alignment as `vec4`, so it is not possible to tightly
+//! pack multiple `vec3` values (e.g. in an array); there will always be empty padding between them.
 //!
-//! In the base and extended alignment, a vector is aligned to the size of the whole vector, rather
-//! than the size of its individual elements as is the case in the scalar alignment.
-//! But note that `vec3` is laid out as if it were a `vec4`; there is an empty space where the
-//! fourth element would go. Since a matrix is treated as an array of vectors, this also means
-//! that a `mat3` is laid out like a `mat3x4`, again with an empty space at the end of each column
-//! vector.
+//! For arrays, in both the scalar and base alignment, the offset and stride must be a multiple of
+//! the alignment of the type of element. In the extended alignment, however, the offset and stride
+//! must also be a multiple of 16 (the size of a `vec4`). Therefore, the stride of the array can
+//! be greater than the element size. For example, in an array of `float`, the stride will be 16,
+//! even though a `float` itself is only 4 bytes in size. Every `float` element will be followed
+//! by 12 bytes of unused space.
 //!
-//! Arrays are aligned like their elements in both the scalar and base alignment, but the extended
-//! alignment requires that every element must be aligned to a multiple of 16
-//! (the size of a `vec4`). If the elements are smaller, empty space is added between the elements
-//! to match this requirement. This means that, for example, in an array of `float`, each element
-//! will be located 16 bytes after the next, even though a `float` itself is only 4 bytes in size.
-//! The rules for `struct`s are similar to those of arrays, with the highest alignment of the
-//! members being used.
+//! A matrix `matCxR` is considered equivalent to an array of column vectors `vecR[C]`.
+//! In the base and extended alignments, that means that if the matrix has 3 rows, there will be
+//! one element's worth of padding between the column vectors. In the extended alignment,
+//! the stride between column vectors of the matrix must also be a multiple of 16,
+//! further increasing the amount of padding between the column vectors.
 //!
-//! [`GL_EXT_scalar_block_layout`]: <https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt>
+//! The rules for `struct`s are similar to those of arrays. When the members of the struct have
+//! different alignment requirements, the alignment of the struct as a whole is the maximum
+//! of the alignments of its members. As with arrays, in the extended alignment, the alignment
+//! of a struct must be a multiple of 16.
+//!
 //! [alignment rules]: <https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout>
+//! [`GL_EXT_scalar_block_layout`]: <https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt>
 //! [`scalar_block_layout`]: crate::device::Features::scalar_block_layout
 //! [`uniform_buffer_standard_layout`]: crate::device::Features::uniform_buffer_standard_layout
 

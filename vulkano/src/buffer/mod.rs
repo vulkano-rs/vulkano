@@ -90,9 +90,13 @@
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See [the `view` module]
 //! for how to create a buffer view.
 //!
+//! See also [the `shader` module documentation] for information about how buffer contents need to
+//! be laid out in accordance with the shader interface.
+//!
 //! [`RawBuffer`]: self::sys::RawBuffer
 //! [`SubbufferAllocator`]: self::allocator::SubbufferAllocator
 //! [the `view` module]: self::view
+//! [the `shader` module documentation]: crate::shader
 
 pub use self::{subbuffer::Subbuffer, usage::BufferUsage};
 use self::{
