@@ -36,12 +36,13 @@
 //! When buffers, push constants or other user-provided data are accessed in shaders,
 //! the shader expects the values inside to be laid out in a specific way. For every uniform buffer,
 //! storage buffer or push constant block, the SPIR-V specification requires the SPIR-V code to
-//! provide an explicit *offset* for every member of a struct, indicating where it is placed
+//! provide the `Offset` decoration for every member of a struct, indicating where it is placed
 //! relative to the start of the struct. If there are arrays or matrices among the variables, the
-//! SPIR-V code must also provide an explicit *stride* (the number of bytes between the start of
-//! each value) for them. When providing data to shaders, you must make sure that your data is
-//! placed at the locations indicated within the SPIR-V code, or the shader will read the wrong
-//! data and produce nonsense.
+//! SPIR-V code must also provide an `ArrayStride` or `MatrixStride` decoration for them,
+//! indicating the number of bytes between the start of each element in the array or column in the
+//! matrix. When providing data to shaders, you must make sure that your data is placed at the
+//! locations indicated within the SPIR-V code, or the shader will read the wrong data and produce
+//! nonsense.
 //!
 //! GLSL does not require you to give explicit offsets and/or strides to your variables (although
 //! it has the option to provide them if you wish). Instead, the shader compiler automatically
