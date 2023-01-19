@@ -103,16 +103,17 @@
 //!
 //! In the base and extended alignment, the alignment of a vector is the size of the whole vector,
 //! rather than the size of its individual elements as is the case in the scalar alignment.
-//! But note that, because alignment must be a power of two, `vec3` has the same alignment as
-//! `vec4`, so it is not possible to tightly pack multiple `vec3` values (e.g. in an array);
-//! there will always be empty padding between them.
+//! But note that, because alignment must be a power of two, the alignment of `vec3` cannot be
+//! N * 3; it must be N * 4, the same alignment as `vec4`. This means that it is not possible to
+//! tightly pack multiple `vec3` values (e.g. in an array); there will always be empty padding
+//! between them.
 //!
-//! For arrays, in both the scalar and base alignment, the alignment is equal to the alignment of
-//! the array elements. In the extended alignment, however, the alignment is always at least 16
-//! (the size of a `vec4`). Therefore, the minimum stride of the array can be much greater than the
-//! element size. For example, in an array of `float`, the stride must be at least 16, even
-//! though a `float` itself is only 4 bytes in size. Every `float` element will be followed by at
-//! least 12 bytes of unused space.
+//! In both the scalar and base alignment, the alignment of arrays and their elements is equal to
+//! the alignment of the contained type. In the extended alignment, however, the alignment is
+//! always at least 16 (the size of a `vec4`). Therefore, the minimum stride of the array can be
+//! much greater than the element size. For example, in an array of `float`, the stride must be at
+//! least 16, even though a `float` itself is only 4 bytes in size. Every `float` element will be
+//! followed by at least 12 bytes of unused space.
 //!
 //! A matrix `matCxR` is considered equivalent to an array of column vectors `vecR[C]`.
 //! In the base and extended alignments, that means that if the matrix has 3 rows, there will be
