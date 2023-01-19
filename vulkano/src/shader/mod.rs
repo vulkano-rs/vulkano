@@ -90,14 +90,14 @@
 //! alignment is N, the scalar alignment considers the alignment of the compound type to be also N.
 //! However, the base and extended alignments are stricter:
 //!
-//! | GLSL type | Scalar         | Base           | Extended                                     |
-//! |-----------|----------------|----------------|----------------------------------------------|
-//! | primitive | N              | N              | N                                            |
-//! | `vec2`    | N              | N * 2          | N * 2                                        |
-//! | `vec3`    | N              | N * 4          | N * 4                                        |
-//! | `vec4`    | N              | N * 4          | N * 4                                        |
-//! | array     | N              | N              | N, rounded up to multiple of 16              |
-//! | `struct`  | max of members | max of members | max of members, rounded up to multiple of 16 |
+//! | GLSL type | Scalar | Base   | Extended                             |
+//! |-----------|--------|--------|--------------------------------------|
+//! | primitive | N      | N      | N                                    |
+//! | `vec2`    | N      | N * 2  | N * 2                                |
+//! | `vec3`    | N      | N * 4  | N * 4                                |
+//! | `vec4`    | N      | N * 4  | N * 4                                |
+//! | array     | N      | N      | N, rounded up to multiple of 16      |
+//! | `struct`  | max(N) | max(N) | max(N), rounded up to multiple of 16 |
 //!
 //! In the base and extended alignment, the alignment of a vector is the size of the whole vector,
 //! rather than the size of its individual elements as is the case in the scalar alignment.
