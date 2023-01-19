@@ -57,9 +57,10 @@
 //!
 //! The offset of each variable from the start of a block, matrix or array must be a
 //! multiple of a certain number, which is called its *alignment*. The stride of an array or matrix
-//! must likewise be a multiple of this number. Regardless of whether the offset/stride is provided
-//! manually in the compiled SPIR-V code, or assigned automatically by the shader compiler, all
-//! variable offsets/strides in a shader must follow these alignment rules.
+//! must likewise be a multiple of this number. An alignment is always a power-of-two value.
+//! Regardless of whether the offset/stride is provided manually in the compiled SPIR-V code,
+//! or assigned automatically by the shader compiler, all variable offsets/strides in a shader must
+//! follow these alignment rules.
 //!
 //! Three sets of [alignment rules] are supported by Vulkan. Each one has a GLSL qualifier that
 //! you can place in front of a block, to make the shader compiler use that layout for the block.
@@ -91,37 +92,38 @@
 //! alignment is N, the scalar alignment considers the alignment of the compound type to be also N.
 //! However, the base and extended alignments are stricter:
 //!
-//! | GLSL type | Scalar | Base   | Extended                             |
-//! |-----------|--------|--------|--------------------------------------|
-//! | primitive | N      | N      | N                                    |
-//! | `vec2`    | N      | N * 2  | N * 2                                |
-//! | `vec3`    | N      | N * 4  | N * 4                                |
-//! | `vec4`    | N      | N * 4  | N * 4                                |
-//! | array     | N      | N      | N, rounded up to multiple of 16      |
-//! | `struct`  | max(N) | max(N) | max(N), rounded up to multiple of 16 |
+//! | GLSL type | Scalar          | Base            | Extended                 |
+//! |-----------|-----------------|-----------------|--------------------------|
+//! | primitive | N               | N               | N                        |
+//! | `vec2`    | N               | N * 2           | N * 2                    |
+//! | `vec3`    | N               | N * 4           | N * 4                    |
+//! | `vec4`    | N               | N * 4           | N * 4                    |
+//! | array     | N               | N               | max(N, 16)               |
+//! | `struct`  | N<sub>max</sub> | N<sub>max</sub> | max(N<sub>max</sub>, 16) |
 //!
 //! In the base and extended alignment, the alignment of a vector is the size of the whole vector,
 //! rather than the size of its individual elements as is the case in the scalar alignment.
-//! But note that `vec3` has the same alignment as `vec4`, so it is not possible to tightly
-//! pack multiple `vec3` values (e.g. in an array); there will always be empty padding between them.
+//! But note that, because alignment must be a power of two, `vec3` has the same alignment as
+//! `vec4`, so it is not possible to tightly pack multiple `vec3` values (e.g. in an array);
+//! there will always be empty padding between them.
 //!
-//! For arrays, in both the scalar and base alignment, the offset and stride must be a multiple of
-//! the alignment of the type of element. In the extended alignment, however, the offset and stride
-//! must also be a multiple of 16 (the size of a `vec4`). Therefore, the stride of the array can
-//! be greater than the element size. For example, in an array of `float`, the stride will be 16,
-//! even though a `float` itself is only 4 bytes in size. Every `float` element will be followed
-//! by 12 bytes of unused space.
+//! For arrays, in both the scalar and base alignment, the alignment is equal to the alignment of
+//! the array elements. In the extended alignment, however, the alignment is always at least 16
+//! (the size of a `vec4`). Therefore, the minimum stride of the array can be much greater than the
+//! element size. For example, in an array of `float`, the stride must be at least 16, even
+//! though a `float` itself is only 4 bytes in size. Every `float` element will be followed by at
+//! least 12 bytes of unused space.
 //!
 //! A matrix `matCxR` is considered equivalent to an array of column vectors `vecR[C]`.
 //! In the base and extended alignments, that means that if the matrix has 3 rows, there will be
 //! one element's worth of padding between the column vectors. In the extended alignment,
-//! the stride between column vectors of the matrix must also be a multiple of 16,
-//! further increasing the amount of padding between the column vectors.
+//! the alignment is also at least 16, further increasing the amount of padding between the
+//! column vectors.
 //!
 //! The rules for `struct`s are similar to those of arrays. When the members of the struct have
 //! different alignment requirements, the alignment of the struct as a whole is the maximum
 //! of the alignments of its members. As with arrays, in the extended alignment, the alignment
-//! of a struct must be a multiple of 16.
+//! of a struct is at least 16.
 //!
 //! [alignment rules]: <https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout>
 //! [`GL_EXT_scalar_block_layout`]: <https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt>
