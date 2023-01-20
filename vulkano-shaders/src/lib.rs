@@ -438,6 +438,7 @@ impl Default for TypesMeta {
             custom_derives: vec![
                 parse_quote! { ::std::clone::Clone },
                 parse_quote! { ::std::marker::Copy },
+                parse_quote! { ::vulkano::buffer::BufferContents },
             ],
             partial_eq: false,
             debug: false,

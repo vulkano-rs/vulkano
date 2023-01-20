@@ -66,31 +66,11 @@ pub(super) fn write_structs<'a, L: LinAlgType>(
             Some(if is_sized {
                 let derives = write_derives(types_meta);
                 let impls = write_impls(types_meta, struct_name, &rust_members);
-                let bounds = rust_members
-                    .iter()
-                    .map(|Member { ty, .. }| quote!(#ty: ::vulkano::bytemuck::AnyBitPattern));
 
                 quote! {
                     #derives
                     #struct_body
                     #(#impls)*
-
-                    // SAFETY: All that's required for deriving `AnyBitPattern` is that all the
-                    // fields are `AnyBitPattern`, which we enforce with the bounds.
-                    #[allow(unsafe_code)]
-                    unsafe impl ::vulkano::bytemuck::AnyBitPattern for #struct_ident
-                    where
-                        #(#bounds,)*
-                    {
-                    }
-
-                    // SAFETY: `AnyBitPattern` implies `Zeroable`.
-                    #[allow(unsafe_code)]
-                    unsafe impl ::vulkano::bytemuck::Zeroable for #struct_ident
-                    where
-                        Self: ::vulkano::bytemuck::AnyBitPattern
-                    {
-                    }
                 }
             } else {
                 quote! {
