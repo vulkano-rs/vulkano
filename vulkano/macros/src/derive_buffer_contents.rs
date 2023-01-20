@@ -75,23 +75,33 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
         );
     }
 
-    let mut field_types = fields.iter().map(|field| &field.ty);
-    let first_field_type = field_types.next().unwrap();
-    let mut layout = quote! {
-        <#first_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT
-    };
-    for field_type in field_types {
-        layout = quote! {
-            // TODO: Replace with `Option::unwrap` once its constness is stabilized.
-            if let ::std::option::Option::Some(layout) =
-                #layout.extend(<#field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT)
-            {
+    let layout = {
+        let mut field_types = fields.iter().map(|field| &field.ty);
+        let first_field_type = field_types.next().unwrap();
+        let mut layout = quote! {
+            <#first_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT
+        };
+        for field_type in field_types {
+            layout = quote! {
+                // TODO: Replace with `Option::unwrap` once its constness is stabilized.
+                if let ::std::option::Option::Some(layout) =
+                    #layout.extend(<#field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT)
+                {
+                    layout
+                } else {
+                    ::std::unreachable!()
+                }
+            };
+        }
+
+        quote! {
+            if let ::std::option::Option::Some(layout) = #layout.pad_to_alignment() {
                 layout
             } else {
                 ::std::unreachable!()
             }
-        };
-    }
+        }
+    };
 
     let is_unsized = matches!(fields.last().unwrap().ty, Type::Slice(_))
         || ast
@@ -108,14 +118,14 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
                 .as_devicesize() as usize;
             ::std::debug_assert!(data as usize % alignment == 0);
 
-            let padded_head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
-                .padded_head_size() as usize;
+            let head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                .head_size() as usize;
             let element_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
                 .element_size()
                 .unwrap() as usize;
 
-            ::std::debug_assert!(range >= padded_head_size);
-            let tail_size = range - padded_head_size;
+            ::std::debug_assert!(range >= head_size);
+            let tail_size = range - head_size;
             ::std::debug_assert!(tail_size % element_size == 0);
             let len = tail_size / element_size;
 

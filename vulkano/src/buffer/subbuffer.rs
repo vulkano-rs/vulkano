@@ -203,8 +203,7 @@ where
     /// - `self.size()` must be valid for `U`, which means:
     ///   - If `U` is sized, the size must match exactly.
     ///   - If `U` is unsized, then the subbuffer size minus the size of the head (sized part) of
-    ///     the DST padded to the alignment of the element type of the slice, must be evenly
-    ///     divisible by the size of the element type.
+    ///     the DST must be evenly divisible by the size of the element type.
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn reinterpret_unchecked<U>(self) -> Subbuffer<U>
     where
@@ -212,8 +211,8 @@ where
     {
         let element_size = U::LAYOUT.element_size().unwrap_or(1);
         debug_assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
-        debug_assert!(self.size >= U::LAYOUT.padded_head_size());
-        debug_assert!((self.size - U::LAYOUT.padded_head_size()) % element_size == 0);
+        debug_assert!(self.size >= U::LAYOUT.head_size());
+        debug_assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
 
         self.reinterpret_unchecked_inner()
     }
@@ -232,8 +231,8 @@ where
     {
         let element_size = U::LAYOUT.element_size().unwrap_or(1);
         debug_assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
-        debug_assert!(self.size >= U::LAYOUT.padded_head_size());
-        debug_assert!((self.size - U::LAYOUT.padded_head_size()) % element_size == 0);
+        debug_assert!(self.size >= U::LAYOUT.head_size());
+        debug_assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
 
         self.reinterpret_ref_unchecked_inner()
     }
@@ -720,8 +719,7 @@ pub unsafe trait BufferContents: Send + Sync + 'static {
     ///
     /// - If `Self` is sized, then `range` must match the size exactly.
     /// - If `Self` is unsized, then the `range` minus the size of the head (sized part) of the DST
-    ///   padded to the alignment of the element type of the slice, must be evenly divisible by
-    ///   the size of the element type.
+    ///   must be evenly divisible by the size of the element type.
     #[doc(hidden)]
     unsafe fn from_ffi(data: *const c_void, range: usize) -> *const Self;
 
@@ -731,8 +729,7 @@ pub unsafe trait BufferContents: Send + Sync + 'static {
     ///
     /// - If `Self` is sized, then `range` must match the size exactly.
     /// - If `Self` is unsized, then the `range` minus the size of the head (sized part) of the DST
-    ///   padded to the alignment of the element type of the slice, must be evenly divisible by
-    ///   the size of the element type.
+    ///   must be evenly divisible by the size of the element type.
     #[doc(hidden)]
     unsafe fn from_ffi_mut(data: *mut c_void, range: usize) -> *mut Self;
 }
@@ -826,10 +823,10 @@ enum BufferContentsLayoutInner {
 }
 
 impl BufferContentsLayout {
-    /// Returns the size of the head (sized part), padded to the alignment of the element type if
-    /// the data is unsized. If the data has no sized part, then this will return 0.
+    /// Returns the size of the head (sized part). If the data has no sized part, then this will
+    /// return 0.
     #[inline]
-    pub const fn padded_head_size(&self) -> DeviceSize {
+    pub const fn head_size(&self) -> DeviceSize {
         match &self.0 {
             BufferContentsLayoutInner::Sized(sized) => sized.size(),
             BufferContentsLayoutInner::Unsized {
@@ -837,13 +834,8 @@ impl BufferContentsLayout {
             } => 0,
             BufferContentsLayoutInner::Unsized {
                 head_layout: Some(head_layout),
-                element_layout,
-            } => {
-                // `BufferContentsLayout`'s invariant guarantees that the alignment of the element
-                // type doesn't exceed 64, which together with the overflow invariant of
-                // `DeviceLayout` means that this can't overflow.
-                head_layout.size() + head_layout.padding_needed_for(element_layout.alignment())
-            }
+                ..
+            } => head_layout.size(),
         }
     }
 
@@ -870,8 +862,8 @@ impl BufferContentsLayout {
             } => element_layout.alignment(),
             BufferContentsLayoutInner::Unsized {
                 head_layout: Some(head_layout),
-                element_layout,
-            } => DeviceAlignment::max(head_layout.alignment(), element_layout.alignment()),
+                ..
+            } => head_layout.alignment(),
         }
     }
 
@@ -930,6 +922,75 @@ impl BufferContentsLayout {
                     Some(Self(BufferContentsLayoutInner::Unsized {
                         head_layout: Some(layout),
                         element_layout,
+                    }))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    /// Creates a new `BufferContentsLayout` by rounding up the size of the head to the nearest
+    /// multiple of its alignment if the layout is sized, or by rounding up the size of the head to
+    /// the nearest multiple of the alignment of the element type and aligning the head to the
+    /// alignment of the element type if there is a sized part. Doesn't do anything if there is no
+    /// sized part. Returns [`None`] if the new head size would exceed [`DeviceLayout::MAX_SIZE`].
+    /// This is inteded for use by the derive macro only.
+    #[doc(hidden)]
+    #[inline]
+    pub const fn pad_to_alignment(&self) -> Option<Self> {
+        match &self.0 {
+            BufferContentsLayoutInner::Sized(sized) => Some(Self(
+                BufferContentsLayoutInner::Sized(sized.pad_to_alignment()),
+            )),
+            BufferContentsLayoutInner::Unsized {
+                head_layout: None,
+                element_layout,
+            } => Some(Self(BufferContentsLayoutInner::Unsized {
+                head_layout: None,
+                element_layout: *element_layout,
+            })),
+            BufferContentsLayoutInner::Unsized {
+                head_layout: Some(head_layout),
+                element_layout,
+            } => {
+                // We must pad the head to the alignment of the element type, *not* the alignment
+                // of the head.
+                //
+                // Consider a head layout of `(u8, u8, u8)` and an element layout of `u32`. If we
+                // padded the head to its own alignment, like is the case for sized layouts, it
+                // wouldn't change the size. Yet there is padding between the head and the first
+                // element of the slice.
+                //
+                // The reverse is true: consider a head layout of `(u16, u8)` and an element layout
+                // of `u8`. If we padded the head to its own alignment, it would be too large.
+                let padded_head_size =
+                    head_layout.size() + head_layout.padding_needed_for(element_layout.alignment());
+
+                // SAFETY: `BufferContentsLayout`'s invariant guarantees that the alignment of the
+                // element type doesn't exceed 64, which together with the overflow invariant of
+                // `DeviceLayout` means that this can't overflow.
+                let padded_head_size =
+                    unsafe { NonZeroDeviceSize::new_unchecked(padded_head_size) };
+
+                // We have to align the head to the alignment of the element type, so that the
+                // struct as a whole is aligned correctly when a different struct is extended with
+                // this one.
+                //
+                // Note that this is *not* the same as aligning the head to the alignment of the
+                // element type and then padding the layout to its alignment. Consider the same
+                // layout from above, with a head layout of `(u16, u8)` and an element layout of
+                // `u8`. If we aligned the head to the element type and then padded it to its own
+                // alignment, we would get the same wrong result as above. This instead ensures the
+                // head is padded to the element and aligned to it, without the alignment of the
+                // head interfering.
+                let alignment =
+                    DeviceAlignment::max(head_layout.alignment(), element_layout.alignment());
+
+                if let Some(head_layout) = DeviceLayout::new(padded_head_size, alignment) {
+                    Some(Self(BufferContentsLayoutInner::Unsized {
+                        head_layout: Some(head_layout),
+                        element_layout: *element_layout,
                     }))
                 } else {
                     None
