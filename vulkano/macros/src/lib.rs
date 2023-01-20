@@ -23,7 +23,7 @@ pub fn derive_vertex(input: TokenStream) -> TokenStream {
         .into()
 }
 
-#[proc_macro_derive(BufferContents)]
+#[proc_macro_derive(BufferContents, attributes(dynamically_sized))]
 pub fn derive_buffer_contents(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
