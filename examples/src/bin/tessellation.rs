@@ -18,10 +18,9 @@
 // *    tessellation control shader and a tessellation evaluation shader
 // *    tessellation_shaders(..), patch_list(3) and polygon_mode_line() are called on the pipeline builder
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -262,8 +261,8 @@ fn main() {
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     #[repr(C)]
+    #[derive(BufferContents, Vertex)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],

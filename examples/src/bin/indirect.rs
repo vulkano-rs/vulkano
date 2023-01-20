@@ -24,12 +24,11 @@
 // example.
 //
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-        BufferUsage,
+        BufferContents, BufferUsage,
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
@@ -294,8 +293,8 @@ fn main() {
 
     // # Vertex Types
     // `Vertex` is the vertex type that will be output from the compute shader and be input to the vertex shader.
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],

@@ -19,10 +19,9 @@
 // $ glslangValidator frag.glsl -V -S frag -o frag.spv
 // Vulkano uses glslangValidator to build your shaders internally.
 
-use bytemuck::{Pod, Zeroable};
 use std::{fs::File, io::Read, sync::Arc};
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -213,8 +212,8 @@ fn main() {
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     pub struct Vertex {
         #[format(R32G32_SFLOAT)]
         pub position: [f32; 2],

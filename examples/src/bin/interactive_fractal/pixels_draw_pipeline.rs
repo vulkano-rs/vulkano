@@ -7,10 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
@@ -34,8 +33,8 @@ use vulkano::{
 };
 
 /// Vertex for textured quads
+#[derive(BufferContents, Vertex)]
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 pub struct TexturedVertex {
     #[format(R32G32_SFLOAT)]
     pub position: [f32; 2],

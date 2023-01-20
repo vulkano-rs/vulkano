@@ -13,10 +13,9 @@
 //! or other types of stereoscopic rendering where the left and right eye only differ
 //! in a small position offset.
 
-use bytemuck::{Pod, Zeroable};
 use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
         CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo, SubpassContents,
@@ -147,8 +146,8 @@ fn main() {
 
     let image_view = ImageView::new_default(image.clone()).unwrap();
 
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],

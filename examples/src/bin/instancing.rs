@@ -12,10 +12,9 @@
 // This is a simple, modified version of the `triangle.rs` example that demonstrates how we can use
 // the "instancing" technique with vulkano to draw many instances of the triangle.
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -57,16 +56,16 @@ use winit::{
 // graphics pipeline, we need to define two vertex types:
 //
 // 1. `TriangleVertex` is the vertex type that we will use to describe the triangle's geometry.
+#[derive(BufferContents, Vertex)]
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 struct TriangleVertex {
     #[format(R32G32_SFLOAT)]
     position: [f32; 2],
 }
 
 // 2. `InstanceData` is the vertex type that describes the unique data per instance.
+#[derive(BufferContents, Vertex)]
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 struct InstanceData {
     #[format(R32G32_SFLOAT)]
     position_offset: [f32; 2],

@@ -63,8 +63,9 @@ vulkano_shaders::shader! {
     ",
     types_meta: {
         use serde::{Deserialize, Serialize};
+        use vulkano::buffer::BufferContents;
 
-        #[derive(Clone, Copy, PartialEq, Debug, Default, Serialize, Deserialize)]
+        #[derive(Clone, Copy, BufferContents, PartialEq, Debug, Default, Serialize, Deserialize)]
 
         impl Eq
     }

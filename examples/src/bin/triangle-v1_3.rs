@@ -21,10 +21,9 @@
 // `khr_dynamic_rendering` extension, or if you want to see how to support older versions, see the
 // original triangle example.
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderingAttachmentInfo, RenderingInfo,
@@ -294,8 +293,8 @@ fn main() {
     // We now create a buffer that will store the shape of our triangle.
     // We use #[repr(C)] here to force rustc to not do anything funky with our data, although for this
     // particular example, it doesn't actually change the in-memory representation.
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],

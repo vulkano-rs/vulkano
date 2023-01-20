@@ -9,7 +9,6 @@
 
 // Modified triangle example to show `SubbufferAllocator`.
 
-use bytemuck::{Pod, Zeroable};
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -17,7 +16,7 @@ use std::{
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-        BufferUsage,
+        BufferContents, BufferUsage,
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
@@ -156,8 +155,8 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
+    #[derive(Clone, Copy, BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],

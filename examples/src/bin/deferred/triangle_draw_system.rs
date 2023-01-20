@@ -7,10 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
@@ -120,8 +119,8 @@ impl TriangleDrawSystem {
     }
 }
 
+#[derive(BufferContents, Vertex)]
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 struct TriangleVertex {
     #[format(R32G32_SFLOAT)]
     position: [f32; 2],

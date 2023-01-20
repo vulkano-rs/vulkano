@@ -8,14 +8,13 @@ fn main() {
 // TODO: Can this be demonstrated for other platforms as well?
 #[cfg(target_os = "linux")]
 mod linux {
-    use bytemuck::{Pod, Zeroable};
     use glium::glutin::{self, platform::unix::HeadlessContextExt};
     use std::{
         sync::{Arc, Barrier},
         time::Instant,
     };
     use vulkano::{
-        buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+        buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
             CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
@@ -386,8 +385,8 @@ mod linux {
         });
     }
 
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct MyVertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],
