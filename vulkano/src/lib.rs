@@ -152,7 +152,6 @@
 )]
 
 pub use ash::vk::Handle;
-pub use bytemuck;
 pub use half;
 pub use library::{LoadingError, VulkanLibrary};
 use std::{
