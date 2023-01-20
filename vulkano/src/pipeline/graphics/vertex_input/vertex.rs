@@ -20,12 +20,12 @@ pub use vulkano_macros::Vertex;
 ///
 /// The vertex trait can be derived and the format has to be specified using the `format`
 /// field-level attribute:
-/// ```
-/// use bytemuck::{Pod, Zeroable};
-/// use vulkano::pipeline::graphics::vertex_input::Vertex;
 ///
+/// ```
+/// use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
+///
+/// #[derive(BufferContents, Vertex)]
 /// #[repr(C)]
-/// #[derive(Clone, Copy, Debug, Default, Pod, Zeroable, Vertex)]
 /// struct MyVertex {
 ///     // Every field needs to explicitly state the desired shader input format
 ///     #[format(R32G32B32_SFLOAT)]
