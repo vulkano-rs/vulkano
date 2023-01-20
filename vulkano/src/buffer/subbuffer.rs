@@ -33,17 +33,6 @@ use std::{
     sync::Arc,
 };
 
-/// Derives `BufferContents` *for unsized types*.
-///
-/// Using this macro on sized types will result in a compilation error. You should derive
-/// [`AnyBitPattern`] (or [`Pod`]) for sized types. This is due to the fact that it's impossible to
-/// determine if a type is sized from the derive input alone, because the last field of the struct
-/// doesn't have to be a primitive type, which would mean that the macro doesn't have sufficient
-/// information to figure out the sizedness of the struct as a whole. On the other hand, there's
-/// also no way to generate code that could reflect on the sizedness of the struct, and have
-/// different implementations of the trait in both cases.
-///
-/// [`Pod`]: bytemuck::Pod
 pub use vulkano_macros::BufferContents;
 
 /// A subpart of a buffer.
@@ -689,12 +678,95 @@ impl Display for WriteLockError {
 /// Trait for types of data that can be put in a buffer.
 ///
 /// This trait is not intended to be implemented manually (ever) and attempting so will make you
-/// one sad individual very quickly. Rather, if your type is sized, you should derive
-/// [`AnyBitPattern`] which will automatically implement `BufferContents` for it, and by extension
-/// for a slice of the type as well. If your data is unsized, then you should use [the
-/// `BufferContents` derive macro], which exists specifically for that purpose.
+/// one sad individual very quickly. Rather you should use [the derive macro]. Note also that there
+/// are blanket implementations of this trait: you don't need to implement it if the type in
+/// question already implements bytemuck's [`AnyBitPattern`]. Most if not all linear algebra crates
+/// have a feature flag that you can enable for bytemuck support. The trait is also already
+/// implemented for all slices where the element type implements `BufferContents`.
 ///
-/// [the `BufferContents` derive macro]: vulkano_macros::BufferContents
+/// # Examples
+///
+/// Deriving the trait for sized types:
+///
+/// ```
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct MyData {
+///     x: f32,
+///     y: f32,
+///     array: [i32; 12],
+/// }
+/// ```
+///
+/// Deriving the trait for unsized types works the same:
+///
+/// ```
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct MyData {
+///     x: f32,
+///     y: f32,
+///     slice: [i32],
+/// }
+/// ```
+///
+/// The derive macro by default assumes that the type is sized unless its last field is a slice.
+/// But you might want to use another user-defined DST as the last field, in which case this guess
+/// would be wrong and the following would result in a compile error:
+///
+/// ```compile_fail
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct MyData {
+///     x: f32,
+///     y: f32,
+///     other: OtherData,
+/// }
+///
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct OtherData {
+///     slice: [i32],
+/// }
+/// ```
+///
+/// There simply is not enough information available to the derive macro for it to know whether
+/// non-primitive types are sized or not, therefore, in such cases you have to tell it that the
+/// type is actually a DST:
+///
+/// ```
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents)]
+/// #[dynamically_sized]
+/// #[repr(C)]
+/// struct MyData {
+///     x: f32,
+///     y: f32,
+///     other: OtherData,
+/// }
+///
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct OtherData {
+///     slice: [i32],
+/// }
+/// ```
+///
+/// The reverse is also true, if you tried to use the attribute on a sized type it would result in
+/// a compile error:
+///
+/// ```compile_fail
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents)]
+/// #[dynamically_sized]
+/// #[repr(C)]
+/// struct MyData(u32);
+/// ```
+///
+/// [the derive macro]: vulkano_macros::BufferContents
 //
 // If you absolutely *must* implement this trait by hand, here are the safety requirements (but
 // please open an issue on GitHub instead):
