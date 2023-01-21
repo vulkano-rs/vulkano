@@ -206,6 +206,16 @@ pub struct A8;
 #[repr(align(16))]
 pub struct A16;
 
+/// 32-byte alignment.
+#[derive(Clone, Copy)]
+#[repr(align(32))]
+pub struct A32;
+
+/// 64-byte alignment.
+#[derive(Clone, Copy)]
+#[repr(align(64))]
+pub struct A64;
+
 mod sealed {
     pub trait Alignment: Copy + 'static {}
 
@@ -213,4 +223,6 @@ mod sealed {
     impl Alignment for super::A4 {}
     impl Alignment for super::A8 {}
     impl Alignment for super::A16 {}
+    impl Alignment for super::A32 {}
+    impl Alignment for super::A64 {}
 }
