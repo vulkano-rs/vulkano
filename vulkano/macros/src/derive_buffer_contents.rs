@@ -11,31 +11,15 @@ use crate::bail;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    parse_quote, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Meta, MetaList, NestedMeta,
-    Result, Type, WherePredicate,
+    parse_quote, punctuated::Punctuated, Data, DeriveInput, Field, Fields, FieldsNamed,
+    FieldsUnnamed, Ident, Meta, MetaList, NestedMeta, Result, Token, Type, TypeArray, TypeSlice,
+    WherePredicate,
 };
 
 pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
     let crate_ident = crate::crate_ident();
 
     let struct_ident = &ast.ident;
-
-    let (impl_generics, type_generics, where_clause) = {
-        let predicates = ast
-            .generics
-            .type_params()
-            .map(|param| {
-                let param_ident = &param.ident;
-                parse_quote! { #param_ident: ::#crate_ident::buffer::BufferContents }
-            })
-            .collect::<Vec<WherePredicate>>();
-        ast.generics
-            .make_where_clause()
-            .predicates
-            .extend(predicates);
-
-        ast.generics.split_for_impl()
-    };
 
     let data = match &ast.data {
         Data::Struct(data) => data,
@@ -75,39 +59,26 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
         );
     }
 
-    let layout = {
-        let mut field_types = fields.iter().map(|field| &field.ty);
-        let first_field_type = field_types.next().unwrap();
-        let mut layout = quote! {
-            <#first_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT
-        };
-        for field_type in field_types {
-            layout = quote! {
-                // TODO: Replace with `Option::unwrap` once its constness is stabilized.
-                if let ::std::option::Option::Some(layout) =
-                    #layout.extend(<#field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT)
-                {
-                    layout
-                } else {
-                    ::std::unreachable!()
-                }
-            };
-        }
-
-        quote! {
-            if let ::std::option::Option::Some(layout) = #layout.pad_to_alignment() {
-                layout
-            } else {
-                ::std::unreachable!()
-            }
-        }
-    };
-
     let is_unsized = matches!(fields.last().unwrap().ty, Type::Slice(_))
         || ast
             .attrs
             .iter()
             .any(|attr| attr.path.is_ident("dynamically_sized")); // unsized is a reserved keyword.
+
+    let (layout, bound_types) = write_layout(&crate_ident, fields, is_unsized);
+
+    let (impl_generics, type_generics, where_clause) = {
+        let predicates = bound_types.iter().map(|ty| -> WherePredicate {
+            parse_quote! { #ty: ::#crate_ident::buffer::BufferContents }
+        });
+
+        ast.generics
+            .make_where_clause()
+            .predicates
+            .extend(predicates);
+
+        ast.generics.split_for_impl()
+    };
 
     let (from_ffi, from_ffi_mut);
 
@@ -208,6 +179,113 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
             }
         }
     })
+}
+
+fn write_layout<'a>(
+    crate_ident: &Ident,
+    fields: &'a Punctuated<Field, Token![,]>,
+    is_unsized: bool,
+) -> (TokenStream, Vec<&'a Type>) {
+    let mut bound_types = Vec::new();
+
+    let mut field_types = fields.iter().map(|field| &field.ty);
+    let last_field_type = field_types.next_back().unwrap();
+    let mut layout = quote! { ::std::alloc::Layout::new::<()>() };
+
+    // Construct the layout of the head and accumulate the types that have to implement
+    // `BufferContents` in order for the struct to implement the trait as well.
+    for field_type in field_types {
+        bound_types.push(find_innermost_element_type(field_type));
+
+        layout = quote! {
+            extend_layout(#layout, ::std::alloc::Layout::new::<#field_type>())
+        };
+    }
+
+    // The last field needs special treatment depending on whether it's a slice or not.
+    if let Type::Slice(TypeSlice { elem, .. }) = last_field_type {
+        bound_types.push(find_innermost_element_type(elem));
+
+        layout = quote! {
+            ::#crate_ident::buffer::BufferContentsLayout::from_head_element_layout(
+                #layout,
+                ::std::alloc::Layout::new::<#elem>(),
+            )
+        };
+    } else if is_unsized {
+        // We don't need to add `last_field_type` to the bounds because it is enforced here in the
+        // `LAYOUT` constant.
+        layout = quote! {
+            <#last_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                .extend_from_layout(&#layout)
+        };
+    } else {
+        bound_types.push(find_innermost_element_type(last_field_type));
+
+        layout = quote! {
+            ::#crate_ident::buffer::BufferContentsLayout::from_sized(
+                ::std::alloc::Layout::new::<Self>()
+            )
+        };
+    }
+
+    let layout = quote! {
+        {
+            // HACK: Very depressingly, `Layout::extend` is not const.
+            const fn extend_layout(
+                layout: ::std::alloc::Layout,
+                next: ::std::alloc::Layout,
+            ) -> ::std::alloc::Layout {
+                let padded_size = if let Some(val) =
+                    layout.size().checked_add(layout.align() - 1)
+                {
+                    val & !(layout.align() - 1)
+                } else {
+                    ::std::unreachable!()
+                };
+
+                // TODO: Replace with `Ord::max` once its constness is stabilized.
+                let align = if layout.align() >= next.align() {
+                    layout.align()
+                } else {
+                    next.align()
+                };
+
+                if let Some(size) = padded_size.checked_add(next.size()) {
+                    if let Ok(layout) = ::std::alloc::Layout::from_size_align(size, align) {
+                        layout
+                    } else {
+                        ::std::unreachable!()
+                    }
+                } else {
+                    ::std::unreachable!()
+                }
+            }
+
+            if let Some(layout) = #layout {
+                if let Some(layout) = layout.pad_to_alignment() {
+                    layout
+                } else {
+                    ::std::unreachable!()
+                }
+            } else {
+                ::std::panic!("zero-sized types are not valid buffer contents")
+            }
+        }
+    };
+
+    (layout, bound_types)
+}
+
+// HACK: This works around an inherent limitation of bytemuck, namely that an array
+// where the element is `AnyBitPattern` is itself not `AnyBitPattern`, by only
+// requiring that the innermost type in the array implements `BufferContents`.
+fn find_innermost_element_type(mut field_type: &Type) -> &Type {
+    while let Type::Array(TypeArray { elem, .. }) = field_type {
+        field_type = elem;
+    }
+
+    field_type
 }
 
 #[cfg(test)]

@@ -12,6 +12,7 @@
 use super::{allocator::Arena, Buffer, BufferError, BufferMemory};
 use crate::{
     device::{Device, DeviceOwned},
+    macros::try_opt,
     memory::{
         self,
         allocator::{align_up, DeviceAlignment, DeviceLayout},
@@ -942,19 +943,19 @@ impl BufferContentsLayout {
     /// Returns the [`DeviceLayout`] for the data for the given `len`, or returns [`None`] on
     /// arithmetic overflow or if the total size would exceed [`DeviceLayout::MAX_SIZE`].
     #[inline]
-    pub fn layout_for_len(&self, len: NonZeroDeviceSize) -> Option<DeviceLayout> {
+    pub const fn layout_for_len(&self, len: NonZeroDeviceSize) -> Option<DeviceLayout> {
         match &self.0 {
             BufferContentsLayoutInner::Sized(sized) => Some(*sized),
             BufferContentsLayoutInner::Unsized {
                 head_layout,
                 element_layout,
             } => {
-                let (tail_layout, _) = element_layout.repeat(len)?;
+                let (tail_layout, _) = try_opt!(element_layout.repeat(len));
 
                 if let Some(head_layout) = head_layout {
-                    head_layout
-                        .extend(tail_layout)
-                        .map(|(layout, _)| layout.pad_to_alignment())
+                    let (layout, _) = try_opt!(head_layout.extend(tail_layout));
+
+                    Some(layout.pad_to_alignment())
                 } else {
                     Some(tail_layout)
                 }
@@ -962,42 +963,96 @@ impl BufferContentsLayout {
         }
     }
 
-    /// Extends the **sized** `self` by `next`. This is intended for use by the derive macro only.
+    /// Creates a new `BufferContentsLayout` from a sized layout. This is inteded for use by the
+    /// derive macro only.
     #[doc(hidden)]
     #[inline]
-    pub const fn extend(&self, next: Self) -> Option<Self> {
-        let layout = match &self.0 {
-            BufferContentsLayoutInner::Sized(sized) => sized,
-            _ => panic!("expected a sized layout"),
+    pub const fn from_sized(sized: Layout) -> Option<Self> {
+        assert!(
+            sized.align() <= 64,
+            "types with alignments above 64 are not valid buffer contents",
+        );
+
+        if let Ok(sized) = DeviceLayout::from_layout(sized) {
+            Some(Self(BufferContentsLayoutInner::Sized(sized)))
+        } else {
+            None
+        }
+    }
+
+    /// Creates a new `BufferContentsLayout` from a head and element layout. This is inteded for
+    /// use by the derive macro only.
+    #[doc(hidden)]
+    #[inline]
+    pub const fn from_head_element_layout(
+        head_layout: Layout,
+        element_layout: Layout,
+    ) -> Option<Self> {
+        if head_layout.align() > 64 || element_layout.align() > 64 {
+            panic!("types with alignments above 64 are not valid buffer contents");
+        }
+
+        // The head of a `BufferContentsLayout` can be zero-sized.
+        // TODO: Replace with `Result::ok` once its constness is stabilized.
+        let head_layout = if let Ok(head_layout) = DeviceLayout::from_layout(head_layout) {
+            Some(head_layout)
+        } else {
+            None
         };
 
-        match next.0 {
+        if let Ok(element_layout) = DeviceLayout::from_layout(element_layout) {
+            Some(Self(BufferContentsLayoutInner::Unsized {
+                head_layout,
+                element_layout,
+            }))
+        } else {
+            None
+        }
+    }
+
+    /// Extends the given `previous` [`Layout`] by `self`. This is intended for use by the derive
+    /// macro only.
+    #[doc(hidden)]
+    #[inline]
+    pub const fn extend_from_layout(self, previous: &Layout) -> Option<Self> {
+        assert!(
+            previous.align() <= 64,
+            "types with alignments above 64 are not valid buffer contents",
+        );
+
+        match self.0 {
             BufferContentsLayoutInner::Sized(sized) => {
-                if let Some((layout, _)) = layout.extend(sized) {
-                    Some(Self(BufferContentsLayoutInner::Sized(layout)))
-                } else {
-                    None
-                }
+                let (sized, _) = try_opt!(sized.extend_from_layout(previous));
+
+                Some(Self(BufferContentsLayoutInner::Sized(sized)))
             }
             BufferContentsLayoutInner::Unsized {
                 head_layout: None,
                 element_layout,
-            } => Some(Self(BufferContentsLayoutInner::Unsized {
-                head_layout: Some(*layout),
-                element_layout,
-            })),
+            } => {
+                // The head of a `BufferContentsLayout` can be zero-sized.
+                // TODO: Replace with `Result::ok` once its constness is stabilized.
+                let head_layout = if let Ok(head_layout) = DeviceLayout::from_layout(*previous) {
+                    Some(head_layout)
+                } else {
+                    None
+                };
+
+                Some(Self(BufferContentsLayoutInner::Unsized {
+                    head_layout,
+                    element_layout,
+                }))
+            }
             BufferContentsLayoutInner::Unsized {
                 head_layout: Some(head_layout),
                 element_layout,
             } => {
-                if let Some((layout, _)) = layout.extend(head_layout) {
-                    Some(Self(BufferContentsLayoutInner::Unsized {
-                        head_layout: Some(layout),
-                        element_layout,
-                    }))
-                } else {
-                    None
-                }
+                let (head_layout, _) = try_opt!(head_layout.extend_from_layout(previous));
+
+                Some(Self(BufferContentsLayoutInner::Unsized {
+                    head_layout: Some(head_layout),
+                    element_layout,
+                }))
             }
         }
     }

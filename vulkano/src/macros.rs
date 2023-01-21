@@ -888,4 +888,15 @@ macro_rules! vulkan_bitflags_enum {
     }
 }
 
-pub(crate) use {vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum};
+// TODO: Replace with the `?` operator once its constness is stabilized.
+macro_rules! try_opt {
+    ($e:expr) => {
+        if let Some(val) = $e {
+            val
+        } else {
+            return None;
+        }
+    };
+}
+
+pub(crate) use {try_opt, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum};

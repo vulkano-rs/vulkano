@@ -8,7 +8,7 @@
 // according to those terms.
 
 use super::align_up;
-use crate::{DeviceSize, NonZeroDeviceSize};
+use crate::{macros::try_opt, DeviceSize, NonZeroDeviceSize};
 use std::{
     alloc::Layout,
     cmp::Ordering,
@@ -40,7 +40,7 @@ impl DeviceLayout {
     /// zero size.
     #[inline]
     pub const fn from_layout(layout: Layout) -> Result<Self, TryFromLayoutError> {
-        let (size, alignment) = (layout.size(), layout.align());
+        let (size, alignment) = Self::size_alignment_from_layout(&layout);
 
         #[cfg(any(
             target_pointer_width = "64",
@@ -51,10 +51,7 @@ impl DeviceLayout {
             const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
             const _: () = assert!(DeviceLayout::MAX_SIZE >= isize::MAX as DeviceSize);
 
-            if let Some(size) = NonZeroDeviceSize::new(size as DeviceSize) {
-                // SAFETY: `Layout`'s alignment-invariant guarantees that it is a power of two.
-                let alignment = unsafe { DeviceAlignment::new_unchecked(alignment as DeviceSize) };
-
+            if let Some(size) = NonZeroDeviceSize::new(size) {
                 // SAFETY: Under the precondition that `usize` can't overflow `DeviceSize`, which
                 // we checked above, `Layout`'s overflow-invariant is the same if not stricter than
                 // that of `DeviceLayout`.
@@ -102,8 +99,8 @@ impl DeviceLayout {
     /// exceed [`DeviceLayout::MAX_SIZE`] when rounded up to the nearest multiple of `alignment`.
     #[inline]
     pub const fn from_size_alignment(size: DeviceSize, alignment: DeviceSize) -> Option<Self> {
-        let size = tri!(NonZeroDeviceSize::new(size));
-        let alignment = tri!(DeviceAlignment::new(alignment));
+        let size = try_opt!(NonZeroDeviceSize::new(size));
+        let alignment = try_opt!(DeviceAlignment::new(alignment));
 
         DeviceLayout::new(size, alignment)
     }
@@ -117,6 +114,7 @@ impl DeviceLayout {
     /// - `alignment` must be a power of two, which also means it must be non-zero.
     /// - `size`, when rounded up to the nearest multiple of `alignment`, must not exceed
     ///   [`DeviceLayout::MAX_SIZE`].
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub const unsafe fn from_size_alignment_unchecked(
         size: DeviceSize,
@@ -155,6 +153,7 @@ impl DeviceLayout {
     ///
     /// - `size`, when rounded up to the nearest multiple of `alignment`, must not exceed
     ///   [`DeviceLayout::MAX_SIZE`].
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub const unsafe fn new_unchecked(size: NonZeroDeviceSize, alignment: DeviceAlignment) -> Self {
         debug_assert!(size.get() <= Self::max_size_for_alignment(alignment));
@@ -218,8 +217,8 @@ impl DeviceLayout {
     #[inline]
     pub const fn repeat(&self, n: NonZeroDeviceSize) -> Option<(Self, DeviceSize)> {
         let stride = self.padded_size();
-        let size = tri!(stride.checked_mul(n));
-        let layout = tri!(DeviceLayout::new(size, self.alignment));
+        let size = try_opt!(stride.checked_mul(n));
+        let layout = try_opt!(DeviceLayout::new(size, self.alignment));
 
         Some((layout, stride.get()))
     }
@@ -240,13 +239,69 @@ impl DeviceLayout {
     /// [`pad_to_alignment`]: Self::pad_to_alignment
     #[inline]
     pub const fn extend(&self, next: Self) -> Option<(Self, DeviceSize)> {
-        let padding = self.padding_needed_for(next.alignment);
-        let offset = tri!(self.size.checked_add(padding));
-        let size = tri!(offset.checked_add(next.size()));
-        let alignment = DeviceAlignment::max(self.alignment, next.alignment);
-        let layout = tri!(DeviceLayout::new(size, alignment));
+        self.extend_inner(next.size(), next.alignment)
+    }
+
+    /// Same as [`extend`], except it extends with a [`Layout`].
+    ///
+    /// [`extend`]: Self::extend
+    #[inline]
+    pub const fn extend_with_layout(&self, next: Layout) -> Option<(Self, DeviceSize)> {
+        let (next_size, next_alignment) = Self::size_alignment_from_layout(&next);
+
+        self.extend_inner(next_size, next_alignment)
+    }
+
+    const fn extend_inner(
+        &self,
+        next_size: DeviceSize,
+        next_alignment: DeviceAlignment,
+    ) -> Option<(Self, DeviceSize)> {
+        let padding = self.padding_needed_for(next_alignment);
+        let offset = try_opt!(self.size.checked_add(padding));
+        let size = try_opt!(offset.checked_add(next_size));
+        let alignment = DeviceAlignment::max(self.alignment, next_alignment);
+        let layout = try_opt!(DeviceLayout::new(size, alignment));
 
         Some((layout, offset.get()))
+    }
+
+    /// Creates a new `DeviceLayout` describing the record for the `previous` [`Layout`] followed
+    /// by `self`. This function is otherwise the same as [`extend`].
+    ///
+    /// [`extend`]: Self::extend
+    #[inline]
+    pub const fn extend_from_layout(self, previous: &Layout) -> Option<(Self, DeviceSize)> {
+        let (size, alignment) = Self::size_alignment_from_layout(previous);
+
+        let padding = align_up(size, self.alignment).wrapping_sub(size);
+        let offset = try_opt!(size.checked_add(padding));
+        let size = try_opt!(self.size.checked_add(offset));
+        let alignment = DeviceAlignment::max(alignment, self.alignment);
+        let layout = try_opt!(DeviceLayout::new(size, alignment));
+
+        Some((layout, offset))
+    }
+
+    #[inline(always)]
+    const fn size_alignment_from_layout(layout: &Layout) -> (DeviceSize, DeviceAlignment) {
+        #[cfg(any(
+            target_pointer_width = "64",
+            target_pointer_width = "32",
+            target_pointer_width = "16",
+        ))]
+        {
+            const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
+            const _: () = assert!(DeviceLayout::MAX_SIZE >= isize::MAX as DeviceSize);
+
+            // We checked that `usize` can't overflow `DeviceSize`, so this can't truncate.
+            let (size, alignment) = (layout.size() as DeviceSize, layout.align() as DeviceSize);
+
+            // SAFETY: `Layout`'s alignment-invariant guarantees that it is a power of two.
+            let alignment = unsafe { DeviceAlignment::new_unchecked(alignment) };
+
+            (size, alignment)
+        }
     }
 }
 
@@ -530,15 +585,3 @@ impl Display for TryFromIntError {
         f.write_str("attempted to convert a non-power-of-two integer to a `DeviceAlignment`")
     }
 }
-
-// TODO: Replace with `?` operator once its constness is stabilized.
-macro_rules! tri {
-    ($e:expr) => {
-        if let Some(val) = $e {
-            val
-        } else {
-            return None;
-        }
-    };
-}
-use tri;
