@@ -14,7 +14,7 @@ env:
 jobs:
   windows_stable:
 #   runs-on: windows-latest
-    runs-on: runs-on: [self-hosted, Windows]
+    runs-on: [self-hosted, Windows]
     steps:
 #   - name: Ninja Install
 #     run: pip install ninja
