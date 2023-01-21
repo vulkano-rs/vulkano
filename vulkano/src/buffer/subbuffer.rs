@@ -685,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn aligned_cast() {
+    fn cast_aligned() {
         let (device, _) = gfx_dev_and_queue!();
         let allocator = StandardMemoryAllocator::new_default(device.clone());
 
@@ -698,9 +698,13 @@ mod tests {
             },
         )
         .unwrap();
-        let mut requirements = *raw_buffer.memory_requirements();
-        requirements.prefers_dedicated_allocation = false;
-        requirements.requires_dedicated_allocation = false;
+
+        let requirements = MemoryRequirements {
+            layout: DeviceLayout::from_size_alignment(32, 1).unwrap(),
+            memory_type_bits: 1,
+            prefers_dedicated_allocation: false,
+            requires_dedicated_allocation: false,
+        };
 
         // Allocate some junk in the same block as the buffer.
         let _junk = allocator
@@ -710,7 +714,7 @@ mod tests {
                     ..requirements
                 },
                 allocation_type: AllocationType::Linear,
-                usage: MemoryUsage::Upload,
+                usage: MemoryUsage::GpuOnly,
                 ..Default::default()
             })
             .unwrap();
@@ -719,12 +723,12 @@ mod tests {
             .allocate(AllocationCreateInfo {
                 requirements,
                 allocation_type: AllocationType::Linear,
-                usage: MemoryUsage::Upload,
+                usage: MemoryUsage::GpuOnly,
                 ..Default::default()
             })
             .unwrap();
 
-        let buffer = unsafe { raw_buffer.bind_memory_unchecked(allocation) }.unwrap();
+        let buffer = Buffer::from_raw(raw_buffer, BufferMemory::Normal(allocation));
         let buffer = Subbuffer::from(Arc::new(buffer));
 
         assert!(buffer.memory_offset() >= 17);
@@ -735,20 +739,20 @@ mod tests {
             struct Test([u8; 16]);
 
             let aligned = buffer.clone().cast_aligned::<Test>();
-            // If reading doesn't panic, then the data is aligned correctly.
-            aligned.read().unwrap();
+            assert_eq!(aligned.memory_offset() % 16, 0);
+            assert_eq!(aligned.size(), 16);
         }
 
         {
             let aligned = buffer.clone().cast_aligned::<[u8; 16]>();
-            assert!(aligned.size() % 16 == 0);
+            assert_eq!(aligned.size() % 16, 0);
         }
 
         {
             let layout = DeviceLayout::from_size_alignment(32, 16).unwrap();
             let aligned = buffer.clone().align_to(layout);
             assert!(is_aligned(aligned.memory_offset(), layout.alignment()));
-            assert!(aligned.size() == 0);
+            assert_eq!(aligned.size(), 0);
         }
 
         {
