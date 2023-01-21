@@ -175,6 +175,7 @@ pub mod format;
 mod version;
 #[macro_use]
 pub mod render_pass;
+pub mod aligned;
 mod cache;
 mod fns;
 pub mod image;
