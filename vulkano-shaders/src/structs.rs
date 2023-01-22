@@ -226,10 +226,20 @@ fn write_impls<'a>(
         }
     }))
     .chain(types_meta.display.then(|| {
+        let fields = rust_members
+            .iter()
+            .filter(|Member { is_dummy, .. }| !is_dummy)
+            .map(|Member { name, .. }| {
+                let name_string = LitStr::new(name.to_string().as_ref(), name.span());
+                quote! { .field(#name_string, &self.#name) }
+            });
+
         quote! {
             impl ::std::fmt::Display for #struct_ident {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
-                    ::std::fmt::Debug::fmt(self, f)
+                    f.debug_struct(#struct_name)
+                        #( #fields )*
+                        .finish()
                 }
             }
         }
