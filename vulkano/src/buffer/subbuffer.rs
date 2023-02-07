@@ -811,19 +811,12 @@ unsafe impl<T> BufferContents for T
 where
     T: AnyBitPattern + Send + Sync,
 {
-    const LAYOUT: BufferContentsLayout = BufferContentsLayout(BufferContentsLayoutInner::Sized(
-        // TODO: Replace with `Result::expect` once its constness is stabilized.
-        if let Ok(layout) = DeviceLayout::from_layout(Layout::new::<T>()) {
-            assert!(
-                layout.alignment().as_devicesize() <= 64,
-                "types with alignments above 64 are not valid buffer contents",
-            );
-
+    const LAYOUT: BufferContentsLayout =
+        if let Some(layout) = BufferContentsLayout::from_sized(Layout::new::<T>()) {
             layout
         } else {
             panic!("zero-sized types are not valid buffer contents");
-        },
-    ));
+        };
 
     #[inline(always)]
     unsafe fn from_ffi(data: *const c_void, range: usize) -> *const Self {

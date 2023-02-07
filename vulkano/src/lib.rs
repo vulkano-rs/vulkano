@@ -175,7 +175,6 @@ pub mod format;
 mod version;
 #[macro_use]
 pub mod render_pass;
-pub mod aligned;
 mod cache;
 mod fns;
 pub mod image;
@@ -183,6 +182,7 @@ pub mod instance;
 pub mod library;
 mod macros;
 pub mod memory;
+pub mod padded;
 pub mod pipeline;
 pub mod query;
 mod range_map;
