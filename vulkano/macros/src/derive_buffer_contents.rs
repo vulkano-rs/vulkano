@@ -9,29 +9,16 @@
 
 use crate::bail;
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::{
-    parse_quote, punctuated::Punctuated, Data, DeriveInput, Field, Fields, FieldsNamed,
-    FieldsUnnamed, Ident, Meta, MetaList, NestedMeta, Result, Token, Type, TypeArray, TypeSlice,
-    WherePredicate,
+    parse_quote, spanned::Spanned, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident,
+    Meta, MetaList, NestedMeta, Result, Type, TypeArray, TypeSlice, WherePredicate,
 };
 
 pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
     let crate_ident = crate::crate_ident();
 
     let struct_ident = &ast.ident;
-
-    let data = match &ast.data {
-        Data::Struct(data) => data,
-        Data::Enum(_) => bail!("deriving `BufferContents` for enums is not supported"),
-        Data::Union(_) => bail!("deriving `BufferContents` for unions is not supported"),
-    };
-
-    let fields = match &data.fields {
-        Fields::Named(FieldsNamed { named, .. }) => named,
-        Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => unnamed,
-        Fields::Unit => bail!("zero-sized types are not valid buffer contents"),
-    };
 
     if !ast
         .attrs
@@ -59,12 +46,14 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
         );
     }
 
-    let (layout, bound_types) = write_layout(&crate_ident, fields);
-
     let (impl_generics, type_generics, where_clause) = {
-        let predicates = bound_types.iter().map(|ty| -> WherePredicate {
-            parse_quote! { #ty: ::#crate_ident::buffer::BufferContents }
-        });
+        let predicates = ast
+            .generics
+            .type_params()
+            .map(|ty| {
+                parse_quote! { #ty: ::#crate_ident::buffer::BufferContents }
+            })
+            .collect::<Vec<WherePredicate>>();
 
         ast.generics
             .make_where_clause()
@@ -73,6 +62,8 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
 
         ast.generics.split_for_impl()
     };
+
+    let layout = write_layout(&crate_ident, &ast)?;
 
     Ok(quote! {
         #[allow(unsafe_code)]
@@ -84,9 +75,9 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
             #[inline(always)]
             unsafe fn from_ffi(data: *mut ::std::ffi::c_void, range: usize) -> *mut Self {
                 #[repr(C)]
-                union PtrRepr {
+                union PtrRepr<T: ?Sized> {
                     components: PtrComponents,
-                    ptr: *mut #struct_ident,
+                    ptr: *mut T,
                 }
 
                 #[derive(Clone, Copy)]
@@ -139,15 +130,24 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
     })
 }
 
-fn write_layout<'a>(
-    crate_ident: &Ident,
-    fields: &'a Punctuated<Field, Token![,]>,
-) -> (TokenStream, Vec<&'a Type>) {
-    let mut bound_types = Vec::new();
+fn write_layout(crate_ident: &Ident, ast: &DeriveInput) -> Result<TokenStream> {
+    let data = match &ast.data {
+        Data::Struct(data) => data,
+        Data::Enum(_) => bail!("deriving `BufferContents` for enums is not supported"),
+        Data::Union(_) => bail!("deriving `BufferContents` for unions is not supported"),
+    };
+
+    let fields = match &data.fields {
+        Fields::Named(FieldsNamed { named, .. }) => named,
+        Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => unnamed,
+        Fields::Unit => bail!("zero-sized types are not valid buffer contents"),
+    };
 
     let mut field_types = fields.iter().map(|field| &field.ty);
     let last_field_type = field_types.next_back().unwrap();
     let mut layout = quote! { ::std::alloc::Layout::new::<()>() };
+
+    let mut bound_types = Vec::new();
 
     // Construct the layout of the head and accumulate the types that have to implement
     // `BufferContents` in order for the struct to implement the trait as well.
@@ -165,7 +165,6 @@ fn write_layout<'a>(
         // can't use `BufferContents::extend_from_layout` on it.
         Type::Array(TypeArray { elem, .. }) => {
             bound_types.push(find_innermost_element_type(elem));
-
             layout = quote! {
                 ::#crate_ident::buffer::BufferContentsLayout::from_sized(
                     ::std::alloc::Layout::new::<Self>()
@@ -176,7 +175,6 @@ fn write_layout<'a>(
         // `BufferContents::extend_from_layout` on it either.
         Type::Slice(TypeSlice { elem, .. }) => {
             bound_types.push(find_innermost_element_type(elem));
-
             layout = quote! {
                 ::#crate_ident::buffer::BufferContentsLayout::from_head_element_layout(
                     #layout,
@@ -184,9 +182,8 @@ fn write_layout<'a>(
                 )
             };
         }
-        _ => {
-            // We don't need to add `last_field_type` to the bounds because it is enforced here in
-            // the `LAYOUT` constant.
+        ty => {
+            bound_types.push(ty);
             layout = quote! {
                 <#last_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT
                     .extend_from_layout(&#layout)
@@ -194,8 +191,27 @@ fn write_layout<'a>(
         }
     }
 
+    let (impl_generics, _, where_clause) = ast.generics.split_for_impl();
+
+    let bounds = bound_types.into_iter().map(|ty| {
+        quote_spanned! { ty.span() =>
+            {
+                // HACK: This works around Rust issue #48214, which makes it impossible to put
+                // these bounds in the where clause of the trait implementation where they actually
+                // belong until that is resolved.
+                #[allow(unused)]
+                fn bound #impl_generics () #where_clause {
+                    fn assert_impl<T: ::#crate_ident::buffer::BufferContents + ?Sized>() {}
+                    assert_impl::<#ty>();
+                }
+            }
+        }
+    });
+
     let layout = quote! {
         {
+            #( #bounds )*
+
             // HACK: Very depressingly, `Layout::extend` is not const.
             const fn extend_layout(
                 layout: ::std::alloc::Layout,
@@ -239,7 +255,7 @@ fn write_layout<'a>(
         }
     };
 
-    (layout, bound_types)
+    Ok(layout)
 }
 
 // HACK: This works around an inherent limitation of bytemuck, namely that an array where the
