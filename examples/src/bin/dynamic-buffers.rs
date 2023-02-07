@@ -9,10 +9,9 @@
 
 // This example demonstrates how to use dynamic uniform buffers.
 //
-// Dynamic uniform and storage buffers store buffer data for different
-// calls in one large buffer. Each draw or dispatch call can specify an
-// offset into the buffer to read object data from, without having to
-// rebind descriptor sets.
+// Dynamic uniform and storage buffers store buffer data for different calls in one large buffer.
+// Each draw or dispatch call can specify an offset into the buffer to read object data from,
+// without having to rebind descriptor sets.
 
 use std::{iter::repeat, mem::size_of};
 use vulkano::{
@@ -40,7 +39,6 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -74,7 +72,7 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -94,29 +92,29 @@ fn main() {
     mod shader {
         vulkano_shaders::shader! {
             ty: "compute",
-            src: "
+            src: r"
                 #version 450
 
                 layout(local_size_x = 12) in;
 
-                // Uniform Buffer Object
+                // Uniform buffer.
                 layout(set = 0, binding = 0) uniform InData {
-                    uint data;
-                } ubo;
+                    uint index;
+                } ub;
 
-                // Output Buffer
+                // Output buffer.
                 layout(set = 0, binding = 1) buffer OutData {
                     uint data[];
-                } data;
+                };
 
-                // Toy shader that only runs for the index specified in `ubo`.
+                // Toy shader that only runs for the index specified in `ub`.
                 void main() {
                     uint index = gl_GlobalInvocationID.x;
-                    if(index == ubo.data) {
-                        data.data[index] = index;
+                    if (index == ub.index) {
+                        data[index] = index;
                     }
                 }
-                "
+            ",
         }
     }
 
@@ -138,29 +136,31 @@ fn main() {
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
-    // Declare input buffer.
-    // Data in a dynamic buffer **MUST** be aligned to min_uniform_buffer_offset_align
-    // or min_storage_buffer_offset_align, depending on the type of buffer.
-    let data: Vec<u8> = vec![3, 11, 7];
+    // Create the input buffer. Data in a dynamic buffer **MUST** be aligned to
+    // `min_uniform_buffer_offset_align` or `min_storage_buffer_offset_align`, depending on the
+    // type of buffer.
+    let data: Vec<u32> = vec![3, 11, 7];
     let min_dynamic_align = device
         .physical_device()
         .properties()
         .min_uniform_buffer_offset_alignment as usize;
+
     println!("Minimum uniform buffer offset alignment: {min_dynamic_align}");
     println!("Input: {data:?}");
+
     // Round size up to the next multiple of align.
     let align = (size_of::<u32>() + min_dynamic_align - 1) & !(min_dynamic_align - 1);
     let aligned_data = {
         let mut aligned_data = Vec::with_capacity(align * data.len());
+
         for elem in data {
             let bytes = elem.to_ne_bytes();
-            // Fill up the buffer with data
-            for b in bytes {
-                aligned_data.push(b);
-            }
-            // Zero out any padding needed for alignment
+            // Fill up the buffer with data.
+            aligned_data.extend(bytes);
+            // Zero out any padding needed for alignment.
             aligned_data.extend(repeat(0).take(align - bytes.len()));
         }
+
         aligned_data
     };
 
@@ -196,7 +196,7 @@ fn main() {
             WriteDescriptorSet::buffer_with_range(
                 0,
                 input_buffer,
-                0..size_of::<shader::ty::InData>() as DeviceSize,
+                0..size_of::<shader::InData>() as DeviceSize,
             ),
             WriteDescriptorSet::buffer(1, output_buffer.clone()),
         ],

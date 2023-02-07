@@ -10,6 +10,8 @@
 //! A newtype wrapper for enforcing correct alignment for external types.
 
 use crate::buffer::{BufferContents, BufferContentsLayout};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     alloc::Layout,
     cmp::Ordering,
@@ -52,10 +54,7 @@ where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        Padded {
-            value: self.value.clone(),
-            _padding: [MaybeUninit::uninit(); N],
-        }
+        Padded(self.value.clone())
     }
 }
 
@@ -75,10 +74,7 @@ where
     T: Default,
 {
     fn default() -> Self {
-        Padded {
-            value: T::default(),
-            _padding: [MaybeUninit::uninit(); N],
-        }
+        Padded(T::default())
     }
 }
 
@@ -102,6 +98,12 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         self.value.fmt(f)
+    }
+}
+
+impl<T, const N: usize> From<T> for Padded<T, N> {
+    fn from(value: T) -> Self {
+        Padded(value)
     }
 }
 
@@ -166,5 +168,31 @@ where
         debug_assert!(data as usize % align_of::<Self>() == 0);
 
         data.cast()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T, const N: usize> Serialize for Padded<T, N>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.value.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T, const N: usize> Deserialize<'de> for Padded<T, N>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        T::deserialize(deserializer).map(Padded)
     }
 }

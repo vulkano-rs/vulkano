@@ -50,12 +50,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-// # Vertex Types
-//
-// Seeing as we are going to use the `OneVertexOneInstanceDefinition` vertex definition for our
-// graphics pipeline, we need to define two vertex types:
-//
-// 1. `TriangleVertex` is the vertex type that we will use to describe the triangle's geometry.
+/// The vertex type that we will be used to describe the triangle's geometry.
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
 struct TriangleVertex {
@@ -63,7 +58,7 @@ struct TriangleVertex {
     position: [f32; 2],
 }
 
-// 2. `InstanceData` is the vertex type that describes the unique data per instance.
+/// The vertex type that describes the unique data per instance.
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
 struct InstanceData {
@@ -80,7 +75,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -176,8 +170,8 @@ fn main() {
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
-    // We now create a buffer that will store the shape of our triangle.
-    // This triangle is identical to the one in the `triangle.rs` example.
+    // We now create a buffer that will store the shape of our triangle. This triangle is identical
+    // to the one in the `triangle.rs` example.
     let vertices = [
         TriangleVertex {
             position: [-0.5, -0.25],
@@ -201,8 +195,8 @@ fn main() {
         .unwrap()
     };
 
-    // Now we create another buffer that will store the unique data per instance.
-    // For this example, we'll have the instances form a 10x10 grid that slowly gets larger.
+    // Now we create another buffer that will store the unique data per instance. For this example,
+    // we'll have the instances form a 10x10 grid that slowly gets larger.
     let instances = {
         let rows = 10;
         let cols = 10;
@@ -237,7 +231,7 @@ fn main() {
     mod vs {
         vulkano_shaders::shader! {
             ty: "vertex",
-            src: "
+            src: r"
                 #version 450
 
                 // The triangle vertex positions.
@@ -251,14 +245,14 @@ fn main() {
                     // Apply the scale and offset for the instance.
                     gl_Position = vec4(position * scale + position_offset, 0.0, 1.0);
                 }
-            "
+            ",
         }
     }
 
     mod fs {
         vulkano_shaders::shader! {
             ty: "fragment",
-            src: "
+            src: r"
                 #version 450
 
                 layout(location = 0) out vec4 f_color;
@@ -266,7 +260,7 @@ fn main() {
                 void main() {
                     f_color = vec4(1.0, 0.0, 0.0, 1.0);
                 }
-            "
+            ",
         }
     }
 
@@ -291,8 +285,8 @@ fn main() {
     .unwrap();
 
     let pipeline = GraphicsPipeline::start()
-        // Use the `BuffersDefinition` to describe to vulkano how the two vertex types
-        // are expected to be used.
+        // Use the implementations of the `Vertex` trait to describe to vulkano how the two vertex
+        // types are expected to be used.
         .vertex_input_state([TriangleVertex::per_vertex(), InstanceData::per_instance()])
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
@@ -345,7 +339,7 @@ fn main() {
                         }) {
                             Ok(r) => r,
                             Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                            Err(e) => panic!("failed to recreate swapchain: {e}"),
                         };
 
                     swapchain = new_swapchain;
@@ -364,7 +358,7 @@ fn main() {
                             recreate_swapchain = true;
                             return;
                         }
-                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                        Err(e) => panic!("failed to acquire next image: {e}"),
                     };
 
                 if suboptimal {
@@ -424,7 +418,7 @@ fn main() {
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                     Err(e) => {
-                        println!("Failed to flush future: {e:?}");
+                        println!("failed to flush future: {e}");
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }
@@ -434,7 +428,7 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
+/// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,

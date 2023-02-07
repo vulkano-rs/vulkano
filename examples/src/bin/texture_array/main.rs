@@ -65,7 +65,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -238,11 +237,14 @@ fn main() {
             image_data
         })
         .collect();
+
+        // Replace with your actual image array dimensions.
         let dimensions = ImageDimensions::Dim2d {
             width: 128,
             height: 128,
             array_layers: 3,
-        }; // Replace with your actual image array dimensions
+        };
+
         let image = ImmutableImage::from_iter(
             &memory_allocator,
             image_array_data,
@@ -252,6 +254,7 @@ fn main() {
             &mut uploads,
         )
         .unwrap();
+
         ImageView::new_default(image).unwrap()
     };
 
@@ -323,7 +326,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                    Err(e) => panic!("failed to recreate swapchain: {e}"),
                 };
 
                 swapchain = new_swapchain;
@@ -339,7 +342,7 @@ fn main() {
                         recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                    Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
             if suboptimal {
@@ -399,7 +402,7 @@ fn main() {
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {e:?}");
+                    println!("failed to flush future: {e}");
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }
@@ -408,7 +411,7 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
+/// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
@@ -436,38 +439,40 @@ fn window_size_dependent_setup(
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        src: "
-#version 450
+        src: r"
+            #version 450
 
-layout(location = 0) in vec2 position;
-layout(location = 0) out vec2 tex_coords;
-layout(location = 1) out uint layer;
+            layout(location = 0) in vec2 position;
+            layout(location = 0) out vec2 tex_coords;
+            layout(location = 1) out uint layer;
 
-const float x[4] = float[](0.0, 0.0, 1.0, 1.0);
-const float y[4] = float[](0.0, 1.0, 0.0, 1.0);
+            const float x[4] = float[](0.0, 0.0, 1.0, 1.0);
+            const float y[4] = float[](0.0, 1.0, 0.0, 1.0);
 
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-    tex_coords = vec2(x[gl_VertexIndex], y[gl_VertexIndex]);
-    layer = gl_InstanceIndex;
-}"
+            void main() {
+                gl_Position = vec4(position, 0.0, 1.0);
+                tex_coords = vec2(x[gl_VertexIndex], y[gl_VertexIndex]);
+                layer = gl_InstanceIndex;
+            }
+        ",
     }
 }
 
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        src: "
-#version 450
+        src: r"
+            #version 450
 
-layout(location = 0) in vec2 tex_coords;
-layout(location = 1) flat in uint layer;
-layout(location = 0) out vec4 f_color;
+            layout(location = 0) in vec2 tex_coords;
+            layout(location = 1) flat in uint layer;
+            layout(location = 0) out vec4 f_color;
 
-layout(set = 0, binding = 0) uniform sampler2DArray tex;
+            layout(set = 0, binding = 0) uniform sampler2DArray tex;
 
-void main() {
-    f_color = texture(tex, vec3(tex_coords, layer));
-}"
+            void main() {
+                f_color = texture(tex, vec3(tex_coords, layer));
+            }
+        ",
     }
 }

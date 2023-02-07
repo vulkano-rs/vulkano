@@ -24,7 +24,7 @@ use vulkano::{
 };
 use vulkano_util::renderer::{DeviceImageView, SwapchainImageView};
 
-/// A render pass which places an incoming image over frame filling it
+/// A render pass which places an incoming image over frame filling it.
 pub struct RenderPassPlaceOverFrame {
     gfx_queue: Arc<Queue>,
     render_pass: Arc<RenderPass>,
@@ -72,8 +72,8 @@ impl RenderPassPlaceOverFrame {
         }
     }
 
-    /// Place view exactly over swapchain image target.
-    /// Texture draw pipeline uses a quad onto which it places the view.
+    /// Places the view exactly over the target swapchain image. The texture draw pipeline uses a
+    /// quad onto which it places the view.
     pub fn render<F>(
         &self,
         before_future: F,
@@ -83,9 +83,10 @@ impl RenderPassPlaceOverFrame {
     where
         F: GpuFuture + 'static,
     {
-        // Get dimensions
+        // Get dimensions.
         let img_dims = target.image().dimensions();
-        // Create framebuffer (must be in same order as render pass description in `new`
+
+        // Create framebuffer (must be in same order as render pass description in `new`.
         let framebuffer = Framebuffer::new(
             self.render_pass.clone(),
             FramebufferCreateInfo {
@@ -94,14 +95,16 @@ impl RenderPassPlaceOverFrame {
             },
         )
         .unwrap();
-        // Create primary command buffer builder
+
+        // Create primary command buffer builder.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
-        // Begin render pass
+
+        // Begin render pass.
         command_buffer_builder
             .begin_render_pass(
                 RenderPassBeginInfo {
@@ -111,17 +114,22 @@ impl RenderPassPlaceOverFrame {
                 SubpassContents::SecondaryCommandBuffers,
             )
             .unwrap();
-        // Create secondary command buffer from texture pipeline & send draw commands
+
+        // Create secondary command buffer from texture pipeline & send draw commands.
         let cb = self
             .pixels_draw_pipeline
             .draw(img_dims.width_height(), view);
-        // Execute above commands (subpass)
+
+        // Execute above commands (subpass).
         command_buffer_builder.execute_commands(cb).unwrap();
-        // End render pass
+
+        // End render pass.
         command_buffer_builder.end_render_pass().unwrap();
-        // Build command buffer
+
+        // Build command buffer.
         let command_buffer = command_buffer_builder.build().unwrap();
-        // Execute primary command buffer
+
+        // Execute primary command buffer.
         let after_future = before_future
             .then_execute(self.gfx_queue.clone(), command_buffer)
             .unwrap();

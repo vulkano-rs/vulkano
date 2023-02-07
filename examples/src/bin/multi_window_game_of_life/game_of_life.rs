@@ -10,28 +10,28 @@
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
-use vulkano::buffer::{BufferAllocateInfo, Subbuffer};
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::image::{ImageUsage, StorageImage};
-use vulkano::memory::allocator::MemoryAllocator;
 use vulkano::{
-    buffer::{Buffer, BufferUsage},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer},
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        PrimaryAutoCommandBuffer,
+    },
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::Queue,
     format::Format,
-    image::ImageAccess,
+    image::{ImageAccess, ImageUsage, StorageImage},
+    memory::allocator::MemoryAllocator,
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::GpuFuture,
 };
 use vulkano_util::renderer::DeviceImageView;
 
-/// Pipeline holding double buffered grid & color image.
-/// Grids are used to calculate the state, and color image is used to show the output.
-/// Because each step we determine state in parallel, we need to write the output to
-/// another grid. Otherwise the state would not be correctly determined as one thread might read
-/// data that was just written by another thread
+/// Pipeline holding double buffered grid & color image. Grids are used to calculate the state, and
+/// color image is used to show the output. Because on each step we determine state in parallel, we
+/// need to write the output to another grid. Otherwise the state would not be correctly determined
+/// as one shader invocation might read data that was just written by another shader invocation.
 pub struct GameOfLifeComputePipeline {
     compute_queue: Arc<Queue>,
     compute_life_pipeline: Arc<ComputePipeline>,
@@ -126,13 +126,15 @@ impl GameOfLifeComputePipeline {
         )
         .unwrap();
 
-        // Dispatch will mutate the builder adding commands which won't be sent before we build the command buffer
-        // after dispatches. This will minimize the commands we send to the GPU. For example, we could be doing
-        // tens of dispatches here depending on our needs. Maybe we wanted to simulate 10 steps at a time...
+        // Dispatch will mutate the builder adding commands which won't be sent before we build the
+        // command buffer after dispatches. This will minimize the commands we send to the GPU. For
+        // example, we could be doing tens of dispatches here depending on our needs. Maybe we
+        // wanted to simulate 10 steps at a time...
 
-        // First compute the next state
+        // First compute the next state.
         self.dispatch(&mut builder, life_color, dead_color, 0);
-        // Then color based on the next state
+
+        // Then color based on the next state.
         self.dispatch(&mut builder, life_color, dead_color, 1);
 
         let command_buffer = builder.build().unwrap();
@@ -141,13 +143,13 @@ impl GameOfLifeComputePipeline {
             .unwrap();
         let after_pipeline = finished.then_signal_fence_and_flush().unwrap().boxed();
 
-        // Swap input and output so the output becomes the input for next frame
+        // Swap input and output so the output becomes the input for next frame.
         std::mem::swap(&mut self.life_in, &mut self.life_out);
 
         after_pipeline
     }
 
-    /// Build the command for a dispatch.
+    /// Builds the command for a dispatch.
     fn dispatch(
         &self,
         builder: &mut AutoCommandBufferBuilder<
@@ -156,10 +158,10 @@ impl GameOfLifeComputePipeline {
         >,
         life_color: [f32; 4],
         dead_color: [f32; 4],
-        // Step determines whether we color or compute life (see branch in the shader)s
+        // Step determines whether we color or compute life (see branch in the shader)s.
         step: i32,
     ) {
-        // Resize image if needed
+        // Resize image if needed.
         let img_dims = self.image.image().dimensions().width_height();
         let pipeline_layout = self.compute_life_pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
@@ -174,7 +176,7 @@ impl GameOfLifeComputePipeline {
         )
         .unwrap();
 
-        let push_constants = compute_life_cs::ty::PushConstants {
+        let push_constants = compute_life_cs::PushConstants {
             life_color,
             dead_color,
             step,
@@ -191,79 +193,81 @@ impl GameOfLifeComputePipeline {
 mod compute_life_cs {
     vulkano_shaders::shader! {
         ty: "compute",
-        src: "
-#version 450
+        src: r"
+            #version 450
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+            layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-layout(set = 0, binding = 0, rgba8) uniform writeonly image2D img;
-layout(set = 0, binding = 1) buffer LifeInBuffer { uint life_in[]; };
-layout(set = 0, binding = 2) buffer LifeOutBuffer { uint life_out[]; };
+            layout(set = 0, binding = 0, rgba8) uniform writeonly image2D img;
+            layout(set = 0, binding = 1) buffer LifeInBuffer { uint life_in[]; };
+            layout(set = 0, binding = 2) buffer LifeOutBuffer { uint life_out[]; };
 
-layout(push_constant) uniform PushConstants {
-    vec4 life_color;
-    vec4 dead_color;
-    int step;
-} push_constants;
+            layout(push_constant) uniform PushConstants {
+                vec4 life_color;
+                vec4 dead_color;
+                int step;
+            } push_constants;
 
-int get_index(ivec2 pos) {
-    ivec2 dims = ivec2(imageSize(img));
-    return pos.y * dims.x + pos.x;
-}
+            int get_index(ivec2 pos) {
+                ivec2 dims = ivec2(imageSize(img));
+                return pos.y * dims.x + pos.x;
+            }
 
-// https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life
-void compute_life() {
-    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
-    int index = get_index(pos);
+            // https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life
+            void compute_life() {
+                ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+                int index = get_index(pos);
 
-    ivec2 up_left = pos + ivec2(-1, 1);
-    ivec2 up = pos + ivec2(0, 1);
-    ivec2 up_right = pos + ivec2(1, 1);
-    ivec2 right = pos + ivec2(1, 0);
-    ivec2 down_right = pos + ivec2(1, -1);
-    ivec2 down = pos + ivec2(0, -1);
-    ivec2 down_left = pos + ivec2(-1, -1);
-    ivec2 left = pos + ivec2(-1, 0);
+                ivec2 up_left = pos + ivec2(-1, 1);
+                ivec2 up = pos + ivec2(0, 1);
+                ivec2 up_right = pos + ivec2(1, 1);
+                ivec2 right = pos + ivec2(1, 0);
+                ivec2 down_right = pos + ivec2(1, -1);
+                ivec2 down = pos + ivec2(0, -1);
+                ivec2 down_left = pos + ivec2(-1, -1);
+                ivec2 left = pos + ivec2(-1, 0);
 
-    int alive_count = 0;
-    if (life_out[get_index(up_left)] == 1) { alive_count += 1; }
-    if (life_out[get_index(up)] == 1) { alive_count += 1; }
-    if (life_out[get_index(up_right)] == 1) { alive_count += 1; }
-    if (life_out[get_index(right)] == 1) { alive_count += 1; }
-    if (life_out[get_index(down_right)] == 1) { alive_count += 1; }
-    if (life_out[get_index(down)] == 1) { alive_count += 1; }
-    if (life_out[get_index(down_left)] == 1) { alive_count += 1; }
-    if (life_out[get_index(left)] == 1) { alive_count += 1; }
+                int alive_count = 0;
+                if (life_out[get_index(up_left)] == 1) { alive_count += 1; }
+                if (life_out[get_index(up)] == 1) { alive_count += 1; }
+                if (life_out[get_index(up_right)] == 1) { alive_count += 1; }
+                if (life_out[get_index(right)] == 1) { alive_count += 1; }
+                if (life_out[get_index(down_right)] == 1) { alive_count += 1; }
+                if (life_out[get_index(down)] == 1) { alive_count += 1; }
+                if (life_out[get_index(down_left)] == 1) { alive_count += 1; }
+                if (life_out[get_index(left)] == 1) { alive_count += 1; }
 
-    // Dead becomes alive
-    if (life_out[index] == 0 && alive_count == 3) {
-        life_out[index] = 1;
-    } // Becomes dead
-    else if (life_out[index] == 1 && alive_count < 2 || alive_count > 3) {
-        life_out[index] = 0;
-    } // Else Do nothing
-    else {
+                // Dead becomes alive.
+                if (life_out[index] == 0 && alive_count == 3) {
+                    life_out[index] = 1;
+                }
+                // Becomes dead.
+                else if (life_out[index] == 1 && alive_count < 2 || alive_count > 3) {
+                    life_out[index] = 0;
+                }
+                // Else do nothing.
+                else {
+                    life_out[index] = life_in[index];
+                }
+            }
 
-        life_out[index] = life_in[index];
-    }
-}
+            void compute_color() {
+                ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+                int index = get_index(pos);
+                if (life_out[index] == 1) {
+                    imageStore(img, pos, push_constants.life_color);
+                } else {
+                    imageStore(img, pos, push_constants.dead_color);
+                }
+            }
 
-void compute_color() {
-    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
-    int index = get_index(pos);
-    if (life_out[index] == 1) {
-        imageStore(img, pos, push_constants.life_color);
-    } else {
-        imageStore(img, pos, push_constants.dead_color);
-    }
-}
-
-void main() {
-    if (push_constants.step == 0) {
-        compute_life();
-    } else {
-        compute_color();
-    }
-}",
+            void main() {
+                if (push_constants.step == 0) {
+                    compute_life();
+                } else {
+                    compute_color();
+                }
+            }
+        ",
     }
 }

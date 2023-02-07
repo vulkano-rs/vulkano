@@ -45,7 +45,7 @@ impl FractalComputePipeline {
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> FractalComputePipeline {
-        // Initial colors
+        // Initial colors.
         let colors = vec![
             [1.0, 0.0, 0.0, 1.0],
             [1.0, 1.0, 0.0, 1.0],
@@ -90,7 +90,7 @@ impl FractalComputePipeline {
         }
     }
 
-    /// Randomizes our color palette
+    /// Randomizes our color palette.
     pub fn randomize_palette(&mut self) {
         let mut colors = vec![];
         for _ in 0..self.palette_size {
@@ -120,7 +120,7 @@ impl FractalComputePipeline {
         max_iters: u32,
         is_julia: bool,
     ) -> Box<dyn GpuFuture> {
-        // Resize image if needed
+        // Resize image if needed.
         let img_dims = image.image().dimensions().width_height();
         let pipeline_layout = self.pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
@@ -140,11 +140,11 @@ impl FractalComputePipeline {
         )
         .unwrap();
 
-        let push_constants = cs::ty::PushConstants {
+        let push_constants = cs::PushConstants {
+            end_color: self.end_color,
             c: c.into(),
             scale: scale.into(),
             translation: translation.into(),
-            end_color: self.end_color,
             palette_size: self.palette_size,
             max_iters: max_iters as i32,
             is_julia: is_julia as u32,
@@ -164,101 +164,104 @@ impl FractalComputePipeline {
 mod cs {
     vulkano_shaders::shader! {
         ty: "compute",
-        src: "
-#version 450
+        src: r"
+            #version 450
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+            layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-// Image to which we'll write our fractal
-layout(set = 0, binding = 0, rgba8) uniform writeonly image2D img;
+            // Image to which we'll write our fractal
+            layout(set = 0, binding = 0, rgba8) uniform writeonly image2D img;
 
-// Our palette as a dynamic buffer
-layout(set = 0, binding = 1) buffer Palette {
-    vec4 data[];
-} palette;
+            // Our palette as a dynamic buffer
+            layout(set = 0, binding = 1) buffer Palette {
+                vec4 data[];
+            } palette;
 
-// Our variable inputs as push constants
-layout(push_constant) uniform PushConstants {
-    vec2 c;
-    vec2 scale;
-    vec2 translation;
-    vec4 end_color;
-    int palette_size;
-    int max_iters;
-    bool is_julia;
-} push_constants;
+            // Our variable inputs as push constants
+            layout(push_constant) uniform PushConstants {
+                vec4 end_color;
+                vec2 c;
+                vec2 scale;
+                vec2 translation;
+                int palette_size;
+                int max_iters;
+                bool is_julia;
+            } push_constants;
 
-// Gets smooth color between current color (determined by iterations) and the next color in the palette
-// by linearly interpolating the colors based on: https://linas.org/art-gallery/escape/smooth.html
-vec4 get_color(
-    int palette_size,
-    vec4 end_color,
-    int i,
-    int max_iters,
-    float len_z
-) {
-    if (i < max_iters) {
-        float iters_float = float(i) + 1.0 - log(log(len_z)) / log(2.0f);
-        float iters_floor = floor(iters_float);
-        float remainder = iters_float - iters_floor;
-        vec4 color_start = palette.data[int(iters_floor) % push_constants.palette_size];
-        vec4 color_end = palette.data[(int(iters_floor) + 1) % push_constants.palette_size];
-        return mix(color_start, color_end, remainder);
-    }
-    return end_color;
-}
+            // Gets smooth color between current color (determined by iterations) and the next 
+            // color in the palette by linearly interpolating the colors based on: 
+            // https://linas.org/art-gallery/escape/smooth.html
+            vec4 get_color(
+                int palette_size,
+                vec4 end_color,
+                int i,
+                int max_iters,
+                float len_z
+            ) {
+                if (i < max_iters) {
+                    float iters_float = float(i) + 1.0 - log(log(len_z)) / log(2.0f);
+                    float iters_floor = floor(iters_float);
+                    float remainder = iters_float - iters_floor;
+                    vec4 color_start = palette.data[int(iters_floor) % push_constants.palette_size];
+                    vec4 color_end = palette.data[(int(iters_floor) + 1) % push_constants.palette_size];
+                    return mix(color_start, color_end, remainder);
+                }
+                return end_color;
+            }
 
-void main() {
-    // Scale image pixels to range
-    vec2 dims = vec2(imageSize(img));
-    float ar = dims.x / dims.y;
-    float x_over_width = (gl_GlobalInvocationID.x / dims.x);
-    float y_over_height = (gl_GlobalInvocationID.y / dims.y);
-    float x0 = ar * (push_constants.translation.x + (x_over_width - 0.5) * push_constants.scale.x);
-    float y0 = push_constants.translation.y + (y_over_height - 0.5) * push_constants.scale.y;
+            void main() {
+                // Scale image pixels to range
+                vec2 dims = vec2(imageSize(img));
+                float ar = dims.x / dims.y;
+                float x_over_width = (gl_GlobalInvocationID.x / dims.x);
+                float y_over_height = (gl_GlobalInvocationID.y / dims.y);
+                float x0 = ar * (push_constants.translation.x + (x_over_width - 0.5) * push_constants.scale.x);
+                float y0 = push_constants.translation.y + (y_over_height - 0.5) * push_constants.scale.y;
 
-    // Julia is like mandelbrot, but instead changing the constant `c` will change the shape
-    // you'll see. Thus we want to bind the c to mouse position.
-    // With mandelbrot, c = scaled xy position of the image. Z starts from zero.
-    // With julia, c = any value between the interesting range (-2.0 - 2.0), Z = scaled xy position of the image.
-    vec2 c;
-    vec2 z;
-    if (push_constants.is_julia) {
-        c = push_constants.c;
-        z = vec2(x0, y0);
-    } else {
-        c = vec2(x0, y0);
-        z = vec2(0.0, 0.0);
-    }
+                // Julia is like mandelbrot, but instead changing the constant `c` will change the 
+                // shape you'll see. Thus we want to bind the c to mouse position.
+                // With mandelbrot, c = scaled xy position of the image. Z starts from zero.
+                // With julia, c = any value between the interesting range (-2.0 - 2.0), 
+                // Z = scaled xy position of the image.
+                vec2 c;
+                vec2 z;
+                if (push_constants.is_julia) {
+                    c = push_constants.c;
+                    z = vec2(x0, y0);
+                } else {
+                    c = vec2(x0, y0);
+                    z = vec2(0.0, 0.0);
+                }
 
-    // Escape time algorithm:
-    // https://en.wikipedia.org/wiki/Plotting_algorithms_for_the_Mandelbrot_set
-    // It's an iterative algorithm where the bailout point (number of iterations) will determine
-    // the color we choose from the palette
-    int i;
-    float len_z;
-    for (i = 0; i < push_constants.max_iters; i += 1) {
-        z = vec2(
-            z.x * z.x - z.y * z.y + c.x,
-            z.y * z.x + z.x * z.y + c.y
-        );
+                // Escape time algorithm:
+                // https://en.wikipedia.org/wiki/Plotting_algorithms_for_the_Mandelbrot_set
+                // It's an iterative algorithm where the bailout point (number of iterations) will 
+                // determine the color we choose from the palette.
+                int i;
+                float len_z;
+                for (i = 0; i < push_constants.max_iters; i += 1) {
+                    z = vec2(
+                        z.x * z.x - z.y * z.y + c.x,
+                        z.y * z.x + z.x * z.y + c.y
+                    );
 
-        len_z = length(z);
-        // Using 8.0 for bailout limit give a little nicer colors with smooth colors
-        // 2.0 is enough to 'determine' an escape will happen
-        if (len_z > 8.0) {
-            break;
-        }
-    }
+                    len_z = length(z);
+                    // Using 8.0 for bailout limit give a little nicer colors with smooth colors
+                    // 2.0 is enough to 'determine' an escape will happen.
+                    if (len_z > 8.0) {
+                        break;
+                    }
+                }
 
-    vec4 write_color = get_color(
-        push_constants.palette_size,
-        push_constants.end_color,
-        i,
-        push_constants.max_iters,
-        len_z
-    );
-    imageStore(img, ivec2(gl_GlobalInvocationID.xy), write_color);
-}",
+                vec4 write_color = get_color(
+                    push_constants.palette_size,
+                    push_constants.end_color,
+                    i,
+                    push_constants.max_iters,
+                    len_z
+                );
+                imageStore(img, ivec2(gl_GlobalInvocationID.xy), write_color);
+            }
+        ",
     }
 }

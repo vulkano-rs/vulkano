@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// An immutable sampler is a sampler that is integrated into the descriptor set layout
-// (and thus pipeline layout), instead of being written to an individual descriptor set.
-// Consequently, all descriptor sets with this layout will share the same sampler.
+// An immutable sampler is a sampler that is integrated into the descriptor set layout (and thus
+// pipeline layout), instead of being written to an individual descriptor set. Consequently, all
+// descriptor sets with this layout will share the same sampler.
 //
 // This example is almost identical to the image example, but with two differences, which have
 // been commented:
@@ -69,7 +69,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -272,8 +271,7 @@ fn main() {
         .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
         .render_pass(subpass)
         .with_auto_layout(device.clone(), |layout_create_infos| {
-            // Modify the auto-generated layout by setting an immutable sampler to
-            // set 0 binding 0.
+            // Modify the auto-generated layout by setting an immutable sampler to set 0 binding 0.
             let binding = layout_create_infos[0].bindings.get_mut(&0).unwrap();
             binding.immutable_samplers = vec![sampler];
         })
@@ -281,7 +279,8 @@ fn main() {
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
 
-    // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the layout.
+    // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the
+    // layout.
     let set = PersistentDescriptorSet::new(
         &descriptor_set_allocator,
         layout.clone(),
@@ -335,7 +334,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                    Err(e) => panic!("failed to recreate swapchain: {e}"),
                 };
 
                 swapchain = new_swapchain;
@@ -351,7 +350,7 @@ fn main() {
                         recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                    Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
             if suboptimal {
@@ -411,7 +410,7 @@ fn main() {
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {e:?}");
+                    println!("failed to flush future: {e}");
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }
@@ -420,7 +419,7 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
+/// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
@@ -448,32 +447,34 @@ fn window_size_dependent_setup(
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        src: "
-#version 450
+        src: r"
+            #version 450
 
-layout(location = 0) in vec2 position;
-layout(location = 0) out vec2 tex_coords;
+            layout(location = 0) in vec2 position;
+            layout(location = 0) out vec2 tex_coords;
 
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-    tex_coords = position + vec2(0.5);
-}"
+            void main() {
+                gl_Position = vec4(position, 0.0, 1.0);
+                tex_coords = position + vec2(0.5);
+            }
+        ",
     }
 }
 
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        src: "
-#version 450
+        src: r"
+            #version 450
 
-layout(location = 0) in vec2 tex_coords;
-layout(location = 0) out vec4 f_color;
+            layout(location = 0) in vec2 tex_coords;
+            layout(location = 0) out vec4 f_color;
 
-layout(set = 0, binding = 0) uniform sampler2D tex;
+            layout(set = 0, binding = 0) uniform sampler2D tex;
 
-void main() {
-    f_color = texture(tex, tex_coords);
-}"
+            void main() {
+                f_color = texture(tex, tex_coords);
+            }
+        ",
     }
 }

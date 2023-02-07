@@ -21,8 +21,8 @@ mod directional_lighting_system;
 mod point_lighting_system;
 mod system;
 
-#[repr(C)]
 #[derive(BufferContents, Vertex)]
+#[repr(C)]
 struct LightingVertex {
     #[format(R32G32_SFLOAT)]
     position: [f32; 2],

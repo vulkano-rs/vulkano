@@ -12,9 +12,9 @@
 // This is the only example that is entirely detailed. All the other examples avoid code
 // duplication by using helper functions.
 //
-// This example assumes that you are already more or less familiar with graphics programming
-// and that you want to learn Vulkan. This means that for example it won't go into details about
-// what a vertex or a shader is.
+// This example assumes that you are already more or less familiar with graphics programming and
+// that you want to learn Vulkan. This means that for example it won't go into details about what a
+// vertex or a shader is.
 
 use std::{collections::HashMap, sync::Arc};
 use vulkano::{
@@ -53,7 +53,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-// A struct to contain resources related to a window
+/// A struct to contain resources related to a window.
 struct WindowSurface {
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
@@ -69,7 +69,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -77,18 +76,20 @@ fn main() {
     .unwrap();
     let event_loop = EventLoop::new();
 
-    // A hashmap that contains all of our created windows and their resources
+    // A hashmap that contains all of our created windows and their resources.
     let mut window_surfaces = HashMap::new();
 
     let surface = WindowBuilder::new()
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
-    // Use the window's id as a means to access it from the hashmap
+
+    // Use the window's id as a means to access it from the hashmap.
     let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
     let window_id = window.id();
 
     // Find the device and a queue.
-    // TODO: it is assumed the device, queue, and surface surface_capabilities are the same for all windows
+    // TODO: it is assumed the device, queue, and surface surface_capabilities are the same for all
+    // windows.
 
     let (device, queue, surface_caps) = {
         let device_extensions = DeviceExtensions {
@@ -122,7 +123,7 @@ fn main() {
         println!(
             "Using device: {} (type: {:?})",
             physical_device.properties().device_name,
-            physical_device.properties().device_type
+            physical_device.properties().device_type,
         );
 
         let (device, mut queues) = Device::new(
@@ -146,8 +147,7 @@ fn main() {
         (device, queues.next().unwrap(), surface_capabilities)
     };
 
-    // The swapchain and framebuffer images for this perticular window
-
+    // The swapchain and framebuffer images for this particular window.
     let (swapchain, images) = {
         let image_format = Some(
             device
@@ -210,7 +210,7 @@ fn main() {
     mod vs {
         vulkano_shaders::shader! {
             ty: "vertex",
-            src: "
+            src: r"
                 #version 450
 
                 layout(location = 0) in vec2 position;
@@ -218,14 +218,14 @@ fn main() {
                 void main() {
                     gl_Position = vec4(position, 0.0, 1.0);
                 }
-            "
+            ",
         }
     }
 
     mod fs {
         vulkano_shaders::shader! {
             ty: "fragment",
-            src: "
+            src: r"
                 #version 450
 
                 layout(location = 0) out vec4 f_color;
@@ -233,7 +233,7 @@ fn main() {
                 void main() {
                     f_color = vec4(1.0, 0.0, 0.0, 1.0);
                 }
-            "
+            ",
         }
     }
 
@@ -378,11 +378,11 @@ fn main() {
         }
         Event::RedrawRequested(window_id) => {
             let WindowSurface {
-                ref surface,
-                ref mut swapchain,
-                ref mut recreate_swapchain,
-                ref mut framebuffers,
-                ref mut previous_frame_end,
+                surface,
+                swapchain,
+                recreate_swapchain,
+                framebuffers,
+                previous_frame_end,
             } = window_surfaces.get_mut(&window_id).unwrap();
 
             let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
@@ -400,7 +400,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                    Err(e) => panic!("failed to recreate swapchain: {e}"),
                 };
 
                 *swapchain = new_swapchain;
@@ -416,7 +416,7 @@ fn main() {
                         *recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                    Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
             if suboptimal {
@@ -471,7 +471,7 @@ fn main() {
                     *previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {e:?}");
+                    println!("failed to flush future: {e}");
                     *previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }

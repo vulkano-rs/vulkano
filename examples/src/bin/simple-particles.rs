@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! A minimal particle-sandbox to demonstrate a reasonable use-case for a device-local buffer.
-//! We gain significant runtime performance by writing the inital vertex values to the GPU using
-//! a staging buffer and then copying the data to a device-local buffer to be accessed solely
-//! by the GPU through the compute shader and as a vertex array.
+// A minimal particle-sandbox to demonstrate a reasonable use-case for a device-local buffer. We
+// gain significant runtime performance by writing the inital vertex values to the GPU using a
+// staging buffer and then copying the data to a device-local buffer to be accessed solely by the
+// GPU through the compute shader and as a vertex array.
 
 use std::{sync::Arc, time::SystemTime};
 use vulkano::{
@@ -38,8 +38,10 @@ use vulkano::{
         GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    swapchain::{PresentMode, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
-    sync::{future::FenceSignalFuture, GpuFuture},
+    swapchain::{
+        acquire_next_image, PresentMode, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
+    },
+    sync::{self, future::FenceSignalFuture, GpuFuture},
     VulkanLibrary,
 };
 use vulkano_win::VkSurfaceBuild;
@@ -55,15 +57,14 @@ const WINDOW_HEIGHT: u32 = 600;
 const PARTICLE_COUNT: usize = 100_000;
 
 fn main() {
-    // The usual Vulkan initialization.
-    // Largely the same as example `triangle.rs` until further commentation is provided.
+    // The usual Vulkan initialization. Largely the same as example `triangle.rs` until further
+    // commentation is provided.
     let library = VulkanLibrary::new().unwrap();
     let required_extensions = vulkano_win::required_extensions(&library);
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -72,7 +73,8 @@ fn main() {
 
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new()
-        .with_resizable(false) // For simplicity, we are going to assert that the window size is static
+        // For simplicity, we are going to assert that the window size is static.
+        .with_resizable(false)
         .with_title("simple particles")
         .with_inner_size(winit::dpi::PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
         .build_vk_surface(&event_loop, instance.clone())
@@ -109,8 +111,9 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
+
     let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
@@ -195,7 +198,7 @@ fn main() {
     mod cs {
         vulkano_shaders::shader! {
             ty: "compute",
-            src: "
+            src: r"
                 #version 450
 
                 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
@@ -211,14 +214,15 @@ fn main() {
                 };
 
                 // Allow push constants to define a parameters of compute.
-                layout (push_constant) uniform PushConstants
-                {
+                layout (push_constant) uniform PushConstants {
                     vec2 attractor;
                     float attractor_strength;
                     float delta_time;
                 } push;
 
-                const float maxSpeed = 10.0; // Keep this value in sync with the `maxSpeed` const in the vertex shader.
+                // Keep this value in sync with the `maxSpeed` const in the vertex shader.
+                const float maxSpeed = 10.0; 
+
                 const float minLength = 0.02;
                 const float friction = -2.0;
 
@@ -231,15 +235,15 @@ fn main() {
                     vec2 pos = verticies[index].pos + push.delta_time * vel;
 
                     // Bounce particle off screen-border.
-                    if(abs(pos.x) > 1.0) {
+                    if (abs(pos.x) > 1.0) {
                         vel.x = sign(pos.x) * (-0.95 * abs(vel.x) - 0.0001);
-                        if(abs(pos.x) >= 1.05) {
+                        if (abs(pos.x) >= 1.05) {
                             pos.x = sign(pos.x);
                         }
                     }
-                    if(abs(pos.y) > 1.0) {
+                    if (abs(pos.y) > 1.0) {
                         vel.y = sign(pos.y) * (-0.95 * abs(vel.y) - 0.0001);
-                        if(abs(pos.y) >= 1.05) {
+                        if (abs(pos.y) >= 1.05) {
                             pos.y = sign(pos.y);
                         }
                     }
@@ -247,11 +251,11 @@ fn main() {
                     // Simple inverse-square force.
                     vec2 t = push.attractor - pos;
                     float r = max(length(t), minLength);
-                    vec2 force = push.attractor_strength * (t/r) / (r*r);
+                    vec2 force = push.attractor_strength * (t / r) / (r * r);
 
                     // Update velocity, enforcing a maximum speed.
                     vel += push.delta_time * force;
-                    if(length(vel) > maxSpeed) {
+                    if (length(vel) > maxSpeed) {
                         vel = maxSpeed*normalize(vel);
                     }
 
@@ -262,12 +266,13 @@ fn main() {
             ",
         }
     }
-    // Vertex shader determines color and is run once per particle.
-    // The vertices will be updates by the compute shader each frame.
+
+    // The vertex shader determines color and is run once per particle. The vertices will be
+    // updated by the compute shader each frame.
     mod vs {
         vulkano_shaders::shader! {
             ty: "vertex",
-            src: "
+            src: r"
                 #version 450
 
                 layout(location = 0) in vec2 pos;
@@ -275,23 +280,30 @@ fn main() {
 
                 layout(location = 0) out vec4 outColor;
 
-                const float maxSpeed = 10.0; // Keep this value in sync with the `maxSpeed` const in the compute shader.
+                // Keep this value in sync with the `maxSpeed` const in the compute shader.
+                const float maxSpeed = 10.0; 
 
                 void main() {
                     gl_Position = vec4(pos, 0.0, 1.0);
 	                gl_PointSize = 1.0;
 
                     // Mix colors based on position and velocity.
-                    outColor = mix(0.2*vec4(pos, abs(vel.x)+abs(vel.y), 1.0), vec4(1.0, 0.5, 0.8, 1.0), sqrt(length(vel)/maxSpeed));
-                }"
+                    outColor = mix(
+                        0.2 * vec4(pos, abs(vel.x) + abs(vel.y), 1.0),
+                        vec4(1.0, 0.5, 0.8, 1.0),
+                        sqrt(length(vel) / maxSpeed)
+                    );
+                }
+            ",
         }
     }
-    // Fragment shader will only need to apply the color forwarded by the vertex shader.
-    // This is because the color of a particle should be identical over all pixels.
+
+    // The fragment shader will only need to apply the color forwarded by the vertex shader,
+    // because the color of a particle should be identical over all pixels.
     mod fs {
         vulkano_shaders::shader! {
             ty: "fragment",
-            src: "
+            src: r"
                 #version 450
 
                 layout(location = 0) in vec4 outColor;
@@ -301,7 +313,7 @@ fn main() {
                 void main() {
                     fragColor = outColor;
                 }
-            "
+            ",
         }
     }
 
@@ -348,7 +360,8 @@ fn main() {
         )
         .unwrap();
 
-        // Create a buffer in device-local memory with enough space for `PARTICLE_COUNT` number of `Vertex`.
+        // Create a buffer in device-local memory with enough space for `PARTICLE_COUNT` number of
+        // `Vertex`.
         let device_local_buffer = Buffer::new_slice::<Vertex>(
             &memory_allocator,
             BufferAllocateInfo {
@@ -389,7 +402,7 @@ fn main() {
         device_local_buffer
     };
 
-    // Create compute-pipeline for applying compute shader to vertices.
+    // Create a compute-pipeline for applying the compute shader to vertices.
     let compute_pipeline = vulkano::pipeline::ComputePipeline::new(
         device.clone(),
         cs.entry_point("main").unwrap(),
@@ -397,20 +410,21 @@ fn main() {
         None,
         |_| {},
     )
-    .expect("Failed to create compute shader");
+    .expect("failed to create compute shader");
 
-    // Create a new descriptor set for binding vertices as a Storage Buffer.
-    use vulkano::pipeline::Pipeline; // Required to access layout() method of pipeline.
+    // Create a new descriptor set for binding vertices as a storage buffer.
+    use vulkano::pipeline::Pipeline; // Required to access the `layout` method of pipeline.
     let descriptor_set = PersistentDescriptorSet::new(
         &descriptor_set_allocator,
         compute_pipeline
             .layout()
             .set_layouts()
-            .get(0) // 0 is the index of the descriptor set.
+            // 0 is the index of the descriptor set.
+            .get(0)
             .unwrap()
             .clone(),
         [
-            // 0 is the binding of the data in this set. We bind the `DeviceLocalBuffer` of vertices here.
+            // 0 is the binding of the data in this set. We bind the `Buffer` of vertices here.
             WriteDescriptorSet::buffer(0, vertex_buffer.clone()),
         ],
     )
@@ -427,7 +441,8 @@ fn main() {
     let graphics_pipeline = GraphicsPipeline::start()
         .vertex_input_state(Vertex::per_vertex())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList)) // Vertices will be rendered as a list of points.
+        // Vertices will be rendered as a list of points.
+        .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList))
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .render_pass(Subpass::from(render_pass, 0).unwrap())
@@ -461,41 +476,42 @@ fn main() {
                 last_frame_time = now;
 
                 // Create push contants to be passed to compute shader.
-                let push_constants = cs::ty::PushConstants {
+                let push_constants = cs::PushConstants {
                     attractor: [0.75 * (3. * time).cos(), 0.6 * (0.75 * time).sin()],
                     attractor_strength: 1.2 * (2. * time).cos(),
                     delta_time,
                 };
 
                 // Acquire information on the next swapchain target.
-                let (image_index, suboptimal, acquire_future) =
-                    match vulkano::swapchain::acquire_next_image(
-                        swapchain.clone(),
-                        None, /*timeout*/
-                    ) {
-                        Ok(tuple) => tuple,
-                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
-                    };
+                let (image_index, suboptimal, acquire_future) = match acquire_next_image(
+                    swapchain.clone(),
+                    None, // timeout
+                ) {
+                    Ok(tuple) => tuple,
+                    Err(e) => panic!("failed to acquire next image: {e}"),
+                };
 
-                // Since we disallow resizing, assert the swapchain and surface are optimally configured.
+                // Since we disallow resizing, assert that the swapchain and surface are optimally
+                // configured.
                 assert!(
                     !suboptimal,
-                    "Not handling sub-optimal swapchains in this sample code"
+                    "not handling sub-optimal swapchains in this sample code",
                 );
 
-                // If this image buffer already has a future then attempt to cleanup fence resources.
-                // Usually the future for this index will have completed by the time we are rendering it again.
+                // If this image buffer already has a future then attempt to cleanup fence
+                // resources. Usually the future for this index will have completed by the time we
+                // are rendering it again.
                 if let Some(image_fence) = &mut fences[image_index as usize] {
                     image_fence.cleanup_finished()
                 }
 
-                // If the previous image has a fence then use it for synchronization, else create a new one.
+                // If the previous image has a fence then use it for synchronization, else create
+                // a new one.
                 let previous_future = match fences[previous_fence_index as usize].clone() {
                     // Ensure current frame is synchronized with previous.
                     Some(fence) => fence.boxed(),
-
                     // Create new future to guarentee synchronization with (fake) previous frame.
-                    None => vulkano::sync::now(device.clone()).boxed(),
+                    None => sync::now(device.clone()).boxed(),
                 };
 
                 let mut builder = AutoCommandBufferBuilder::primary(
@@ -552,7 +568,7 @@ fn main() {
                     Ok(future) => Some(Arc::new(future)),
 
                     // Unknown failure.
-                    Err(e) => panic!("Failed to flush future: {e:?}"),
+                    Err(e) => panic!("failed to flush future: {e}"),
                 };
                 previous_fence_index = image_index;
             }

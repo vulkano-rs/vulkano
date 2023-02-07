@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// This example demonstrates how to use the standard and relative include directives within
-// shader source code. The boilerplate is taken from the "basic-compute-shader.rs" example, where
-// most of the boilerplate is explained.
+// This example demonstrates how to use the standard and relative include directives within shader
+// source code. The boilerplate is taken from the "basic-compute-shader.rs" example, where most of
+// the boilerplate is explained.
 
 use vulkano::{
     buffer::{Buffer, BufferAllocateInfo, BufferUsage},
@@ -35,7 +35,6 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -69,7 +68,7 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -92,27 +91,28 @@ fn main() {
                  ty: "compute",
                  // We declare what directories to search for when using the `#include <...>`
                  // syntax. Specified directories have descending priorities based on their order.
-                 include: [ "src/bin/shader-include/standard-shaders" ],
-                 src: "
+                 include: ["src/bin/shader-include/standard-shaders"],
+                 src: r#"
                     #version 450
-                    // Substitutes this line with the contents of the file `common.glsl` found in one of the standard
-                    // `include` directories specified above.
-                    // Note, that relative inclusion (`#include \"...\"`), although it falls back to standard
-                    // inclusion, should not be used for **embedded** shader source, as it may be misleading and/or
-                    // confusing.
+
+                    // Substitutes this line with the contents of the file `common.glsl` found in 
+                    // one of the standard `include` directories specified above.
+                    // Note that relative inclusion (`#include "..."`), although it falls back to 
+                    // standard inclusion, should not be used for **embedded** shader source, as it 
+                    // may be misleading and/or confusing.
                     #include <common.glsl>
 
                     layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
                     layout(set = 0, binding = 0) buffer Data {
                        uint data[];
-                    } data;
+                    };
 
                     void main() {
                        uint idx = gl_GlobalInvocationID.x;
-                       data.data[idx] = multiply_by_12(data.data[idx]);
+                       data[idx] = multiply_by_12(data[idx]);
                     }
-                "
+                "#,
             }
         }
         let shader = cs::load(device.clone()).unwrap();

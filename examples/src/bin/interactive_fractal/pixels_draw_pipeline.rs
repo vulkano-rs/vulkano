@@ -32,7 +32,7 @@ use vulkano::{
     sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
 };
 
-/// Vertex for textured quads
+/// Vertex for textured quads.
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
 pub struct TexturedVertex {
@@ -66,7 +66,7 @@ pub fn textured_quad(width: f32, height: f32) -> (Vec<TexturedVertex>, Vec<u32>)
     )
 }
 
-/// A subpass pipeline that fills a quad over frame
+/// A subpass pipeline that fills a quad over frame.
 pub struct PixelsDrawPipeline {
     gfx_queue: Arc<Queue>,
     subpass: Subpass,
@@ -159,7 +159,7 @@ impl PixelsDrawPipeline {
         .unwrap()
     }
 
-    /// Draw input `image` over a quad of size -1.0 to 1.0
+    /// Draws input `image` over a quad of size -1.0 to 1.0.
     pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
@@ -203,35 +203,35 @@ impl PixelsDrawPipeline {
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        src: "
-#version 450
-layout(location=0) in vec2 position;
-layout(location=1) in vec2 tex_coords;
+        src: r"
+            #version 450
+            layout(location=0) in vec2 position;
+            layout(location=1) in vec2 tex_coords;
 
-layout(location = 0) out vec2 f_tex_coords;
+            layout(location = 0) out vec2 f_tex_coords;
 
-void main() {
-    gl_Position =  vec4(position, 0.0, 1.0);
-    f_tex_coords = tex_coords;
-}
-        "
+            void main() {
+                gl_Position =  vec4(position, 0.0, 1.0);
+                f_tex_coords = tex_coords;
+            }
+        ",
     }
 }
 
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        src: "
-#version 450
-layout(location = 0) in vec2 v_tex_coords;
+        src: r"
+            #version 450
+            layout(location = 0) in vec2 v_tex_coords;
 
-layout(location = 0) out vec4 f_color;
+            layout(location = 0) out vec4 f_color;
 
-layout(set = 0, binding = 0) uniform sampler2D tex;
+            layout(set = 0, binding = 0) uniform sampler2D tex;
 
-void main() {
-    f_color = texture(tex, v_tex_coords);
-}
-"
+            void main() {
+                f_color = texture(tex, v_tex_coords);
+            }
+        ",
     }
 }
