@@ -49,6 +49,18 @@ pub const fn Padded<T, const N: usize>(value: T) -> Padded<T, N> {
     }
 }
 
+impl<T, const N: usize> AsRef<T> for Padded<T, N> {
+    fn as_ref(&self) -> &T {
+        &self.value
+    }
+}
+
+impl<T, const N: usize> AsMut<T> for Padded<T, N> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+}
+
 impl<T, const N: usize> Clone for Padded<T, N>
 where
     T: Clone,
