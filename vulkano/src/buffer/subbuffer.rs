@@ -713,11 +713,9 @@ impl Display for WriteLockError {
 /// }
 /// ```
 ///
-/// The derive macro by default assumes that the type is sized unless its last field is a slice.
-/// But you might want to use another user-defined DST as the last field, in which case this guess
-/// would be wrong and the following would result in a compile error:
+/// This even works if the last field is a user-defined DST too:
 ///
-/// ```compile_fail
+/// ```
 /// # use vulkano::buffer::BufferContents;
 /// #[derive(BufferContents)]
 /// #[repr(C)]
@@ -732,39 +730,6 @@ impl Display for WriteLockError {
 /// struct OtherData {
 ///     slice: [i32],
 /// }
-/// ```
-///
-/// There simply is not enough information available to the derive macro for it to know whether
-/// non-primitive types are sized or not, therefore, in such cases you have to tell it that the
-/// type is actually a DST:
-///
-/// ```
-/// # use vulkano::buffer::BufferContents;
-/// #[derive(BufferContents)]
-/// #[dynamically_sized]
-/// #[repr(C)]
-/// struct MyData {
-///     x: f32,
-///     y: f32,
-///     other: OtherData,
-/// }
-///
-/// #[derive(BufferContents)]
-/// #[repr(C)]
-/// struct OtherData {
-///     slice: [i32],
-/// }
-/// ```
-///
-/// The reverse is also true, if you tried to use the attribute on a sized type it would result in
-/// a compile error:
-///
-/// ```compile_fail
-/// # use vulkano::buffer::BufferContents;
-/// #[derive(BufferContents)]
-/// #[dynamically_sized]
-/// #[repr(C)]
-/// struct MyData(u32);
 /// ```
 ///
 /// [the derive macro]: vulkano_macros::BufferContents
@@ -1163,7 +1128,6 @@ mod tests {
         );
 
         #[derive(BufferContents)]
-        #[dynamically_sized]
         #[repr(C)]
         struct Composite2(Test1, [f32; 10], Test2);
 

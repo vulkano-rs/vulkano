@@ -59,13 +59,7 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
         );
     }
 
-    let is_unsized = matches!(fields.last().unwrap().ty, Type::Slice(_))
-        || ast
-            .attrs
-            .iter()
-            .any(|attr| attr.path.is_ident("dynamically_sized")); // unsized is a reserved keyword.
-
-    let (layout, bound_types) = write_layout(&crate_ident, fields, is_unsized);
+    let (layout, bound_types) = write_layout(&crate_ident, fields);
 
     let (impl_generics, type_generics, where_clause) = {
         let predicates = bound_types.iter().map(|ty| -> WherePredicate {
@@ -80,65 +74,6 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
         ast.generics.split_for_impl()
     };
 
-    let function_body = if is_unsized {
-        quote! {
-            #[repr(C)]
-            struct PtrComponents {
-                data: *mut ::std::ffi::c_void,
-                len: usize,
-            }
-
-            let alignment = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
-                .alignment()
-                .as_devicesize() as usize;
-            ::std::debug_assert!(data as usize % alignment == 0);
-
-            let head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
-                .head_size() as usize;
-            let element_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
-                .element_size()
-                .unwrap() as usize;
-
-            ::std::debug_assert!(range >= head_size);
-            let tail_size = range - head_size;
-            ::std::debug_assert!(tail_size % element_size == 0);
-            let len = tail_size / element_size;
-
-            let components = PtrComponents { data, len };
-
-            // SAFETY: All fields must implement `BufferContents`. The last field, if it is
-            // unsized, must therefore be a slice or a DST derived from a slice. It can not be any
-            // other kind of DST, unless unsafe code was used to achieve that.
-            //
-            // That means we can safely rely on knowing what kind of DST the implementing type is,
-            // but it doesn't tell us what the correct representation for the pointer of this kind
-            // of DST is. For that we have to rely on what the docs tell us, namely that for
-            // structs where the last field is a DST, the metadata is the same as the last field's.
-            // We also know that the metadata of a slice is its length measured in the number of
-            // elements. This tells us that the components of a pointer to the implementing type
-            // are the address to the start of the data, and a length. It still does not tell us
-            // what the representation of the pointer is though.
-            //
-            // In fact, there is no way to be certain that this representation is correct.
-            // *Theoretically* rustc could decide tomorrow that the metadata comes first and the
-            // address comes last, but the chance of that ever happening is zero.
-            //
-            // But what if the implementing type is actually sized? In that case the size of a
-            // pointer to the type will by definition be smaller, and since transmuting types of
-            // different sizes never works, it will cause a compilation error on this line.
-            //
-            // HACK: Replace with `std::ptr::from_raw_parts_mut` once it is stabilized.
-            ::std::mem::transmute::<PtrComponents, *mut Self>(components)
-        }
-    } else {
-        quote! {
-            ::std::debug_assert!(range == ::std::mem::size_of::<Self>());
-            ::std::debug_assert!(data as usize % ::std::mem::align_of::<Self>() == 0);
-
-            data.cast()
-        }
-    };
-
     Ok(quote! {
         #[allow(unsafe_code)]
         unsafe impl #impl_generics ::#crate_ident::buffer::BufferContents
@@ -148,7 +83,57 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
 
             #[inline(always)]
             unsafe fn from_ffi(data: *mut ::std::ffi::c_void, range: usize) -> *mut Self {
-                #function_body
+                #[repr(C)]
+                union PtrRepr {
+                    components: PtrComponents,
+                    ptr: *mut #struct_ident,
+                }
+
+                #[derive(Clone, Copy)]
+                #[repr(C)]
+                struct PtrComponents {
+                    data: *mut ::std::ffi::c_void,
+                    len: usize,
+                }
+
+                let alignment = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                    .alignment()
+                    .as_devicesize() as usize;
+                ::std::debug_assert!(data as usize % alignment == 0);
+
+                let head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                    .head_size() as usize;
+                let element_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                    .element_size()
+                    .unwrap_or(1) as usize;
+
+                ::std::debug_assert!(range >= head_size);
+                let tail_size = range - head_size;
+                ::std::debug_assert!(tail_size % element_size == 0);
+                let len = tail_size / element_size;
+
+                let components = PtrComponents { data, len };
+
+                // SAFETY: All fields must implement `BufferContents`. The last field, if it is
+                // unsized, must therefore be a slice or a DST derived from a slice. It cannot be
+                // any other kind of DST, unless unsafe code was used to achieve that.
+                //
+                // That means we can safely rely on knowing what kind of DST the implementing type
+                // is, but it doesn't tell us what the correct representation for the pointer of
+                // this kind of DST is. For that we have to rely on what the docs tell us, namely
+                // that for structs where the last field is a DST, the metadata is the same as the
+                // last field's. We also know that the metadata of a slice is its length measured
+                // in the number of elements. This tells us that the components of a pointer to the
+                // implementing type are the address to the start of the data, and a length. It
+                // still does not tell us what the representation of the pointer is though.
+                //
+                // In fact, there is no way to be certain that this representation is correct.
+                // *Theoretically* rustc could decide tomorrow that the metadata comes first and
+                // the address comes last, but the chance of that ever happening is zero.
+                //
+                // But what if the implementing type is actually sized? In that case this
+                // conversion will simply discard the length field, and only leave the pointer.
+                PtrRepr { components }.ptr
             }
         }
     })
@@ -157,7 +142,6 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
 fn write_layout<'a>(
     crate_ident: &Ident,
     fields: &'a Punctuated<Field, Token![,]>,
-    is_unsized: bool,
 ) -> (TokenStream, Vec<&'a Type>) {
     let mut bound_types = Vec::new();
 
@@ -175,31 +159,39 @@ fn write_layout<'a>(
         };
     }
 
-    // The last field needs special treatment depending on whether it's a slice or not.
-    if let Type::Slice(TypeSlice { elem, .. }) = last_field_type {
-        bound_types.push(find_innermost_element_type(elem));
+    // The last field needs special treatment.
+    match last_field_type {
+        // An array might not implement `BufferContents` depending on the element, and therefore we
+        // can't use `BufferContents::extend_from_layout` on it.
+        Type::Array(TypeArray { elem, .. }) => {
+            bound_types.push(find_innermost_element_type(elem));
 
-        layout = quote! {
-            ::#crate_ident::buffer::BufferContentsLayout::from_head_element_layout(
-                #layout,
-                ::std::alloc::Layout::new::<#elem>(),
-            )
-        };
-    } else if is_unsized {
-        // We don't need to add `last_field_type` to the bounds because it is enforced here in the
-        // `LAYOUT` constant.
-        layout = quote! {
-            <#last_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT
-                .extend_from_layout(&#layout)
-        };
-    } else {
-        bound_types.push(find_innermost_element_type(last_field_type));
+            layout = quote! {
+                ::#crate_ident::buffer::BufferContentsLayout::from_sized(
+                    ::std::alloc::Layout::new::<Self>()
+                )
+            };
+        }
+        // A slice might contain an array same as above, and therefore we can't use
+        // `BufferContents::extend_from_layout` on it either.
+        Type::Slice(TypeSlice { elem, .. }) => {
+            bound_types.push(find_innermost_element_type(elem));
 
-        layout = quote! {
-            ::#crate_ident::buffer::BufferContentsLayout::from_sized(
-                ::std::alloc::Layout::new::<Self>()
-            )
-        };
+            layout = quote! {
+                ::#crate_ident::buffer::BufferContentsLayout::from_head_element_layout(
+                    #layout,
+                    ::std::alloc::Layout::new::<#elem>(),
+                )
+            };
+        }
+        _ => {
+            // We don't need to add `last_field_type` to the bounds because it is enforced here in
+            // the `LAYOUT` constant.
+            layout = quote! {
+                <#last_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                    .extend_from_layout(&#layout)
+            };
+        }
     }
 
     let layout = quote! {
@@ -210,9 +202,9 @@ fn write_layout<'a>(
                 next: ::std::alloc::Layout,
             ) -> ::std::alloc::Layout {
                 let padded_size = if let Some(val) =
-                    layout.size().checked_add(layout.align() - 1)
+                    layout.size().checked_add(next.align() - 1)
                 {
-                    val & !(layout.align() - 1)
+                    val & !(next.align() - 1)
                 } else {
                     ::std::unreachable!()
                 };
@@ -250,9 +242,9 @@ fn write_layout<'a>(
     (layout, bound_types)
 }
 
-// HACK: This works around an inherent limitation of bytemuck, namely that an array
-// where the element is `AnyBitPattern` is itself not `AnyBitPattern`, by only
-// requiring that the innermost type in the array implements `BufferContents`.
+// HACK: This works around an inherent limitation of bytemuck, namely that an array where the
+// element is `AnyBitPattern` is itself not `AnyBitPattern`, by only requiring that the innermost
+// type in the array implements `BufferContents`.
 fn find_innermost_element_type(mut field_type: &Type) -> &Type {
     while let Type::Array(TypeArray { elem, .. }) = field_type {
         field_type = elem;
