@@ -241,18 +241,18 @@ fn main() {
         vulkano_shaders::shader! {
             ty: "vertex",
             src: r"
-				#version 450
+                #version 450
 
-				layout(location = 0) in vec3 position;
+                layout(location = 0) in vec3 position;
                 layout(location = 1) in vec3 color;
 
                 layout(location = 0) out vec3 v_color;
 
-				void main() {
+                void main() {
                     v_color = color;
-					gl_Position = vec4(position, 1.0);
-				}
-			",
+                    gl_Position = vec4(position, 1.0);
+                }
+            ",
         }
     }
 
@@ -260,15 +260,15 @@ fn main() {
         vulkano_shaders::shader! {
             ty: "fragment",
             src: r"
-				#version 450
+                #version 450
 
                 layout(location = 0) in vec3 v_color;
-				layout(location = 0) out vec4 f_color;
+                layout(location = 0) out vec4 f_color;
 
-				void main() {
-					f_color = vec4(v_color, 1.0);
-				}
-			",
+                void main() {
+                    f_color = vec4(v_color, 1.0);
+                }
+            ",
         }
     }
 
