@@ -15,6 +15,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     alloc::Layout,
     cmp::Ordering,
+    ffi::c_void,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
     mem::{align_of, size_of, MaybeUninit},
@@ -168,14 +169,7 @@ where
             panic!("zero-sized types are not valid buffer contents");
         };
 
-    unsafe fn from_ffi(data: *const std::ffi::c_void, range: usize) -> *const Self {
-        debug_assert!(range == size_of::<Self>());
-        debug_assert!(data as usize % align_of::<Self>() == 0);
-
-        data.cast()
-    }
-
-    unsafe fn from_ffi_mut(data: *mut std::ffi::c_void, range: usize) -> *mut Self {
+    unsafe fn from_ffi(data: *mut c_void, range: usize) -> *mut Self {
         debug_assert!(range == size_of::<Self>());
         debug_assert!(data as usize % align_of::<Self>() == 0);
 

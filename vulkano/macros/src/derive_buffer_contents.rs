@@ -80,10 +80,14 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
         ast.generics.split_for_impl()
     };
 
-    let (from_ffi, from_ffi_mut);
+    let function_body = if is_unsized {
+        quote! {
+            #[repr(C)]
+            struct PtrComponents {
+                data: *mut ::std::ffi::c_void,
+                len: usize,
+            }
 
-    if is_unsized {
-        let components = quote! {
             let alignment = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
                 .alignment()
                 .as_devicesize() as usize;
@@ -101,16 +105,6 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
             let len = tail_size / element_size;
 
             let components = PtrComponents { data, len };
-        };
-
-        from_ffi = quote! {
-            #[repr(C)]
-            struct PtrComponents {
-                data: *const ::std::ffi::c_void,
-                len: usize,
-            }
-
-            #components
 
             // SAFETY: All fields must implement `BufferContents`. The last field, if it is
             // unsized, must therefore be a slice or a DST derived from a slice. It can not be any
@@ -133,33 +127,17 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
             // pointer to the type will by definition be smaller, and since transmuting types of
             // different sizes never works, it will cause a compilation error on this line.
             //
-            // TODO: HACK: Replace with `std::ptr::from_raw_parts` once it is stabilized.
-            ::std::mem::transmute::<PtrComponents, *const Self>(components)
-        };
-
-        from_ffi_mut = quote! {
-            #[repr(C)]
-            struct PtrComponents {
-                data: *mut ::std::ffi::c_void,
-                len: usize,
-            }
-
-            #components
-
-            // SAFETY: Please read the docs in `from_ffi` above.
-            // TODO: HACK: Replace with `std::ptr::from_raw_parts_mut` once it is stabilized.
+            // HACK: Replace with `std::ptr::from_raw_parts_mut` once it is stabilized.
             ::std::mem::transmute::<PtrComponents, *mut Self>(components)
-        };
+        }
     } else {
-        from_ffi = quote! {
+        quote! {
             ::std::debug_assert!(range == ::std::mem::size_of::<Self>());
             ::std::debug_assert!(data as usize % ::std::mem::align_of::<Self>() == 0);
 
             data.cast()
-        };
-
-        from_ffi_mut = from_ffi.clone();
-    }
+        }
+    };
 
     Ok(quote! {
         #[allow(unsafe_code)]
@@ -169,13 +147,8 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
             const LAYOUT: ::#crate_ident::buffer::BufferContentsLayout = #layout;
 
             #[inline(always)]
-            unsafe fn from_ffi(data: *const ::std::ffi::c_void, range: usize) -> *const Self {
-                #from_ffi
-            }
-
-            #[inline(always)]
-            unsafe fn from_ffi_mut(data: *mut ::std::ffi::c_void, range: usize) -> *mut Self {
-                #from_ffi_mut
+            unsafe fn from_ffi(data: *mut ::std::ffi::c_void, range: usize) -> *mut Self {
+                #function_body
             }
         }
     })

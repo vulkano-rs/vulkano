@@ -311,7 +311,7 @@ where
 
         let mapped_ptr = self.mapped_ptr().ok_or(BufferError::MemoryNotHostVisible)?;
         // SAFETY: `Subbuffer` guarantees that its contents are layed out correctly for `T`.
-        let data = unsafe { &mut *T::from_ffi_mut(mapped_ptr.as_ptr(), self.size as usize) };
+        let data = unsafe { &mut *T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
 
         Ok(BufferWriteGuard {
             subbuffer: self,
@@ -776,11 +776,10 @@ impl Display for WriteLockError {
 // - `LAYOUT` must be the correct layout for the type, which also means the type must either be
 //   sized or if it's unsized then its metadata must be the same as that of a slice. Implementing
 //   `BufferContents` for any other kind of DST is instantaneous horrifically undefined behavior.
-// - `from_ffi` and `from_ffi_mut` must create a pointer with the same address as the `data`
-//   parameter that is passed in. The pointer is expected to be aligned properly already.
-// - `from_ffi` must create a pointer that is expected to be valid for reads for exactly `range`
-//   bytes, similarly `from_ffi_mut` must create a pointer that is expected to be valid for reads
-//   and writes for exactly `range` bytes. The `data` and `range` are expected to be valid for the
+// - `from_ffi` must create a pointer with the same address as the `data` parameter that is passed
+//   in. The pointer is expected to be aligned properly already.
+// - `from_ffi` must create a pointer that is expected to be valid for reads (and potentially
+//   writes) for exactly `range` bytes. The `data` and `range` are expected to be valid for the
 //   `LAYOUT`.
 pub unsafe trait BufferContents: Send + Sync + 'static {
     /// The layout of the contents.
@@ -794,17 +793,7 @@ pub unsafe trait BufferContents: Send + Sync + 'static {
     /// - If `Self` is unsized, then the `range` minus the size of the head (sized part) of the DST
     ///   must be evenly divisible by the size of the element type.
     #[doc(hidden)]
-    unsafe fn from_ffi(data: *const c_void, range: usize) -> *const Self;
-
-    /// Creates a pointer to `Self` from a pointer to the start of the data and a range in bytes.
-    ///
-    /// # Safety
-    ///
-    /// - If `Self` is sized, then `range` must match the size exactly.
-    /// - If `Self` is unsized, then the `range` minus the size of the head (sized part) of the DST
-    ///   must be evenly divisible by the size of the element type.
-    #[doc(hidden)]
-    unsafe fn from_ffi_mut(data: *mut c_void, range: usize) -> *mut Self;
+    unsafe fn from_ffi(data: *mut c_void, range: usize) -> *mut Self;
 }
 
 unsafe impl<T> BufferContents for T
@@ -819,15 +808,7 @@ where
         };
 
     #[inline(always)]
-    unsafe fn from_ffi(data: *const c_void, range: usize) -> *const Self {
-        debug_assert!(range == size_of::<T>());
-        debug_assert!(data as usize % align_of::<T>() == 0);
-
-        data.cast()
-    }
-
-    #[inline(always)]
-    unsafe fn from_ffi_mut(data: *mut c_void, range: usize) -> *mut Self {
+    unsafe fn from_ffi(data: *mut c_void, range: usize) -> *mut Self {
         debug_assert!(range == size_of::<T>());
         debug_assert!(data as usize % align_of::<T>() == 0);
 
@@ -845,16 +826,7 @@ where
     });
 
     #[inline(always)]
-    unsafe fn from_ffi(data: *const c_void, range: usize) -> *const Self {
-        debug_assert!(range % size_of::<T>() == 0);
-        debug_assert!(data as usize % align_of::<T>() == 0);
-        let len = range / size_of::<T>();
-
-        ptr::slice_from_raw_parts(data.cast(), len)
-    }
-
-    #[inline(always)]
-    unsafe fn from_ffi_mut(data: *mut c_void, range: usize) -> *mut Self {
+    unsafe fn from_ffi(data: *mut c_void, range: usize) -> *mut Self {
         debug_assert!(range % size_of::<T>() == 0);
         debug_assert!(data as usize % align_of::<T>() == 0);
         let len = range / size_of::<T>();
