@@ -33,7 +33,135 @@ use std::{
 ///
 /// See also [the `shader` module documentation] for more information about layout in shaders.
 ///
+/// # Examples
+///
+/// ## Aligning struct members
+///
+/// Consider this GLSL code:
+///
+/// ```glsl
+/// layout(binding = 0) uniform Example {
+///     int x;
+///     vec3 y;
+///     vec4 z;
+/// };
+/// ```
+///
+/// By default, the alignment rules require that `y` and `z` are placed at an offset that is an
+/// integer multiple of 16. However, `x` is only 4 bytes, which means that there must be 12 bytes
+/// of padding between `x` and `y`. Furthermore, `y` is only 12 bytes, which means that there must
+/// be 4 bytes of padding between `y` and `z`.
+///
+/// We can model this in Rust using `Padded`:
+///
+/// ```
+/// # use vulkano::{buffer::BufferContents, padded::Padded};
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct Example {
+///     x: Padded<i32, 12>,
+///     y: Padded<[f32; 3], 4>,
+///     z: [f32; 4],
+/// }
+/// ```
+///
+/// **But note that this layout is extremely suboptimal.** What you should do instead is reorder
+/// your fields such that you don't need any padding:
+///
+/// ```glsl
+/// layout(binding = 0) uniform Example {
+///     vec3 y;
+///     int x;
+///     vec4 z;
+/// };
+/// ```
+///
+/// ```
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct Example {
+///     y: [f32; 3],
+///     x: i32,
+///     z: [f32; 4],
+/// }
+/// ```
+///
+/// This way, the fields are aligned naturally. But reordering fields is not always an option: the
+/// notable case being when your structure only contains `vec3`s and `vec4`s, or `vec3`s and
+/// `vec2`s, so that there are no scalar fields to fill the gaps with.
+///
+/// ## Aligning array elements
+///
+/// If you need an array of `vec3`s, then that necessitates that each array element has 4 bytes of
+/// trailing padding. The same goes for a matrix with 3 rows, each column will have to have 4 bytes
+/// of trailing padding (assuming its column-major).
+///
+/// We can model those with `Padded` too:
+///
+/// ```glsl
+/// layout(binding = 0) uniform Example {
+///     vec3 x[10];
+///     mat3 y;
+/// };
+/// ```
+///
+/// ```
+/// # use vulkano::{buffer::BufferContents, padded::Padded};
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct Example {
+///     x: [Padded<[f32; 3], 4>; 10],
+///     y: [Padded<[f32; 3], 4>; 3],
+/// }
+/// ```
+///
+/// Another example would be if you have an array of scalars or `vec2`s inside a uniform block:
+///
+/// ```glsl
+/// layout(binding = 0) uniform Example {
+///     int x[10];
+///     vec2 y[10];
+/// };
+/// ```
+///
+/// By default, arrays inside uniform blocks must have their elements aligned to 16 bytes at
+/// minimum. Which would look like this in Rust:
+///
+/// ```
+/// # use vulkano::{buffer::BufferContents, padded::Padded};
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct Example {
+///     x: [Padded<i32, 12>; 10],
+///     y: [Padded<[f32; 2], 8>; 10],
+/// }
+/// ```
+///
+/// **But note again, that this layout is suboptimal.** You can instead use a buffer block instead
+/// of the uniform block, if memory usage could become an issue:
+///
+/// ```glsl
+/// layout(binding = 0) buffer Example {
+///     int x[10];
+///     vec2 y[10];
+/// };
+/// ```
+///
+/// ```
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct Example {
+///     x: [i32; 10],
+///     y: [[f32; 2]; 10],
+/// }
+/// ```
+///
+/// You may also want to consider using [the `uniform_buffer_standard_layout` feature].
+///
 /// [the `shader` module documentation]: crate::shader
+/// [the `uniform_buffer_standard_layout` feature]: crate::device::Features::uniform_buffer_standard_layout
 #[repr(C)]
 pub struct Padded<T, const N: usize> {
     value: T,
