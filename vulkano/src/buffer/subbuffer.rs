@@ -732,6 +732,35 @@ impl Display for WriteLockError {
 /// }
 /// ```
 ///
+/// You can also use generics if you please:
+///
+/// ```
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct MyData<T, U> {
+///     x: T,
+///     y: T,
+///     slice: [U],
+/// }
+/// ```
+///
+/// This even works with dependently-sized types:
+///
+/// ```
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents)]
+/// #[repr(C)]
+/// struct MyData<T>
+/// where
+///     T: ?Sized,
+/// {
+///     x: f32,
+///     y: f32,
+///     z: T,
+/// }
+/// ```
+///
 /// [the derive macro]: vulkano_macros::BufferContents
 //
 // If you absolutely *must* implement this trait by hand, here are the safety requirements (but

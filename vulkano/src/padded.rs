@@ -40,7 +40,7 @@ use std::{
 /// Consider this GLSL code:
 ///
 /// ```glsl
-/// layout(binding = 0) uniform Example {
+/// layout(binding = 0) uniform MyData {
 ///     int x;
 ///     vec3 y;
 ///     vec4 z;
@@ -58,18 +58,24 @@ use std::{
 /// # use vulkano::{buffer::BufferContents, padded::Padded};
 /// #[derive(BufferContents)]
 /// #[repr(C)]
-/// struct Example {
+/// struct MyData {
 ///     x: Padded<i32, 12>,
 ///     y: Padded<[f32; 3], 4>,
 ///     z: [f32; 4],
 /// }
+///
+/// let data = MyData {
+///     x: Padded(42),
+///     y: Padded([1.0, 2.0, 3.0]),
+///     z: [10.0; 4],
+/// };
 /// ```
 ///
 /// **But note that this layout is extremely suboptimal.** What you should do instead is reorder
 /// your fields such that you don't need any padding:
 ///
 /// ```glsl
-/// layout(binding = 0) uniform Example {
+/// layout(binding = 0) uniform MyData {
 ///     vec3 y;
 ///     int x;
 ///     vec4 z;
@@ -80,7 +86,7 @@ use std::{
 /// # use vulkano::buffer::BufferContents;
 /// #[derive(BufferContents)]
 /// #[repr(C)]
-/// struct Example {
+/// struct MyData {
 ///     y: [f32; 3],
 ///     x: i32,
 ///     z: [f32; 4],
@@ -97,10 +103,10 @@ use std::{
 /// trailing padding. The same goes for a matrix with 3 rows, each column will have to have 4 bytes
 /// of trailing padding (assuming its column-major).
 ///
-/// We can model those with `Padded` too:
+/// We can model those using `Padded` too:
 ///
 /// ```glsl
-/// layout(binding = 0) uniform Example {
+/// layout(binding = 0) uniform MyData {
 ///     vec3 x[10];
 ///     mat3 y;
 /// };
@@ -110,7 +116,7 @@ use std::{
 /// # use vulkano::{buffer::BufferContents, padded::Padded};
 /// #[derive(BufferContents)]
 /// #[repr(C)]
-/// struct Example {
+/// struct MyData {
 ///     x: [Padded<[f32; 3], 4>; 10],
 ///     y: [Padded<[f32; 3], 4>; 3],
 /// }
@@ -119,20 +125,20 @@ use std::{
 /// Another example would be if you have an array of scalars or `vec2`s inside a uniform block:
 ///
 /// ```glsl
-/// layout(binding = 0) uniform Example {
+/// layout(binding = 0) uniform MyData {
 ///     int x[10];
 ///     vec2 y[10];
 /// };
 /// ```
 ///
 /// By default, arrays inside uniform blocks must have their elements aligned to 16 bytes at
-/// minimum. Which would look like this in Rust:
+/// minimum, which would look like this in Rust:
 ///
 /// ```
 /// # use vulkano::{buffer::BufferContents, padded::Padded};
 /// #[derive(BufferContents)]
 /// #[repr(C)]
-/// struct Example {
+/// struct MyData {
 ///     x: [Padded<i32, 12>; 10],
 ///     y: [Padded<[f32; 2], 8>; 10],
 /// }
@@ -142,7 +148,7 @@ use std::{
 /// of the uniform block, if memory usage could become an issue:
 ///
 /// ```glsl
-/// layout(binding = 0) buffer Example {
+/// layout(binding = 0) buffer MyData {
 ///     int x[10];
 ///     vec2 y[10];
 /// };
@@ -152,7 +158,7 @@ use std::{
 /// # use vulkano::buffer::BufferContents;
 /// #[derive(BufferContents)]
 /// #[repr(C)]
-/// struct Example {
+/// struct MyData {
 ///     x: [i32; 10],
 ///     y: [[f32; 2]; 10],
 /// }
