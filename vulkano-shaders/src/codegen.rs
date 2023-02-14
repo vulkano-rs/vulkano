@@ -216,7 +216,7 @@ pub(super) fn compile(
 pub(super) fn reflect(
     input: &MacroInput,
     source: LitStr,
-    prefix: String,
+    name: String,
     words: &[u32],
     input_paths: Vec<String>,
     type_registry: &mut TypeRegistry,
@@ -226,7 +226,7 @@ pub(super) fn reflect(
     })?;
     let shader = Shader {
         source,
-        name: prefix,
+        name,
         spirv,
     };
 
