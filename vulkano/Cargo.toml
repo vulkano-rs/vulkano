@@ -55,4 +55,3 @@ vk-parse = "0.8"
 
 [features]
 document_unchecked = []
-serde = ["dep:serde"]
