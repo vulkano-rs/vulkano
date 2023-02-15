@@ -90,6 +90,7 @@ Changes to memory allocation:
 - Fixed possible arithmetic overflows when allocating memory with a size that's too large.
 - Added missing check for the allocation type when binding memory.
 - [#2130](https://github.com/vulkano-rs/vulkano/issues/2130): Fixed getting memory requirements on swapchain images, which don
+- Vulkano-shaders: Fixed an "expected expression, found `,`" compile error for precompiled shaders with more than one entrypoint.
 
 # Version 0.32.3 (2022-12-07)
 
