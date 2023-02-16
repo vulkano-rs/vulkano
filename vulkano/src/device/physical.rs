@@ -1553,7 +1553,7 @@ impl PhysicalDevice {
         let mut full_screen_exclusive_info_vk = None;
         let mut full_screen_exclusive_win32_info_vk = None;
 
-        if self.supported_extensions().ext_full_screen_exclusive {
+        if self.supported_extensions().ext_full_screen_exclusive && win32_monitor.is_some() {
             let next =
                 full_screen_exclusive_info_vk.insert(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
                     full_screen_exclusive: full_screen_exclusive.into(),
