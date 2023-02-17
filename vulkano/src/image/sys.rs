@@ -39,6 +39,7 @@ use crate::{
     sync::{future::AccessError, CurrentAccess, Sharing},
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
+use ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -135,6 +136,7 @@ impl RawImage {
             initial_layout,
             external_memory_handle_types,
             _ne: _,
+            image_drm_format_modifier_create_info: _,
         } = create_info;
 
         let physical_device = device.physical_device();
@@ -214,6 +216,7 @@ impl RawImage {
             match tiling {
                 ImageTiling::Linear => format_properties.linear_tiling_features,
                 ImageTiling::Optimal => format_properties.optimal_tiling_features,
+                ImageTiling::DrmFormatModifier => format_properties.linear_tiling_features, // TODO: improve
             }
         };
 
@@ -872,6 +875,7 @@ impl RawImage {
             initial_layout,
             external_memory_handle_types,
             _ne: _,
+            mut image_drm_format_modifier_create_info,
         } = &create_info;
 
         let aspects = format.map_or_else(Default::default, |format| format.aspects());
@@ -954,6 +958,13 @@ impl RawImage {
             info_vk.p_next = next as *const _ as *const _;
         }
 
+        if external_memory_handle_types.contains_enum(ExternalMemoryHandleType::DmaBuf) {
+            let next = image_drm_format_modifier_create_info.as_mut().unwrap();
+
+            next.p_next = info_vk.p_next;
+            info_vk.p_next = next as *const _ as *const _;
+        }
+
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
@@ -1001,6 +1012,7 @@ impl RawImage {
             initial_layout,
             external_memory_handle_types,
             _ne: _,
+            image_drm_format_modifier_create_info: _,
         } = create_info;
 
         let aspects = format.map_or_else(Default::default, |format| format.aspects());
@@ -1021,6 +1033,7 @@ impl RawImage {
             match tiling {
                 ImageTiling::Linear => format_properties.linear_tiling_features,
                 ImageTiling::Optimal => format_properties.optimal_tiling_features,
+                ImageTiling::DrmFormatModifier => format_properties.linear_tiling_features, // TODO: improve
             }
         };
 
@@ -1958,6 +1971,9 @@ pub struct ImageCreateInfo {
     /// The default value is [`ExternalMemoryHandleTypes::empty()`].
     pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
+    /// Specify that an image be created with the provided DRM format modifier and explicit memory layout
+    pub image_drm_format_modifier_create_info: Option<ImageDrmFormatModifierExplicitCreateInfoEXT>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1980,6 +1996,7 @@ impl Default for ImageCreateInfo {
             sharing: Sharing::Exclusive,
             initial_layout: ImageLayout::Undefined,
             external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
+            image_drm_format_modifier_create_info: None,
             _ne: crate::NonExhaustive(()),
         }
     }

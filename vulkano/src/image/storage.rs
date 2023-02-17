@@ -16,22 +16,24 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned, Queue},
     format::Format,
-    image::{sys::ImageCreateInfo, view::ImageView, ImageFormatInfo},
+    image::{sys::ImageCreateInfo, view::ImageView, ImageFormatInfo, ImageTiling},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationType, MemoryAllocatePreference, MemoryAllocator,
-            MemoryUsage,
+            AllocationCreateInfo, AllocationType, MemoryAlloc, MemoryAllocatePreference,
+            MemoryAllocator, MemoryUsage,
         },
-        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes,
+        DedicatedAllocation, DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes, MemoryAllocateFlags, MemoryAllocateInfo,
     },
     sync::Sharing,
     DeviceSize,
 };
+use ash::vk::{ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout};
 use smallvec::SmallVec;
 use std::{
     fs::File,
     hash::{Hash, Hasher},
+    os::unix::prelude::{FromRawFd, IntoRawFd, RawFd},
     sync::Arc,
 };
 
@@ -210,6 +212,128 @@ impl StorageImage {
         }
     }
 
+    /// Creates a new image from a set of dma_buf file descriptors. The memory will be imported from the file desciptors, and will be bound to the image.
+    /// # Arguments
+    /// * `fds` - The list of file descriptors to import from. Single planar images should only use one, and multiplanar images can use multiple, for example, for each color.
+    /// * `offset` - The byte offset from the start of the image of the plane where the image subresource begins.
+    /// * `pitch` - Describes the number of bytes between each row of texels in an image.
+    pub fn new_from_dma_buf_fd(
+        allocator: &(impl MemoryAllocator + ?Sized),
+        device: Arc<Device>,
+        dimensions: ImageDimensions,
+        format: Format,
+        usage: ImageUsage,
+        flags: ImageCreateFlags,
+        queue_family_indices: impl IntoIterator<Item = u32>,
+        mut subresource_data: Vec<SubresourceData>,
+        drm_format_modifier: u64,
+    ) -> Result<Arc<StorageImage>, ImageError> {
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
+
+        // Create a vector of the layout of each image plane.
+        let layout: Vec<SubresourceLayout> = subresource_data
+            .iter_mut()
+            .map(
+                |SubresourceData {
+                     fd: _,
+                     offset,
+                     row_pitch,
+                 }| {
+                    SubresourceLayout {
+                        offset: *offset,
+                        size: 0,
+                        row_pitch: *row_pitch,
+                        array_pitch: 0_u64,
+                        depth_pitch: 0_u64,
+                    }
+                },
+            )
+            .collect();
+
+        let fds: Vec<RawFd> = subresource_data
+            .iter_mut()
+            .map(
+                |SubresourceData {
+                     fd,
+                     offset: _,
+                     row_pitch: _,
+                 }| { *fd },
+            )
+            .collect();
+
+        let drm_mod = ImageDrmFormatModifierExplicitCreateInfoEXT::builder()
+            .drm_format_modifier(drm_format_modifier)
+            .plane_layouts(layout.as_ref())
+            .build();
+
+        let external_memory_handle_types = ExternalMemoryHandleTypes::DMA_BUF;
+
+        let image = RawImage::new(
+            device.clone(),
+            ImageCreateInfo {
+                flags,
+                dimensions,
+                format: Some(format),
+                usage,
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
+                } else {
+                    Sharing::Exclusive
+                },
+                external_memory_handle_types,
+                tiling: ImageTiling::DrmFormatModifier,
+                image_drm_format_modifier_create_info: Some(drm_mod),
+                ..Default::default()
+            },
+        )?;
+
+        let requirements = image.memory_requirements()[0];
+        let memory_type_index = allocator
+            .find_memory_type_index(requirements.memory_type_bits, MemoryUsage::GpuOnly.into())
+            .expect("failed to find a suitable memory type");
+
+        assert!(device.enabled_extensions().khr_external_memory_fd);
+        assert!(device.enabled_extensions().khr_external_memory);
+        assert!(device.enabled_extensions().ext_external_memory_dma_buf);
+
+        let memory = unsafe {
+            // Try cloning underlying fd
+            // TODO: For completeness, importing memory from muliple file descriptors should be added (In order to support importing multiplanar images). As of now, only single planar image importing will work.
+            let file = File::from_raw_fd(*fds.first().expect("File descriptor Vec is empty"));
+            let new_file = file.try_clone().expect("Error cloning file descriptor");
+
+            // Turn the original file descriptor back into a raw fd to avoid ownership problems
+            file.into_raw_fd();
+            DeviceMemory::import(
+                device,
+                MemoryAllocateInfo {
+                    allocation_size: requirements.layout.size(),
+                    memory_type_index,
+                    dedicated_allocation: Some(DedicatedAllocation::Image(&image)),
+                    export_handle_types: ExternalMemoryHandleTypes::empty(),
+                    flags: MemoryAllocateFlags::empty(),
+                    ..Default::default()
+                },
+                crate::memory::MemoryImportInfo::Fd {
+                    handle_type: crate::memory::ExternalMemoryHandleType::DmaBuf,
+                    file: new_file,
+                },
+            )
+            .unwrap() // TODO: Handle
+        };
+
+        let x = MemoryAlloc::new(memory).unwrap();
+
+        debug_assert!(x.offset() % requirements.layout.alignment().as_nonzero() == 0);
+        debug_assert!(x.size() == requirements.layout.size());
+
+        let inner = Arc::new(unsafe {
+            image
+                .bind_memory_unchecked([x])
+                .map_err(|(err, _, _)| err)?
+        });
+        Ok(Arc::new(StorageImage { inner }))
+    }
     /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.
     #[inline]
     pub fn general_purpose_image_view(
@@ -270,6 +394,19 @@ impl StorageImage {
 
         allocation.device_memory().allocation_size()
     }
+}
+
+/// Struct that contains the a file descriptor to import, when creating an image. Since a file descriptor is used for each
+/// plane in the case of multiplanar images, each fd needs to have an offset and a row pitch in order to interpret the imported data.
+pub struct SubresourceData {
+    // The file descriptor hanfle of a layer of an image.
+    pub fd: RawFd,
+
+    // The byte offset from the start of the plane where the image subresource begins.
+    pub offset: u64,
+
+    //  Describes the number of bytes between each row of texels in an image plane.
+    pub row_pitch: u64,
 }
 
 unsafe impl DeviceOwned for StorageImage {
