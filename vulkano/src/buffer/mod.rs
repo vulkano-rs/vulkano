@@ -90,18 +90,13 @@
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See [the `view` module]
 //! for how to create a buffer view.
 //!
-//! # A note on endianness
-//!
-//! The Vulkan specification requires that a Vulkan implementation has runtime support for the
-//! types [`u8`], [`u16`], [`u32`], [`u64`] as well as their signed versions, as well as [`f32`]
-//! and [`f64`] on the host, and that the representation and endianness of these types matches
-//! those on the device. This means that if you have for example a `Subbuffer<[u32]>`, you can be
-//! sure that it is represented the same way on the host as it is on the device, and you don't need
-//! to worry about converting the endianness.
+//! See also [the `shader` module documentation] for information about how buffer contents need to
+//! be laid out in accordance with the shader interface.
 //!
 //! [`RawBuffer`]: self::sys::RawBuffer
 //! [`SubbufferAllocator`]: self::allocator::SubbufferAllocator
 //! [the `view` module]: self::view
+//! [the `shader` module documentation]: crate::shader
 
 pub use self::{subbuffer::Subbuffer, usage::BufferUsage};
 use self::{
@@ -147,6 +142,89 @@ pub mod view;
 /// A storage for raw bytes.
 ///
 /// Unlike [`RawBuffer`], a `Buffer` has memory backing it, and can be used normally.
+///
+/// See [the module-level documentation] for more information about buffers.
+///
+/// # Examples
+///
+/// Sometimes, you need a buffer that is rarely accessed by the host. To get the best performance
+/// in this case, one should use a buffer in device-local memory, that is inaccessible from the
+/// host. As such, to initialize or otherwise access such a buffer, we need a *staging buffer*.
+///
+/// The following example outlines the general strategy one may take when initializing a
+/// device-local buffer.
+///
+/// ```
+/// use vulkano::{
+///     buffer::{BufferUsage, Buffer, BufferAllocateInfo},
+///     command_buffer::{
+///         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo,
+///         PrimaryCommandBufferAbstract,
+///     },
+///     memory::allocator::MemoryUsage,
+///     sync::GpuFuture,
+///     DeviceSize,
+/// };
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
+/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
+/// // Simple iterator to construct test data.
+/// let data = (0..10_000).map(|i| i as f32);
+///
+/// // Create a host-accessible buffer initialized with the data.
+/// let temporary_accessible_buffer = Buffer::from_iter(
+///     &memory_allocator,
+///     BufferAllocateInfo {
+///         // Specify that this buffer will be used as a transfer source.
+///         buffer_usage: BufferUsage::TRANSFER_SRC,
+///         // Specify use for upload to the device.
+///         memory_usage: MemoryUsage::Upload,
+///         ..Default::default()
+///     },
+///     data,
+/// )
+/// .unwrap();
+///
+/// // Create a buffer in device-local with enough space for a slice of `10_000` floats.
+/// let device_local_buffer = Buffer::new_slice::<f32>(
+///     &memory_allocator,
+///     BufferAllocateInfo {
+///         // Specify use as a storage buffer and transfer destination.
+///         buffer_usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
+///         // Specify use by the device only.
+///         memory_usage: MemoryUsage::GpuOnly,
+///         ..Default::default()
+///     },
+///     10_000 as DeviceSize,
+/// )
+/// .unwrap();
+///
+/// // Create a one-time command to copy between the buffers.
+/// let mut cbb = AutoCommandBufferBuilder::primary(
+///     &command_buffer_allocator,
+///     queue.queue_family_index(),
+///     CommandBufferUsage::OneTimeSubmit,
+/// )
+/// .unwrap();
+/// cbb.copy_buffer(CopyBufferInfo::buffers(
+///         temporary_accessible_buffer,
+///         device_local_buffer.clone(),
+///     ))
+///     .unwrap();
+/// let cb = cbb.build().unwrap();
+///
+/// // Execute the copy command and wait for completion before proceeding.
+/// cb.execute(queue.clone())
+///     .unwrap()
+///     .then_signal_fence_and_flush()
+///     .unwrap()
+///     .wait(None /* timeout */)
+///     .unwrap()
+/// ```
+///
+/// [the module-level documentation]: self
 #[derive(Debug)]
 pub struct Buffer {
     inner: RawBuffer,

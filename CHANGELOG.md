@@ -81,6 +81,7 @@ Changes to memory allocation:
 - Added `VertexBufferDescription` and three new methods to the `Vertex` trait that return it: `per_vertex`, `per_instance` and `per_instance_with_divisor`. This deprecates and replaces `BuffersDefinition`.
 - Implemented `From<SampleCount>` for `u32`.
 - Added `BufferAllocateInfo`.
+- Added documentation to the `shader` module to explain the layout of buffers, push constants and other data accessed by shaders.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
@@ -88,6 +89,8 @@ Changes to memory allocation:
 - Fixed panic when building a finished command buffer, if the command buffer contains commands that use only some subresources of an image.
 - Fixed possible arithmetic overflows when allocating memory with a size that's too large.
 - Added missing check for the allocation type when binding memory.
+- [#2130](https://github.com/vulkano-rs/vulkano/issues/2130): Fixed getting memory requirements on swapchain images, which don
+- Vulkano-shaders: Fixed an "expected expression, found `,`" compile error for precompiled shaders with more than one entrypoint.
 
 # Version 0.32.3 (2022-12-07)
 

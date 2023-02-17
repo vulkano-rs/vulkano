@@ -1037,12 +1037,16 @@ impl RawImage {
             }
         };
 
-        let memory_requirements = if flags.intersects(ImageCreateFlags::DISJOINT) {
-            (0..format.unwrap().planes().len())
-                .map(|plane| Self::get_memory_requirements(&device, handle, Some(plane)))
-                .collect()
+        let memory_requirements = if needs_destruction {
+            if flags.intersects(ImageCreateFlags::DISJOINT) {
+                (0..format.unwrap().planes().len())
+                    .map(|plane| Self::get_memory_requirements(&device, handle, Some(plane)))
+                    .collect()
+            } else {
+                smallvec![Self::get_memory_requirements(&device, handle, None)]
+            }
         } else {
-            smallvec![Self::get_memory_requirements(&device, handle, None)]
+            smallvec![]
         };
 
         RawImage {
@@ -1618,6 +1622,7 @@ impl RawImage {
 
     /// Returns the memory requirements for this image.
     ///
+    /// - If the image is a swapchain image, this returns a slice with a length of 0.
     /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
     /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
     ///   `self.format().unwrap().planes().len()`.
@@ -2103,6 +2108,7 @@ impl Image {
 
     /// Returns the memory requirements for this image.
     ///
+    /// - If the image is a swapchain image, this returns a slice with a length of 0.
     /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
     /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
     ///   `self.format().unwrap().planes().len()`.

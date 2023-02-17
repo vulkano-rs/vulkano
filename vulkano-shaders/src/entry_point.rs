@@ -51,7 +51,7 @@ pub(super) fn write_entry_point(
                 input_interface: #input_interface,
                 output_interface: #output_interface,
             },
-        ),
+        )
     }
 }
 
