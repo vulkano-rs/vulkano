@@ -67,18 +67,18 @@ mod linux {
     };
 
     pub fn main() {
-        let event_loop = EventLoop::new();
-        // For some reason, this must be created before the Vulkan window.
+        let event_loop_gl = winit_glium::event_loop::EventLoop::new();
+        // For some reason, this must be created before the vulkan window
         let hrb = glutin::ContextBuilder::new()
             .with_gl_debug_flag(true)
             .with_gl(glutin::GlRequest::Latest)
-            .build_surfaceless(&event_loop)
+            .build_surfaceless(&event_loop_gl)
             .unwrap();
 
         let hrb_vk = glutin::ContextBuilder::new()
             .with_gl_debug_flag(true)
             .with_gl(glutin::GlRequest::Latest)
-            .build_surfaceless(&event_loop)
+            .build_surfaceless(&event_loop_gl)
             .unwrap();
 
         // Used for checking device and driver UUIDs.
@@ -88,6 +88,7 @@ mod linux {
         )
         .unwrap();
 
+        let event_loop = EventLoop::new();
         let (
             device,
             _instance,
