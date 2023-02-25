@@ -12,7 +12,7 @@ use crate::{
     device::{Device, DeviceOwned},
     memory::{
         self,
-        allocator::{align_up, DeviceAlignment, DeviceLayout},
+        allocator::{align_down, align_up, DeviceAlignment, DeviceLayout},
         is_aligned,
     },
     DeviceSize, NonZeroDeviceSize,
@@ -20,6 +20,7 @@ use crate::{
 use bytemuck::PodCastError;
 use std::{
     alloc::Layout,
+    cmp,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
@@ -111,13 +112,6 @@ impl<T: ?Sized> Subbuffer<T> {
         self.offset..self.offset + self.size
     }
 
-    /// Returns the range the subbuffer occupies, in bytes, relative to the [`DeviceMemory`] block.
-    fn memory_range(&self) -> Range<DeviceSize> {
-        let memory_offset = self.memory_offset();
-
-        memory_offset..memory_offset + self.size
-    }
-
     /// Returns the buffer that this subbuffer is a part of.
     pub fn buffer(&self) -> &Arc<Buffer> {
         match &self.parent {
@@ -200,18 +194,25 @@ where
             BufferMemory::Sparse => todo!("`Subbuffer::read` doesn't support sparse binding yet"),
         };
 
-        if let Some(atom_size) = allocation.atom_size() {
-            let range = self.memory_range();
-            if !is_aligned(range.start, atom_size) || !is_aligned(range.end, atom_size) {
-                return Err(BufferError::SubbufferNotAlignedToAtomSize { range, atom_size });
-            }
-        }
-
         let range = self.range();
 
+        let aligned_range = if let Some(atom_size) = allocation.atom_size() {
+            let memory_offset = allocation.offset() + self.offset();
+
+            Range {
+                start: align_down(memory_offset, atom_size) - allocation.offset(),
+                end: cmp::min(
+                    align_up(memory_offset + self.size, atom_size),
+                    allocation.offset() + allocation.size(),
+                ) - allocation.offset(),
+            }
+        } else {
+            range.clone()
+        };
+
         let mut state = self.buffer().state();
-        state.check_cpu_read(range.clone())?;
-        unsafe { state.cpu_read_lock(range.clone()) };
+        state.check_cpu_read(aligned_range.clone())?;
+        unsafe { state.cpu_read_lock(aligned_range.clone()) };
 
         if allocation.atom_size().is_some() {
             // If there are other read locks being held at this point, they also called
@@ -219,7 +220,7 @@ where
             // lock, so there will be no new data and this call will do nothing.
             // TODO: probably still more efficient to call it only if we're the first to acquire a
             // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            unsafe { allocation.invalidate_range(range.clone()) }?;
+            unsafe { allocation.invalidate_range(aligned_range) }?;
         }
 
         let bytes = unsafe { allocation.read(range) }.ok_or(BufferError::MemoryNotHostVisible)?;
@@ -247,21 +248,28 @@ where
             BufferMemory::Sparse => todo!("`Subbuffer::write` doesn't support sparse binding yet"),
         };
 
-        if let Some(atom_size) = allocation.atom_size() {
-            let range = self.memory_range();
-            if !is_aligned(range.start, atom_size) || !is_aligned(range.end, atom_size) {
-                return Err(BufferError::SubbufferNotAlignedToAtomSize { range, atom_size });
-            }
-        }
-
         let range = self.range();
 
+        let aligned_range = if let Some(atom_size) = allocation.atom_size() {
+            let memory_offset = allocation.offset() + self.offset();
+
+            Range {
+                start: align_down(memory_offset, atom_size) - allocation.offset(),
+                end: cmp::min(
+                    align_up(memory_offset + self.size, atom_size),
+                    allocation.offset() + allocation.size(),
+                ) - allocation.offset(),
+            }
+        } else {
+            range.clone()
+        };
+
         let mut state = self.buffer().state();
-        state.check_cpu_write(range.clone())?;
-        unsafe { state.cpu_write_lock(range.clone()) };
+        state.check_cpu_write(aligned_range.clone())?;
+        unsafe { state.cpu_write_lock(aligned_range.clone()) };
 
         if allocation.atom_size().is_some() {
-            unsafe { allocation.invalidate_range(range.clone()) }?;
+            unsafe { allocation.invalidate_range(aligned_range) }?;
         }
 
         let bytes = unsafe { allocation.write(range) }.ok_or(BufferError::MemoryNotHostVisible)?;
