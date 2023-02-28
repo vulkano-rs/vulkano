@@ -220,7 +220,7 @@ where
             // lock, so there will be no new data and this call will do nothing.
             // TODO: probably still more efficient to call it only if we're the first to acquire a
             // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            unsafe { allocation.invalidate_range(aligned_range) }?;
+            unsafe { allocation.invalidate_range(aligned_range.clone()) }?;
         }
 
         let bytes = unsafe { allocation.read(range) }.ok_or(BufferError::MemoryNotHostVisible)?;
@@ -229,6 +229,7 @@ where
         Ok(BufferReadGuard {
             subbuffer: self,
             data,
+            range: aligned_range,
         })
     }
 
@@ -269,7 +270,7 @@ where
         unsafe { state.cpu_write_lock(aligned_range.clone()) };
 
         if allocation.atom_size().is_some() {
-            unsafe { allocation.invalidate_range(aligned_range) }?;
+            unsafe { allocation.invalidate_range(aligned_range.clone()) }?;
         }
 
         let bytes = unsafe { allocation.write(range) }.ok_or(BufferError::MemoryNotHostVisible)?;
@@ -278,6 +279,7 @@ where
         Ok(BufferWriteGuard {
             subbuffer: self,
             data,
+            range: aligned_range,
         })
     }
 }
@@ -531,13 +533,13 @@ impl<T: ?Sized> Hash for Subbuffer<T> {
 pub struct BufferReadGuard<'a, T: ?Sized> {
     subbuffer: &'a Subbuffer<T>,
     data: &'a T,
+    range: Range<DeviceSize>,
 }
 
 impl<T: ?Sized> Drop for BufferReadGuard<'_, T> {
     fn drop(&mut self) {
-        let range = self.subbuffer.range();
         let mut state = self.subbuffer.buffer().state();
-        unsafe { state.cpu_read_unlock(range) };
+        unsafe { state.cpu_read_unlock(self.range.clone()) };
     }
 }
 
@@ -558,22 +560,22 @@ impl<T: ?Sized> Deref for BufferReadGuard<'_, T> {
 pub struct BufferWriteGuard<'a, T: ?Sized> {
     subbuffer: &'a Subbuffer<T>,
     data: &'a mut T,
+    range: Range<DeviceSize>,
 }
 
 impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
     fn drop(&mut self) {
-        let range = self.subbuffer.range();
         let allocation = match self.subbuffer.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => unreachable!(),
         };
 
         if allocation.atom_size().is_some() {
-            unsafe { allocation.flush_range(range.clone()).unwrap() };
+            unsafe { allocation.flush_range(self.range.clone()).unwrap() };
         }
 
         let mut state = self.subbuffer.buffer().state();
-        unsafe { state.cpu_write_unlock(range) };
+        unsafe { state.cpu_write_unlock(self.range.clone()) };
     }
 }
 
