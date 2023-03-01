@@ -14,10 +14,11 @@ macro_rules! single_pass_renderpass {
         $device:expr,
         attachments: { $($a:tt)* },
         pass: {
-            color: [$($color_atch:ident),*],
-            depth_stencil: {$($depth_atch:ident)*}$(,)*
-            $(resolve: [$($resolve_atch:ident),*])*$(,)*
-        }
+            color: [$($color_atch:ident),* $(,)?],
+            depth_stencil: {$($depth_atch:ident)?}
+            $(,resolve: [$($resolve_atch:ident),* $(,)?])*
+            $(,)*
+        } $(,)?
     ) => (
         $crate::ordered_passes_renderpass!(
             $device,
@@ -45,22 +46,24 @@ macro_rules! ordered_passes_renderpass {
                     load: $load:ident,
                     store: $store:ident,
                     format: $format:expr,
-                    samples: $samples:expr,
-                    $(initial_layout: $init_layout:expr,)*
-                    $(final_layout: $final_layout:expr,)*
+                    samples: $samples:expr
+                    $(,initial_layout: $init_layout:expr)?
+                    $(,final_layout: $final_layout:expr)?
+                    $(,)?
                 }
-            ),*
+            ),* $(,)?
         },
         passes: [
             $(
                 {
-                    color: [$($color_atch:ident),*],
-                    depth_stencil: {$($depth_atch:ident)*},
-                    input: [$($input_atch:ident),*]$(,)*
-                    $(resolve: [$($resolve_atch:ident),*])*$(,)*
+                    color: [$($color_atch:ident),* $(,)?],
+                    depth_stencil: {$($depth_atch:ident)* $(,)?},
+                    input: [$($input_atch:ident),* $(,)?]
+                    $(,resolve: [$($resolve_atch:ident),* $(,)?])?
+                    $(,)*
                 }
-            ),*
-        ]
+            ),* $(,)?
+        ] $(,)?
     ) => ({
         use $crate::render_pass::RenderPass;
 
