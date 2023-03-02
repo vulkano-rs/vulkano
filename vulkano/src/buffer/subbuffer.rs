@@ -212,15 +212,15 @@ where
         let range = self.range();
 
         let aligned_range = if let Some(atom_size) = allocation.atom_size() {
-            let memory_offset = allocation.offset() + self.offset();
+            // This works because the suballocators align allocations to the non-coherent atom size
+            // when the memory is host-visible but not host-coherent.
+            let start = align_down(self.offset, atom_size);
+            let end = cmp::min(
+                align_up(self.offset + self.size, atom_size),
+                allocation.size(),
+            );
 
-            Range {
-                start: align_down(memory_offset, atom_size) - allocation.offset(),
-                end: cmp::min(
-                    align_up(memory_offset + self.size, atom_size),
-                    allocation.offset() + allocation.size(),
-                ) - allocation.offset(),
-            }
+            Range { start, end }
         } else {
             range.clone()
         };
@@ -282,15 +282,15 @@ where
         let range = self.range();
 
         let aligned_range = if let Some(atom_size) = allocation.atom_size() {
-            let memory_offset = allocation.offset() + self.offset();
+            // This works because the suballocators align allocations to the non-coherent atom size
+            // when the memory is host-visible but not host-coherent.
+            let start = align_down(self.offset, atom_size);
+            let end = cmp::min(
+                align_up(self.offset + self.size, atom_size),
+                allocation.size(),
+            );
 
-            Range {
-                start: align_down(memory_offset, atom_size) - allocation.offset(),
-                end: cmp::min(
-                    align_up(memory_offset + self.size, atom_size),
-                    allocation.offset() + allocation.size(),
-                ) - allocation.offset(),
-            }
+            Range { start, end }
         } else {
             range.clone()
         };
