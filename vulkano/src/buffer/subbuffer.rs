@@ -187,7 +187,22 @@ where
     /// that uses it in exclusive mode will fail. You can still submit this subbuffer for
     /// non-exclusive accesses (ie. reads).
     ///
+    /// If the memory backing the buffer is not [host-coherent], then this function will lock a
+    /// range that is potentially larger than the subbuffer, because the range given to
+    /// [`invalidate_range`] must be aligned to the [`non_coherent_atom_size`]. This means that for
+    /// example if your Vulkan implementation reports an atom size of 64, and you tried to put 2
+    /// subbuffers of size 32 in the same buffer, one at offset 0 and one at offset 32, while the
+    /// buffer is backed by non-coherent memory, then invalidating one subbuffer would also
+    /// invalidate the other subbuffer. This can lead to data races and is therefore not allowed.
+    /// What you should do in that case is ensure that each subbuffer is aligned to the
+    /// non-coherent atom size, so in this case one would be at offset 0 and the other at offset
+    /// 64. [`SubbufferAllocator`] does this automatically.
+    ///
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`invalidate_range`]: crate::memory::allocator::MemoryAlloc::invalidate_range
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`write`]: Self::write
+    /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
     pub fn read(&self) -> Result<BufferReadGuard<'_, T>, BufferError> {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
@@ -242,7 +257,22 @@ where
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it and any attempt to call `read` will return an error.
     ///
+    /// If the memory backing the buffer is not [host-coherent], then this function will lock a
+    /// range that is potentially larger than the subbuffer, because the range given to
+    /// [`flush_range`] must be aligned to the [`non_coherent_atom_size`]. This means that for
+    /// example if your Vulkan implementation reports an atom size of 64, and you tried to put 2
+    /// subbuffers of size 32 in the same buffer, one at offset 0 and one at offset 32, while the
+    /// buffer is backed by non-coherent memory, then flushing one subbuffer would also flush the
+    /// other subbuffer. This can lead to data races and is therefore not allowed. What you should
+    /// do in that case is ensure that each subbuffer is aligned to the non-coherent atom size, so
+    /// in this case one would be at offset 0 and the other at offset 64. [`SubbufferAllocator`]
+    /// does this automatically.
+    ///
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`flush_range`]: crate::memory::allocator::MemoryAlloc::flush_range
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`read`]: Self::read
+    /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
     pub fn write(&self) -> Result<BufferWriteGuard<'_, T>, BufferError> {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
