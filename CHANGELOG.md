@@ -82,6 +82,7 @@ Changes to memory allocation:
 - Implemented `From<SampleCount>` for `u32`.
 - Added `BufferAllocateInfo`.
 - Added documentation to the `shader` module to explain the layout of buffers, push constants and other data accessed by shaders.
+- The macros `single_pass_renderpass!` and `ordered_passes_renderpass!` now allow trailing commas in various places.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
