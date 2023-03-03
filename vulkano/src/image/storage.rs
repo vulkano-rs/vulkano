@@ -316,12 +316,12 @@ unsafe impl ImageAccess for StorageImage {
 
     #[inline]
     unsafe fn layout_initialized(&self) {
-        self.layout_initialized.store(true, Ordering::SeqCst);
+        self.layout_initialized.store(true, Ordering::Relaxed);
     }
 
     #[inline]
     fn is_layout_initialized(&self) -> bool {
-        self.layout_initialized.load(Ordering::SeqCst)
+        self.layout_initialized.load(Ordering::Relaxed)
     }
 
     #[inline]
