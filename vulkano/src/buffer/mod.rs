@@ -874,15 +874,6 @@ pub enum BufferError {
         queue_family_index: u32,
         queue_family_count: u32,
     },
-
-    /// The memory is not host-coherent, and the [`Subbuffer`] bounds are not a multiple of the
-    /// [`non_coherent_atom_size`] device property.
-    ///
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
-    SubbufferNotAlignedToAtomSize {
-        range: Range<DeviceSize>,
-        atom_size: DeviceAlignment,
-    },
 }
 
 impl Error for BufferError {
@@ -1005,12 +996,6 @@ impl Display for BufferError {
                 f,
                 "the sharing mode was set to `Concurrent`, but one of the specified queue family \
                 indices was out of range",
-            ),
-            Self::SubbufferNotAlignedToAtomSize { range, atom_size } => write!(
-                f,
-                "the memory is not host-coherent, and the `Subbuffer` bounds ({:?}) are not \
-                a multiple of the `non_coherent_atom_size` device property ({:?})",
-                range, atom_size,
             ),
         }
     }
