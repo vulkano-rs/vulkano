@@ -92,6 +92,7 @@ Changes to memory allocation:
 - Added missing check for the allocation type when binding memory.
 - [#2130](https://github.com/vulkano-rs/vulkano/issues/2130): Fixed getting memory requirements on swapchain images, which don
 - Vulkano-shaders: Fixed an "expected expression, found `,`" compile error for precompiled shaders with more than one entrypoint.
+- [#2149](https://github.com/vulkano-rs/vulkano/issues/2149): Image data being discarded when transitioning from UNDEFINED in StorageImage
 
 # Version 0.32.3 (2022-12-07)
 
