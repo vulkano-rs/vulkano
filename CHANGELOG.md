@@ -31,6 +31,7 @@ Changes to buffers:
 - Merged `CpuAccessibleBuffer`, `DeviceLocalBuffer`, `BufferSlice`, `CpuBufferPoolChunk`, `CpuBufferPoolSubbuffer` into `Subbuffer`.
 - Removed `BufferAccess`, `TypedBufferAccess`, `BufferAccessObject`, `BufferInner` and `BufferViewAbstract`.
 - Replaced `CpuBufferPool` with `SubbufferAllocator`, which is now marked `!Sync` and no longer has a `T` type parameter. The type parameter was moved to the methods, to allow one allocator to allocate as many types of buffers as needed.
+- All methonds on `BufferContents` have been replaced.
 
 Changes to `DescriptorRequirements`:
 - The struct has been split into two levels: the per-binding `DescriptorBindingRequirements`, and the per-descriptor-index `DescriptorRequirements`.
@@ -59,6 +60,11 @@ Changes to memory allocation:
 - `MemoryRequirements::{size, alignment}` fields have been replaced with a single `layout` field.
 - `Suballocator::allocate_unchecked` has been removed.
 
+Changes to vulkano-shaders:
+- Struct fields are now padded using `Padded`, instead of generating additional fields.
+- The `types_meta` option has been removed in favor of `custom_derives`. Additionally, a derive for `BufferContents` is automatically added to the generated structs, so there is no need to specify anything in order to use the structs in buffers.
+- The `ty` module is no longer generated. All types are generated in the same module where the macro call resides.
+
 ### Additions
 - Added `CpuBufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
@@ -69,13 +75,11 @@ Changes to memory allocation:
 - Better cgmath and nalgebra support, enabled by the `cgmath` or `nalgebra` features:
 - `VertexMember` is now implemented for cgmath `Vector`s and `Point`s.
 - `type_for_format_cgmath` and `type_for_format_nalgebra` macros, next to the existing `type_for_format` macro.
-- Vulkano-shaders: `shader_cgmath` and `shader_nalgebra` macros, next to the existing `shader` macro.
 - Added a derive macro for the `Vertex` trait. The `impl_vertex` macro and `VertexMember` trait are deprecated.
 - `BufferDefinition` matching logic was updated to work with the new `VertexMemberInfo` and now matches based on scalar type, number of components and number of elements allowing the use of formats such as `*_UNORM`.
 - `GraphicsPipelineBuilder` validation was extended to make sure locations are not bound multiple times when a single attribute spans multiple locations (e.g. using double precision float formats).
 - Added documentation of the cargo features to the main documentation page of each crate.
 - Added documentation of `_unchecked` functions to the main documentation page.
-- Vulkano-shaders: The bytemuck traits `Pod` and `Zeroable` are now automatically derived for generated structs, so there is no need to specify them with `types_meta` anymore.
 - Added `DeviceLayout` and `DeviceAlignment`.
 - Added the type alias `NonZeroDeviceSize`.
 - Added `VertexBufferDescription` and three new methods to the `Vertex` trait that return it: `per_vertex`, `per_instance` and `per_instance_with_divisor`. This deprecates and replaces `BuffersDefinition`.
@@ -83,6 +87,13 @@ Changes to memory allocation:
 - Added `BufferAllocateInfo`.
 - Added documentation to the `shader` module to explain the layout of buffers, push constants and other data accessed by shaders.
 - The macros `single_pass_renderpass!` and `ordered_passes_renderpass!` now allow trailing commas in various places.
+- Added a `BufferContents` derive macro. You no longer need to use `bytemuck` to read/write your structs form/to buffers.
+- Added `BufferContentsLayout`.
+- Added support for allocating buffers with any kind of unsized contents, not just slices. These can also be read/written from the host.
+- Added `Padded`, which can be used to pad struct fields as well as array elements/matrix columns.
+- Vulkano-shaders: All error messages are now appropriately spanned compile-errors, instead of being panics.
+- Vulkano-shaders: Added support for arrays (and by extension matrices) whose stride exceeds the size of the element type in Rust (e.g. `vec3[]`).
+- Vulkano-shaders: Added a `linalg_type` option to the macro, for generating types from external linear algebra crates.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
@@ -93,6 +104,8 @@ Changes to memory allocation:
 - [#2130](https://github.com/vulkano-rs/vulkano/issues/2130): Fixed getting memory requirements on swapchain images, which don
 - Vulkano-shaders: Fixed an "expected expression, found `,`" compile error for precompiled shaders with more than one entrypoint.
 - [#2149](https://github.com/vulkano-rs/vulkano/issues/2149): Image data being discarded when transitioning from UNDEFINED in StorageImage
+- Vulkano-shaders: `mat3xN` is now generated correctly, taking its matrix stride into account.
+- Vulkano-shaders: Row-major matrices are now generated correctly.
 
 # Version 0.32.3 (2022-12-07)
 
