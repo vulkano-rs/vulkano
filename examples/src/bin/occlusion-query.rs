@@ -7,14 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// This is a modification of the triangle example, that demonstrates the basics of occlusion queries.
-// Occlusion queries allow you to query whether, and sometimes how many, pixels pass the depth test
-// in a range of draw calls.
+// This is a modification of the triangle example, that demonstrates the basics of occlusion
+// queries. Occlusion queries allow you to query whether, and sometimes how many, pixels pass the
+// depth test in a range of draw calls.
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -59,7 +58,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -154,8 +152,8 @@ fn main() {
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
         #[format(R32G32B32_SFLOAT)]
         position: [f32; 3],
@@ -177,10 +175,9 @@ fn main() {
             position: [0.25, -0.1, 0.5],
             color: [1.0, 0.0, 0.0],
         },
-        // The second triangle (cyan) is the same shape and position as the first,
-        // but smaller, and moved behind a bit.
-        // It should be completely occluded by the first triangle.
-        // (You can lower its z value to put it in front)
+        // The second triangle (cyan) is the same shape and position as the first, but smaller, and
+        // moved behind a bit. It should be completely occluded by the first triangle. (You can
+        // lower its z value to put it in front.)
         Vertex {
             position: [-0.25, -0.125, 0.6],
             color: [0.0, 1.0, 1.0],
@@ -193,9 +190,8 @@ fn main() {
             position: [0.125, -0.05, 0.6],
             color: [0.0, 1.0, 1.0],
         },
-        // The third triangle (green) is the same shape and size as the first,
-        // but moved to the left and behind the second.
-        // It is partially occluded by the first two.
+        // The third triangle (green) is the same shape and size as the first, but moved to the
+        // left and behind the second. It is partially occluded by the first two.
         Vertex {
             position: [-0.25, -0.25, 0.7],
             color: [0.0, 1.0, 0.0],
@@ -234,46 +230,45 @@ fn main() {
     )
     .unwrap();
 
-    // Create a buffer on the CPU to hold the results of the three queries.
-    // Query results are always represented as either `u32` or `u64`.
-    // For occlusion queries, you always need one element per query. You can ask for the number of
-    // elements needed at runtime by calling `QueryType::result_len`.
-    // If you retrieve query results with `with_availability` enabled, then this array needs to
-    // be 6 elements long instead of 3.
+    // Create a buffer on the CPU to hold the results of the three queries. Query results are
+    // always represented as either `u32` or `u64`. For occlusion queries, you always need one
+    // element per query. You can ask for the number of elements needed at runtime by calling
+    // `QueryType::result_len`. If you retrieve query results with `with_availability` enabled,
+    // then this array needs to be 6 elements long instead of 3.
     let mut query_results = [0u32; 3];
 
     mod vs {
         vulkano_shaders::shader! {
             ty: "vertex",
-            src: "
-				#version 450
+            src: r"
+                #version 450
 
-				layout(location = 0) in vec3 position;
+                layout(location = 0) in vec3 position;
                 layout(location = 1) in vec3 color;
 
                 layout(location = 0) out vec3 v_color;
 
-				void main() {
+                void main() {
                     v_color = color;
-					gl_Position = vec4(position, 1.0);
-				}
-			"
+                    gl_Position = vec4(position, 1.0);
+                }
+            ",
         }
     }
 
     mod fs {
         vulkano_shaders::shader! {
             ty: "fragment",
-            src: "
-				#version 450
+            src: r"
+                #version 450
 
                 layout(location = 0) in vec3 v_color;
-				layout(location = 0) out vec4 f_color;
+                layout(location = 0) out vec4 f_color;
 
-				void main() {
-					f_color = vec4(v_color, 1.0);
-				}
-			"
+                void main() {
+                    f_color = vec4(v_color, 1.0);
+                }
+            ",
         }
     }
 
@@ -310,9 +305,9 @@ fn main() {
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-        // Enable depth testing, which is needed for occlusion queries to make sense at all.
-        // If you disable depth testing, every pixel is considered to pass the depth test, so
-        // every query will return a nonzero result.
+        // Enable depth testing, which is needed for occlusion queries to make sense at all. If you
+        // disable depth testing, every pixel is considered to pass the depth test, so every query
+        // will return a nonzero result.
         .depth_stencil_state(DepthStencilState::simple_depth_test())
         .build(device.clone())
         .unwrap();
@@ -365,7 +360,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                    Err(e) => panic!("failed to recreate swapchain: {e}"),
                 };
 
                 swapchain = new_swapchain;
@@ -385,7 +380,7 @@ fn main() {
                         recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                    Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
             if suboptimal {
@@ -402,8 +397,8 @@ fn main() {
             // Beginning or resetting a query is unsafe for now.
             unsafe {
                 builder
-                    // A query must be reset before each use, including the first use.
-                    // This must be done outside a render pass.
+                    // A query must be reset before each use, including the first use. This must be
+                    // done outside a render pass.
                     .reset_query_pool(query_pool.clone(), 0..3)
                     .unwrap()
                     .set_viewport(0, [viewport.clone()])
@@ -418,14 +413,14 @@ fn main() {
                         SubpassContents::Inline,
                     )
                     .unwrap()
-                    // Begin query 0, then draw the red triangle.
-                    // Enabling the `QueryControlFlags::PRECISE` flag would give exact numeric
-                    // results. This needs the `occlusion_query_precise` feature to be enabled on
-                    // the device.
+                    // Begin query 0, then draw the red triangle. Enabling the
+                    // `QueryControlFlags::PRECISE` flag would give exact numeric results. This
+                    // needs the `occlusion_query_precise` feature to be enabled on the device.
                     .begin_query(
                         query_pool.clone(),
                         0,
-                        QueryControlFlags::empty(), // QueryControlFlags::PRECISE
+                        QueryControlFlags::empty(),
+                        // QueryControlFlags::PRECISE,
                     )
                     .unwrap()
                     .bind_vertex_buffers(0, triangle1.clone())
@@ -477,16 +472,15 @@ fn main() {
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {e:?}");
+                    println!("failed to flush future: {e}");
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }
 
-            // Retrieve the query results.
-            // This copies the results to a variable on the CPU. You can also use the
-            // `copy_query_pool_results` function on a command buffer to write results to a
-            // Vulkano buffer. This could then be used to influence draw operations further down
-            // the line, either in the same frame or a future frame.
+            // Retrieve the query results. This copies the results to a variable on the CPU. You
+            // can also use the `copy_query_pool_results` function on a command buffer to write
+            // results to a Vulkano buffer. This could then be used to influence draw operations
+            // further down the line, either in the same frame or a future frame.
             #[rustfmt::skip]
             query_pool
                 .queries_range(0..3)
@@ -494,21 +488,21 @@ fn main() {
                 .get_results(
                     &mut query_results,
                     // Block the function call until the results are available.
-                    // Note: if not all the queries have actually been executed, then this
-                    // will wait forever for something that never happens!
+                    // NOTE: If not all the queries have actually been executed, then this will 
+                    // wait forever for something that never happens!
                     QueryResultFlags::WAIT
 
                     // Enable this flag to give partial results if available, instead of waiting
                     // for the full results.
                     // | QueryResultFlags::PARTIAL
 
-                    // Blocking and waiting will ensure the results are always available after
-                    // the function returns.
+                    // Blocking and waiting will ensure the results are always available after the 
+                    // function returns.
                     //
                     // If you disable waiting, then this flag can be enabled to include the
-                    // availability of each query's results. You need one extra element per
-                    // query in your `query_results` buffer for this. This element will
-                    // be filled with a zero/nonzero value indicating availability.
+                    // availability of each query's results. You need one extra element per query 
+                    // in your `query_results` buffer for this. This element will be filled with a 
+                    // zero/nonzero value indicating availability.
                     // | QueryResultFlags::WITH_AVAILABILITY
                 )
                 .unwrap();

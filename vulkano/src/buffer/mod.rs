@@ -27,8 +27,8 @@
 //!   `VkBuffer`, and as such doesn't hold onto any memory.
 //! - [`Buffer`] is a `RawBuffer` with memory bound to it, and with state tracking.
 //! - [`Subbuffer`] is what you will use most of the time, as it is what all the APIs expect. It is
-//!   reference to a portion of a `Buffer`. `Subbuffer` also has a type parameter, which is a hint
-//!   for how the data in the portion of the buffer is going to be interpreted.
+//!   a reference to a portion of a `Buffer`. `Subbuffer` also has a type parameter, which is a
+//!   hint for how the data in the portion of the buffer is going to be interpreted.
 //!
 //! # `Subbuffer` allocation
 //!
@@ -98,7 +98,10 @@
 //! [the `view` module]: self::view
 //! [the `shader` module documentation]: crate::shader
 
-pub use self::{subbuffer::Subbuffer, usage::BufferUsage};
+pub use self::{
+    subbuffer::{BufferContents, BufferContentsLayout, Subbuffer},
+    usage::BufferUsage,
+};
 use self::{
     subbuffer::{ReadLockError, WriteLockError},
     sys::{BufferCreateInfo, RawBuffer},
@@ -119,15 +122,13 @@ use crate::{
     DeviceSize, NonZeroDeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError,
     VulkanObject,
 };
-use bytemuck::{Pod, PodCastError};
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
-    alloc::Layout,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
-    mem::{size_of, size_of_val},
+    mem::size_of_val,
     ops::Range,
     ptr,
     sync::Arc,
@@ -282,8 +283,6 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `T` has zero size.
-    /// - Panics if `T` has an alignment greater than `64`.
     /// - Panics if `iter` is empty.
     pub fn from_iter<T, I>(
         allocator: &(impl MemoryAllocator + ?Sized),
@@ -291,7 +290,7 @@ impl Buffer {
         iter: I,
     ) -> Result<Subbuffer<[T]>, BufferError>
     where
-        [T]: BufferContents,
+        T: BufferContents,
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
     {
@@ -307,20 +306,17 @@ impl Buffer {
 
     /// Creates a new uninitialized `Buffer` for sized data. Returns a [`Subbuffer`] spanning the
     /// whole buffer.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `T` has zero size.
-    /// - Panics if `T` has an alignment greater than `64`.
     pub fn new_sized<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
         allocate_info: BufferAllocateInfo,
-    ) -> Result<Subbuffer<T>, BufferError> {
-        let layout = Layout::new::<T>()
-            .try_into()
-            .expect("can't allocate memory for zero-sized types");
+    ) -> Result<Subbuffer<T>, BufferError>
+    where
+        T: BufferContents,
+    {
+        let layout = T::LAYOUT.unwrap_sized();
+        let buffer = Subbuffer::new(Buffer::new(allocator, allocate_info, layout)?);
 
-        Buffer::new(allocator, allocate_info, layout).map(Subbuffer::from_buffer)
+        Ok(unsafe { buffer.reinterpret_unchecked() })
     }
 
     /// Creates a new uninitialized `Buffer` for a slice. Returns a [`Subbuffer`] spanning the
@@ -328,20 +324,37 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `T` has zero size.
-    /// - Panics if `T` has an alignment greater than `64`.
     /// - Panics if `len` is zero.
     pub fn new_slice<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
         allocate_info: BufferAllocateInfo,
         len: DeviceSize,
-    ) -> Result<Subbuffer<[T]>, BufferError> {
-        let layout = Layout::array::<T>(len.try_into().unwrap())
-            .unwrap()
-            .try_into()
-            .expect("can't allocate memory for zero-sized types");
+    ) -> Result<Subbuffer<[T]>, BufferError>
+    where
+        T: BufferContents,
+    {
+        Buffer::new_unsized(allocator, allocate_info, len)
+    }
 
-        Buffer::new(allocator, allocate_info, layout).map(Subbuffer::from_buffer)
+    /// Creates a new uninitialized `Buffer` for unsized data. Returns a [`Subbuffer`] spanning the
+    /// whole buffer.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `len` is zero.
+    pub fn new_unsized<T>(
+        allocator: &(impl MemoryAllocator + ?Sized),
+        allocate_info: BufferAllocateInfo,
+        len: DeviceSize,
+    ) -> Result<Subbuffer<T>, BufferError>
+    where
+        T: BufferContents + ?Sized,
+    {
+        let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
+        let layout = T::LAYOUT.layout_for_len(len).unwrap();
+        let buffer = Subbuffer::new(Buffer::new(allocator, allocate_info, layout)?);
+
+        Ok(unsafe { buffer.reinterpret_unchecked() })
     }
 
     /// Creates a new uninitialized `Buffer` with the given `layout`.
@@ -1094,75 +1107,6 @@ vulkan_bitflags! {
         api_version: V1_2,
         device_extensions: [khr_buffer_device_address, ext_buffer_device_address],
     },*/
-}
-
-/// Trait for types of data that can be put in a buffer. These can be safely transmuted to and from
-/// a slice of bytes.
-pub unsafe trait BufferContents: Send + Sync + 'static {
-    /// Converts an immutable reference to `Self` to an immutable byte slice.
-    fn as_bytes(&self) -> &[u8];
-
-    /// Converts a mutable reference to `Self` to a mutable byte slice.
-    fn as_bytes_mut(&mut self) -> &mut [u8];
-
-    /// Converts an immutable byte slice into an immutable reference to `Self`.
-    fn from_bytes(bytes: &[u8]) -> Result<&Self, PodCastError>;
-
-    /// Converts a mutable byte slice into a mutable reference to `Self`.
-    fn from_bytes_mut(bytes: &mut [u8]) -> Result<&mut Self, PodCastError>;
-
-    /// Returns the size of an element of the type.
-    fn size_of_element() -> DeviceSize;
-}
-
-unsafe impl<T> BufferContents for T
-where
-    T: Pod + Send + Sync,
-{
-    fn as_bytes(&self) -> &[u8] {
-        bytemuck::bytes_of(self)
-    }
-
-    fn as_bytes_mut(&mut self) -> &mut [u8] {
-        bytemuck::bytes_of_mut(self)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<&T, PodCastError> {
-        bytemuck::try_from_bytes(bytes)
-    }
-
-    fn from_bytes_mut(bytes: &mut [u8]) -> Result<&mut T, PodCastError> {
-        bytemuck::try_from_bytes_mut(bytes)
-    }
-
-    fn size_of_element() -> DeviceSize {
-        1
-    }
-}
-
-unsafe impl<T> BufferContents for [T]
-where
-    T: Pod + Send + Sync,
-{
-    fn as_bytes(&self) -> &[u8] {
-        bytemuck::cast_slice(self)
-    }
-
-    fn as_bytes_mut(&mut self) -> &mut [u8] {
-        bytemuck::cast_slice_mut(self)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<&[T], PodCastError> {
-        bytemuck::try_cast_slice(bytes)
-    }
-
-    fn from_bytes_mut(bytes: &mut [u8]) -> Result<&mut [T], PodCastError> {
-        bytemuck::try_cast_slice_mut(bytes)
-    }
-
-    fn size_of_element() -> DeviceSize {
-        size_of::<T>() as DeviceSize
-    }
 }
 
 /// The buffer configuration to query in

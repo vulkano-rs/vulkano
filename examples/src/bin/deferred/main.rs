@@ -11,15 +11,15 @@
 //
 // The idea behind deferred lighting is to render the scene in two steps.
 //
-// First you draw all the objects of the scene. But instead of calculating the color they will
-// have on the screen, you output their characteristics such as their diffuse color and their
-// normals, and write this to images.
+// First you draw all the objects of the scene. But instead of calculating the color they will have
+// on the screen, you output their characteristics such as their diffuse color and their normals,
+// and write this to images.
 //
 // After all the objects are drawn, you should obtain several images that contain the
 // characteristics of each pixel.
 //
-// Then you apply lighting to the scene. In other words you draw to the final image by taking
-// these intermediate images and the various lights of the scene as input.
+// Then you apply lighting to the scene. In other words you draw to the final image by taking these
+// intermediate images and the various lights of the scene as input.
 //
 // This technique allows you to apply tons of light sources to a scene, which would be too
 // expensive otherwise. It has some drawbacks, which are the fact that transparent objects must be
@@ -66,7 +66,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -109,7 +108,7 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -216,7 +215,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                    Err(e) => panic!("failed to recreate swapchain: {e}"),
                 };
                 let new_images = new_images
                     .into_iter()
@@ -235,7 +234,7 @@ fn main() {
                         recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                    Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
             if suboptimal {
@@ -285,7 +284,7 @@ fn main() {
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {e:?}");
+                    println!("failed to flush future: {e}");
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }

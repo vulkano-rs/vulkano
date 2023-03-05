@@ -7,10 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
@@ -120,8 +119,8 @@ impl TriangleDrawSystem {
     }
 }
 
+#[derive(BufferContents, Vertex)]
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 struct TriangleVertex {
     #[format(R32G32_SFLOAT)]
     position: [f32; 2],
@@ -130,29 +129,31 @@ struct TriangleVertex {
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        src: "
-#version 450
+        src: r"
+            #version 450
 
-layout(location = 0) in vec2 position;
+            layout(location = 0) in vec2 position;
 
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}"
+            void main() {
+                gl_Position = vec4(position, 0.0, 1.0);
+            }
+        ",
     }
 }
 
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        src: "
-#version 450
+        src: r"
+            #version 450
 
-layout(location = 0) out vec4 f_color;
-layout(location = 1) out vec3 f_normal;
+            layout(location = 0) out vec4 f_color;
+            layout(location = 1) out vec3 f_normal;
 
-void main() {
-    f_color = vec4(1.0, 1.0, 1.0, 1.0);
-    f_normal = vec3(0.0, 0.0, 1.0);
-}"
+            void main() {
+                f_color = vec4(1.0, 1.0, 1.0, 1.0);
+                f_normal = vec3(0.0, 0.0, 1.0);
+            }
+        ",
     }
 }

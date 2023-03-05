@@ -69,7 +69,6 @@ impl FrameSystem {
     /// - `final_output_format` is the format of the image that will later be passed to the
     ///   `frame()` method. We need to know that in advance. If that format ever changes, we have
     ///   to create a new `FrameSystem`.
-    ///
     pub fn new(
         gfx_queue: Arc<Queue>,
         final_output_format: Format,
@@ -151,8 +150,8 @@ impl FrameSystem {
         )
         .unwrap();
 
-        // For now we create three temporary images with a dimension of 1 by 1 pixel.
-        // These images will be replaced the first time we call `frame()`.
+        // For now we create three temporary images with a dimension of 1 by 1 pixel. These images
+        // will be replaced the first time we call `frame()`.
         let diffuse_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
                 &memory_allocator,
@@ -188,8 +187,8 @@ impl FrameSystem {
             gfx_queue.device().clone(),
         ));
 
-        // Initialize the three lighting systems.
-        // Note that we need to pass to them the subpass where they will be executed.
+        // Initialize the three lighting systems. Note that we need to pass to them the subpass
+        // where they will be executed.
         let lighting_subpass = Subpass::from(render_pass.clone(), 1).unwrap();
         let ambient_lighting_system = AmbientLightingSystem::new(
             gfx_queue.clone(),
@@ -245,7 +244,6 @@ impl FrameSystem {
     /// - `final_image` is the image we are going to draw to.
     /// - `world_to_framebuffer` is the matrix that will be used to convert from 3D coordinates in
     ///   the world into 2D coordinates on the framebuffer.
-    ///
     pub fn frame<F>(
         &mut self,
         before_future: F,
@@ -454,7 +452,6 @@ pub struct DrawPass<'f, 's: 'f> {
 
 impl<'f, 's: 'f> DrawPass<'f, 's> {
     /// Appends a command that executes a secondary command buffer that performs drawing.
-    #[inline]
     pub fn execute<C>(&mut self, command_buffer: C)
     where
         C: SecondaryCommandBufferAbstract + 'static,
@@ -468,14 +465,12 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     }
 
     /// Returns the dimensions in pixels of the viewport.
-    #[inline]
     pub fn viewport_dimensions(&self) -> [u32; 2] {
         self.frame.framebuffer.extent()
     }
 
     /// Returns the 4x4 matrix that turns world coordinates into 2D coordinates on the framebuffer.
     #[allow(dead_code)]
-    #[inline]
     pub fn world_to_framebuffer_matrix(&self) -> Matrix4<f32> {
         self.frame.world_to_framebuffer
     }

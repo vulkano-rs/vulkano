@@ -204,28 +204,6 @@ impl MemoryAlloc {
             .map(|ptr| slice::from_raw_parts_mut(ptr.as_ptr().cast(), self.size as usize))
     }
 
-    pub(crate) unsafe fn read(&self, range: Range<DeviceSize>) -> Option<&[u8]> {
-        debug_assert!(!range.is_empty() && range.end <= self.size);
-
-        self.mapped_ptr.map(|ptr| {
-            slice::from_raw_parts(
-                ptr.as_ptr().add(range.start as usize).cast(),
-                (range.end - range.start) as usize,
-            )
-        })
-    }
-
-    pub(crate) unsafe fn write(&self, range: Range<DeviceSize>) -> Option<&mut [u8]> {
-        debug_assert!(!range.is_empty() && range.end <= self.size);
-
-        self.mapped_ptr.map(|ptr| {
-            slice::from_raw_parts_mut(
-                ptr.as_ptr().add(range.start as usize).cast(),
-                (range.end - range.start) as usize,
-            )
-        })
-    }
-
     pub(crate) fn atom_size(&self) -> Option<DeviceAlignment> {
         self.atom_size
     }

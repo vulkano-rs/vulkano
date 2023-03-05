@@ -7,25 +7,23 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// This example demonstrates how to compile several shaders together using vulkano-shaders macro,
-// such that the macro generates unique Shader types per each compiled shader, but generates common
-// shareable set of Rust structs representing corresponding structs in the source glsl code.
+// This example demonstrates how to compile several shaders together using the `shader!` macro,
+// such that the macro doesn't generate unique shader types for each compiled shader, but generates
+// a common shareable set of Rust structs for the corresponding structs in the shaders.
 //
-// Normally, each vulkano-shaders macro invocation among other things generates a `ty` submodule
-// containing all Rust types per each "struct" declaration of glsl code. Using this submodule
-// the user can organize type-safe interoperability between Rust code and the shader interface
-// input/output data tied to these structs. However, if the user compiles several shaders in
-// independent Rust modules, each of these modules would contain independent `ty` submodule with
-// each own set of Rust types. So, even if both shaders contain the same(or partially intersecting)
-// glsl structs they will be duplicated in each generated `ty` submodule and treated by Rust as
-// independent types. As such it would be tricky to organize interoperability between shader
-// interfaces in Rust.
+// Normally, each `shader!` macro invocation among other things generates all Rust types for each
+// `struct` declaration of the GLSL code. Using these the user can organize type-safe
+// interoperability between Rust code and the shader input/output interface tied to these structs.
+// However, if the user compiles several shaders in independent Rust modules, each of these modules
+// would contain an independent set of Rust types. So, even if both shaders contain the same (or
+// partially intersecting) GLSL structs they will be duplicated by each macro invocation and
+// treated by Rust as independent types. As such it would be tricky to organize interoperability
+// between shader interfaces in Rust.
 //
 // To solve this problem the user can use "shared" generation mode of the macro. In this mode the
 // user declares all shaders that possibly share common layout interfaces in a single macro
-// invocation. The macro will check that there is no inconsistency between declared glsl structs
-// with the same names, and it will put all generated Rust structs for all shaders in just a single
-// `ty` submodule.
+// invocation. The macro will check that there is no inconsistency between declared GLSL structs
+// with the same names, and it will not generate duplicates.
 
 use std::sync::Arc;
 use vulkano::{
@@ -52,7 +50,6 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -109,91 +106,91 @@ fn main() {
             // their layout interfaces.
             //
             // First one is just multiplying each value from the input array of ints to provided
-            // value in push constants struct. And the second one in turn adds this value instead of
-            // multiplying.
+            // value in push constants struct. And the second one in turn adds this value instead
+            // of multiplying.
             //
             // However both shaders declare glsl struct `Parameters` for push constants in each
             // shader. Since each of the struct has exactly the same interface, they will be
             // treated by the macro as "shared".
             //
-            // Also, note that glsl code duplications between shader sources is not necessary too.
-            // In more complex system the user may want to declare independent glsl file with
-            // such types, and include it in each shader entry-point files using "#include"
+            // Also, note that GLSL code duplications between shader sources is not necessary too.
+            // In a more complex system the user may want to declare an independent GLSL file with
+            // such types, and include it in each shader entry-point file using the `#include`
             // directive.
             shaders: {
-                // Generate single unique `SpecializationConstants` struct for all shaders since
-                // their specialization interfaces are the same. This option is turned off
-                // by default and the macro by default producing unique
-                // structs(`MultSpecializationConstants`, `AddSpecializationConstants`)
+                // Generate single unique `SpecializationConstants` struct for all shaders, since
+                // their specialization interfaces are the same. This option is turned off by
+                // default and the macro by default produces unique structs
+                // (`MultSpecializationConstants` and `AddSpecializationConstants` in this case).
                 shared_constants: true,
                 mult: {
                     ty: "compute",
-                    src: "
+                    src: r"
                         #version 450
 
                         layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
                         layout(constant_id = 0) const bool enabled = true;
 
                         layout(push_constant) uniform Parameters {
-                          int value;
+                            int value;
                         } pc;
 
                         layout(set = 0, binding = 0) buffer Data {
                             uint data[];
-                        } data;
+                        };
 
                         void main() {
                             if (!enabled) {
                                 return;
                             }
                             uint idx = gl_GlobalInvocationID.x;
-                            data.data[idx] *= pc.value;
+                            data[idx] *= pc.value;
                         }
-                    "
+                    ",
                 },
                 add: {
                     ty: "compute",
-                    src: "
+                    src: r"
                         #version 450
 
                         layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
                         layout(constant_id = 0) const bool enabled = true;
 
                         layout(push_constant) uniform Parameters {
-                          int value;
+                            int value;
                         } pc;
 
                         layout(set = 0, binding = 0) buffer Data {
                             uint data[];
-                        } data;
+                        };
 
                         void main() {
                             if (!enabled) {
                                 return;
                             }
                             uint idx = gl_GlobalInvocationID.x;
-                            data.data[idx] += pc.value;
+                            data[idx] += pc.value;
                         }
-                    "
-                }
+                    ",
+                },
             },
         }
 
         // The macro will create the following things in this module:
-        // - `ShaderMult` for the first shader loader/entry-point.
-        // - `ShaderAdd` for the second shader loader/entry-point.
-        // `SpecializationConstants` Rust struct for both shader's specialization constants.
-        // `ty` submodule with `Parameters` Rust struct common for both shaders.
+        // - `load_mult` for the first shader loader/entry-point.
+        // - `load_add` for the second shader loader/entry-point.
+        // - `SpecializationConstants` struct for both shaders' specialization constants.
+        // - `Parameters` struct common for both shaders.
     }
 
-    // We introducing generic function responsible for running any of the shaders above with
-    // provided Push Constants parameter.
-    // Note that shader's interface `parameter` here is shader-independent.
+    /// We are introducing a generic function responsible for running any of the shaders above with
+    /// the provided push constants parameter. Note that the shaders' interface `parameters` here
+    /// are shader-independent.
     fn run_shader(
         pipeline: Arc<ComputePipeline>,
         queue: Arc<Queue>,
         data_buffer: Subbuffer<[u32]>,
-        parameters: shaders::ty::Parameters,
+        parameters: shaders::Parameters,
         command_buffer_allocator: &StandardCommandBufferAllocator,
         descriptor_set_allocator: &StandardDescriptorSetAllocator,
     ) {
@@ -238,21 +235,18 @@ fn main() {
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
-    // Preparing test data array `[0, 1, 2, 3....]`
-    let data_buffer = {
-        let data_iter = 0..65536u32;
-        Buffer::from_iter(
-            &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::STORAGE_BUFFER,
-                ..Default::default()
-            },
-            data_iter,
-        )
-        .unwrap()
-    };
+    // Prepare test array `[0, 1, 2, 3....]`.
+    let data_buffer = Buffer::from_iter(
+        &memory_allocator,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
+        0..65536u32,
+    )
+    .unwrap();
 
-    // Loading the first shader, and creating a Pipeline for the shader
+    // Load the first shader, and create a pipeline for the shader.
     let mult_pipeline = ComputePipeline::new(
         device.clone(),
         shaders::load_mult(device.clone())
@@ -265,7 +259,7 @@ fn main() {
     )
     .unwrap();
 
-    // Loading the second shader, and creating a Pipeline for the shader
+    // Load the second shader, and create a pipeline for the shader.
     let add_pipeline = ComputePipeline::new(
         device.clone(),
         shaders::load_add(device)
@@ -278,32 +272,32 @@ fn main() {
     )
     .unwrap();
 
-    // Multiply each value by 2
+    // Multiply each value by 2.
     run_shader(
         mult_pipeline.clone(),
         queue.clone(),
         data_buffer.clone(),
-        shaders::ty::Parameters { value: 2 },
+        shaders::Parameters { value: 2 },
         &command_buffer_allocator,
         &descriptor_set_allocator,
     );
 
-    // Then add 1 to each value
+    // Then add 1 to each value.
     run_shader(
         add_pipeline,
         queue.clone(),
         data_buffer.clone(),
-        shaders::ty::Parameters { value: 1 },
+        shaders::Parameters { value: 1 },
         &command_buffer_allocator,
         &descriptor_set_allocator,
     );
 
-    // Then multiply each value by 3
+    // Then multiply each value by 3.
     run_shader(
         mult_pipeline,
         queue,
         data_buffer.clone(),
-        shaders::ty::Parameters { value: 3 },
+        shaders::Parameters { value: 3 },
         &command_buffer_allocator,
         &descriptor_set_allocator,
     );

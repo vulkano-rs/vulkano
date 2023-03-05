@@ -28,7 +28,7 @@ use crate::{
     DeviceSize, RequiresOneOf, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{cmp::min, sync::Arc};
+use std::{cmp::min, mem::size_of_val, os::raw::c_void, sync::Arc};
 
 impl<L, A> CommandBufferBuilder<L, A>
 where
@@ -627,15 +627,9 @@ where
         &mut self,
         pipeline_layout: Arc<PipelineLayout>,
         offset: u32,
-        push_constants: &impl BufferContents,
+        push_constants: &(impl BufferContents + ?Sized),
     ) -> &mut Self {
-        let push_constants = push_constants.as_bytes();
-
-        if push_constants.is_empty() {
-            return self;
-        }
-
-        self.validate_push_constants(&pipeline_layout, offset, push_constants)
+        self.validate_push_constants(&pipeline_layout, offset, size_of_val(push_constants) as u32)
             .unwrap();
 
         unsafe { self.push_constants_unchecked(pipeline_layout, offset, push_constants) }
@@ -645,18 +639,18 @@ where
         &self,
         pipeline_layout: &PipelineLayout,
         offset: u32,
-        push_constants: &[u8],
+        data_size: u32,
     ) -> Result<(), BindPushError> {
         if offset % 4 != 0 {
             return Err(BindPushError::PushConstantsOffsetNotAligned);
         }
 
-        if push_constants.len() % 4 != 0 {
+        if data_size % 4 != 0 {
             return Err(BindPushError::PushConstantsSizeNotAligned);
         }
 
         let mut current_offset = offset;
-        let mut remaining_size = push_constants.len() as u32;
+        let mut remaining_size = data_size;
 
         for range in pipeline_layout
             .push_constant_ranges_disjoint()
@@ -695,9 +689,8 @@ where
         offset: u32,
         push_constants: &(impl BufferContents + ?Sized),
     ) -> &mut Self {
-        let push_constants = push_constants.as_bytes();
         let mut current_offset = offset;
-        let mut remaining_size = push_constants.len() as u32;
+        let mut remaining_size = size_of_val(push_constants) as u32;
 
         let fns = self.device().fns();
 
@@ -715,15 +708,14 @@ where
             // push the minimum of the whole remaining data, and the part until the end of this range
             let push_size = min(remaining_size, range.offset + range.size - current_offset);
             let data_offset = (current_offset - offset) as usize;
-            let values = &push_constants[data_offset..(data_offset + push_size as usize)];
 
             (fns.v1_0.cmd_push_constants)(
                 self.handle(),
                 pipeline_layout.handle(),
                 range.stages.into(),
                 current_offset,
-                values.len() as u32,
-                values.as_ptr() as *const _,
+                push_size,
+                (push_constants as *const _ as *const c_void).add(data_offset),
             );
 
             current_offset += push_size;
@@ -743,7 +735,7 @@ where
         // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2711
         self.builder_state
             .push_constants
-            .insert(offset..offset + push_constants.len() as u32);
+            .insert(offset..offset + size_of_val(push_constants) as u32);
         self.builder_state.push_constants_pipeline_layout = Some(pipeline_layout.clone());
         self.resources.push(Box::new(pipeline_layout));
 

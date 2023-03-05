@@ -8,7 +8,8 @@
 // according to those terms.
 
 // This example is a copy of `basic-compute-shaders.rs`, but initalizes half of the input buffer
-// and then we use `copy_buffer_dimensions` to copy the first half of the input buffer to the second half.
+// and then we use `copy_buffer_dimensions` to copy the first half of the input buffer to the
+// second half.
 
 use vulkano::{
     buffer::{Buffer, BufferAllocateInfo, BufferUsage},
@@ -35,7 +36,6 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -69,7 +69,7 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -91,23 +91,24 @@ fn main() {
         mod cs {
             vulkano_shaders::shader! {
                 ty: "compute",
-                src: "
+                src: r"
                     #version 450
 
                     layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
                     layout(set = 0, binding = 0) buffer Data {
                         uint data[];
-                    } data;
+                    };
 
                     void main() {
                         uint idx = gl_GlobalInvocationID.x;
-                        data.data[idx] *= 12;
+                        data[idx] *= 12;
                     }
-                "
+                ",
             }
         }
         let shader = cs::load(device.clone()).unwrap();
+
         ComputePipeline::new(
             device.clone(),
             shader.entry_point("main").unwrap(),
@@ -123,21 +124,19 @@ fn main() {
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
-    let data_buffer = {
-        // we intitialize half of the array and leave the other half to 0, we will use copy later to fill it
-        let data_iter = (0..65536u32).map(|n| if n < 65536 / 2 { n } else { 0 });
-        Buffer::from_iter(
-            &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::STORAGE_BUFFER
-                    | BufferUsage::TRANSFER_SRC
-                    | BufferUsage::TRANSFER_DST,
-                ..Default::default()
-            },
-            data_iter,
-        )
-        .unwrap()
-    };
+    let data_buffer = Buffer::from_iter(
+        &memory_allocator,
+        BufferAllocateInfo {
+            buffer_usage: BufferUsage::STORAGE_BUFFER
+                | BufferUsage::TRANSFER_SRC
+                | BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        // We intitialize half of the array and leave the other half at 0, we will use the copy
+        // command later to fill it.
+        (0..65536u32).map(|n| if n < 65536 / 2 { n } else { 0 }),
+    )
+    .unwrap();
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(
@@ -154,7 +153,8 @@ fn main() {
     )
     .unwrap();
     builder
-        // copy from the first half to the second half (inside the same buffer) before we run the computation
+        // Copy from the first half to the second half (inside the same buffer) before we run the
+        // computation.
         .copy_buffer(CopyBufferInfoTyped {
             regions: [BufferCopy {
                 src_offset: 0,
@@ -187,9 +187,9 @@ fn main() {
 
     let data_buffer_content = data_buffer.read().unwrap();
 
-    // here we have the same data in the two halfs of the buffer
+    // Here we have the same data in the two halfs of the buffer.
     for n in 0..65536 / 2 {
-        // the two halfs should have the same data
+        // The two halfs should have the same data.
         assert_eq!(data_buffer_content[n as usize], n * 12);
         assert_eq!(data_buffer_content[n as usize + 65536 / 2], n * 12);
     }

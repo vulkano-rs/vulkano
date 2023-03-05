@@ -7,12 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// This example demonstrates how to compute and load Compute Shader local size
-// layout in runtime through specialization constants using Physical Device metadata.
+// This example demonstrates how to define the compute shader local size layout at runtime through
+// specialization constants while considering the physical device properties.
 //
-// Workgroup parallelism capabilities are varying between GPUs and setting them
-// properly is important to achieve maximal performance that particular device
-// can provide.
+// Workgroup parallelism capabilities vary between GPUs and setting them properly is important to
+// achieve the maximal performance that particular device can provide.
 
 use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
@@ -43,13 +42,11 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: InstanceExtensions {
-                // This extension is required to obtain physical device metadata
-                // about the device workgroup size limits
+                // This extension is required to obtain physical device metadata about the device
+                // workgroup size limits.
                 khr_get_physical_device_properties2: true,
-
                 ..InstanceExtensions::empty()
             },
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -82,7 +79,7 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -102,23 +99,20 @@ fn main() {
     mod cs {
         vulkano_shaders::shader! {
             ty: "compute",
-            src: "
+            src: r"
                 #version 450
 
-                // We set local_size_x and local_size_y to be variable configurable
-                // values through Specialization Constants. Values 1 and 2 define
-                // constant_id (1 and 2 correspondingly) and default values of
-                // the constants both. The `local_size_z = 1` here is an ordinary
-                // built-in value of the local size in Z axis.
+                // We set `local_size_x` and `local_size_y` to be variables configurable values 
+                // through specialization constants. Values `1` and `2` both define a constant ID 
+                // as well as a default value of 1 and 2 of the constants respecively. The 
+                // `local_size_z = 1` here is an ordinary constant of the local size on the Z axis.
                 //
-                // Unfortunately current GLSL language capabilities doesn't let us
-                // define exact names of the constants so we will have to use
-                // anonymous constants instead. See below on how to provide their
-                // values in run time.
+                // Unfortunately current GLSL language capabilities doesn't let us define exact 
+                // names of the constants so we will have to use anonymous constants instead. See 
+                // below for how to provide their values at runtime.
                 //
-                // Please NOTE that the constant_id in local_size layout must be
-                // positive values. Zero value lead to runtime failure on nVidia
-                // devices due to a known bug in nVidia driver.
+                // NOTE: The constant ID in `local_size` layout must be positive values. Zeros lead 
+                // to runtime failure on NVIDIA devices due to a known bug in the driver.
                 layout(local_size_x_id = 1, local_size_y_id = 2, local_size_z = 1) in;
 
                 // We can still define more constants in the Shader
@@ -129,7 +123,7 @@ fn main() {
                 layout(set = 0, binding = 0, rgba8) uniform writeonly image2D img;
 
                 void main() {
-                    // Colorful Mandelbrot fractal
+                    // Colorful Mandelbrot fractal.
 
                     vec2 norm_coordinates = (gl_GlobalInvocationID.xy + vec2(0.5)) / vec2(imageSize(img));
                     vec2 c = (norm_coordinates - vec2(0.5)) * 2.0 - vec2(1.0, 0.0);
@@ -151,30 +145,30 @@ fn main() {
 
                     imageStore(img, ivec2(gl_GlobalInvocationID.xy), to_write);
                 }
-            "
+            ",
         }
     }
 
     let shader = cs::load(device.clone()).unwrap();
 
-    // Fetching subgroup size from the Physical Device metadata to compute appropriate
-    // Compute Shader local size properties.
+    // Fetching subgroup size from the physical device properties to determine an appropriate
+    // compute shader local size.
     //
-    // Most of the drivers provide this metadata, but some of the drivers don't.
-    // In this case we can find appropriate value in this table: https://vulkan.gpuinfo.org/
-    // or just use fallback constant for simplicity, but failure to set proper
-    // local size can lead to significant performance penalty.
+    // Most of the drivers provide this property, but some of the drivers don't. In that case we
+    // can find an appropriate value using this tool: https://vulkan.gpuinfo.org, or just use a
+    // fallback constant for simplicity, but failure to set a proper local size can lead to a
+    // significant performance penalty.
     let (local_size_x, local_size_y) = match device.physical_device().properties().subgroup_size {
         Some(subgroup_size) => {
             println!("Subgroup size is {subgroup_size}");
 
-            // Most of the subgroup values are divisors of 8
+            // Most of the subgroup values are divisors of 8.
             (8, subgroup_size / 8)
         }
         None => {
             println!("This Vulkan driver doesn't provide physical device Subgroup information");
 
-            // Using fallback constant
+            // Using a fallback constant.
             (8, 8)
         }
     };
@@ -185,7 +179,8 @@ fn main() {
         red: 0.2,
         green: 0.5,
         blue: 1.0,
-        constant_1: local_size_x, // specifying local size constants
+        // Specify the local size constants.
+        constant_1: local_size_x,
         constant_2: local_size_y,
     };
     let pipeline = ComputePipeline::new(
@@ -247,11 +242,8 @@ fn main() {
             0,
             set,
         )
-        .dispatch([
-            1024 / local_size_x, // Note that dispatch dimensions must be
-            1024 / local_size_y, // proportional to local size
-            1,
-        ])
+        // Note that dispatch dimensions must be proportional to the local size.
+        .dispatch([1024 / local_size_x, 1024 / local_size_y, 1])
         .unwrap()
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
         .unwrap();

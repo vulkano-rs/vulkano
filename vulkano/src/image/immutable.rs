@@ -184,7 +184,7 @@ impl ImmutableImage {
         command_buffer_builder: &mut AutoCommandBufferBuilder<L, A>,
     ) -> Result<Arc<Self>, ImmutableImageCreationError>
     where
-        [Px]: BufferContents,
+        Px: BufferContents,
         I: IntoIterator<Item = Px>,
         I::IntoIter: ExactSizeIterator,
         A: CommandBufferAllocator,

@@ -8,8 +8,7 @@
 // according to those terms.
 
 use super::VertexInputRate;
-use crate::format::Format;
-use bytemuck::Pod;
+use crate::{buffer::BufferContents, format::Format};
 use std::collections::HashMap;
 pub use vulkano_macros::Vertex;
 
@@ -21,12 +20,12 @@ pub use vulkano_macros::Vertex;
 ///
 /// The vertex trait can be derived and the format has to be specified using the `format`
 /// field-level attribute:
-/// ```
-/// use bytemuck::{Pod, Zeroable};
-/// use vulkano::pipeline::graphics::vertex_input::Vertex;
 ///
+/// ```
+/// use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
+///
+/// #[derive(BufferContents, Vertex)]
 /// #[repr(C)]
-/// #[derive(Clone, Copy, Debug, Default, Pod, Zeroable, Vertex)]
 /// struct MyVertex {
 ///     // Every field needs to explicitly state the desired shader input format
 ///     #[format(R32G32B32_SFLOAT)]
@@ -38,10 +37,12 @@ pub use vulkano_macros::Vertex;
 ///     proj: [f32; 16],
 /// }
 /// ```
-pub unsafe trait Vertex: Pod + Send + Sync + 'static {
+pub unsafe trait Vertex: BufferContents + Sized {
     /// Returns the information about this Vertex type.
     fn per_vertex() -> VertexBufferDescription;
+
     fn per_instance() -> VertexBufferDescription;
+
     fn per_instance_with_divisor(divisor: u32) -> VertexBufferDescription;
 }
 
@@ -100,6 +101,7 @@ pub struct VertexMemberInfo {
 }
 
 impl VertexMemberInfo {
+    #[inline]
     pub fn num_components(&self) -> u32 {
         self.format
             .components()

@@ -1197,7 +1197,7 @@ impl UnsafeCommandBufferBuilder {
             stages.into(),
             offset,
             size,
-            data.as_bytes().as_ptr() as *const _,
+            data as *const _ as *const _,
         );
     }
 

@@ -9,7 +9,6 @@
 
 // Modified triangle example to show `SubbufferAllocator`.
 
-use bytemuck::{Pod, Zeroable};
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -17,7 +16,7 @@ use std::{
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-        BufferUsage,
+        BufferContents, BufferUsage,
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
@@ -60,7 +59,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -103,7 +101,7 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -156,8 +154,8 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
+    #[derive(Clone, Copy, BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],
@@ -177,30 +175,30 @@ fn main() {
     mod vs {
         vulkano_shaders::shader! {
             ty: "vertex",
-            src: "
-				#version 450
+            src: r"
+                #version 450
 
-				layout(location = 0) in vec2 position;
+                layout(location = 0) in vec2 position;
 
-				void main() {
-					gl_Position = vec4(position, 0.0, 1.0);
-				}
-			"
+                void main() {
+                    gl_Position = vec4(position, 0.0, 1.0);
+                }
+            ",
         }
     }
 
     mod fs {
         vulkano_shaders::shader! {
             ty: "fragment",
-            src: "
-				#version 450
+            src: r"
+                #version 450
 
-				layout(location = 0) out vec4 f_color;
+                layout(location = 0) out vec4 f_color;
 
-				void main() {
-					f_color = vec4(1.0, 0.0, 0.0, 1.0);
-				}
-			"
+                void main() {
+                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                }
+            ",
         }
     }
 
@@ -277,7 +275,7 @@ fn main() {
                         }) {
                             Ok(r) => r,
                             Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                            Err(e) => panic!("failed to recreate swapchain: {e}"),
                         };
 
                     swapchain = new_swapchain;
@@ -296,7 +294,7 @@ fn main() {
                             recreate_swapchain = true;
                             return;
                         }
-                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                        Err(e) => panic!("failed to acquire next image: {e}"),
                     };
 
                 if suboptimal {
@@ -387,7 +385,7 @@ fn main() {
                         previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
                     }
                     Err(e) => {
-                        println!("Failed to flush future: {e:?}");
+                        println!("failed to flush future: {e}");
                         previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
                     }
                 }
@@ -397,7 +395,7 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
+/// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
