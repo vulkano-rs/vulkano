@@ -419,8 +419,6 @@ pub struct SubbufferAllocatorCreateInfo {
 
     /// The memory usage that all buffers should be allocated with.
     ///
-    /// Must not be [`MemoryUsage::GpuOnly`].
-    ///
     /// The default value is [`MemoryUsage::Upload`].
     pub memory_usage: MemoryUsage,
 

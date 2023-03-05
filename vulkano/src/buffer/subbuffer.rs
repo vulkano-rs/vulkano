@@ -15,7 +15,7 @@ use crate::{
     macros::try_opt,
     memory::{
         self,
-        allocator::{align_up, DeviceAlignment, DeviceLayout},
+        allocator::{align_down, align_up, DeviceAlignment, DeviceLayout},
         is_aligned,
     },
     DeviceSize, NonZeroDeviceSize,
@@ -23,6 +23,7 @@ use crate::{
 use bytemuck::{AnyBitPattern, PodCastError};
 use std::{
     alloc::Layout,
+    cmp,
     error::Error,
     ffi::c_void,
     fmt::{Display, Error as FmtError, Formatter},
@@ -107,13 +108,6 @@ impl<T: ?Sized> Subbuffer<T> {
     /// Returns the range the subbuffer occupies, in bytes, relative to the buffer.
     pub(crate) fn range(&self) -> Range<DeviceSize> {
         self.offset..self.offset + self.size
-    }
-
-    /// Returns the range the subbuffer occupies, in bytes, relative to the [`DeviceMemory`] block.
-    fn memory_range(&self) -> Range<DeviceSize> {
-        let memory_offset = self.memory_offset();
-
-        memory_offset..memory_offset + self.size
     }
 
     /// Returns the buffer that this subbuffer is a part of.
@@ -237,25 +231,47 @@ where
     /// that uses it in exclusive mode will fail. You can still submit this subbuffer for
     /// non-exclusive accesses (ie. reads).
     ///
+    /// If the memory backing the buffer is not [host-coherent], then this function will lock a
+    /// range that is potentially larger than the subbuffer, because the range given to
+    /// [`invalidate_range`] must be aligned to the [`non_coherent_atom_size`]. This means that for
+    /// example if your Vulkan implementation reports an atom size of 64, and you tried to put 2
+    /// subbuffers of size 32 in the same buffer, one at offset 0 and one at offset 32, while the
+    /// buffer is backed by non-coherent memory, then invalidating one subbuffer would also
+    /// invalidate the other subbuffer. This can lead to data races and is therefore not allowed.
+    /// What you should do in that case is ensure that each subbuffer is aligned to the
+    /// non-coherent atom size, so in this case one would be at offset 0 and the other at offset
+    /// 64. [`SubbufferAllocator`] does this automatically.
+    ///
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`invalidate_range`]: crate::memory::allocator::MemoryAlloc::invalidate_range
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`write`]: Self::write
+    /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
     pub fn read(&self) -> Result<BufferReadGuard<'_, T>, BufferError> {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::read` doesn't support sparse binding yet"),
         };
 
-        if let Some(atom_size) = allocation.atom_size() {
-            let range = self.memory_range();
-            if !is_aligned(range.start, atom_size) || !is_aligned(range.end, atom_size) {
-                return Err(BufferError::SubbufferNotAlignedToAtomSize { range, atom_size });
-            }
-        }
-
         let range = self.range();
 
+        let aligned_range = if let Some(atom_size) = allocation.atom_size() {
+            // This works because the suballocators align allocations to the non-coherent atom size
+            // when the memory is host-visible but not host-coherent.
+            let start = align_down(self.offset, atom_size);
+            let end = cmp::min(
+                align_up(self.offset + self.size, atom_size),
+                allocation.size(),
+            );
+
+            Range { start, end }
+        } else {
+            range.clone()
+        };
+
         let mut state = self.buffer().state();
-        state.check_cpu_read(range.clone())?;
-        unsafe { state.cpu_read_lock(range.clone()) };
+        state.check_cpu_read(aligned_range.clone())?;
+        unsafe { state.cpu_read_lock(aligned_range.clone()) };
 
         if allocation.atom_size().is_some() {
             // If there are other read locks being held at this point, they also called
@@ -263,7 +279,7 @@ where
             // lock, so there will be no new data and this call will do nothing.
             // TODO: probably still more efficient to call it only if we're the first to acquire a
             // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            unsafe { allocation.invalidate_range(range) }?;
+            unsafe { allocation.invalidate_range(aligned_range.clone()) }?;
         }
 
         let mapped_ptr = self.mapped_ptr().ok_or(BufferError::MemoryNotHostVisible)?;
@@ -273,6 +289,7 @@ where
         Ok(BufferReadGuard {
             subbuffer: self,
             data,
+            range: aligned_range,
         })
     }
 
@@ -285,28 +302,50 @@ where
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it and any attempt to call `read` will return an error.
     ///
+    /// If the memory backing the buffer is not [host-coherent], then this function will lock a
+    /// range that is potentially larger than the subbuffer, because the range given to
+    /// [`flush_range`] must be aligned to the [`non_coherent_atom_size`]. This means that for
+    /// example if your Vulkan implementation reports an atom size of 64, and you tried to put 2
+    /// subbuffers of size 32 in the same buffer, one at offset 0 and one at offset 32, while the
+    /// buffer is backed by non-coherent memory, then flushing one subbuffer would also flush the
+    /// other subbuffer. This can lead to data races and is therefore not allowed. What you should
+    /// do in that case is ensure that each subbuffer is aligned to the non-coherent atom size, so
+    /// in this case one would be at offset 0 and the other at offset 64. [`SubbufferAllocator`]
+    /// does this automatically.
+    ///
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`flush_range`]: crate::memory::allocator::MemoryAlloc::flush_range
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`read`]: Self::read
+    /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
     pub fn write(&self) -> Result<BufferWriteGuard<'_, T>, BufferError> {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::write` doesn't support sparse binding yet"),
         };
 
-        if let Some(atom_size) = allocation.atom_size() {
-            let range = self.memory_range();
-            if !is_aligned(range.start, atom_size) || !is_aligned(range.end, atom_size) {
-                return Err(BufferError::SubbufferNotAlignedToAtomSize { range, atom_size });
-            }
-        }
-
         let range = self.range();
 
+        let aligned_range = if let Some(atom_size) = allocation.atom_size() {
+            // This works because the suballocators align allocations to the non-coherent atom size
+            // when the memory is host-visible but not host-coherent.
+            let start = align_down(self.offset, atom_size);
+            let end = cmp::min(
+                align_up(self.offset + self.size, atom_size),
+                allocation.size(),
+            );
+
+            Range { start, end }
+        } else {
+            range.clone()
+        };
+
         let mut state = self.buffer().state();
-        state.check_cpu_write(range.clone())?;
-        unsafe { state.cpu_write_lock(range.clone()) };
+        state.check_cpu_write(aligned_range.clone())?;
+        unsafe { state.cpu_write_lock(aligned_range.clone()) };
 
         if allocation.atom_size().is_some() {
-            unsafe { allocation.invalidate_range(range) }?;
+            unsafe { allocation.invalidate_range(aligned_range.clone()) }?;
         }
 
         let mapped_ptr = self.mapped_ptr().ok_or(BufferError::MemoryNotHostVisible)?;
@@ -316,6 +355,7 @@ where
         Ok(BufferWriteGuard {
             subbuffer: self,
             data,
+            range: aligned_range,
         })
     }
 }
@@ -564,13 +604,13 @@ impl<T: ?Sized> Hash for Subbuffer<T> {
 pub struct BufferReadGuard<'a, T: ?Sized> {
     subbuffer: &'a Subbuffer<T>,
     data: &'a T,
+    range: Range<DeviceSize>,
 }
 
 impl<T: ?Sized> Drop for BufferReadGuard<'_, T> {
     fn drop(&mut self) {
-        let range = self.subbuffer.range();
         let mut state = self.subbuffer.buffer().state();
-        unsafe { state.cpu_read_unlock(range) };
+        unsafe { state.cpu_read_unlock(self.range.clone()) };
     }
 }
 
@@ -591,22 +631,22 @@ impl<T: ?Sized> Deref for BufferReadGuard<'_, T> {
 pub struct BufferWriteGuard<'a, T: ?Sized> {
     subbuffer: &'a Subbuffer<T>,
     data: &'a mut T,
+    range: Range<DeviceSize>,
 }
 
 impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
     fn drop(&mut self) {
-        let range = self.subbuffer.range();
         let allocation = match self.subbuffer.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => unreachable!(),
         };
 
         if allocation.atom_size().is_some() {
-            unsafe { allocation.flush_range(range.clone()).unwrap() };
+            unsafe { allocation.flush_range(self.range.clone()).unwrap() };
         }
 
         let mut state = self.subbuffer.buffer().state();
-        unsafe { state.cpu_write_unlock(range) };
+        unsafe { state.cpu_write_unlock(self.range.clone()) };
     }
 }
 
@@ -1211,7 +1251,7 @@ mod tests {
     }
 
     #[test]
-    fn aligned_cast() {
+    fn cast_aligned() {
         let (device, _) = gfx_dev_and_queue!();
         let allocator = StandardMemoryAllocator::new_default(device.clone());
 
@@ -1224,9 +1264,13 @@ mod tests {
             },
         )
         .unwrap();
-        let mut requirements = *raw_buffer.memory_requirements();
-        requirements.prefers_dedicated_allocation = false;
-        requirements.requires_dedicated_allocation = false;
+
+        let requirements = MemoryRequirements {
+            layout: DeviceLayout::from_size_alignment(32, 1).unwrap(),
+            memory_type_bits: 1,
+            prefers_dedicated_allocation: false,
+            requires_dedicated_allocation: false,
+        };
 
         // Allocate some junk in the same block as the buffer.
         let _junk = allocator
@@ -1236,7 +1280,7 @@ mod tests {
                     ..requirements
                 },
                 allocation_type: AllocationType::Linear,
-                usage: MemoryUsage::Upload,
+                usage: MemoryUsage::GpuOnly,
                 ..Default::default()
             })
             .unwrap();
@@ -1245,12 +1289,12 @@ mod tests {
             .allocate(AllocationCreateInfo {
                 requirements,
                 allocation_type: AllocationType::Linear,
-                usage: MemoryUsage::Upload,
+                usage: MemoryUsage::GpuOnly,
                 ..Default::default()
             })
             .unwrap();
 
-        let buffer = unsafe { raw_buffer.bind_memory_unchecked(allocation) }.unwrap();
+        let buffer = Buffer::from_raw(raw_buffer, BufferMemory::Normal(allocation));
         let buffer = Subbuffer::from(Arc::new(buffer));
 
         assert!(buffer.memory_offset() >= 17);
@@ -1261,20 +1305,20 @@ mod tests {
             struct Test([u8; 16]);
 
             let aligned = buffer.clone().cast_aligned::<Test>();
-            // If reading doesn't panic, then the data is aligned correctly.
-            aligned.read().unwrap();
+            assert_eq!(aligned.memory_offset() % 16, 0);
+            assert_eq!(aligned.size(), 16);
         }
 
         {
             let aligned = buffer.clone().cast_aligned::<[u8; 16]>();
-            assert!(aligned.size() % 16 == 0);
+            assert_eq!(aligned.size() % 16, 0);
         }
 
         {
             let layout = DeviceLayout::from_size_alignment(32, 16).unwrap();
             let aligned = buffer.clone().align_to(layout);
             assert!(is_aligned(aligned.memory_offset(), layout.alignment()));
-            assert!(aligned.size() == 0);
+            assert_eq!(aligned.size(), 0);
         }
 
         {
