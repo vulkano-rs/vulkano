@@ -253,9 +253,7 @@ where
             BufferMemory::Sparse => todo!("`Subbuffer::read` doesn't support sparse binding yet"),
         };
 
-        let range = self.range();
-
-        let aligned_range = if let Some(atom_size) = allocation.atom_size() {
+        let range = if let Some(atom_size) = allocation.atom_size() {
             // This works because the suballocators align allocations to the non-coherent atom size
             // when the memory is host-visible but not host-coherent.
             let start = align_down(self.offset, atom_size);
@@ -266,12 +264,12 @@ where
 
             Range { start, end }
         } else {
-            range.clone()
+            self.range()
         };
 
         let mut state = self.buffer().state();
-        state.check_cpu_read(aligned_range.clone())?;
-        unsafe { state.cpu_read_lock(aligned_range.clone()) };
+        state.check_cpu_read(range.clone())?;
+        unsafe { state.cpu_read_lock(range.clone()) };
 
         if allocation.atom_size().is_some() {
             // If there are other read locks being held at this point, they also called
@@ -279,17 +277,17 @@ where
             // lock, so there will be no new data and this call will do nothing.
             // TODO: probably still more efficient to call it only if we're the first to acquire a
             // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            unsafe { allocation.invalidate_range(aligned_range.clone()) }?;
+            unsafe { allocation.invalidate_range(range.clone()) }?;
         }
 
         let mapped_ptr = self.mapped_ptr().ok_or(BufferError::MemoryNotHostVisible)?;
-        // SAFETY: `Subbuffer` guarantees that its contents are layed out correctly for `T`.
+        // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
         let data = unsafe { &*T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
 
         Ok(BufferReadGuard {
             subbuffer: self,
             data,
-            range: aligned_range,
+            range,
         })
     }
 
@@ -324,9 +322,7 @@ where
             BufferMemory::Sparse => todo!("`Subbuffer::write` doesn't support sparse binding yet"),
         };
 
-        let range = self.range();
-
-        let aligned_range = if let Some(atom_size) = allocation.atom_size() {
+        let range = if let Some(atom_size) = allocation.atom_size() {
             // This works because the suballocators align allocations to the non-coherent atom size
             // when the memory is host-visible but not host-coherent.
             let start = align_down(self.offset, atom_size);
@@ -337,25 +333,25 @@ where
 
             Range { start, end }
         } else {
-            range.clone()
+            self.range()
         };
 
         let mut state = self.buffer().state();
-        state.check_cpu_write(aligned_range.clone())?;
-        unsafe { state.cpu_write_lock(aligned_range.clone()) };
+        state.check_cpu_write(range.clone())?;
+        unsafe { state.cpu_write_lock(range.clone()) };
 
         if allocation.atom_size().is_some() {
-            unsafe { allocation.invalidate_range(aligned_range.clone()) }?;
+            unsafe { allocation.invalidate_range(range.clone()) }?;
         }
 
         let mapped_ptr = self.mapped_ptr().ok_or(BufferError::MemoryNotHostVisible)?;
-        // SAFETY: `Subbuffer` guarantees that its contents are layed out correctly for `T`.
+        // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
         let data = unsafe { &mut *T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
 
         Ok(BufferWriteGuard {
             subbuffer: self,
             data,
-            range: aligned_range,
+            range,
         })
     }
 }
