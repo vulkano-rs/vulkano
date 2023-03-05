@@ -7,8 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-#![allow(clippy::uninlined_format_args)]
-
 use self::spirv_grammar::SpirvGrammar;
 use ahash::HashMap;
 use once_cell::sync::Lazy;

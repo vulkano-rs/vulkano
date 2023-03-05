@@ -210,7 +210,7 @@
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]
-#![allow(clippy::needless_borrowed_reference, clippy::uninlined_format_args)]
+#![allow(clippy::needless_borrowed_reference)]
 #![warn(rust_2018_idioms, rust_2021_compatibility)]
 
 #[macro_use]

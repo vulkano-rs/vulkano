@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-#![allow(clippy::missing_safety_doc, clippy::uninlined_format_args)]
+#![allow(clippy::missing_safety_doc)]
 #![warn(rust_2018_idioms, rust_2021_compatibility)]
 
 pub mod context;
