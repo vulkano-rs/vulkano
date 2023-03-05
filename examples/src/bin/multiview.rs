@@ -7,16 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! This example demonstrates using the `VK_KHR_multiview` extension to render to multiple
-//! layers of the framebuffer in one render pass. This can significantly improve performance
-//! in cases where multiple perspectives or cameras are very similar like in virtual reality
-//! or other types of stereoscopic rendering where the left and right eye only differ
-//! in a small position offset.
+// This example demonstrates using the `VK_KHR_multiview` extension to render to multiple layers of
+// the framebuffer in one render pass. This can significantly improve performance in cases where
+// multiple perspectives or cameras are very similar like in virtual reality or other types of
+// stereoscopic rendering where the left and right eye only differ in a small position offset.
 
-use bytemuck::{Pod, Zeroable};
 use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
         CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo, SubpassContents,
@@ -54,10 +52,10 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: InstanceExtensions {
-                khr_get_physical_device_properties2: true, // required to get multiview limits
+                // Required to get multiview limits.
+                khr_get_physical_device_properties2: true,
                 ..InstanceExtensions::empty()
             },
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -68,25 +66,23 @@ fn main() {
         ..DeviceExtensions::empty()
     };
     let features = Features {
-        // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on
-        // Vulkan 1.0 and the device feature on Vulkan 1.1+
+        // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on Vulkan 1.0
+        // and the device feature on Vulkan 1.1+.
         multiview: true,
         ..Features::empty()
     };
-    let (physical_device, queue_family_index) = instance.enumerate_physical_devices().unwrap()
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
+        .filter(|p| p.supported_features().contains(&features))
         .filter(|p| {
-            p.supported_extensions().contains(&device_extensions)
-        })
-        .filter(|p| {
-            p.supported_features().contains(&features)
-        })
-        .filter(|p| {
-            // This example renders to two layers of the framebuffer using the multiview
-            // extension so we check that at least two views are supported by the device.
-            // Not checking this on a device that doesn't support two views
-            // will lead to a runtime error when creating the `RenderPass`.
-            // The `max_multiview_view_count` function will return `None` when the
-            // `VK_KHR_get_physical_device_properties2` instance extension has not been enabled.
+            // This example renders to two layers of the framebuffer using the multiview extension
+            // so we check that at least two views are supported by the device. Not checking this
+            // on a device that doesn't support two views will lead to a runtime error when
+            // creating the `RenderPass`. The `max_multiview_view_count` function will return
+            // `None` when the `VK_KHR_get_physical_device_properties2` instance extension has not
+            // been enabled.
             p.properties().max_multiview_view_count.unwrap_or(0) >= 2
         })
         .filter_map(|p| {
@@ -103,14 +99,17 @@ fn main() {
             PhysicalDeviceType::Other => 4,
             _ => 5,
         })
-        // A real application should probably fall back to rendering the framebuffer layers
-        // in multiple passes when multiview isn't supported.
-        .expect("No device supports two multiview views or the VK_KHR_get_physical_device_properties2 instance extension has not been loaded");
+        // A real application should probably fall back to rendering the framebuffer layers in
+        // multiple passes when multiview isn't supported.
+        .expect(
+            "no device supports two multiview views or the \
+            `VK_KHR_get_physical_device_properties2` instance extension has not been loaded",
+        );
 
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -147,8 +146,8 @@ fn main() {
 
     let image_view = ImageView::new_default(image.clone()).unwrap();
 
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],
@@ -175,40 +174,39 @@ fn main() {
     )
     .unwrap();
 
-    // Note the `#extension GL_EXT_multiview : enable` that enables the multiview extension
-    // for the shader and the use of `gl_ViewIndex` which contains a value based on which
-    // view the shader is being invoked for.
-    // In this example `gl_ViewIndex` is used toggle a hardcoded offset for vertex positions
-    // but in a VR application you could easily use it as an index to a uniform array
-    // that contains the transformation matrices for the left and right eye.
+    // Note the `#extension GL_EXT_multiview : enable` that enables the multiview extension for the
+    // shader and the use of `gl_ViewIndex` which contains a value based on which view the shader
+    // is being invoked for. In this example `gl_ViewIndex` is used to toggle a hardcoded offset
+    // for vertex positions but in a VR application you could easily use it as an index to a
+    // uniform array that contains the transformation matrices for the left and right eye.
     mod vs {
         vulkano_shaders::shader! {
             ty: "vertex",
-            src: "
-				#version 450
+            src: r"
+                #version 450
                 #extension GL_EXT_multiview : enable
 
-				layout(location = 0) in vec2 position;
+                layout(location = 0) in vec2 position;
 
-				void main() {
+                void main() {
                     gl_Position = vec4(position, 0.0, 1.0) + gl_ViewIndex * vec4(0.25, 0.25, 0.0, 0.0);
-				}
-			"
+                }
+            ",
         }
     }
 
     mod fs {
         vulkano_shaders::shader! {
             ty: "fragment",
-            src: "
-				#version 450
+            src: r"
+                #version 450
 
-				layout(location = 0) out vec4 f_color;
+                layout(location = 0) out vec4 f_color;
 
-				void main() {
-					f_color = vec4(1.0, 0.0, 0.0, 1.0);
-				}
-			"
+                void main() {
+                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                }
+            ",
         }
     }
 
@@ -228,8 +226,8 @@ fn main() {
             ..Default::default()
         }],
         subpasses: vec![SubpassDescription {
-            // the view mask indicates which layers of the framebuffer should be rendered for each
-            // subpass
+            // The view mask indicates which layers of the framebuffer should be rendered for each
+            // subpass.
             view_mask: 0b11,
             color_attachments: vec![Some(AttachmentReference {
                 attachment: 0,
@@ -238,8 +236,8 @@ fn main() {
             })],
             ..Default::default()
         }],
-        // the correlated view masks indicate sets of views that may be more efficient to render
-        // concurrently
+        // The correlated view masks indicate sets of views that may be more efficient to render
+        // concurrently.
         correlated_view_masks: vec![0b11],
         ..Default::default()
     };
@@ -299,8 +297,8 @@ fn main() {
     )
     .unwrap();
 
-    // drawing commands are broadcast to each view in the view mask of the active renderpass
-    // which means only a single draw call is needed to draw to multiple layers of the framebuffer
+    // Drawing commands are broadcast to each view in the view mask of the active renderpass which
+    // means only a single draw call is needed to draw to multiple layers of the framebuffer.
     builder
         .begin_render_pass(
             RenderPassBeginInfo {
@@ -317,7 +315,7 @@ fn main() {
         .end_render_pass()
         .unwrap();
 
-    // copy the image layers to different buffers to save them as individual images to disk
+    // Copy the image layers to different buffers to save them as individual images to disk.
     builder
         .copy_image_to_buffer(CopyImageToBufferInfo {
             regions: [BufferImageCopy {
@@ -356,7 +354,7 @@ fn main() {
 
     future.wait(None).unwrap();
 
-    // write each layer to its own file
+    // Write each layer to its own file.
     write_image_buffer_to_file(
         buffer1,
         "multiview1.png",

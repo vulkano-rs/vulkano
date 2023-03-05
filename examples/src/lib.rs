@@ -7,11 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use bytemuck::{Pod, Zeroable};
-use vulkano::pipeline::graphics::vertex_input::Vertex;
+use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 
+#[derive(BufferContents, Vertex)]
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 pub struct Position {
     #[format(R32G32B32_SFLOAT)]
     position: [f32; 3],
@@ -1614,8 +1613,8 @@ pub const POSITIONS: [Position; 531] = [
     },
 ];
 
+#[derive(BufferContents, Vertex)]
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 pub struct Normal {
     #[format(R32G32B32_SFLOAT)]
     normal: [f32; 3],

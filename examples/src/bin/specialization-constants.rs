@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// TODO: Give a paragraph about what specialization are and what problems they solve
+// TODO: Give a paragraph about what specialization are and what problems they solve.
 
 use vulkano::{
     buffer::{Buffer, BufferAllocateInfo, BufferUsage},
@@ -33,7 +33,6 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -65,9 +64,9 @@ fn main() {
         .unwrap();
 
     println!(
-        "Using device: {} (type: {:?})",
+        "using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -87,27 +86,27 @@ fn main() {
     mod cs {
         vulkano_shaders::shader! {
             ty: "compute",
-            src: "
+            src: r"
                 #version 450
 
                 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
                 layout(constant_id = 0) const int multiple = 64;
                 layout(constant_id = 1) const float addend = 64;
                 layout(constant_id = 2) const bool enable = true;
-                const vec2 foo = vec2(0, 0); // TODO: How do I hit Instruction::SpecConstantComposite
 
                 layout(set = 0, binding = 0) buffer Data {
                     uint data[];
-                } data;
+                };
 
                 void main() {
                     uint idx = gl_GlobalInvocationID.x;
                     if (enable) {
-                        data.data[idx] *= multiple;
-                        data.data[idx] += uint(addend);
+                        data[idx] *= multiple;
+                        data[idx] += uint(addend);
                     }
                 }
-            "
+            ",
         }
     }
 

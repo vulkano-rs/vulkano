@@ -7,27 +7,31 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{entry_point, read_file_to_string, structs, LinAlgType, RegisteredType, TypesMeta};
-use ahash::HashMap;
+use crate::{
+    entry_point,
+    structs::{self, TypeRegistry},
+    MacroInput,
+};
+use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
-use shaderc::{CompileOptions, Compiler, EnvVersion, SpirvVersion, TargetEnv};
+use shaderc::{CompileOptions, Compiler, EnvVersion, TargetEnv};
 use std::{
-    cell::{RefCell, RefMut},
-    io::Error as IoError,
+    cell::RefCell,
+    fs,
     iter::Iterator,
-    path::Path,
+    path::{Path, PathBuf},
 };
-use vulkano::shader::{
-    reflect,
-    spirv::{Spirv, SpirvError},
+use syn::{Error, LitStr};
+use vulkano::{
+    shader::{reflect, spirv::Spirv},
+    Version,
 };
 
-pub(super) fn path_to_str(path: &Path) -> &str {
-    path.to_str().expect(
-        "Could not stringify the file to be included. Make sure the path consists of \
-                 valid unicode characters.",
-    )
+pub struct Shader {
+    pub source: LitStr,
+    pub name: String,
+    pub spirv: Spirv,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -36,40 +40,39 @@ fn include_callback(
     directive_type: IncludeType,
     contained_within_path_raw: &str,
     recursion_depth: usize,
-    include_directories: &[impl AsRef<Path>],
+    include_directories: &[PathBuf],
     root_source_has_path: bool,
-    base_path: &impl AsRef<Path>,
-    mut includes_tracker: RefMut<'_, Vec<String>>,
+    base_path: &Path,
+    includes: &mut Vec<String>,
 ) -> Result<ResolvedInclude, String> {
     let file_to_include = match directive_type {
         IncludeType::Relative => {
             let requested_source_path = Path::new(requested_source_path_raw);
-            // Is embedded current shader source embedded within a rust macro?
-            // If so, abort unless absolute path.
+            // If the shader source is embedded within the macro, abort unless we get an absolute
+            // path.
             if !root_source_has_path && recursion_depth == 1 && !requested_source_path.is_absolute()
             {
                 let requested_source_name = requested_source_path
                     .file_name()
-                    .expect("Could not get the name of the requested source file.")
+                    .expect("failed to get the name of the requested source file")
                     .to_string_lossy();
                 let requested_source_directory = requested_source_path
                     .parent()
-                    .expect("Could not get the directory of the requested source file.")
+                    .expect("failed to get the directory of the requested source file")
                     .to_string_lossy();
 
                 return Err(format!(
-                    "Usage of relative paths in imports in embedded GLSL is not \
-                                    allowed, try using `#include <{}>` and adding the directory \
-                                    `{}` to the `include` array in your `shader!` macro call \
-                                    instead.",
-                    requested_source_name, requested_source_directory
+                    "usage of relative paths in imports in embedded GLSL is not allowed, try \
+                    using `#include <{}>` and adding the directory `{}` to the `include` array in \
+                    your `shader!` macro call instead",
+                    requested_source_name, requested_source_directory,
                 ));
             }
 
             let mut resolved_path = if recursion_depth == 1 {
                 Path::new(contained_within_path_raw)
                     .parent()
-                    .map(|parent| base_path.as_ref().join(parent))
+                    .map(|parent| base_path.join(parent))
             } else {
                 Path::new(contained_within_path_raw)
                     .parent()
@@ -77,17 +80,17 @@ fn include_callback(
             }
             .unwrap_or_else(|| {
                 panic!(
-                    "The file `{}` does not reside in a directory. This is \
-                                        an implementation error.",
-                    contained_within_path_raw
+                    "the file `{}` does not reside in a directory, this is an implementation \
+                    error",
+                    contained_within_path_raw,
                 )
             });
             resolved_path.push(requested_source_path);
 
             if !resolved_path.is_file() {
                 return Err(format!(
-                    "Invalid inclusion path `{}`, the path does not point to a file.",
-                    requested_source_path_raw
+                    "invalid inclusion path `{}`, the path does not point to a file",
+                    requested_source_path_raw,
                 ));
             }
 
@@ -101,79 +104,78 @@ fn include_callback(
                 // in the relative include directive or when using absolute paths in a standard
                 // include directive.
                 return Err(format!(
-                    "No such file found, as specified by the absolute path. \
-                                    Keep in mind, that absolute paths cannot be used with \
-                                    inclusion from standard directories (`#include <...>`), try \
-                                    using `#include \"...\"` instead. Requested path: {}",
-                    requested_source_path_raw
+                    "no such file found as specified by the absolute path; keep in mind that \
+                    absolute paths cannot be used with inclusion from standard directories \
+                    (`#include <...>`), try using `#include \"...\"` instead; requested path: {}",
+                    requested_source_path_raw,
                 ));
             }
 
             let found_requested_source_path = include_directories
                 .iter()
-                .map(|include_directory| include_directory.as_ref().join(requested_source_path))
+                .map(|include_directory| include_directory.join(requested_source_path))
                 .find(|resolved_requested_source_path| resolved_requested_source_path.is_file());
 
             if let Some(found_requested_source_path) = found_requested_source_path {
                 found_requested_source_path
             } else {
                 return Err(format!(
-                    "Could not include the file `{}` from any include directories.",
-                    requested_source_path_raw
+                    "failed to include the file `{}` from any include directories",
+                    requested_source_path_raw,
                 ));
             }
         }
     };
 
-    let file_to_include_string = path_to_str(file_to_include.as_path()).to_string();
-    let content = read_file_to_string(file_to_include.as_path()).map_err(|_| {
+    let content = fs::read_to_string(file_to_include.as_path()).map_err(|err| {
         format!(
-            "Could not read the contents of file `{}` to be included in the \
-                              shader source.",
-            &file_to_include_string
+            "failed to read the contents of file `{file_to_include:?}` to be included in the \
+            shader source: {err}",
         )
     })?;
+    let resolved_name = file_to_include
+        .into_os_string()
+        .into_string()
+        .map_err(|_| {
+            "failed to stringify the file to be included; make sure the path consists of valid \
+            unicode characters"
+        })?;
 
-    includes_tracker.push(file_to_include_string.clone());
+    includes.push(resolved_name.clone());
 
     Ok(ResolvedInclude {
-        resolved_name: file_to_include_string,
+        resolved_name,
         content,
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn compile(
+pub(super) fn compile(
+    input: &MacroInput,
     path: Option<String>,
-    base_path: &impl AsRef<Path>,
+    base_path: &Path,
     code: &str,
-    ty: ShaderKind,
-    include_directories: &[impl AsRef<Path>],
-    macro_defines: &[(impl AsRef<str>, impl AsRef<str>)],
-    vulkan_version: Option<EnvVersion>,
-    spirv_version: Option<SpirvVersion>,
+    shader_kind: ShaderKind,
 ) -> Result<(CompilationArtifact, Vec<String>), String> {
-    let includes_tracker = RefCell::new(Vec::new());
+    let includes = RefCell::new(Vec::new());
     let compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
-    let mut compile_options = CompileOptions::new().ok_or("failed to initialize compile option")?;
+    let mut compile_options =
+        CompileOptions::new().ok_or("failed to initialize compile options")?;
 
     compile_options.set_target_env(
         TargetEnv::Vulkan,
-        vulkan_version.unwrap_or(EnvVersion::Vulkan1_0) as u32,
+        input.vulkan_version.unwrap_or(EnvVersion::Vulkan1_0) as u32,
     );
 
-    if let Some(spirv_version) = spirv_version {
+    if let Some(spirv_version) = input.spirv_version {
         compile_options.set_target_spirv(spirv_version);
     }
 
-    let root_source_path = if let &Some(ref path) = &path {
-        path
-    } else {
-        // An arbitrary placeholder file name for embedded shaders
-        "shader.glsl"
-    };
+    let root_source_path = path.as_deref().unwrap_or(
+        // An arbitrary placeholder file name for embedded shaders.
+        "shader.glsl",
+    );
 
-    // Specify file resolution callback for the `#include` directive
+    // Specify the file resolution callback for the `#include` directive.
     compile_options.set_include_callback(
         |requested_source_path, directive_type, contained_within_path, recursion_depth| {
             include_callback(
@@ -181,52 +183,68 @@ pub fn compile(
                 directive_type,
                 contained_within_path,
                 recursion_depth,
-                include_directories,
+                &input.include_directories,
                 path.is_some(),
                 base_path,
-                includes_tracker.borrow_mut(),
+                &mut includes.borrow_mut(),
             )
         },
     );
 
-    for (macro_name, macro_value) in macro_defines.iter() {
-        compile_options.add_macro_definition(macro_name.as_ref(), Some(macro_value.as_ref()));
+    for (macro_name, macro_value) in &input.macro_defines {
+        compile_options.add_macro_definition(macro_name, Some(macro_value));
     }
 
     #[cfg(feature = "shaderc-debug")]
     compile_options.set_generate_debug_info();
 
     let content = compiler
-        .compile_into_spirv(code, ty, root_source_path, "main", Some(&compile_options))
-        .map_err(|e| e.to_string())?;
+        .compile_into_spirv(
+            code,
+            shader_kind,
+            root_source_path,
+            "main",
+            Some(&compile_options),
+        )
+        .map_err(|e| e.to_string().replace("(s): ", "(s):\n"))?;
 
-    let includes = includes_tracker.borrow().clone();
+    drop(compile_options);
 
-    Ok((content, includes))
+    Ok((content, includes.into_inner()))
 }
 
-pub(super) fn reflect<'a, L: LinAlgType>(
-    prefix: &'a str,
+pub(super) fn reflect(
+    input: &MacroInput,
+    source: LitStr,
+    name: String,
     words: &[u32],
-    types_meta: &TypesMeta,
-    input_paths: impl IntoIterator<Item = &'a str>,
-    shared_constants: bool,
-    types_registry: &'a mut HashMap<String, RegisteredType>,
+    input_paths: Vec<String>,
+    type_registry: &mut TypeRegistry,
 ) -> Result<(TokenStream, TokenStream), Error> {
-    let spirv = Spirv::new(words)?;
+    let spirv = Spirv::new(words).map_err(|err| {
+        Error::new_spanned(&source, format!("failed to parse SPIR-V words: {err}"))
+    })?;
+    let shader = Shader {
+        source,
+        name,
+        spirv,
+    };
 
     let include_bytes = input_paths.into_iter().map(|s| {
         quote! {
-            // using include_bytes here ensures that changing the shader will force recompilation.
+            // Using `include_bytes` here ensures that changing the shader will force recompilation.
             // The bytes themselves can be optimized out by the compiler as they are unused.
             ::std::include_bytes!( #s )
         }
     });
 
     let spirv_version = {
-        let major = spirv.version().major;
-        let minor = spirv.version().minor;
-        let patch = spirv.version().patch;
+        let Version {
+            major,
+            minor,
+            patch,
+        } = shader.spirv.version();
+
         quote! {
             ::vulkano::Version {
                 major: #major,
@@ -235,35 +253,34 @@ pub(super) fn reflect<'a, L: LinAlgType>(
             }
         }
     };
-    let spirv_capabilities = reflect::spirv_capabilities(&spirv).map(|capability| {
+    let spirv_capabilities = reflect::spirv_capabilities(&shader.spirv).map(|capability| {
         let name = format_ident!("{}", format!("{:?}", capability));
         quote! { &::vulkano::shader::spirv::Capability::#name }
     });
-    let spirv_extensions = reflect::spirv_extensions(&spirv);
-    let entry_points = reflect::entry_points(&spirv)
+    let spirv_extensions = reflect::spirv_extensions(&shader.spirv);
+    let entry_points = reflect::entry_points(&shader.spirv)
         .map(|(name, model, info)| entry_point::write_entry_point(&name, model, &info));
 
-    let specialization_constants = structs::write_specialization_constants::<L>(
-        prefix,
-        &spirv,
-        shared_constants,
-        types_registry,
-    );
+    let specialization_constants =
+        structs::write_specialization_constants(input, &shader, type_registry)?;
 
-    let load_name = if prefix.is_empty() {
+    let load_name = if shader.name.is_empty() {
         format_ident!("load")
     } else {
-        format_ident!("load_{}", prefix)
+        format_ident!("load_{}", shader.name.to_snake_case())
     };
 
     let shader_code = quote! {
-        /// Loads the shader in Vulkan as a `ShaderModule`.
-        #[inline]
+        /// Loads the shader as a `ShaderModule`.
         #[allow(unsafe_code)]
-        pub fn #load_name(device: ::std::sync::Arc<::vulkano::device::Device>)
-            -> Result<::std::sync::Arc<::vulkano::shader::ShaderModule>, ::vulkano::shader::ShaderCreationError>
-        {
-            let _bytes = ( #( #include_bytes),* );
+        #[inline]
+        pub fn #load_name(
+            device: ::std::sync::Arc<::vulkano::device::Device>,
+        ) -> ::std::result::Result<
+            ::std::sync::Arc<::vulkano::shader::ShaderModule>,
+            ::vulkano::shader::ShaderCreationError,
+        > {
+            let _bytes = ( #( #include_bytes ),* );
 
             static WORDS: &[u32] = &[ #( #words ),* ];
 
@@ -272,9 +289,9 @@ pub(super) fn reflect<'a, L: LinAlgType>(
                     device,
                     WORDS,
                     #spirv_version,
-                    [#(#spirv_capabilities),*],
-                    [#(#spirv_extensions),*],
-                    [#(#entry_points),*],
+                    [ #( #spirv_capabilities ),* ],
+                    [ #( #spirv_extensions ),* ],
+                    [ #( #entry_points ),* ],
                 )
             }
         }
@@ -282,51 +299,19 @@ pub(super) fn reflect<'a, L: LinAlgType>(
         #specialization_constants
     };
 
-    let structs = structs::write_structs::<L>(prefix, &spirv, types_meta, types_registry);
+    let structs = structs::write_structs(input, &shader, type_registry)?;
 
     Ok((shader_code, structs))
-}
-
-#[derive(Debug)]
-pub enum Error {
-    IoError(IoError),
-    SpirvError(SpirvError),
-}
-
-impl From<IoError> for Error {
-    fn from(err: IoError) -> Error {
-        Error::IoError(err)
-    }
-}
-
-impl From<SpirvError> for Error {
-    fn from(err: SpirvError) -> Error {
-        Error::SpirvError(err)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{codegen::compile, StdArray};
-    use shaderc::ShaderKind;
-    use std::path::{Path, PathBuf};
-    use vulkano::shader::{reflect, spirv::Spirv};
 
-    #[cfg(not(target_os = "windows"))]
-    pub fn path_separator() -> &'static str {
-        "/"
-    }
-
-    #[cfg(target_os = "windows")]
-    pub fn path_separator() -> &'static str {
-        "\\"
-    }
-
-    fn convert_paths(root_path: &Path, paths: &[String]) -> Vec<String> {
+    fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> Vec<String> {
         paths
             .iter()
-            .map(|p| path_to_str(root_path.join(p).as_path()).to_owned())
+            .map(|p| root_path.join(p).into_os_string().into_string().unwrap())
             .collect()
     }
 
@@ -344,194 +329,88 @@ mod tests {
     }
 
     #[test]
-    fn test_bad_alignment() {
-        // vec3/mat3/mat3x* are problematic in arrays since their rust
-        // representations don't have the same array stride as the SPIR-V
-        // ones. E.g. in a vec3[2], the second element starts on the 16th
-        // byte, but in a rust [[f32;3];2], the second element starts on the
-        // 12th byte. Since we can't generate code for these types, we should
-        // create an error instead of generating incorrect code.
-        let includes: [PathBuf; 0] = [];
-        let defines: [(String, String); 0] = [];
-        let (comp, _) = compile(
-            None,
-            &Path::new(""),
-            "
-        #version 450
-        struct MyStruct {
-            vec3 vs[2];
-        };
-        layout(binding=0) uniform UBO {
-            MyStruct s;
-        };
-        void main() {}
-        ",
-            ShaderKind::Vertex,
-            &includes,
-            &defines,
-            None,
-            None,
-        )
-        .unwrap();
-        let spirv = Spirv::new(comp.as_binary()).unwrap();
-        let res = std::panic::catch_unwind(|| {
-            structs::write_structs::<StdArray>(
-                "",
-                &spirv,
-                &TypesMeta::default(),
-                &mut HashMap::default(),
-            )
-        });
-        assert!(res.is_err());
-    }
-    #[test]
-    fn test_trivial_alignment() {
-        let includes: [PathBuf; 0] = [];
-        let defines: [(String, String); 0] = [];
-        let (comp, _) = compile(
-            None,
-            &Path::new(""),
-            "
-        #version 450
-        struct MyStruct {
-            vec4 vs[2];
-        };
-        layout(binding=0) uniform UBO {
-            MyStruct s;
-        };
-        void main() {}
-        ",
-            ShaderKind::Vertex,
-            &includes,
-            &defines,
-            None,
-            None,
-        )
-        .unwrap();
-        let spirv = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs::<StdArray>(
-            "",
-            &spirv,
-            &TypesMeta::default(),
-            &mut HashMap::default(),
-        );
-    }
-    #[test]
-    fn test_wrap_alignment() {
-        // This is a workaround suggested in the case of test_bad_alignment,
-        // so we should make sure it works.
-        let includes: [PathBuf; 0] = [];
-        let defines: [(String, String); 0] = [];
-        let (comp, _) = compile(
-            None,
-            &Path::new(""),
-            "
-        #version 450
-        struct Vec3Wrap {
-            vec3 v;
-        };
-        struct MyStruct {
-            Vec3Wrap vs[2];
-        };
-        layout(binding=0) uniform UBO {
-            MyStruct s;
-        };
-        void main() {}
-        ",
-            ShaderKind::Vertex,
-            &includes,
-            &defines,
-            None,
-            None,
-        )
-        .unwrap();
-        let spirv = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs::<StdArray>(
-            "",
-            &spirv,
-            &TypesMeta::default(),
-            &mut HashMap::default(),
-        );
-    }
-
-    #[test]
-    fn test_include_resolution() {
+    fn include_resolution() {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let empty_includes: [PathBuf; 0] = [];
-        let defines: [(String, String); 0] = [];
+
         let (_compile_relative, _) = compile(
+            &MacroInput::empty(),
             Some(String::from("tests/include_test.glsl")),
             &root_path,
-            "
-        #version 450
-        #include \"include_dir_a/target_a.glsl\"
-        #include \"include_dir_b/target_b.glsl\"
-        void main() {}
-        ",
+            r#"
+                #version 450
+                #include "include_dir_a/target_a.glsl"
+                #include "include_dir_b/target_b.glsl"
+                void main() {}
+            "#,
             ShaderKind::Vertex,
-            &empty_includes,
-            &defines,
-            None,
-            None,
         )
-        .expect("Cannot resolve include files");
+        .expect("cannot resolve include files");
 
         let (_compile_include_paths, includes) = compile(
+            &MacroInput {
+                include_directories: vec![
+                    root_path.join("tests").join("include_dir_a"),
+                    root_path.join("tests").join("include_dir_b"),
+                ],
+                ..MacroInput::empty()
+            },
             Some(String::from("tests/include_test.glsl")),
             &root_path,
-            "
-        #version 450
-        #include <target_a.glsl>
-        #include <target_b.glsl>
-        void main() {}
-        ",
+            r#"
+                #version 450
+                #include <target_a.glsl>
+                #include <target_b.glsl>
+                void main() {}
+            "#,
             ShaderKind::Vertex,
-            &[
-                root_path.join("tests").join("include_dir_a"),
-                root_path.join("tests").join("include_dir_b"),
-            ],
-            &defines,
-            None,
-            None,
         )
-        .expect("Cannot resolve include files");
+        .expect("cannot resolve include files");
+
         assert_eq!(
             includes,
             convert_paths(
                 &root_path,
                 &[
-                    vec!["tests", "include_dir_a", "target_a.glsl"].join(path_separator()),
-                    vec!["tests", "include_dir_b", "target_b.glsl"].join(path_separator()),
-                ]
-            )
+                    ["tests", "include_dir_a", "target_a.glsl"]
+                        .into_iter()
+                        .collect(),
+                    ["tests", "include_dir_b", "target_b.glsl"]
+                        .into_iter()
+                        .collect(),
+                ],
+            ),
         );
 
         let (_compile_include_paths_with_relative, includes_with_relative) = compile(
+            &MacroInput {
+                include_directories: vec![root_path.join("tests").join("include_dir_a")],
+                ..MacroInput::empty()
+            },
             Some(String::from("tests/include_test.glsl")),
             &root_path,
-            "
-        #version 450
-        #include <target_a.glsl>
-        #include <../include_dir_b/target_b.glsl>
-        void main() {}
-        ",
+            r#"
+                #version 450
+                #include <target_a.glsl>
+                #include <../include_dir_b/target_b.glsl>
+                void main() {}
+            "#,
             ShaderKind::Vertex,
-            &[root_path.join("tests").join("include_dir_a")],
-            &defines,
-            None,
-            None,
         )
-        .expect("Cannot resolve include files");
+        .expect("cannot resolve include files");
+
         assert_eq!(
             includes_with_relative,
             convert_paths(
                 &root_path,
                 &[
-                    vec!["tests", "include_dir_a", "target_a.glsl"].join(path_separator()),
-                    vec!["tests", "include_dir_a", "../include_dir_b/target_b.glsl"]
-                        .join(path_separator()),
-                ]
-            )
+                    ["tests", "include_dir_a", "target_a.glsl"]
+                        .into_iter()
+                        .collect(),
+                    ["tests", "include_dir_a", "../include_dir_b/target_b.glsl"]
+                        .into_iter()
+                        .collect(),
+                ],
+            ),
         );
 
         let absolute_path = root_path
@@ -540,99 +419,99 @@ mod tests {
             .join("target_a.glsl");
         let absolute_path_str = absolute_path
             .to_str()
-            .expect("Cannot run tests in a folder with non unicode characters");
+            .expect("cannot run tests in a folder with non unicode characters");
         let (_compile_absolute_path, includes_absolute_path) = compile(
+            &MacroInput::empty(),
             Some(String::from("tests/include_test.glsl")),
             &root_path,
             &format!(
-                "
-        #version 450
-        #include \"{}\"
-        void main() {{}}
-        ",
-                absolute_path_str
+                r#"
+                    #version 450
+                    #include "{absolute_path_str}"
+                    void main() {{}}
+                "#,
             ),
             ShaderKind::Vertex,
-            &empty_includes,
-            &defines,
-            None,
-            None,
         )
-        .expect("Cannot resolve include files");
+        .expect("cannot resolve include files");
+
         assert_eq!(
             includes_absolute_path,
             convert_paths(
                 &root_path,
-                &[vec!["tests", "include_dir_a", "target_a.glsl"].join(path_separator())]
-            )
+                &[["tests", "include_dir_a", "target_a.glsl"]
+                    .into_iter()
+                    .collect()],
+            ),
         );
 
         let (_compile_recursive_, includes_recursive) = compile(
+            &MacroInput {
+                include_directories: vec![
+                    root_path.join("tests").join("include_dir_b"),
+                    root_path.join("tests").join("include_dir_c"),
+                ],
+                ..MacroInput::empty()
+            },
             Some(String::from("tests/include_test.glsl")),
             &root_path,
-            "
-        #version 450
-        #include <target_c.glsl>
-        void main() {}
-        ",
+            r#"
+                #version 450
+                #include <target_c.glsl>
+                void main() {}
+            "#,
             ShaderKind::Vertex,
-            &[
-                root_path.join("tests").join("include_dir_b"),
-                root_path.join("tests").join("include_dir_c"),
-            ],
-            &defines,
-            None,
-            None,
         )
-        .expect("Cannot resolve include files");
+        .expect("cannot resolve include files");
+
         assert_eq!(
             includes_recursive,
             convert_paths(
                 &root_path,
                 &[
-                    vec!["tests", "include_dir_c", "target_c.glsl"].join(path_separator()),
-                    vec!["tests", "include_dir_c", "../include_dir_a/target_a.glsl"]
-                        .join(path_separator()),
-                    vec!["tests", "include_dir_b", "target_b.glsl"].join(path_separator()),
-                ]
-            )
+                    ["tests", "include_dir_c", "target_c.glsl"]
+                        .into_iter()
+                        .collect(),
+                    ["tests", "include_dir_c", "../include_dir_a/target_a.glsl"]
+                        .into_iter()
+                        .collect(),
+                    ["tests", "include_dir_b", "target_b.glsl"]
+                        .into_iter()
+                        .collect(),
+                ],
+            ),
         );
     }
 
     #[test]
-    fn test_macros() {
-        let empty_includes: [PathBuf; 0] = [];
-        let defines = vec![("NAME1", ""), ("NAME2", "58")];
-        let no_defines: [(String, String); 0] = [];
-        let need_defines = "
-        #version 450
-        #if defined(NAME1) && NAME2 > 29
-        void main() {}
-        #endif
-        ";
+    fn macros() {
+        let need_defines = r#"
+            #version 450
+            #if defined(NAME1) && NAME2 > 29
+            void main() {}
+            #endif
+        "#;
+
         let compile_no_defines = compile(
+            &MacroInput::empty(),
             None,
-            &Path::new(""),
+            Path::new(""),
             need_defines,
             ShaderKind::Vertex,
-            &empty_includes,
-            &no_defines,
-            None,
-            None,
         );
         assert!(compile_no_defines.is_err());
 
-        let compile_defines = compile(
+        compile(
+            &MacroInput {
+                macro_defines: vec![("NAME1".into(), "".into()), ("NAME2".into(), "58".into())],
+                ..MacroInput::empty()
+            },
             None,
-            &Path::new(""),
+            Path::new(""),
             need_defines,
             ShaderKind::Vertex,
-            &empty_includes,
-            &defines,
-            None,
-            None,
-        );
-        compile_defines.expect("Setting shader macros did not work");
+        )
+        .expect("setting shader macros did not work");
     }
 
     /// `entrypoint1.frag.glsl`:
@@ -699,7 +578,7 @@ mod tests {
     /// spirv-link entrypoint1.spv entrypoint2.spv -o multiple_entrypoints.spv
     /// ```
     #[test]
-    fn test_descriptor_calculation_with_multiple_entrypoints() {
+    fn descriptor_calculation_with_multiple_entrypoints() {
         let data = include_bytes!("../tests/multiple_entrypoints.spv");
         let instructions: Vec<u32> = data
             .chunks(4)
@@ -715,11 +594,12 @@ mod tests {
         }
 
         // Check first entrypoint
-        let e1_descriptors = descriptors.get(0).expect("Could not find entrypoint1");
+        let e1_descriptors = descriptors.get(0).expect("could not find entrypoint1");
         let mut e1_bindings = Vec::new();
         for loc in e1_descriptors.keys() {
             e1_bindings.push(*loc);
         }
+
         assert_eq!(e1_bindings.len(), 5);
         assert!(e1_bindings.contains(&(0, 0)));
         assert!(e1_bindings.contains(&(0, 1)));
@@ -728,11 +608,12 @@ mod tests {
         assert!(e1_bindings.contains(&(0, 4)));
 
         // Check second entrypoint
-        let e2_descriptors = descriptors.get(1).expect("Could not find entrypoint2");
+        let e2_descriptors = descriptors.get(1).expect("could not find entrypoint2");
         let mut e2_bindings = Vec::new();
         for loc in e2_descriptors.keys() {
             e2_bindings.push(*loc);
         }
+
         assert_eq!(e2_bindings.len(), 3);
         assert!(e2_bindings.contains(&(0, 0)));
         assert!(e2_bindings.contains(&(0, 1)));
@@ -740,43 +621,38 @@ mod tests {
     }
 
     #[test]
-    fn test_descriptor_calculation_with_multiple_functions() {
-        let includes: [PathBuf; 0] = [];
-        let defines: [(String, String); 0] = [];
+    fn descriptor_calculation_with_multiple_functions() {
         let (comp, _) = compile(
+            &MacroInput::empty(),
             None,
-            &Path::new(""),
-            "
-        #version 450
+            Path::new(""),
+            r#"
+                #version 450
 
-        layout(set = 1, binding = 0) buffer Buffer {
-            vec3 data;
-        } bo;
+                layout(set = 1, binding = 0) buffer Buffer {
+                    vec3 data;
+                } bo;
 
-        layout(set = 2, binding = 0) uniform Uniform {
-            float data;
-        } ubo;
+                layout(set = 2, binding = 0) uniform Uniform {
+                    float data;
+                } ubo;
 
-        layout(set = 3, binding = 1) uniform sampler textureSampler;
-        layout(set = 3, binding = 2) uniform texture2D imageTexture;
+                layout(set = 3, binding = 1) uniform sampler textureSampler;
+                layout(set = 3, binding = 2) uniform texture2D imageTexture;
 
-        float withMagicSparkles(float data) {
-            return texture(sampler2D(imageTexture, textureSampler), vec2(data, data)).x;
-        }
+                float withMagicSparkles(float data) {
+                    return texture(sampler2D(imageTexture, textureSampler), vec2(data, data)).x;
+                }
 
-        vec3 makeSecretSauce() {
-            return vec3(withMagicSparkles(ubo.data));
-        }
+                vec3 makeSecretSauce() {
+                    return vec3(withMagicSparkles(ubo.data));
+                }
 
-        void main() {
-            bo.data = makeSecretSauce();
-        }
-        ",
+                void main() {
+                    bo.data = makeSecretSauce();
+                }
+            "#,
             ShaderKind::Vertex,
-            &includes,
-            &defines,
-            None,
-            None,
         )
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
@@ -786,6 +662,7 @@ mod tests {
             for (loc, _reqs) in info.descriptor_binding_requirements {
                 bindings.push(loc);
             }
+
             assert_eq!(bindings.len(), 4);
             assert!(bindings.contains(&(1, 0)));
             assert!(bindings.contains(&(2, 0)));
@@ -794,6 +671,6 @@ mod tests {
 
             return;
         }
-        panic!("Could not find entrypoint");
+        panic!("could not find entrypoint");
     }
 }

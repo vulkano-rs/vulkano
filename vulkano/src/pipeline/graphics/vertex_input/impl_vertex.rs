@@ -14,10 +14,10 @@ use crate::format::Format;
 /// # Examples
 ///
 /// ```
-/// # use bytemuck::{Zeroable, Pod};
+/// # use vulkano::buffer::BufferContents;
+/// #[derive(BufferContents, Default)]
 /// #[repr(C)]
-/// #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-/// struct Vertex{
+/// struct Vertex {
 ///     position: [f32; 3],
 ///     color: [f32; 4],
 /// }
@@ -26,7 +26,7 @@ use crate::format::Format;
 /// ```
 #[deprecated(
     since = "0.33.0",
-    note = "Derive `Vertex` instead and use field-level attributes to specify format"
+    note = "derive `Vertex` instead and use field-level attributes to specify format"
 )]
 #[macro_export]
 macro_rules! impl_vertex {
