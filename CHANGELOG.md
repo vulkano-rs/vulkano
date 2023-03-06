@@ -9,7 +9,10 @@
 
 ### Public dependency updates
 
-- [ash](https://crates.io/crates/ash) 0.37.1
+- [ash](https://crates.io/crates/ash) 0.37.2
+- [bytemuck](https://crates.io/crates/bytemuck) 1.13
+- [nalgebra](https://crates.io/crates/nalgebra) 0.32
+- [winit](https://crates.io/crates/winit) 0.28
 
 ### Breaking changes
 
