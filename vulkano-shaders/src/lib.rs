@@ -210,6 +210,7 @@
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]
+#![allow(clippy::needless_borrowed_reference)]
 #![warn(rust_2018_idioms, rust_2021_compatibility)]
 
 #[macro_use]
@@ -391,9 +392,9 @@ impl Parse for MacroInput {
         let mut linalg_type = None;
         let mut dump = None;
 
-        fn parse_shader_fields<'k>(
+        fn parse_shader_fields(
             output: &mut (Option<ShaderKind>, Option<SourceKind>),
-            name: &'k str,
+            name: &str,
             input: ParseStream<'_>,
         ) -> Result<()> {
             match name {

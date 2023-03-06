@@ -143,6 +143,7 @@
     clippy::missing_safety_doc, // TODO: remove
     clippy::module_inception,
     clippy::mutable_key_type,
+    clippy::needless_borrowed_reference,
     clippy::new_without_default,
     clippy::nonminimal_bool,
     clippy::op_ref, // Seems to be bugged, the fixed code triggers a compile error

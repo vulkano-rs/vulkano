@@ -1306,7 +1306,7 @@ impl<'a> CommandBufferBuilderState<'a> {
     /// Returns whether depth bound testing is enabled, or `None` if nothing has been set yet.
     #[inline]
     pub fn depth_bounds_test_enable(&self) -> Option<bool> {
-        self.current_state.depth_bias_enable
+        self.current_state.depth_bounds_test_enable
     }
 
     /// Returns the current depth compare op, or `None` if nothing has been set yet.
