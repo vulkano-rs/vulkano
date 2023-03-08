@@ -30,10 +30,11 @@ use crate::{
 };
 use ash::vk::{ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout};
 use smallvec::SmallVec;
+#[cfg(target_os = "linux")]
+use std::os::unix::prelude::{FromRawFd, IntoRawFd, RawFd};
 use std::{
     fs::File,
     hash::{Hash, Hasher},
-    os::unix::prelude::{FromRawFd, IntoRawFd, RawFd},
     sync::Arc,
 };
 
@@ -212,7 +213,8 @@ impl StorageImage {
         }
     }
 
-    /// Creates a new image from a set of dma_buf file descriptors. The memory will be imported from the file desciptors, and will be bound to the image.
+    #[cfg(target_os = "linux")]
+    /// Creates a new image from a set of Linux dma_buf file descriptors. The memory will be imported from the file desciptors, and will be bound to the image.
     /// # Arguments
     /// * `fds` - The list of file descriptors to import from. Single planar images should only use one, and multiplanar images can use multiple, for example, for each color.
     /// * `offset` - The byte offset from the start of the image of the plane where the image subresource begins.
@@ -297,8 +299,12 @@ impl StorageImage {
         assert!(device.enabled_extensions().ext_external_memory_dma_buf);
 
         let memory = unsafe {
-            // Try cloning underlying fd
             // TODO: For completeness, importing memory from muliple file descriptors should be added (In order to support importing multiplanar images). As of now, only single planar image importing will work.
+            if fds.len() != 1 {
+                panic!("Only single-planar image importing is currently supported.")
+            }
+
+            // Try cloning underlying fd
             let file = File::from_raw_fd(*fds.first().expect("File descriptor Vec is empty"));
             let new_file = file.try_clone().expect("Error cloning file descriptor");
 
@@ -396,7 +402,8 @@ impl StorageImage {
     }
 }
 
-/// Struct that contains the a file descriptor to import, when creating an image. Since a file descriptor is used for each
+#[cfg(target_os = "linux")]
+/// Struct that contains a Linux file descriptor for importing, when creating an image. Since a file descriptor is used for each
 /// plane in the case of multiplanar images, each fd needs to have an offset and a row pitch in order to interpret the imported data.
 pub struct SubresourceData {
     // The file descriptor hanfle of a layer of an image.
