@@ -136,7 +136,7 @@ impl RawImage {
             initial_layout,
             external_memory_handle_types,
             _ne: _,
-            image_drm_format_modifier_create_info: _,
+            image_drm_format_modifier_create_info,
         } = create_info;
 
         let physical_device = device.physical_device();
@@ -209,6 +209,14 @@ impl RawImage {
                 || flags.intersects(ImageCreateFlags::MUTABLE_FORMAT)
         );
 
+        // VUID-VkImageCreateInfo-tiling-02261
+        // VUID-VkImageCreateInfo-pNext-02262
+        if (tiling == ImageTiling::DrmFormatModifier)
+            != image_drm_format_modifier_create_info.is_some()
+        {
+            return Err(ImageError::DrmFormatModifierRequiresCreateInfo);
+        }
+
         // Get format features
         let format_features = {
             // Use unchecked, because all validation has been done above.
@@ -216,7 +224,7 @@ impl RawImage {
             match tiling {
                 ImageTiling::Linear => format_properties.linear_tiling_features,
                 ImageTiling::Optimal => format_properties.optimal_tiling_features,
-                ImageTiling::DrmFormatModifier => format_properties.linear_tiling_features, // TODO: improve
+                ImageTiling::DrmFormatModifier => format_properties.linear_tiling_features, // TODO: Improve
             }
         };
 
@@ -2978,6 +2986,9 @@ pub enum ImageError {
     YcbcrFormatNot2d,
 
     DirectImageViewCreationFailed(ImageViewCreationError),
+
+    /// If and only if tiling is `DRMFormatModifier`, then `image_drm_format_modifier_create_info` must not be `None`.
+    DrmFormatModifierRequiresCreateInfo,
 }
 
 impl Error for ImageError {
@@ -3237,6 +3248,7 @@ impl Display for ImageError {
                 write!(f, "a YCbCr format was given, but the image type was not 2D")
             }
             Self::DirectImageViewCreationFailed(e) => write!(f, "Image view creation failed {}", e),
+	    Self::DrmFormatModifierRequiresCreateInfo => write!(f, "If and only if tiling is `DRMFormatModifier`, then `image_drm_format_modifier_create_info` must be `Some`"),
         }
     }
 }
