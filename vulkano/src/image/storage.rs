@@ -16,22 +16,35 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned, Queue},
     format::Format,
-    image::{sys::ImageCreateInfo, view::ImageView, ImageFormatInfo, ImageTiling},
+    image::{sys::ImageCreateInfo, view::ImageView, ImageFormatInfo},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationType, MemoryAlloc, MemoryAllocatePreference,
+            AllocationCreateInfo, AllocationType, MemoryAllocatePreference,
             MemoryAllocator, MemoryUsage,
         },
-        DedicatedAllocation, DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes, MemoryAllocateFlags, MemoryAllocateInfo,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes,
     },
     sync::Sharing,
     DeviceSize,
 };
-use ash::vk::{ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout};
 use smallvec::SmallVec;
+
 #[cfg(target_os = "linux")]
 use std::os::unix::prelude::{FromRawFd, IntoRawFd, RawFd};
+#[cfg(target_os = "linux")]
+use ash::vk::{ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout};
+#[cfg(target_os = "linux")]
+use crate::{
+    image::ImageTiling,
+    memory::{
+        allocator::MemoryAlloc,
+        DeviceMemory,
+        MemoryAllocateFlags,
+        MemoryAllocateInfo
+    }
+};
+
 use std::{
     fs::File,
     hash::{Hash, Hasher},

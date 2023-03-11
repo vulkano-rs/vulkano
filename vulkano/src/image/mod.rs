@@ -51,13 +51,17 @@ pub use self::{
     attachment::AttachmentImage,
     immutable::ImmutableImage,
     layout::{ImageDescriptorLayouts, ImageLayout},
-    storage::{StorageImage, SubresourceData},
+    storage::StorageImage,
     swapchain::SwapchainImage,
     sys::ImageError,
     traits::{ImageAccess, ImageInner},
     usage::ImageUsage,
     view::{ImageViewAbstract, ImageViewType},
 };
+
+#[cfg(target_os = "linux")]
+pub use self::storage::SubresourceData;
+
 use crate::{
     format::Format,
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
