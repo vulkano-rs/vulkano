@@ -364,7 +364,7 @@ impl StorageImage {
                 .bind_memory_unchecked([x])
                 .map_err(|(err, _, _)| err)?
         });
-        Ok(Arc::new(StorageImage { inner }))
+        Ok(Arc::new(StorageImage { inner, layout_initialized: AtomicBool::new(false) }))
     }
     /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.
     #[inline]
