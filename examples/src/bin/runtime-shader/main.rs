@@ -6,23 +6,24 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
-//
-// This example demonstrates one way of preparing data structures and loading
-// SPIRV shaders from external source (file system).
-//
-// Note that you will need to do all correctness checking by yourself.
-//
-// vert.glsl and frag.glsl must be built by yourself.
-// One way of building them is to build Khronos' glslang and use
-// glslangValidator tool:
-// $ glslangValidator vert.glsl -V -S vert -o vert.spv
-// $ glslangValidator frag.glsl -V -S frag -o frag.spv
-// Vulkano uses glslangValidator to build your shaders internally.
 
-use bytemuck::{Pod, Zeroable};
+// This example demonstrates one way of preparing data structures and loading SPIRV shaders from
+// external source (file system).
+//
+// Note that you will need to do all correctness checking yourself.
+//
+// `vert.glsl` and `frag.glsl` must be built by you. One way of building them is to use `shaderc`:
+//
+// ```bash
+// glslc -fshader-stage=vert vert.glsl -o vert.spv
+// glslc -fshader-stage=frag frag.glsl -o frag.spv
+// ```
+//
+// Vulkano uses shaderc to build your shaders internally.
+
 use std::{fs::File, io::Read, sync::Arc};
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -66,7 +67,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -109,7 +109,7 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -177,10 +177,13 @@ fn main() {
     .unwrap();
 
     let vs = {
-        let mut f = File::open("src/bin/runtime-shader/vert.spv")
-            .expect("Can't find file src/bin/runtime-shader/vert.spv This example needs to be run from the root of the example crate.");
+        let mut f = File::open("src/bin/runtime-shader/vert.spv").expect(
+            "can't find file `src/bin/runtime-shader/vert.spv`, this example needs to be run from \
+            the root of the example crate",
+        );
         let mut v = vec![];
         f.read_to_end(&mut v).unwrap();
+
         // Create a ShaderModule on a device the same Shader::load does it.
         // NOTE: You will have to verify correctness of the data by yourself!
         unsafe { ShaderModule::from_bytes(device.clone(), &v) }.unwrap()
@@ -188,9 +191,10 @@ fn main() {
 
     let fs = {
         let mut f = File::open("src/bin/runtime-shader/frag.spv")
-            .expect("Can't find file src/bin/runtime-shader/frag.spv");
+            .expect("can't find file `src/bin/runtime-shader/frag.spv`");
         let mut v = vec![];
         f.read_to_end(&mut v).unwrap();
+
         unsafe { ShaderModule::from_bytes(device.clone(), &v) }.unwrap()
     };
 
@@ -213,8 +217,8 @@ fn main() {
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     pub struct Vertex {
         #[format(R32G32_SFLOAT)]
         pub position: [f32; 2],
@@ -249,6 +253,7 @@ fn main() {
     // NOTE: We don't create any descriptor sets in this example, but you should
     // note that passing wrong types, providing sets at wrong indexes will cause
     // descriptor set builder to return Err!
+    // TODO: Outdated ^
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
@@ -290,7 +295,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                    Err(e) => panic!("failed to recreate swapchain: {e}"),
                 };
 
                 swapchain = new_swapchain;
@@ -306,7 +311,7 @@ fn main() {
                         recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                    Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
             if suboptimal {
@@ -360,7 +365,7 @@ fn main() {
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {e:?}");
+                    println!("failed to flush future: {e}");
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }
@@ -369,7 +374,7 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
+/// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,

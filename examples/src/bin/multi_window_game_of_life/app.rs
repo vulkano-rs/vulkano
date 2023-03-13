@@ -12,12 +12,15 @@ use crate::{
     WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use std::{collections::HashMap, sync::Arc};
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::memory::allocator::StandardMemoryAllocator;
-use vulkano::{device::Queue, format::Format};
-use vulkano_util::context::{VulkanoConfig, VulkanoContext};
-use vulkano_util::window::{VulkanoWindows, WindowDescriptor};
+use vulkano::{
+    command_buffer::allocator::StandardCommandBufferAllocator,
+    descriptor_set::allocator::StandardDescriptorSetAllocator, device::Queue, format::Format,
+    memory::allocator::StandardMemoryAllocator,
+};
+use vulkano_util::{
+    context::{VulkanoConfig, VulkanoContext},
+    window::{VulkanoWindows, WindowDescriptor},
+};
 use winit::{event_loop::EventLoop, window::WindowId};
 
 pub struct RenderPipeline {
@@ -68,7 +71,7 @@ pub struct App {
 
 impl App {
     pub fn open(&mut self, event_loop: &EventLoop<()>) {
-        // Create windows & pipelines
+        // Create windows & pipelines.
         let id1 = self.windows.create_window(
             event_loop,
             &self.context,
@@ -94,7 +97,7 @@ impl App {
         self.pipelines.insert(
             id1,
             RenderPipeline::new(
-                // Use same queue.. for synchronization
+                // Use same queue.. for synchronization.
                 self.context.graphics_queue().clone(),
                 self.context.graphics_queue().clone(),
                 [

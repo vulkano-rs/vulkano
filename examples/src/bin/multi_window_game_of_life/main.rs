@@ -7,6 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+// A multi windowed game of life application. You could use this to learn:
+//
+// - how to handle multiple window inputs,
+// - how to draw on a canvas,
+// - how to organize compute shader with graphics,
+// - how to do a cellular automata simulation using compute shaders.
+//
+// The possibilities are limitless. ;)
+
 mod app;
 mod game_of_life;
 mod pixels_draw;
@@ -23,13 +32,6 @@ use winit::{
     platform::run_return::EventLoopExtRunReturn,
 };
 
-// A multi windowed game of life application. You could use this to learn:
-// - how to handle multiple window inputs,
-// - how to draw on a canvas
-// - how to organize compute shader with graphics
-// - how to do a cellular automata simulation using compute shaders
-// The possibilities are limitless ;)
-
 pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
 pub const WINDOW2_WIDTH: f32 = 512.0;
@@ -37,21 +39,25 @@ pub const WINDOW2_HEIGHT: f32 = 512.0;
 pub const SCALING: f32 = 2.0;
 
 fn main() {
-    println!("Welcome to Vulkano Game of Life\n Use Mouse to draw life on the grid(s)\n");
-    // Create event loop
+    println!("Welcome to Vulkano Game of Life\nUse the mouse to draw life on the grid(s)\n");
+
+    // Create event loop.
     let mut event_loop = EventLoop::new();
-    // Create app with vulkano context
+
+    // Create app with vulkano context.
     let mut app = App::default();
     app.open(&event_loop);
 
     // Time & inputs...
     let mut time = Instant::now();
     let mut cursor_pos = Vector2::new(0.0, 0.0);
-    // An extremely crude way to handle input state... But works for this example.
+
+    // An extremely crude way to handle input state... but works for this example.
     let mut mouse_is_pressed_w1 = false;
     let mut mouse_is_pressed_w2 = false;
+
     loop {
-        // Event handling
+        // Event handling.
         if !handle_events(
             &mut event_loop,
             &mut app,
@@ -61,14 +67,16 @@ fn main() {
         ) {
             break;
         }
-        // Draw life on windows if mouse is down
+
+        // Draw life on windows if mouse is down.
         draw_life(
             &mut app,
             cursor_pos,
             mouse_is_pressed_w1,
             mouse_is_pressed_w2,
         );
-        // Compute life & render 60fps
+
+        // Compute life & render 60fps.
         if (Instant::now() - time).as_secs_f64() > 1.0 / 60.0 {
             compute_then_render_per_window(&mut app);
             time = Instant::now();
@@ -76,7 +84,7 @@ fn main() {
     }
 }
 
-/// Handle events and return `bool` if we should quit
+/// Handles events and returns a `bool` indicating if we should quit.
 fn handle_events(
     event_loop: &mut EventLoop<()>,
     app: &mut App,
@@ -85,6 +93,7 @@ fn handle_events(
     mouse_pressed_w2: &mut bool,
 ) -> bool {
     let mut is_running = true;
+
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
         match &event {
@@ -95,20 +104,21 @@ fn handle_events(
                     if *window_id == app.windows.primary_window_id().unwrap() {
                         is_running = false;
                     } else {
-                        // Destroy window by removing its renderer...
+                        // Destroy window by removing its renderer.
                         app.windows.remove_renderer(*window_id);
                         app.pipelines.remove(window_id);
                     }
                 }
-                // Resize window and its images...
+                // Resize window and its images.
                 WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
                     let vulkano_window = app.windows.get_renderer_mut(*window_id).unwrap();
                     vulkano_window.resize();
                 }
+                // Handle mouse position events.
                 WindowEvent::CursorMoved { position, .. } => {
                     *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
                 }
-                // Mouse button event
+                // Handle mouse button events.
                 WindowEvent::MouseInput { state, button, .. } => {
                     let mut mouse_pressed = false;
                     if button == &MouseButton::Left && state == &ElementState::Pressed {
@@ -129,6 +139,7 @@ fn handle_events(
             _ => (),
         }
     });
+
     is_running
 }
 
@@ -146,13 +157,15 @@ fn draw_life(
         if id != &primary_window_id && !mouse_is_pressed_w2 {
             continue;
         }
+
         let window_size = window.window_size();
         let compute_pipeline = &mut app.pipelines.get_mut(id).unwrap().compute;
         let mut normalized_pos = Vector2::new(
             (cursor_pos.x / window_size[0]).clamp(0.0, 1.0),
             (cursor_pos.y / window_size[1]).clamp(0.0, 1.0),
         );
-        // flip y
+
+        // Flip y.
         normalized_pos.y = 1.0 - normalized_pos.y;
         let image_size = compute_pipeline
             .color_image()
@@ -166,7 +179,7 @@ fn draw_life(
     }
 }
 
-/// Compute and render per window
+/// Compute and render per window.
 fn compute_then_render_per_window(app: &mut App) {
     let primary_window_id = app.windows.primary_window_id().unwrap();
     for (window_id, window_renderer) in app.windows.iter_mut() {
@@ -179,14 +192,14 @@ fn compute_then_render_per_window(app: &mut App) {
     }
 }
 
-/// Compute game of life, then display result on target image
+/// Compute game of life, then display result on target image.
 fn compute_then_render(
     window_renderer: &mut VulkanoWindowRenderer,
     pipeline: &mut RenderPipeline,
     life_color: [f32; 4],
     dead_color: [f32; 4],
 ) {
-    // Skip this window when minimized
+    // Skip this window when minimized.
     match window_renderer.window_size() {
         [w, h] => {
             if w == 0.0 || h == 0.0 {
@@ -195,7 +208,7 @@ fn compute_then_render(
         }
     }
 
-    // Start frame
+    // Start the frame.
     let before_pipeline_future = match window_renderer.acquire() {
         Err(e) => {
             println!("{e}");
@@ -204,12 +217,12 @@ fn compute_then_render(
         Ok(future) => future,
     };
 
-    // Compute
+    // Compute.
     let after_compute = pipeline
         .compute
         .compute(before_pipeline_future, life_color, dead_color);
 
-    // Render
+    // Render.
     let color_image = pipeline.compute.color_image();
     let target_image = window_renderer.swapchain_image_view();
 
@@ -217,6 +230,6 @@ fn compute_then_render(
         .place_over_frame
         .render(after_compute, color_image, target_image);
 
-    // Finish frame. Wait for the future so resources are not in use when we render
+    // Finish the frame. Wait for the future so resources are not in use when we render.
     window_renderer.present(after_render, true);
 }

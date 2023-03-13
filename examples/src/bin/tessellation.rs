@@ -8,20 +8,22 @@
 // according to those terms.
 
 // Some relevant documentation:
-// *    Tessellation overview           https://www.khronos.org/opengl/wiki/Tessellation
-// *    Tessellation Control Shader     https://www.khronos.org/opengl/wiki/Tessellation_Control_Shader
-// *    Tessellation Evaluation Shader  https://www.khronos.org/opengl/wiki/Tessellation_Evaluation_Shader
-// *    Tessellation real-world usage 1 http://ogldev.atspace.co.uk/www/tutorial30/tutorial30.html
-// *    Tessellation real-world usage 2 https://prideout.net/blog/?p=48
+//
+// - Tessellation overview           https://www.khronos.org/opengl/wiki/Tessellation
+// - Tessellation Control Shader     https://www.khronos.org/opengl/wiki/Tessellation_Control_Shader
+// - Tessellation Evaluation Shader  https://www.khronos.org/opengl/wiki/Tessellation_Evaluation_Shader
+// - Tessellation real-world usage 1 http://ogldev.atspace.co.uk/www/tutorial30/tutorial30.html
+// - Tessellation real-world usage 2 https://prideout.net/blog/?p=48
 
 // Notable elements of this example:
-// *    tessellation control shader and a tessellation evaluation shader
-// *    tessellation_shaders(..), patch_list(3) and polygon_mode_line() are called on the pipeline builder
+//
+// - Usage of a tessellation control shader and a tessellation evaluation shader.
+// - `tessellation_shaders` and `tessellation_state` are called on the pipeline builder.
+// - The use of `PrimitiveTopology::PatchList`.
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
@@ -61,7 +63,7 @@ use winit::{
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        src: "
+        src: r"
             #version 450
 
             layout(location = 0) in vec2 position;
@@ -69,64 +71,66 @@ mod vs {
             void main() {
                 gl_Position = vec4(position, 0.0, 1.0);
             }
-        "
+        ",
     }
 }
 
 mod tcs {
     vulkano_shaders::shader! {
         ty: "tess_ctrl",
-        src: "
+        src: r"
             #version 450
 
-            layout (vertices = 3) out; // a value of 3 means a patch consists of a single triangle
+            // A value of 3 means a patch consists of a single triangle.
+            layout(vertices = 3) out; 
 
-            void main(void)
-            {
-                // save the position of the patch, so the tes can access it
-                // We could define our own output variables for this,
-                // but gl_out is handily provided.
+            void main(void) {
+                // Save the position of the patch, so the TES can access it. We could define our 
+                // own output variables for this, but `gl_out` is handily provided.
                 gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
 
-                gl_TessLevelInner[0] = 10; // many triangles are generated in the center
-                gl_TessLevelOuter[0] = 1;  // no triangles are generated for this edge
-                gl_TessLevelOuter[1] = 10; // many triangles are generated for this edge
-                gl_TessLevelOuter[2] = 10; // many triangles are generated for this edge
-                // gl_TessLevelInner[1] = only used when tes uses layout(quads)
-                // gl_TessLevelOuter[3] = only used when tes uses layout(quads)
+                // Many triangles are generated in the center.
+                gl_TessLevelInner[0] = 10; 
+                // No triangles are generated for this edge.
+                gl_TessLevelOuter[0] = 1;  
+                // Many triangles are generated for this edge.
+                gl_TessLevelOuter[1] = 10; 
+                // Many triangles are generated for this edge.
+                gl_TessLevelOuter[2] = 10; 
+
+                // These are only used when TES uses `layout(quads)`.
+                // gl_TessLevelInner[1] = ...;
+                // gl_TessLevelOuter[3] = ...;
             }
-        "
+        ",
     }
 }
 
-// PG
-// There is a stage in between tcs and tes called Primitive Generation (PG)
-// Shaders cannot be defined for it.
-// It takes gl_TessLevelInner and gl_TessLevelOuter and uses them to generate positions within
-// the patch and pass them to tes via gl_TessCoord.
+// There is a stage in between TCS and TES called Primitive Generation (PG). Shaders cannot be
+// defined for it. It takes `gl_TessLevelInner` and `gl_TessLevelOuter` and uses them to generate
+// positions within the patch and pass them to TES via `gl_TessCoord`.
 //
-// When tes uses layout(triangles) then gl_TessCoord is in barrycentric coordinates.
-// if layout(quads) is used then gl_TessCoord is in cartesian coordinates.
-// Barrycentric coordinates are of the form (x, y, z) where x + y + z = 1
-// and the values x, y and z represent the distance from a vertex of the triangle.
+// When TES uses `layout(triangles)` then `gl_TessCoord` is in Barycentric coordinates. If
+// `layout(quads)` is used then `gl_TessCoord` is in Cartesian coordinates. Barycentric coordinates
+// are of the form (x, y, z) where x + y + z = 1 and the values x, y and z represent the distance
+// from a vertex of the triangle.
 // https://mathworld.wolfram.com/BarycentricCoordinates.html
 
 mod tes {
     vulkano_shaders::shader! {
         ty: "tess_eval",
-        src: "
+        src: r"
             #version 450
 
             layout(triangles, equal_spacing, cw) in;
 
-            void main(void)
-            {
-                // retrieve the vertex positions set by the tcs
+            void main(void) {
+                // Retrieve the vertex positions set by the TCS.
                 vec4 vert_x = gl_in[0].gl_Position;
                 vec4 vert_y = gl_in[1].gl_Position;
                 vec4 vert_z = gl_in[2].gl_Position;
 
-                // convert gl_TessCoord from barycentric coordinates to cartesian coordinates
+                // Convert `gl_TessCoord` from Barycentric coordinates to Cartesian coordinates.
                 gl_Position = vec4(
                     gl_TessCoord.x * vert_x.x + gl_TessCoord.y * vert_y.x + gl_TessCoord.z * vert_z.x,
                     gl_TessCoord.x * vert_x.y + gl_TessCoord.y * vert_y.y + gl_TessCoord.z * vert_z.y,
@@ -134,14 +138,14 @@ mod tes {
                     1.0
                 );
             }
-        "
+        ",
     }
 }
 
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        src: "
+        src: r"
             #version 450
 
             layout(location = 0) out vec4 f_color;
@@ -149,7 +153,7 @@ mod fs {
             void main() {
                 f_color = vec4(1.0, 1.0, 1.0, 1.0);
             }
-        "
+        ",
     }
 }
 
@@ -160,7 +164,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -209,7 +212,7 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -262,7 +265,7 @@ fn main() {
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
@@ -396,7 +399,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                    Err(e) => panic!("failed to recreate swapchain: {e}"),
                 };
 
                 swapchain = new_swapchain;
@@ -412,7 +415,7 @@ fn main() {
                         recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                    Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
             if suboptimal {
@@ -466,7 +469,7 @@ fn main() {
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {e:?}");
+                    println!("failed to flush future: {e}");
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }
@@ -475,7 +478,7 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
+/// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,

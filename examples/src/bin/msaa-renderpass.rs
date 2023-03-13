@@ -7,67 +7,64 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Multisampling anti-aliasing example, using a render pass resolve.
-//!
-//! # Introduction to multisampling
-//!
-//! When you draw an object on an image, this object occupies a certain set of pixels. Each pixel
-//! of the image is either fully covered by the object, or not covered at all. There is no such
-//! thing as a pixel that is half-covered by the object that you're drawing. What this means is
-//! that you will sometimes see a "staircase effect" at the border of your object, also called
-//! aliasing.
-//!
-//! The root cause of aliasing is that the resolution of the image is not high enough. If you
-//! increase the size of the image you're drawing to, this effect will still exist but will be
-//! much less visible.
-//!
-//! In order to decrease aliasing, some games and programs use what we call "Super-Sampling Anti
-//! Aliasing" (SSAA). For example instead of drawing to an image of size 1024x1024, you draw to an
-//! image of size 4096x4096. Then at the end, you scale down your image to 1024x1024 by merging
-//! nearby pixels. Since the intermediate image is 4 times larger than the destination, this would
-//! be x4 SSAA.
-//!
-//! However this technique is very expensive in terms of GPU power. The fragment shader and all
-//! its calculations has to run four times more often.
-//!
-//! So instead of SSAA, a common alternative is MSAA (MultiSampling Anti Aliasing). The base
-//! principle is more or less the same: you draw to an image of a larger dimension, and then at
-//! the end you scale it down to the final size. The difference is that the fragment shader is
-//! only run once per pixel of the final size, and its value is duplicated to fill to all the
-//! pixels of the intermediate image that are covered by the object.
-//!
-//! For example, let's say that you use x4 MSAA, you draw to an intermediate image of size
-//! 4096x4096, and your object covers the whole image. With MSAA, the fragment shader will only
-//! be 1,048,576 times (1024 * 1024), compared to 16,777,216 times (4096 * 4096) with 4x SSAA.
-//! Then the output of each fragment shader invocation is copied in each of the four pixels of the
-//! intermediate image that correspond to each pixel of the final image.
-//!
-//! Now, let's say that your object doesn't cover the whole image. In this situation, only the
-//! pixels of the intermediate image that are covered by the object will receive the output of the
-//! fragment shader.
-//!
-//! Because of the way it works, this technique requires direct support from the hardware,
-//! contrary to SSAA which can be done on any machine.
-//!
-//! # Multisampled images
-//!
-//! Using MSAA with Vulkan is done by creating a regular image, but with a number of samples per
-//! pixel different from 1. For example if you want to use 4x MSAA, you should create an image with
-//! 4 samples per pixel. Internally this image will have 4 times as many pixels as its dimensions
-//! would normally require, but this is handled transparently for you. Drawing to a multisampled
-//! image is exactly the same as drawing to a regular image.
-//!
-//! However multisampled images have some restrictions, for example you can't show them on the
-//! screen (swapchain images are always single-sampled), and you can't copy them into a buffer.
-//! Therefore when you have finished drawing, you have to blit your multisampled image to a
-//! non-multisampled image. This operation is not a regular blit (blitting a multisampled image is
-//! an error), instead it is called *resolving* the image.
-//!
+// Multisampling anti-aliasing example, using a render pass resolve.
+//
+// # Introduction to multisampling
+//
+// When you draw an object on an image, this object occupies a certain set of pixels. Each pixel of
+// the image is either fully covered by the object, or not covered at all. There is no such thing
+// as a pixel that is half-covered by the object that you're drawing. What this means is that you
+// will sometimes see a "staircase effect" at the border of your object, also called aliasing.
+//
+// The root cause of aliasing is that the resolution of the image is not high enough. If you
+// increase the size of the image you're drawing to, this effect will still exist but will be much
+// less visible.
+//
+// In order to decrease aliasing, some games and programs use what we call "SuperSample Anti-
+// Aliasing" (SSAA). For example instead of drawing to an image of size 1024x1024, you draw to an
+// image of size 2048x2048. Then at the end, you scale down your image to 1024x1024 by merging
+// nearby pixels. Since the intermediate image is 4 times larger than the destination, this would
+// be 4x SSAA.
+//
+// However this technique is very expensive in terms of GPU power. The fragment shader and all its
+// calculations has to run four times more often.
+//
+// So instead of SSAA, a common alternative is MSAA (MultiSample Anti-Aliasing). The base principle
+// is more or less the same: you draw to an image of a larger dimension, and then at the end you
+// scale it down to the final size. The difference is that the fragment shader is only run once per
+// pixel of the final size, and its value is duplicated to fill to all the pixels of the
+// intermediate image that are covered by the object.
+//
+// For example, let's say that you use 4x MSAA, you draw to an intermediate image of size
+// 2048x2048, and your object covers the whole image. With MSAA, the fragment shader will only be
+// run 1,048,576 times (1024 * 1024), compared to 4,194,304 times (2048 * 2048) with 4x SSAA. Then
+// the output of each fragment shader invocation is copied in each of the four pixels of the
+// intermediate image that correspond to each pixel of the final image.
+//
+// Now, let's say that your object doesn't cover the whole image. In this situation, only the
+// pixels of the intermediate image that are covered by the object will receive the output of the
+// fragment shader.
+//
+// Because of the way it works, this technique requires direct support from the hardware, contrary
+// to SSAA which can be done on any machine.
+//
+// # Multisampled images
+//
+// Using MSAA with Vulkan is done by creating a regular image, but with a number of samples per
+// pixel different from 1. For example if you want to use 4x MSAA, you should create an image with
+// 4 samples per pixel. Internally this image will have 4 times as many pixels as its dimensions
+// would normally require, but this is handled transparently for you. Drawing to a multisampled
+// image is exactly the same as drawing to a regular image.
+//
+// However multisampled images have some restrictions, for example you can't show them on the
+// screen (swapchain images are always single-sampled), and you can't copy them into a buffer.
+// Therefore when you have finished drawing, you have to blit your multisampled image to a
+// non-multisampled image. This operation is not a regular blit (blitting a multisampled image is
+// an error), instead it is called *resolving* the image.
 
-use bytemuck::{Pod, Zeroable};
 use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         CopyImageToBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
@@ -101,7 +98,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -135,7 +131,7 @@ fn main() {
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -195,14 +191,16 @@ fn main() {
                 load: Clear,
                 store: DontCare,
                 format: Format::R8G8B8A8_UNORM,
-                samples: 4,     // This has to match the image definition.
+                // This has to match the image definition.
+                samples: 4,
             },
             // The second framebuffer attachment is the final image.
             color: {
                 load: DontCare,
                 store: Store,
                 format: Format::R8G8B8A8_UNORM,
-                samples: 1,     // Same here, this has to match.
+                // Same here, this has to match.
+                samples: 1,
             }
         },
         pass: {
@@ -230,30 +228,30 @@ fn main() {
     .unwrap();
 
     // Here is the "end" of the multisampling example, as starting from here everything is the same
-    // as in any other example.
-    // The pipeline, vertex buffer, and command buffer are created in exactly the same way as
-    // without multisampling.
-    // At the end of the example, we copy the content of `image` (ie. the final image) to a buffer,
-    // then read the content of that buffer and save it to a PNG file.
+    // as in any other example. The pipeline, vertex buffer, and command buffer are created in
+    // exactly the same way as without multisampling. At the end of the example, we copy the
+    // content of `image` (ie. the final image) to a buffer, then read the content of that buffer
+    // and save it to a PNG file.
 
     mod vs {
         vulkano_shaders::shader! {
-        ty: "vertex",
-        src: "
+            ty: "vertex",
+            src: r"
                 #version 450
 
                 layout(location = 0) in vec2 position;
 
                 void main() {
                     gl_Position = vec4(position, 0.0, 1.0);
-                }"
-                    }
+                }
+            ",
+        }
     }
 
     mod fs {
         vulkano_shaders::shader! {
-                            ty: "fragment",
-                            src: "
+            ty: "fragment",
+            src: r"
                 #version 450
 
                 layout(location = 0) out vec4 f_color;
@@ -261,15 +259,15 @@ fn main() {
                 void main() {
                     f_color = vec4(1.0, 0.0, 0.0, 1.0);
                 }
-            "
+            ",
         }
     }
 
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],

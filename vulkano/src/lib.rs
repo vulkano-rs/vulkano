@@ -17,6 +17,7 @@
 //! | `document_unchecked` | Include `_unchecked` functions in the generated documentation.                |
 //! | `cgmath`             | Generate additional definitions and functions using the [`cgmath`] library.   |
 //! | `nalgebra`           | Generate additional definitions and functions using the [`nalgebra`] library. |
+//! | `serde`              | Enables (de)serialization of certain types using [`serde`].                   |
 //!
 //! # Starting off with Vulkano
 //!
@@ -104,6 +105,7 @@
 //!
 //! [`cgmath`]: https://crates.io/crates/cgmath
 //! [`nalgebra`]: https://crates.io/crates/nalgebra
+//! [`serde`]: https://crates.io/crates/serde
 //! [`VulkanLibrary`]: crate::VulkanLibrary
 //! [`Instance`]: crate::instance::Instance
 //! [`Surface`]: crate::swapchain::Surface
@@ -141,6 +143,7 @@
     clippy::missing_safety_doc, // TODO: remove
     clippy::module_inception,
     clippy::mutable_key_type,
+    clippy::needless_borrowed_reference,
     clippy::new_without_default,
     clippy::nonminimal_bool,
     clippy::op_ref, // Seems to be bugged, the fixed code triggers a compile error
@@ -182,6 +185,7 @@ pub mod instance;
 pub mod library;
 mod macros;
 pub mod memory;
+pub mod padded;
 pub mod pipeline;
 pub mod query;
 mod range_map;

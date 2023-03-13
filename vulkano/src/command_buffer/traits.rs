@@ -44,13 +44,17 @@ pub unsafe trait PrimaryCommandBufferAbstract:
 
     /// Executes this command buffer on a queue.
     ///
-    /// This function returns an object that implements the `GpuFuture` trait. See the
-    /// documentation of the `sync` module for more information.
+    /// This function returns an object that implements the [`GpuFuture`] trait. See the
+    /// documentation of the [`future`][crate::sync::future] module for more information.
     ///
-    /// The command buffer is not actually executed until you call `flush()` on the object.
-    /// You are encouraged to chain together as many futures as possible before calling `flush()`,
-    /// and call `.then_signal_future()` before doing so. Note however that once you called
-    /// `execute()` there is no way to cancel the execution, even if you didn't flush yet.
+    /// The command buffer is not actually executed until you call [`flush()`][GpuFuture::flush] on
+    /// the future.  You are encouraged to chain together as many futures as possible prior to
+    /// calling [`flush()`][GpuFuture::flush]. In order to know when the future has completed, call
+    /// one of [`then_signal_fence()`][GpuFuture::then_signal_fence] or
+    /// [`then_signal_semaphore()`][GpuFuture::then_signal_semaphore]. You can do both together
+    /// with [`then_signal_fence_and_flush()`][GpuFuture::then_signal_fence_and_flush] or
+    /// [`then_signal_semaphore_and_flush()`][GpuFuture::then_signal_semaphore_and_flush],
+    /// respectively.
     ///
     /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
     /// > concrete type.
@@ -74,13 +78,17 @@ pub unsafe trait PrimaryCommandBufferAbstract:
 
     /// Executes the command buffer after an existing future.
     ///
-    /// This function returns an object that implements the `GpuFuture` trait. See the
-    /// documentation of the `sync` module for more information.
+    /// This function returns an object that implements the [`GpuFuture`] trait. See the
+    /// documentation of the [`future`][crate::sync::future] module for more information.
     ///
-    /// The command buffer is not actually executed until you call `flush()` on the object.
-    /// You are encouraged to chain together as many futures as possible before calling `flush()`,
-    /// and call `.then_signal_future()` before doing so. Note however that once you called
-    /// `execute()` there is no way to cancel the execution, even if you didn't flush yet.
+    /// The command buffer is not actually executed until you call [`flush()`][GpuFuture::flush] on
+    /// the future.  You are encouraged to chain together as many futures as possible prior to
+    /// calling [`flush()`][GpuFuture::flush]. In order to know when the future has completed, call
+    /// one of [`then_signal_fence()`][GpuFuture::then_signal_fence] or
+    /// [`then_signal_semaphore()`][GpuFuture::then_signal_semaphore]. You can do both together
+    /// with [`then_signal_fence_and_flush()`][GpuFuture::then_signal_fence_and_flush] or
+    /// [`then_signal_semaphore_and_flush()`][GpuFuture::then_signal_semaphore_and_flush],
+    /// respectively.
     ///
     /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
     /// > concrete type.

@@ -532,7 +532,7 @@ where
         assert_eq!(device, dst_buffer.device());
 
         // VUID-vkCmdFillBuffer-size-00026
-        assert!(dst_buffer.size() != 0);
+        // Guaranteed by `Subbuffer`
 
         // VUID-vkCmdFillBuffer-dstBuffer-00029
         if !dst_buffer
@@ -614,15 +614,15 @@ where
     where
         D: BufferContents + ?Sized,
     {
-        self.validate_update_buffer(dst_buffer.as_bytes(), data.as_bytes())?;
+        self.validate_update_buffer(dst_buffer.as_bytes(), size_of_val(data) as DeviceSize)?;
 
-        unsafe { Ok(self.update_buffer_unchecked(dst_buffer.into_bytes(), data.as_bytes())) }
+        unsafe { Ok(self.update_buffer_unchecked(dst_buffer, data)) }
     }
 
     fn validate_update_buffer(
         &self,
         dst_buffer: &Subbuffer<[u8]>,
-        data: &[u8],
+        data_size: DeviceSize,
     ) -> Result<(), ClearError> {
         let device = self.device();
 
@@ -645,7 +645,7 @@ where
         assert_eq!(device, dst_buffer.device());
 
         // VUID-vkCmdUpdateBuffer-dataSize-arraylength
-        assert!(size_of_val(data) != 0);
+        assert!(data_size != 0);
 
         // VUID-vkCmdUpdateBuffer-dstBuffer-00034
         if !dst_buffer
@@ -660,10 +660,10 @@ where
 
         // VUID-vkCmdUpdateBuffer-dstOffset-00032
         // VUID-vkCmdUpdateBuffer-dataSize-00033
-        if size_of_val(data) as DeviceSize > dst_buffer.size() {
+        if data_size > dst_buffer.size() {
             return Err(ClearError::RegionOutOfBufferBounds {
                 region_index: 0,
-                offset_range_end: size_of_val(data) as DeviceSize,
+                offset_range_end: data_size,
                 buffer_size: dst_buffer.size(),
             });
         }
@@ -678,18 +678,18 @@ where
         }
 
         // VUID-vkCmdUpdateBuffer-dataSize-00037
-        if size_of_val(data) > 65536 {
+        if data_size > 65536 {
             return Err(ClearError::DataTooLarge {
-                size: size_of_val(data) as DeviceSize,
+                size: data_size,
                 max: 65536,
             });
         }
 
         // VUID-vkCmdUpdateBuffer-dataSize-00038
-        if size_of_val(data) % 4 != 0 {
+        if data_size % 4 != 0 {
             return Err(ClearError::SizeNotAlignedForBuffer {
                 region_index: 0,
-                size: size_of_val(data) as DeviceSize,
+                size: data_size,
                 required_alignment: 4,
             });
         }
@@ -714,7 +714,7 @@ where
             dst_buffer.buffer().handle(),
             dst_buffer.offset(),
             size_of_val(data) as DeviceSize,
-            data.as_bytes().as_ptr() as *const _,
+            data as *const _ as *const _,
         );
 
         let command_index = self.next_command_index;

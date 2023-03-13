@@ -7,38 +7,26 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// This example demonstrates how to put derives onto generated Rust structs from
-// the Shader types through the "types-meta" options of
-// `shader!` macro.
+// This example demonstrates how to put derives onto Rust structs generated from the shader types
+// through the `custom_derives` option of the `shader!` macro.
 
-// Vulkano Shader macro is capable to generate Rust structs representing each
-// type found in the shader source. These structs appear in the `ty` module
-// generated in the same module where the macro was called.
+// The `shader!` macro is capable of generating Rust structs representing each type found in the
+// shader source. These structs are generated in the same module where the macro was called.
 //
-// By default each type has only `Clone` and `Copy` implementations. For
-// ergonomic purposes developer may want to implement more traits on top of each
-// type. For example "standard" traits such as `Default` or `Debug`.
+// By default each type only has `Clone` and `Copy` derives. For ergonomic purposes you may want to
+// add more derives for each type. For example built-in derive macros such as `Default` or `Debug`.
 //
-// One way to do so is implementing them manually, but it would be hard to do,
-// and complicates code maintenances.
-//
-// Another way is to specify a macro option to automatically put derives and
-// blanket impls onto each generated type by the Macro itself.
-//
-// The macro is capable to implement standard trait derives in smart way ignoring
-// `_dummyX` fields whenever these fields make no sense. And in addition to that
-// developer can also specify derives of traits from external modules/crates
-// whenever such traits provide custom derive feature.
+// The only way we can add derive macros to these generated types is if the `shader!` macro
+// generates the derive attribute with the wanted derives, hence there's a macro option for it.
 
-use ron::{
-    from_str,
-    ser::{to_string_pretty, PrettyConfig},
-};
-use std::fmt::{Debug, Display, Error, Formatter};
+use ron::ser::PrettyConfig;
+use serde::{Deserialize, Serialize};
+use std::fmt::{Debug, Display, Error as FmtError, Formatter};
+use vulkano::padded::Padded;
 
 vulkano_shaders::shader! {
     ty: "compute",
-    src: "
+    src: r"
         #version 450
 
         struct Foo {
@@ -61,62 +49,43 @@ vulkano_shaders::shader! {
 
         void main() {}
     ",
-    types_meta: {
-        use serde::{Deserialize, Serialize};
-
-        #[derive(Clone, Copy, PartialEq, Debug, Default, Serialize, Deserialize)]
-
-        impl Eq
-    }
+    custom_derives: [Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize],
 }
 
-// In the example above the macro generated `Clone`, `Copy`, `PartialEq`,
-// `Debug` and `Default` implementations for each declared
-// type(`PushConstantData`, `Foo` and `Bar`) in the shader, and applied
-// `impl Eq` for each of them too. And it also applied derives of
-// `Serialize` and `Deserialize` traits from Serde crate, but it didn't apply
-// these things to `Bars` since the `Bars` type does not have size known in
-// compile time.
-//
-// The macro also didn't generate `Display` implementation since we didn't
-// specify it. As such we still can implement this trait manually for some
-// selected types.
+// In the example above the macro generates `Clone`, `Copy`, `Debug`, `Default`, `PartialEq`,
+// derives for each declared type (`PushConstantData`, `Foo` and `Bar`) in the shader, and it also
+// applies derives of the `Serialize` and `Deserialize` traits from serde. However, it doesn't
+// apply any of these to `Bars` since that type does not a have size known at compile time.
 
-impl Display for crate::ty::Foo {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), Error> {
+// Some traits are not meant to be derived, such as `Display`, but we can still implement them
+// manually.
+impl Display for Foo {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
         Debug::fmt(self, formatter)
     }
 }
 
 fn main() {
-    use crate::ty::*;
-
-    // Prints "Foo { x: 0.0, z: [100.0, 200.0, 300.0] }" skipping "_dummyX" fields.
+    // Prints "Foo { x: 0.0, z: [100.0, 200.0, 300.0] }".
     println!(
-        "{}",
+        "{:?}",
         Foo {
             z: [100.0, 200.0, 300.0],
-
             ..Default::default()
-        }
+        },
     );
 
     let mut bar = Bar {
-        y: [5.1, 6.2],
-
-        // Fills all fields with zeroes including "_dummyX" fields, so we don't
-        // have to maintain them manually anymore.
+        // The `Padded` wrapper here is padding the following field, `foo`.
+        y: Padded([5.1, 6.2]),
+        // Fills all fields with zeroes.
         ..Default::default()
     };
 
-    // The data inside "_dummyX" has no use, but we still can fill it with
-    // something different from zeroes.
-    bar._dummy0 = [5; 8];
-
-    // Objects are equal since "_dummyX" fields ignoring during comparison
     assert_eq!(
         Bar {
-            y: [5.1, 6.2],
+            // `Padded<T, N>` implementes `From<T>`, so you can construct it this way as well.
+            y: [5.1, 6.2].into(),
             ..Default::default()
         },
         bar,
@@ -124,16 +93,17 @@ fn main() {
 
     assert_ne!(Bar::default(), bar);
 
-    bar.foo.x = 125.0;
+    // `Padded` dereferences into the wrapped type, so we can easily access the underlying data.
+    *bar.foo.x = 125.0;
 
-    // Since we put `Serialize` and `Deserialize` traits to derives list we can
-    // serialize and deserialize Shader data
+    // Since we put `Serialize` and `Deserialize` traits to the derives list we can serialize and
+    // deserialize shader data.
 
-    let serialized = to_string_pretty(&bar, PrettyConfig::default()).unwrap();
+    let serialized = ron::ser::to_string_pretty(&bar, PrettyConfig::default()).unwrap();
 
     println!("Serialized Bar: {serialized}");
 
-    let deserialized = from_str::<Bar>(&serialized).unwrap();
+    let deserialized = ron::from_str::<Bar>(&serialized).unwrap();
 
-    assert_eq!(deserialized.foo.x, 125.0);
+    assert_eq!(*deserialized.foo.x, 125.0);
 }

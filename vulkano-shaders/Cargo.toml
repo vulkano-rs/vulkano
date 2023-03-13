@@ -2,7 +2,10 @@
 name = "vulkano-shaders"
 version = "0.32.0"
 edition = "2021"
-authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
+authors = [
+  "Pierre Krieger <pierre.krieger1708@gmail.com>",
+  "The vulkano contributors",
+]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Shaders rust code generation macro"
 license = "MIT/Apache-2.0"
@@ -24,7 +27,5 @@ syn = { version = "1.0", features = ["full", "extra-traits"] }
 vulkano = { version = "0.32.0", path = "../vulkano" }
 
 [features]
-cgmath = []
-nalgebra = []
 shaderc-build-from-source = ["shaderc/build-from-source"]
 shaderc-debug = []

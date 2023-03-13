@@ -12,24 +12,22 @@
 // Indirect draw calls allow us to issue a draw without needing to know the number of vertices
 // until later when the draw is executed by the GPU.
 //
-// This is used in situations where vertices are being generated on the GPU, such as a GPU
-// particle simulation, and the exact number of output vertices cannot be known until
-// the compute shader has run.
+// This is used in situations where vertices are being generated on the GPU, such as a GPU particle
+// simulation, and the exact number of output vertices cannot be known until the compute shader has
+// run.
 //
 // In this example the compute shader is trivial and the number of vertices does not change.
-// However is does demonstrate that each compute instance atomically updates the vertex
-// counter before filling the vertex buffer.
+// However is does demonstrate that each compute instance atomically updates the vertex counter
+// before filling the vertex buffer.
 //
 // For an explanation of how the rendering of the triangles takes place see the `triangle.rs`
 // example.
-//
 
-use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-        BufferUsage,
+        BufferContents, BufferUsage,
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
@@ -76,7 +74,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -174,7 +171,7 @@ fn main() {
     mod vs {
         vulkano_shaders::shader! {
             ty: "vertex",
-            src: "
+            src: r"
                 #version 450
 
                 // The triangle vertex positions.
@@ -183,14 +180,14 @@ fn main() {
                 void main() {
                     gl_Position = vec4(position, 0.0, 1.0);
                 }
-            "
+            ",
         }
     }
 
     mod fs {
         vulkano_shaders::shader! {
             ty: "fragment",
-            src: "
+            src: r#"
                 #version 450
 
                 layout(location = 0) out vec4 f_color;
@@ -198,16 +195,17 @@ fn main() {
                 void main() {
                     f_color = vec4(1.0, 0.0, 0.0, 1.0);
                 }
-            "
+            "#,
         }
     }
 
-    // A simple compute shader that generates vertices. It has two buffers bound: the first is where we output the vertices, the second
-    // is the IndirectDrawArgs struct we passed the draw_indirect so we can set the number to vertices to draw
+    // A simple compute shader that generates vertices. It has two buffers bound: the first is
+    // where we output the vertices, the second is the `IndirectDrawArgs` struct we passed the
+    // `draw_indirect` so we can set the number to vertices to draw.
     mod cs {
         vulkano_shaders::shader! {
             ty: "compute",
-            src: "
+            src: r"
                 #version 450
 
                 layout(local_size_x = 16, local_size_y = 1, local_size_z = 1) in;
@@ -226,9 +224,10 @@ fn main() {
                 void main() {
                     uint idx = gl_GlobalInvocationID.x;
 
-                    // each thread of compute shader is going to increment the counter, so we need to use atomic
-                    // operations for safety. The previous value of the counter is returned so that gives us
-                    // the offset into the vertex buffer this thread can write it's vertices into.
+                    // Each invocation of the compute shader is going to increment the counter, so 
+                    // we need to use atomic operations for safety. The previous value of the 
+                    // counter is returned so that gives us the offset into the vertex buffer this 
+                    // thread can write it's vertices into.
                     uint offset = atomicAdd(vertices, 6);
 
                     vec2 center = vec2(-0.8, -0.8) + idx * vec2(0.1, 0.1);
@@ -239,7 +238,7 @@ fn main() {
                     triangles.pos[offset + 4] = center + vec2(0.025, 0.01725);
                     triangles.pos[offset + 5] = center + vec2(-0.025, 0.01725);
                 }
-            "
+            ",
         }
     }
 
@@ -292,10 +291,10 @@ fn main() {
     )
     .unwrap();
 
-    // # Vertex Types
-    // `Vertex` is the vertex type that will be output from the compute shader and be input to the vertex shader.
+    // `Vertex` is the vertex type that will be output from the compute shader and be input to the
+    // vertex shader.
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct Vertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],
@@ -355,7 +354,7 @@ fn main() {
                         }) {
                             Ok(r) => r,
                             Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                            Err(e) => panic!("failed to recreate swapchain: {e}"),
                         };
 
                     swapchain = new_swapchain;
@@ -374,15 +373,16 @@ fn main() {
                             recreate_swapchain = true;
                             return;
                         }
-                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                        Err(e) => panic!("failed to acquire next image: {e}"),
                     };
 
                 if suboptimal {
                     recreate_swapchain = true;
                 }
 
-                // Allocate a GPU buffer to hold the arguments for this frames draw call. The compute
-                // shader will only update vertex_count, so set the other parameters correctly here.
+                // Allocate a buffer to hold the arguments for this frame's draw call. The compute
+                // shader will only update `vertex_count`, so set the other parameters correctly
+                // here.
                 let indirect_commands = [DrawIndirectCommand {
                     vertex_count: 0,
                     instance_count: 1,
@@ -397,15 +397,15 @@ fn main() {
                     .unwrap()
                     .copy_from_slice(&indirect_commands);
 
-                // Allocate a GPU buffer to hold this frames vertices. This needs to be large enough to hold
-                // the worst case number of vertices generated by the compute shader
+                // Allocate a buffer to hold this frame's vertices. This needs to be large enough
+                // to hold the worst case number of vertices generated by the compute shader.
                 let iter = (0..(6 * 16)).map(|_| Vertex { position: [0.0; 2] });
                 let vertices = vertex_pool.allocate_slice(iter.len() as _).unwrap();
                 for (o, i) in vertices.write().unwrap().iter_mut().zip(iter) {
                     *o = i;
                 }
 
-                // Pass the two buffers to the compute shader
+                // Pass the two buffers to the compute shader.
                 let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
                 let cs_desciptor_set = PersistentDescriptorSet::new(
                     &descriptor_set_allocator,
@@ -424,8 +424,8 @@ fn main() {
                 )
                 .unwrap();
 
-                // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw
-                // call arguments
+                // First in the command buffer we dispatch the compute shader to generate the
+                // vertices and fill out the draw call arguments.
                 builder
                     .bind_pipeline_compute(compute_pipeline.clone())
                     .bind_descriptor_sets(
@@ -446,11 +446,11 @@ fn main() {
                         SubpassContents::Inline,
                     )
                     .unwrap()
-                    // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
-                    // contain the arguments when the draw is executed on the GPU
                     .set_viewport(0, [viewport.clone()])
                     .bind_pipeline_graphics(render_pipeline.clone())
                     .bind_vertex_buffers(0, vertices)
+                    // The indirect draw call is placed in the command buffer with a reference to
+                    // the buffer that will contain the arguments for the draw.
                     .draw_indirect(indirect_buffer)
                     .unwrap()
                     .end_render_pass()
@@ -478,7 +478,7 @@ fn main() {
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                     Err(e) => {
-                        println!("Failed to flush future: {e:?}");
+                        println!("failed to flush future: {e}");
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }
@@ -488,7 +488,7 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
+/// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,

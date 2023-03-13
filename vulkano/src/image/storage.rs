@@ -48,7 +48,10 @@ use crate::{
 use std::{
     fs::File,
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
@@ -56,6 +59,10 @@ use std::{
 #[derive(Debug)]
 pub struct StorageImage {
     inner: Arc<Image>,
+
+    // If true, then the image is in the layout `General`. If false, then it
+    // is still `Undefined`.
+    layout_initialized: AtomicBool,
 }
 
 impl StorageImage {
@@ -143,7 +150,10 @@ impl StorageImage {
                         .map_err(|(err, _, _)| err)?
                 });
 
-                Ok(Arc::new(StorageImage { inner }))
+                Ok(Arc::new(StorageImage {
+                    inner,
+                    layout_initialized: AtomicBool::new(false),
+                }))
             }
             Err(err) => Err(err.into()),
         }
@@ -220,7 +230,10 @@ impl StorageImage {
                         .map_err(|(err, _, _)| err)?
                 });
 
-                Ok(Arc::new(StorageImage { inner }))
+                Ok(Arc::new(StorageImage {
+                    inner,
+                    layout_initialized: AtomicBool::new(false),
+                }))
             }
             Err(err) => Err(err.into()),
         }
@@ -456,6 +469,16 @@ unsafe impl ImageAccess for StorageImage {
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         ImageLayout::General
+    }
+
+    #[inline]
+    unsafe fn layout_initialized(&self) {
+        self.layout_initialized.store(true, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn is_layout_initialized(&self) -> bool {
+        self.layout_initialized.load(Ordering::Relaxed)
     }
 
     #[inline]

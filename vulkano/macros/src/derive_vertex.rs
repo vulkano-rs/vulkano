@@ -7,14 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use proc_macro::TokenStream;
-use proc_macro2::Span;
-use proc_macro_crate::{crate_name, FoundCrate};
+use crate::bail;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    Data, DataStruct, Error, Fields, Ident, LitStr, Result, Token,
+    Data, DataStruct, Fields, Ident, LitStr, Result, Token,
 };
 
 pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
@@ -25,25 +24,14 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
             fields: Fields::Named(fields),
             ..
         }) => &fields.named,
-        _ => {
-            return Err(Error::new_spanned(
-                ast,
-                "Expected a struct with named fields",
-            ));
-        }
+        _ => bail!("expected a struct with named fields"),
     };
 
-    let found_crate = crate_name("vulkano").expect("vulkano is present in `Cargo.toml`");
-
-    let crate_ident = match found_crate {
-        // We use `vulkano` by default as we are exporting crate as vulkano in vulkano/lib.rs.
-        FoundCrate::Itself => Ident::new("vulkano", Span::call_site()),
-        FoundCrate::Name(name) => Ident::new(&name, Span::call_site()),
-    };
+    let crate_ident = crate::crate_ident();
 
     let mut members = quote! {
         let mut offset = 0;
-        let mut members = HashMap::default();
+        let mut members = ::std::collections::HashMap::default();
     };
 
     for field in fields.iter() {
@@ -64,30 +52,30 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
             } else if attr_ident == "format" {
                 let format_ident = attr.parse_args_with(Ident::parse)?;
                 format = quote! {
-                    let format = Format::#format_ident;
+                    let format = ::#crate_ident::format::Format::#format_ident;
                 };
             }
         }
         if format.is_empty() {
-            return Err(Error::new(
-                field_name.span(),
-                "Expected `#[format(...)]`-attribute with valid `vulkano::format::Format`",
-            ));
+            bail!(
+                field_name,
+                "expected `#[format(...)]`-attribute with valid `vulkano::format::Format`",
+            );
         }
         for name in &names {
             members = quote! {
                 #members
 
-                let field_size = std::mem::size_of::<#field_ty>() as u32;
+                let field_size = ::std::mem::size_of::<#field_ty>() as u32;
                 {
                     #format
                     let format_size = format.block_size().expect("no block size for format") as u32;
                     let num_elements = field_size / format_size;
                     let remainder = field_size % format_size;
-                    assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", #field_name_lit);
+                    ::std::assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", #field_name_lit);
                     members.insert(
                         #name.to_string(),
-                        VertexMemberInfo {
+                        ::#crate_ident::pipeline::graphics::vertex_input::VertexMemberInfo {
                             offset,
                             format,
                             num_elements,
@@ -100,37 +88,34 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
     }
 
     let function_body = quote! {
-        #[allow(unused_imports)]
-        use std::collections::HashMap;
-        use #crate_ident::format::Format;
-        use #crate_ident::pipeline::graphics::vertex_input::{VertexInputRate, VertexMemberInfo};
-
         #members
 
-        #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+        ::#crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
             members,
-            stride: std::mem::size_of::<#struct_name>() as u32,
-            input_rate: VertexInputRate::Vertex,
+            stride: ::std::mem::size_of::<#struct_name>() as u32,
+            input_rate: ::#crate_ident::pipeline::graphics::vertex_input::VertexInputRate::Vertex,
         }
     };
 
-    Ok(TokenStream::from(quote! {
-     #[allow(unsafe_code)]
-     unsafe impl #crate_ident::pipeline::graphics::vertex_input::Vertex for #struct_name {
-         #[inline(always)]
-         fn per_vertex() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
-             #function_body
-         }
-         #[inline(always)]
-         fn per_instance() -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
-             #function_body.per_instance()
-         }
-         #[inline(always)]
-         fn per_instance_with_divisor(divisor: u32) -> #crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
-             #function_body.per_instance_with_divisor(divisor)
-         }
-     }
-    }))
+    Ok(quote! {
+        #[allow(unsafe_code)]
+        unsafe impl ::#crate_ident::pipeline::graphics::vertex_input::Vertex for #struct_name {
+            #[inline(always)]
+            fn per_vertex() -> ::#crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+                #function_body
+            }
+
+            #[inline(always)]
+            fn per_instance() -> ::#crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+                Self::per_vertex().per_instance()
+            }
+
+            #[inline(always)]
+            fn per_instance_with_divisor(divisor: u32) -> ::#crate_ident::pipeline::graphics::vertex_input::VertexBufferDescription {
+                Self::per_vertex().per_instance_with_divisor(divisor)
+            }
+        }
+    })
 }
 
 struct NameMeta {
