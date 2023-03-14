@@ -18,8 +18,8 @@ use crate::{
     device::{Device, DeviceOwned},
     memory::{
         allocator::{AllocationType, DeviceLayout, MemoryAlloc},
-        DedicatedTo, ExternalMemoryHandleTypes, MemoryAllocateFlags, MemoryPropertyFlags,
-        MemoryRequirements,
+        is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryAllocateFlags,
+        MemoryPropertyFlags, MemoryRequirements,
     },
     sync::Sharing,
     DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
@@ -439,7 +439,7 @@ impl RawBuffer {
         }
 
         // VUID-VkBindBufferMemoryInfo-memoryOffset-01036
-        if memory_offset % memory_requirements.layout.alignment().as_nonzero() != 0 {
+        if !is_aligned(memory_offset, memory_requirements.layout.alignment()) {
             return Err(BufferError::MemoryAllocationNotAligned {
                 allocation_offset: memory_offset,
                 required_alignment: memory_requirements.layout.alignment(),

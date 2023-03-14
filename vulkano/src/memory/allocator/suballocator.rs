@@ -299,8 +299,8 @@ impl MemoryAlloc {
         // VUID-VkMappedMemoryRange-offset-00687
         // VUID-VkMappedMemoryRange-size-01390
         assert!(
-            range.start % atom_size.as_nonzero() == 0
-                && (range.end % atom_size.as_nonzero() == 0 || range.end == self.size)
+            is_aligned(range.start, atom_size)
+                && (is_aligned(range.end, atom_size) || range.end == self.size)
         );
 
         // VUID-VkMappedMemoryRange-offset-00687
@@ -1733,7 +1733,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
         // Start searching at the lowest possible order going up.
         for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
             for (index, &offset) in free_list.iter().enumerate() {
-                if offset % alignment.as_nonzero() == 0 {
+                if is_aligned(offset, alignment) {
                     free_list.remove(index);
 
                     // Go in the opposite direction, splitting nodes from higher orders. The lowest

@@ -1477,7 +1477,7 @@ impl RawImage {
 
             // VUID-VkBindImageMemoryInfo-pNext-01616
             // VUID-VkBindImageMemoryInfo-pNext-01620
-            if memory_offset % memory_requirements.layout.alignment().as_nonzero() != 0 {
+            if !is_aligned(memory_offset, memory_requirements.layout.alignment()) {
                 return Err(ImageError::MemoryAllocationNotAligned {
                     allocations_index,
                     allocation_offset: memory_offset,

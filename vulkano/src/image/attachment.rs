@@ -22,7 +22,7 @@ use crate::{
             AllocationCreateInfo, AllocationType, MemoryAllocatePreference, MemoryAllocator,
             MemoryUsage,
         },
-        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
+        is_aligned, DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes,
     },
     DeviceSize,
@@ -427,7 +427,7 @@ impl AttachmentImage {
 
         match unsafe { allocator.allocate_unchecked(create_info) } {
             Ok(alloc) => {
-                debug_assert!(alloc.offset() % requirements.layout.alignment().as_nonzero() == 0);
+                debug_assert!(is_aligned(alloc.offset(), requirements.layout.alignment()));
                 debug_assert!(alloc.size() == requirements.layout.size());
 
                 let inner = Arc::new(unsafe {
@@ -532,7 +532,7 @@ impl AttachmentImage {
             )
         } {
             Ok(alloc) => {
-                debug_assert!(alloc.offset() % requirements.layout.alignment().as_nonzero() == 0);
+                debug_assert!(is_aligned(alloc.offset(), requirements.layout.alignment()));
                 debug_assert!(alloc.size() == requirements.layout.size());
 
                 let inner = Arc::new(unsafe {

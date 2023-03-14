@@ -114,8 +114,8 @@ use crate::{
             AllocationCreateInfo, AllocationCreationError, AllocationType, DeviceLayout,
             MemoryAlloc, MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
         },
-        DedicatedAllocation, DeviceAlignment, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-        ExternalMemoryProperties, MemoryRequirements,
+        is_aligned, DedicatedAllocation, DeviceAlignment, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes, ExternalMemoryProperties, MemoryRequirements,
     },
     range_map::RangeMap,
     sync::{future::AccessError, CurrentAccess, Sharing},
@@ -394,7 +394,10 @@ impl Buffer {
         };
 
         let mut allocation = unsafe { allocator.allocate_unchecked(create_info) }?;
-        debug_assert!(allocation.offset() % requirements.layout.alignment().as_nonzero() == 0);
+        debug_assert!(is_aligned(
+            allocation.offset(),
+            requirements.layout.alignment(),
+        ));
         debug_assert!(allocation.size() == requirements.layout.size());
 
         // The implementation might require a larger size than we wanted. With this it is easier to
