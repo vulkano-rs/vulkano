@@ -221,15 +221,16 @@ pub mod suballocator;
 
 use self::array_vec::ArrayVec;
 pub use self::{
-    layout::{DeviceAlignment, DeviceLayout},
+    layout::DeviceLayout,
     suballocator::{
         AllocationType, BuddyAllocator, BumpAllocator, FreeListAllocator, MemoryAlloc,
         PoolAllocator, SuballocationCreateInfo, SuballocationCreationError, Suballocator,
     },
 };
 use super::{
-    DedicatedAllocation, DeviceMemory, ExternalMemoryHandleTypes, MemoryAllocateFlags,
-    MemoryAllocateInfo, MemoryProperties, MemoryPropertyFlags, MemoryRequirements, MemoryType,
+    DedicatedAllocation, DeviceAlignment, DeviceMemory, ExternalMemoryHandleTypes,
+    MemoryAllocateFlags, MemoryAllocateInfo, MemoryProperties, MemoryPropertyFlags,
+    MemoryRequirements, MemoryType,
 };
 use crate::{
     device::{Device, DeviceOwned},

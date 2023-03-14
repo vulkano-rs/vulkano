@@ -17,7 +17,7 @@ use super::{Buffer, BufferCreateFlags, BufferError, BufferMemory, BufferUsage};
 use crate::{
     device::{Device, DeviceOwned},
     memory::{
-        allocator::{AllocationType, DeviceAlignment, DeviceLayout, MemoryAlloc},
+        allocator::{AllocationType, DeviceLayout, MemoryAlloc},
         DedicatedTo, ExternalMemoryHandleTypes, MemoryAllocateFlags, MemoryPropertyFlags,
         MemoryRequirements,
     },

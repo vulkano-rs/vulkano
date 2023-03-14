@@ -111,10 +111,10 @@ use crate::{
     macros::vulkan_bitflags,
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationCreationError, AllocationType, DeviceAlignment,
-            DeviceLayout, MemoryAlloc, MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
+            AllocationCreateInfo, AllocationCreationError, AllocationType, DeviceLayout,
+            MemoryAlloc, MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
         },
-        DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        DedicatedAllocation, DeviceAlignment, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
         ExternalMemoryProperties, MemoryRequirements,
     },
     range_map::RangeMap,

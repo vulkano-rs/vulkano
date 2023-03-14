@@ -28,11 +28,9 @@ use crate::{
         SparseImageFormatProperties,
     },
     memory::{
-        allocator::{
-            AllocationCreationError, AllocationType, DeviceAlignment, DeviceLayout, MemoryAlloc,
-        },
-        DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryPropertyFlags,
-        MemoryRequirements,
+        allocator::{AllocationCreationError, AllocationType, DeviceLayout, MemoryAlloc},
+        DedicatedTo, DeviceAlignment, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        MemoryPropertyFlags, MemoryRequirements,
     },
     range_map::RangeMap,
     swapchain::Swapchain,
