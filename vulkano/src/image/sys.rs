@@ -29,8 +29,8 @@ use crate::{
     },
     memory::{
         allocator::{AllocationCreationError, AllocationType, DeviceLayout, MemoryAlloc},
-        DedicatedTo, DeviceAlignment, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-        MemoryPropertyFlags, MemoryRequirements,
+        is_aligned, DedicatedTo, DeviceAlignment, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes, MemoryPropertyFlags, MemoryRequirements,
     },
     range_map::RangeMap,
     swapchain::Swapchain,
