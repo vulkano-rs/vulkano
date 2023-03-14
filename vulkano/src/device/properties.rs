@@ -62,6 +62,13 @@ impl FromVulkan<u64> for u64 {
     }
 }
 
+impl FromVulkan<u64> for DeviceAlignment {
+    #[inline]
+    fn from_vulkan(val: u64) -> Option<Self> {
+        DeviceAlignment::new(val)
+    }
+}
+
 impl FromVulkan<usize> for usize {
     #[inline]
     fn from_vulkan(val: usize) -> Option<Self> {

@@ -100,6 +100,13 @@ impl Debug for DeviceAlignment {
     }
 }
 
+impl Default for DeviceAlignment {
+    #[inline]
+    fn default() -> Self {
+        DeviceAlignment::MIN
+    }
+}
+
 impl TryFrom<NonZeroDeviceSize> for DeviceAlignment {
     type Error = TryFromIntError;
 
