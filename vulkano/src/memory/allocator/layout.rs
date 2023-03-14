@@ -8,10 +8,9 @@
 // according to those terms.
 
 use super::align_up;
-use crate::{memory::DeviceAlignment, DeviceSize, NonZeroDeviceSize};
+use crate::{macros::try_opt, memory::DeviceAlignment, DeviceSize, NonZeroDeviceSize};
 use std::{
     alloc::Layout,
-    cmp,
     error::Error,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::Hash,
