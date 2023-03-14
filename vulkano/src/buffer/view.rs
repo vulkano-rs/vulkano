@@ -49,6 +49,7 @@ use super::{BufferUsage, Subbuffer};
 use crate::{
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
+    memory::{is_aligned, DeviceAlignment},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use std::{
@@ -152,11 +153,12 @@ impl BufferView {
 
         if device.api_version() >= Version::V1_3 || device.enabled_features().texel_buffer_alignment
         {
-            let element_size = if block_size % 3 == 0 {
+            let element_size = DeviceAlignment::new(if block_size % 3 == 0 {
                 block_size / 3
             } else {
                 block_size
-            };
+            })
+            .unwrap();
 
             if buffer.usage().intersects(BufferUsage::STORAGE_TEXEL_BUFFER) {
                 let mut required_alignment = properties
@@ -171,7 +173,7 @@ impl BufferView {
                 }
 
                 // VUID-VkBufferViewCreateInfo-buffer-02750
-                if offset % required_alignment != 0 {
+                if !is_aligned(offset, required_alignment) {
                     return Err(BufferViewCreationError::OffsetNotAligned {
                         offset,
                         required_alignment,
@@ -192,7 +194,7 @@ impl BufferView {
                 }
 
                 // VUID-VkBufferViewCreateInfo-buffer-02751
-                if offset % required_alignment != 0 {
+                if !is_aligned(offset, required_alignment) {
                     return Err(BufferViewCreationError::OffsetNotAligned {
                         offset,
                         required_alignment,
@@ -203,7 +205,7 @@ impl BufferView {
             let required_alignment = properties.min_texel_buffer_offset_alignment;
 
             // VUID-VkBufferViewCreateInfo-offset-02749
-            if offset % required_alignment != 0 {
+            if !is_aligned(offset, required_alignment) {
                 return Err(BufferViewCreationError::OffsetNotAligned {
                     offset,
                     required_alignment,
@@ -340,7 +342,7 @@ pub enum BufferViewCreationError {
     /// The offset within the buffer is not a multiple of the required alignment.
     OffsetNotAligned {
         offset: DeviceSize,
-        required_alignment: DeviceSize,
+        required_alignment: DeviceAlignment,
     },
 
     /// The range within the buffer is not a multiple of the required alignment.

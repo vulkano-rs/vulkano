@@ -290,27 +290,21 @@ impl RawBuffer {
         if usage.intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER) {
             memory_requirements.layout = memory_requirements
                 .layout
-                .align_to(
-                    DeviceAlignment::new(properties.min_texel_buffer_offset_alignment).unwrap(),
-                )
+                .align_to(properties.min_texel_buffer_offset_alignment)
                 .unwrap();
         }
 
         if usage.intersects(BufferUsage::STORAGE_BUFFER) {
             memory_requirements.layout = memory_requirements
                 .layout
-                .align_to(
-                    DeviceAlignment::new(properties.min_storage_buffer_offset_alignment).unwrap(),
-                )
+                .align_to(properties.min_storage_buffer_offset_alignment)
                 .unwrap();
         }
 
         if usage.intersects(BufferUsage::UNIFORM_BUFFER) {
             memory_requirements.layout = memory_requirements
                 .layout
-                .align_to(
-                    DeviceAlignment::new(properties.min_uniform_buffer_offset_alignment).unwrap(),
-                )
+                .align_to(properties.min_uniform_buffer_offset_alignment)
                 .unwrap();
         }
 

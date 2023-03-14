@@ -148,7 +148,6 @@ where
         .into_iter()
         .flatten()
         .max()
-        .map(|alignment| DeviceAlignment::new(alignment).unwrap())
         .unwrap_or(DeviceAlignment::MIN);
 
         SubbufferAllocator {
