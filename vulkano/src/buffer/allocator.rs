@@ -13,9 +13,12 @@ use super::{Buffer, BufferContents, BufferError, BufferMemory, BufferUsage, Subb
 use crate::{
     buffer::BufferAllocateInfo,
     device::{Device, DeviceOwned},
-    memory::allocator::{
-        align_up, AllocationCreationError, DeviceAlignment, DeviceLayout, MemoryAllocator,
-        MemoryUsage, StandardMemoryAllocator,
+    memory::{
+        allocator::{
+            align_up, AllocationCreationError, DeviceLayout, MemoryAllocator, MemoryUsage,
+            StandardMemoryAllocator,
+        },
+        DeviceAlignment,
     },
     DeviceSize, NonZeroDeviceSize,
 };
@@ -145,7 +148,6 @@ where
         .into_iter()
         .flatten()
         .max()
-        .map(|alignment| DeviceAlignment::new(alignment).unwrap())
         .unwrap_or(DeviceAlignment::MIN);
 
         SubbufferAllocator {

@@ -21,7 +21,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     image::ImageTiling,
-    memory::{DeviceMemory, MemoryPropertyFlags},
+    memory::{is_aligned, DeviceMemory, MemoryPropertyFlags},
     DeviceSize, NonZeroDeviceSize, VulkanError, VulkanObject,
 };
 use crossbeam_queue::ArrayQueue;
@@ -135,9 +135,7 @@ impl MemoryAlloc {
 
         let atom_size = (property_flags.intersects(MemoryPropertyFlags::HOST_VISIBLE)
             && !property_flags.intersects(MemoryPropertyFlags::HOST_COHERENT))
-        .then_some(
-            DeviceAlignment::new(physical_device.properties().non_coherent_atom_size).unwrap(),
-        );
+        .then_some(physical_device.properties().non_coherent_atom_size);
 
         Ok(MemoryAlloc {
             offset: 0,
@@ -301,8 +299,8 @@ impl MemoryAlloc {
         // VUID-VkMappedMemoryRange-offset-00687
         // VUID-VkMappedMemoryRange-size-01390
         assert!(
-            range.start % atom_size.as_nonzero() == 0
-                && (range.end % atom_size.as_nonzero() == 0 || range.end == self.size)
+            is_aligned(range.start, atom_size)
+                && (is_aligned(range.end, atom_size) || range.end == self.size)
         );
 
         // VUID-VkMappedMemoryRange-offset-00687
@@ -334,17 +332,15 @@ impl MemoryAlloc {
     /// to be host-coherent.
     fn debug_validate_memory_range(&self, range: &Range<DeviceSize>) {
         debug_assert!(!range.is_empty() && range.end <= self.size);
-        debug_assert!(
-            {
-                let atom_size = self
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .non_coherent_atom_size;
 
-                range.start % atom_size == 0
-                    && (range.end % atom_size == 0 || range.end == self.size)
-            },
+        let atom_size = self
+            .device()
+            .physical_device()
+            .properties()
+            .non_coherent_atom_size;
+        debug_assert!(
+            is_aligned(range.start, atom_size)
+                && (is_aligned(range.end, atom_size) || range.end == self.size),
             "attempted to invalidate or flush a memory range that is not aligned to the \
             non-coherent atom size",
         );
@@ -1002,14 +998,12 @@ impl FreeListAllocator {
             .root()
             .expect("dedicated allocations can't be suballocated")
             .clone();
-        let buffer_image_granularity = DeviceAlignment::new(
-            device_memory
-                .device()
-                .physical_device()
-                .properties()
-                .buffer_image_granularity,
-        )
-        .unwrap();
+        let buffer_image_granularity = device_memory
+            .device()
+            .physical_device()
+            .properties()
+            .buffer_image_granularity;
+
         let atom_size = region.atom_size.unwrap_or(DeviceAlignment::MIN);
         let free_size = AtomicU64::new(region.size);
 
@@ -1600,14 +1594,11 @@ impl BuddyAllocator {
             .root()
             .expect("dedicated allocations can't be suballocated")
             .clone();
-        let buffer_image_granularity = DeviceAlignment::new(
-            device_memory
-                .device()
-                .physical_device()
-                .properties()
-                .buffer_image_granularity,
-        )
-        .unwrap();
+        let buffer_image_granularity = device_memory
+            .device()
+            .physical_device()
+            .properties()
+            .buffer_image_granularity;
         let atom_size = region.atom_size.unwrap_or(DeviceAlignment::MIN);
         let free_size = AtomicU64::new(region.size);
 
@@ -1742,7 +1733,7 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
         // Start searching at the lowest possible order going up.
         for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
             for (index, &offset) in free_list.iter().enumerate() {
-                if offset % alignment.as_nonzero() == 0 {
+                if is_aligned(offset, alignment) {
                     free_list.remove(index);
 
                     // Go in the opposite direction, splitting nodes from higher orders. The lowest
@@ -2117,14 +2108,11 @@ impl PoolAllocatorInner {
             .expect("dedicated allocations can't be suballocated")
             .clone();
         #[cfg(not(test))]
-        let buffer_image_granularity = DeviceAlignment::new(
-            device_memory
-                .device()
-                .physical_device()
-                .properties()
-                .buffer_image_granularity,
-        )
-        .unwrap();
+        let buffer_image_granularity = device_memory
+            .device()
+            .physical_device()
+            .properties()
+            .buffer_image_granularity;
         let atom_size = region.atom_size.unwrap_or(DeviceAlignment::MIN);
         if region.allocation_type == AllocationType::Unknown {
             block_size = align_up(block_size, buffer_image_granularity);
@@ -2294,14 +2282,11 @@ impl BumpAllocator {
             .root()
             .expect("dedicated allocations can't be suballocated")
             .clone();
-        let buffer_image_granularity = DeviceAlignment::new(
-            device_memory
-                .device()
-                .physical_device()
-                .properties()
-                .buffer_image_granularity,
-        )
-        .unwrap();
+        let buffer_image_granularity = device_memory
+            .device()
+            .physical_device()
+            .properties()
+            .buffer_image_granularity;
         let atom_size = region.atom_size.unwrap_or(DeviceAlignment::MIN);
         let state = AtomicU64::new(region.allocation_type as DeviceSize);
 

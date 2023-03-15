@@ -143,7 +143,8 @@ fn main() {
     let min_dynamic_align = device
         .physical_device()
         .properties()
-        .min_uniform_buffer_offset_alignment as usize;
+        .min_uniform_buffer_offset_alignment
+        .as_devicesize() as usize;
 
     println!("Minimum uniform buffer offset alignment: {min_dynamic_align}");
     println!("Input: {data:?}");

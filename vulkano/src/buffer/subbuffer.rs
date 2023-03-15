@@ -15,8 +15,8 @@ use crate::{
     macros::try_opt,
     memory::{
         self,
-        allocator::{align_down, align_up, DeviceAlignment, DeviceLayout},
-        is_aligned,
+        allocator::{align_down, align_up, DeviceLayout},
+        is_aligned, DeviceAlignment,
     },
     DeviceSize, NonZeroDeviceSize,
 };

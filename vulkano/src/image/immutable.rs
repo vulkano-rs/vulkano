@@ -27,7 +27,7 @@ use crate::{
             AllocationCreateInfo, AllocationCreationError, AllocationType,
             MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
         },
-        DedicatedAllocation,
+        is_aligned, DedicatedAllocation,
     },
     sampler::Filter,
     sync::Sharing,
@@ -149,7 +149,7 @@ impl ImmutableImage {
 
         match unsafe { allocator.allocate_unchecked(create_info) } {
             Ok(alloc) => {
-                debug_assert!(alloc.offset() % requirements.layout.alignment().as_nonzero() == 0);
+                debug_assert!(is_aligned(alloc.offset(), requirements.layout.alignment()));
                 debug_assert!(alloc.size() == requirements.layout.size());
 
                 let inner = Arc::new(unsafe {

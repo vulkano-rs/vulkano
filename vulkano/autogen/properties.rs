@@ -196,6 +196,19 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
                 let vulkano_member = name.to_snake_case();
                 let vulkano_ty = match name {
                     "apiVersion" => quote! { Version },
+                    "bufferImageGranularity"
+                    | "minStorageBufferOffsetAlignment"
+                    | "minTexelBufferOffsetAlignment"
+                    | "minUniformBufferOffsetAlignment"
+                    | "nonCoherentAtomSize"
+                    | "optimalBufferCopyOffsetAlignment"
+                    | "optimalBufferCopyRowPitchAlignment"
+                    | "robustStorageBufferAccessSizeAlignment"
+                    | "robustUniformBufferAccessSizeAlignment"
+                    | "storageTexelBufferOffsetAlignmentBytes"
+                    | "uniformTexelBufferOffsetAlignmentBytes" => {
+                        quote! { DeviceAlignment }
+                    }
                     _ => vulkano_type(ty, len),
                 };
                 match properties.entry(vulkano_member.clone()) {
