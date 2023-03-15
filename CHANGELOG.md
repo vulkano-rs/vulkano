@@ -59,9 +59,10 @@ Changes to `impl_vertex`, `VertexMember` and `VertexMemberInfo`:
 - `VertexMemberInfo` now holds format and `VertexMemberTy` was removed.
 - `impl_vertex` was updated to correctly use the new `VertexMember::format` signature.
 
-Changes to memory allocation:
+Changes to memory and allocation:
 - `MemoryRequirements::{size, alignment}` fields have been replaced with a single `layout` field.
 - `Suballocator::allocate_unchecked` has been removed.
+- Device properties that represent alignments are now generated with the type `DeviceAlignment` instead of `DeviceSize`.
 
 Changes to vulkano-shaders:
 - Struct fields are now padded using `Padded`, instead of generating additional fields.
