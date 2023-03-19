@@ -82,7 +82,7 @@ pub fn create_surface_from_handle(
 /// # Safety
 ///
 /// - The passed-in `window` must outlive the created [`Surface`].
-pub unsafe fn create_surface_from_handle_unowned(
+pub unsafe fn create_surface_from_handle_ref(
     window: &(impl HasRawWindowHandle + HasRawDisplayHandle),
     instance: Arc<Instance>,
 ) -> Result<Arc<Surface>, SurfaceCreationError> {
