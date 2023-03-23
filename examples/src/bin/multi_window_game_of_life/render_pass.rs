@@ -7,18 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::pixels_draw::PixelsDrawPipeline;
+use crate::{app::App, pixels_draw::PixelsDrawPipeline};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassContents,
     },
-    descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
     format::Format,
     image::ImageAccess,
-    memory::allocator::MemoryAllocator,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
@@ -34,10 +32,8 @@ pub struct RenderPassPlaceOverFrame {
 
 impl RenderPassPlaceOverFrame {
     pub fn new(
+        app: &App,
         gfx_queue: Arc<Queue>,
-        memory_allocator: &impl MemoryAllocator,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
         output_format: Format,
     ) -> RenderPassPlaceOverFrame {
         let render_pass = vulkano::single_pass_renderpass!(gfx_queue.device().clone(),
@@ -56,19 +52,13 @@ impl RenderPassPlaceOverFrame {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-        let pixels_draw_pipeline = PixelsDrawPipeline::new(
-            gfx_queue.clone(),
-            subpass,
-            memory_allocator,
-            command_buffer_allocator.clone(),
-            descriptor_set_allocator,
-        );
+        let pixels_draw_pipeline = PixelsDrawPipeline::new(app, gfx_queue.clone(), subpass);
 
         RenderPassPlaceOverFrame {
             gfx_queue,
             render_pass,
             pixels_draw_pipeline,
-            command_buffer_allocator,
+            command_buffer_allocator: app.command_buffer_allocator.clone(),
         }
     }
 
