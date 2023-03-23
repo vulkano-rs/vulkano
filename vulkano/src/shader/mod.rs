@@ -136,7 +136,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::{Format, NumericType},
     image::view::ImageViewType,
-    macros::vulkan_bitflags_enum,
+    macros::{impl_id_counter, vulkan_bitflags_enum},
     pipeline::{graphics::input_assembly::PrimitiveTopology, layout::PushConstantRange},
     shader::spirv::{Capability, Spirv, SpirvError},
     sync::PipelineStages,
@@ -401,7 +401,7 @@ unsafe impl DeviceOwned for ShaderModule {
     }
 }
 
-crate::impl_id_counter!(ShaderModule);
+impl_id_counter!(ShaderModule);
 
 /// Error that can happen when creating a new shader module.
 #[derive(Clone, Debug)]

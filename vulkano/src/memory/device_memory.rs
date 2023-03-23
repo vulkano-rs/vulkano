@@ -10,7 +10,7 @@
 use super::{DedicatedAllocation, DedicatedTo, DeviceAlignment};
 use crate::{
     device::{Device, DeviceOwned},
-    macros::{vulkan_bitflags, vulkan_bitflags_enum},
+    macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     memory::{is_aligned, MemoryPropertyFlags},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -748,7 +748,7 @@ unsafe impl DeviceOwned for DeviceMemory {
     }
 }
 
-crate::impl_id_counter!(DeviceMemory);
+impl_id_counter!(DeviceMemory);
 
 /// Parameters to allocate a new `DeviceMemory`.
 #[derive(Clone, Debug)]

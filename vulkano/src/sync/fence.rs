@@ -12,7 +12,7 @@
 
 use crate::{
     device::{Device, DeviceOwned, Queue},
-    macros::{vulkan_bitflags, vulkan_bitflags_enum},
+    macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -1123,7 +1123,7 @@ unsafe impl DeviceOwned for Fence {
     }
 }
 
-crate::impl_id_counter!(Fence);
+impl_id_counter!(Fence);
 
 #[derive(Debug, Default)]
 pub(crate) struct FenceState {

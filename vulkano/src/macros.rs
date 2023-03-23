@@ -888,6 +888,51 @@ macro_rules! vulkan_bitflags_enum {
     }
 }
 
+macro_rules! impl_id_counter {
+    ($type:ident $(< $($param:ident $(: $bound:ident $(+ $bounds:ident)* )?),+ >)?) => {
+        $crate::macros::impl_id_counter!(
+            @inner $type $(< $($param),+ >)?, $( $($param $(: $bound $(+ $bounds)* )?),+)?
+        );
+    };
+    ($type:ident $(< $($param:ident $(: $bound:ident $(+ $bounds:ident)* )? + ?Sized),+ >)?) => {
+        $crate::macros::impl_id_counter!(
+            @inner $type $(< $($param),+ >)?, $( $($param $(: $bound $(+ $bounds)* )? + ?Sized),+)?
+        );
+    };
+    (@inner $type:ident $(< $($param:ident),+ >)?, $($bounds:tt)*) => {
+        impl< $($bounds)* > $type $(< $($param),+ >)? {
+            fn next_id() -> std::num::NonZeroU64 {
+                use std::{
+                    num::NonZeroU64,
+                    sync::atomic::{AtomicU64, Ordering},
+                };
+
+                static COUNTER: AtomicU64 = AtomicU64::new(1);
+
+                NonZeroU64::new(COUNTER.fetch_add(1, Ordering::Relaxed)).unwrap_or_else(|| {
+                    println!("an ID counter has overflown ...somehow");
+                    std::process::abort();
+                })
+            }
+        }
+
+        impl< $($bounds)* > PartialEq for $type $(< $($param),+ >)? {
+            #[inline]
+            fn eq(&self, other: &Self) -> bool {
+                self.id == other.id
+            }
+        }
+
+        impl< $($bounds)* > Eq for $type $(< $($param),+ >)? {}
+
+        impl< $($bounds)* > std::hash::Hash for $type $(< $($param),+ >)? {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                self.id.hash(state);
+            }
+        }
+    };
+}
+
 // TODO: Replace with the `?` operator once its constness is stabilized.
 macro_rules! try_opt {
     ($e:expr) => {
@@ -899,4 +944,4 @@ macro_rules! try_opt {
     };
 }
 
-pub(crate) use {try_opt, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum};
+pub(crate) use {impl_id_counter, try_opt, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum};

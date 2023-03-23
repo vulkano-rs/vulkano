@@ -92,7 +92,7 @@
 use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
-    macros::vulkan_enum,
+    macros::{impl_id_counter, vulkan_enum},
     sampler::{ComponentMapping, ComponentSwizzle, Filter},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -509,7 +509,7 @@ unsafe impl DeviceOwned for SamplerYcbcrConversion {
     }
 }
 
-crate::impl_id_counter!(SamplerYcbcrConversion);
+impl_id_counter!(SamplerYcbcrConversion);
 
 /// Error that can happen when creating a `SamplerYcbcrConversion`.
 #[derive(Clone, Debug, PartialEq, Eq)]

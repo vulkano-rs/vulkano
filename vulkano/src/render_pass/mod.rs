@@ -33,7 +33,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::Format,
     image::{ImageAspects, ImageLayout, SampleCount},
-    macros::{vulkan_bitflags_enum, vulkan_enum},
+    macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
     shader::ShaderInterface,
     sync::{AccessFlags, DependencyFlags, PipelineStages},
     Version, VulkanObject,
@@ -544,7 +544,7 @@ unsafe impl DeviceOwned for RenderPass {
     }
 }
 
-crate::impl_id_counter!(RenderPass);
+impl_id_counter!(RenderPass);
 
 /// Represents a subpass within a `RenderPass` object.
 ///

@@ -49,6 +49,7 @@ use super::{BufferUsage, Subbuffer};
 use crate::{
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
+    macros::impl_id_counter,
     memory::{is_aligned, DeviceAlignment},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -301,7 +302,7 @@ unsafe impl DeviceOwned for BufferView {
     }
 }
 
-crate::impl_id_counter!(BufferView);
+impl_id_counter!(BufferView);
 
 /// Parameters to create a new `BufferView`.
 #[derive(Clone, Debug)]

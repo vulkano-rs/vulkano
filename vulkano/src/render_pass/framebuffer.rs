@@ -12,6 +12,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::Format,
     image::{view::ImageViewType, ImageDimensions, ImageUsage, ImageViewAbstract, SampleCount},
+    macros::impl_id_counter,
     OomError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -422,7 +423,7 @@ unsafe impl DeviceOwned for Framebuffer {
     }
 }
 
-crate::impl_id_counter!(Framebuffer);
+impl_id_counter!(Framebuffer);
 
 /// Parameters to create a new `Framebuffer`.
 #[derive(Clone, Debug)]

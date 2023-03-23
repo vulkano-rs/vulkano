@@ -114,8 +114,8 @@ pub use crate::{
     fns::DeviceFunctions,
 };
 use crate::{
-    instance::Instance, memory::ExternalMemoryHandleType, OomError, RequirementNotMet,
-    RequiresOneOf, Version, VulkanError, VulkanObject,
+    instance::Instance, macros::impl_id_counter, memory::ExternalMemoryHandleType, OomError,
+    RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::Mutex;
@@ -645,7 +645,7 @@ unsafe impl VulkanObject for Device {
     }
 }
 
-crate::impl_id_counter!(Device);
+impl_id_counter!(Device);
 
 /// Error that can be returned when creating a device.
 #[derive(Copy, Clone, Debug)]

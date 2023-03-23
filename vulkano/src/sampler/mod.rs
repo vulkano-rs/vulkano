@@ -51,7 +51,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::FormatFeatures,
     image::{view::ImageViewType, ImageAspects, ImageViewAbstract},
-    macros::vulkan_enum,
+    macros::{impl_id_counter, vulkan_enum},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
     OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
@@ -779,7 +779,7 @@ unsafe impl DeviceOwned for Sampler {
     }
 }
 
-crate::impl_id_counter!(Sampler);
+impl_id_counter!(Sampler);
 
 /// Error that can happen when creating an instance.
 #[derive(Clone, Debug, PartialEq)]

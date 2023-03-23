@@ -16,6 +16,7 @@
 use super::{Buffer, BufferCreateFlags, BufferError, BufferMemory, BufferUsage};
 use crate::{
     device::{Device, DeviceOwned},
+    macros::impl_id_counter,
     memory::{
         allocator::{AllocationType, DeviceLayout, MemoryAlloc},
         is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryAllocateFlags,
@@ -628,7 +629,7 @@ unsafe impl DeviceOwned for RawBuffer {
     }
 }
 
-crate::impl_id_counter!(RawBuffer);
+impl_id_counter!(RawBuffer);
 
 /// Parameters to create a new [`Buffer`].
 #[derive(Clone, Debug)]

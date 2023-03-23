@@ -18,6 +18,7 @@
 use crate::{
     command_buffer::CommandBufferLevel,
     device::{Device, DeviceOwned},
+    macros::impl_id_counter,
     OomError, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -347,7 +348,7 @@ unsafe impl DeviceOwned for CommandPool {
     }
 }
 
-crate::impl_id_counter!(CommandPool);
+impl_id_counter!(CommandPool);
 
 /// Error that can happen when creating a `CommandPool`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -493,7 +494,7 @@ unsafe impl DeviceOwned for CommandPoolAlloc {
     }
 }
 
-crate::impl_id_counter!(CommandPoolAlloc);
+impl_id_counter!(CommandPoolAlloc);
 
 /// Error that can happen when trimming command pools.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
