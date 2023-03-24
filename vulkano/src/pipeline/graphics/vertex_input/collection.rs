@@ -40,7 +40,7 @@ impl<T: ?Sized> VertexBuffersCollection for Vec<Subbuffer<T>> {
     }
 }
 
-impl<T, const N: usize> VertexBuffersCollection for [Subbuffer<T>; N] {
+impl<T: ?Sized, const N: usize> VertexBuffersCollection for [Subbuffer<T>; N] {
     fn into_vec(self) -> Vec<Subbuffer<[u8]>> {
         self.into_iter().map(Subbuffer::into_bytes).collect()
     }

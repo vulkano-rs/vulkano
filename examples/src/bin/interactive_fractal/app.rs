@@ -7,49 +7,52 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::fractal_compute_pipeline::FractalComputePipeline;
-use crate::place_over_frame::RenderPassPlaceOverFrame;
+use crate::{
+    fractal_compute_pipeline::FractalComputePipeline, place_over_frame::RenderPassPlaceOverFrame,
+};
 use cgmath::Vector2;
-use std::sync::Arc;
-use std::time::Instant;
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::device::Queue;
-use vulkano::memory::allocator::StandardMemoryAllocator;
-use vulkano::sync::GpuFuture;
-use vulkano_util::renderer::{DeviceImageView, VulkanoWindowRenderer};
-use vulkano_util::window::WindowDescriptor;
-use winit::window::Fullscreen;
+use std::{sync::Arc, time::Instant};
+use vulkano::{
+    command_buffer::allocator::StandardCommandBufferAllocator,
+    descriptor_set::allocator::StandardDescriptorSetAllocator, device::Queue,
+    memory::allocator::StandardMemoryAllocator, sync::GpuFuture,
+};
+use vulkano_util::{
+    renderer::{DeviceImageView, VulkanoWindowRenderer},
+    window::WindowDescriptor,
+};
 use winit::{
     dpi::PhysicalPosition,
     event::{
         ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
         WindowEvent,
     },
+    window::Fullscreen,
 };
 
 const MAX_ITERS_INIT: u32 = 200;
 const MOVE_SPEED: f32 = 0.5;
 
-/// App for exploring Julia and Mandelbrot fractals
+/// App for exploring Julia and Mandelbrot fractals.
 pub struct FractalApp {
-    /// Pipeline that computes Mandelbrot & Julia fractals and writes them to an image
+    /// Pipeline that computes Mandelbrot & Julia fractals and writes them to an image.
     fractal_pipeline: FractalComputePipeline,
-    /// Our render pipeline (pass)
+    /// Our render pipeline (pass).
     pub place_over_frame: RenderPassPlaceOverFrame,
-    /// Toggle that flips between julia and mandelbrot
+    /// Toggle that flips between Julia and Mandelbrot.
     pub is_julia: bool,
-    /// Togglet thats stops the movement on Julia
+    /// Toggle that stops the movement on Julia.
     is_c_paused: bool,
     /// C is a constant input to Julia escape time algorithm (mouse position).
     c: Vector2<f32>,
-    /// Our zoom level
+    /// Our zoom level.
     scale: Vector2<f32>,
-    /// Our translation on the complex plane
+    /// Our translation on the complex plane.
     translation: Vector2<f32>,
-    /// How far should the escape time algorithm run (higher = less performance, more accurate image)
+    /// How long the escape time algorithm should run (higher = less performance, more accurate
+    /// image).
     pub max_iters: u32,
-    /// Time tracking, useful for frame independent movement
+    /// Time tracking, useful for frame independent movement.
     time: Instant,
     dt: f32,
     dt_sum: f32,
@@ -113,11 +116,11 @@ Usage:
     F: Toggle full-screen
     Right mouse: Stop movement in Julia (mouse position determines c)
     Esc: Quit\
-        "
+            ",
         );
     }
 
-    /// Run our compute pipeline and return a future of when the compute is finished
+    /// Runs our compute pipeline and return a future of when the compute is finished.
     pub fn compute(&self, image_target: DeviceImageView) -> Box<dyn GpuFuture> {
         self.fractal_pipeline.compute(
             image_target,
@@ -129,24 +132,24 @@ Usage:
         )
     }
 
-    /// Should the app quit? (on esc)
+    /// Returns whether the app should quit. (Happens on when pressing ESC.)
     pub fn is_running(&self) -> bool {
         !self.input_state.should_quit
     }
 
-    /// Return average fps
+    /// Returns the average FPS.
     pub fn avg_fps(&self) -> f32 {
         self.avg_fps
     }
 
-    /// Delta time in milliseconds
+    /// Returns the delta time in milliseconds.
     pub fn dt(&self) -> f32 {
         self.dt * 1000.0
     }
 
-    /// Update times and dt at the end of each frame
+    /// Updates times and dt at the end of each frame.
     pub fn update_time(&mut self) {
-        // Each second, update average fps & reset frame count & dt sum
+        // Each second, update average fps & reset frame count & dt sum.
         if self.dt_sum > 1.0 {
             self.avg_fps = self.frame_count / self.dt_sum;
             self.frame_count = 0.0;
@@ -158,17 +161,19 @@ Usage:
         self.time = Instant::now();
     }
 
-    /// Updates app state based on input state
+    /// Updates app state based on input state.
     pub fn update_state_after_inputs(&mut self, renderer: &mut VulkanoWindowRenderer) {
-        // Zoom in or out
+        // Zoom in or out.
         if self.input_state.scroll_delta > 0. {
             self.scale /= 1.05;
         } else if self.input_state.scroll_delta < 0. {
             self.scale *= 1.05;
         }
-        // Move speed scaled by zoom level
+
+        // Move speed scaled by zoom level.
         let move_speed = MOVE_SPEED * self.dt * self.scale.x;
-        // Panning
+
+        // Panning.
         if self.input_state.pan_up {
             self.translation += Vector2::new(0.0, move_speed);
         }
@@ -181,22 +186,27 @@ Usage:
         if self.input_state.pan_left {
             self.translation += Vector2::new(-move_speed, 0.0);
         }
-        // Toggle between julia and mandelbrot
+
+        // Toggle between Julia and Mandelbrot.
         if self.input_state.toggle_julia {
             self.is_julia = !self.is_julia;
         }
-        // Toggle c
+
+        // Toggle c.
         if self.input_state.toggle_c {
             self.is_c_paused = !self.is_c_paused;
         }
-        // Update c
+
+        // Update c.
         if !self.is_c_paused {
-            // Scale normalized mouse pos between -1.0 and 1.0;
+            // Scale normalized mouse pos between -1.0 and 1.0.
             let mouse_pos = self.input_state.normalized_mouse_pos() * 2.0 - Vector2::new(1.0, 1.0);
-            // Scale by our zoom (scale) level so when zooming in the movement on julia is not so drastic
+            // Scale by our zoom (scale) level so when zooming in the movement on Julia is not so
+            // drastic.
             self.c = mouse_pos * self.scale.x;
         }
-        // Update how many iterations we have
+
+        // Update how many iterations we have.
         if self.input_state.increase_iterations {
             self.max_iters += 1;
         }
@@ -207,11 +217,13 @@ Usage:
                 self.max_iters -= 1;
             }
         }
-        // Randomize our palette
+
+        // Randomize our palette.
         if self.input_state.randomize_palette {
             self.fractal_pipeline.randomize_palette();
         }
-        // Toggle full-screen
+
+        // Toggle full-screen.
         if self.input_state.toggle_full_screen {
             let is_full_screen = renderer.window().fullscreen().is_some();
             renderer.window().set_fullscreen(if !is_full_screen {
@@ -222,12 +234,12 @@ Usage:
         }
     }
 
-    /// Update input state
+    /// Update input state.
     pub fn handle_input(&mut self, window_size: [f32; 2], event: &Event<()>) {
         self.input_state.handle_input(window_size, event);
     }
 
-    /// reset input state at the end of frame
+    /// Reset input state at the end of the frame.
     pub fn reset_input_state(&mut self) {
         self.input_state.reset()
     }
@@ -240,9 +252,9 @@ fn state_is_pressed(state: ElementState) -> bool {
     }
 }
 
-/// Just a very simple input state (mappings).
-/// Winit only has Pressed and Released events, thus continuous movement needs toggles.
-/// Panning is one of those where continuous movement feels better.
+/// Just a very simple input state (mappings). Winit only has `Pressed` and `Released` events, thus
+/// continuous movement needs toggles. Panning is one of those things where continuous movement
+/// feels better.
 struct InputState {
     pub window_size: [f32; 2],
     pub pan_up: bool,
@@ -290,7 +302,7 @@ impl InputState {
         )
     }
 
-    // Resets values that should be reset. All incremental mappings and toggles should be reset.
+    /// Resets values that should be reset. All incremental mappings and toggles should be reset.
     fn reset(&mut self) {
         *self = InputState {
             scroll_delta: 0.0,
@@ -319,7 +331,7 @@ impl InputState {
         }
     }
 
-    /// Match keyboard event to our defined inputs
+    /// Matches keyboard events to our defined inputs.
     fn on_keyboard_event(&mut self, input: &KeyboardInput) {
         if let Some(key_code) = input.virtual_keycode {
             match key_code {
@@ -338,7 +350,7 @@ impl InputState {
         }
     }
 
-    /// Update mouse scroll delta
+    /// Updates mouse scroll delta.
     fn on_mouse_wheel_event(&mut self, delta: &MouseScrollDelta) {
         let change = match delta {
             MouseScrollDelta::LineDelta(_x, y) => *y,

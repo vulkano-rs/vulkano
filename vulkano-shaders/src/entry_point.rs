@@ -8,7 +8,7 @@
 // according to those terms.
 
 use ahash::HashMap;
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, Span, TokenStream};
 use vulkano::{
     pipeline::layout::PushConstantRange,
     shader::{
@@ -25,11 +25,7 @@ pub(super) fn write_entry_point(
     info: &EntryPointInfo,
 ) -> TokenStream {
     let execution = write_shader_execution(&info.execution);
-    let model = syn::parse_str::<syn::Path>(&format!(
-        "::vulkano::shader::spirv::ExecutionModel::{:?}",
-        model
-    ))
-    .unwrap();
+    let model = Ident::new(&format!("{:?}", model), Span::call_site());
     let descriptor_binding_requirements =
         write_descriptor_binding_requirements(&info.descriptor_binding_requirements);
     let push_constant_requirements =
@@ -42,7 +38,7 @@ pub(super) fn write_entry_point(
     quote! {
         (
             #name.to_owned(),
-            #model,
+            ::vulkano::shader::spirv::ExecutionModel::#model,
             ::vulkano::shader::EntryPointInfo {
                 execution: #execution,
                 descriptor_binding_requirements: #descriptor_binding_requirements.into_iter().collect(),
@@ -194,7 +190,9 @@ fn write_descriptor_binding_requirements(
                                 sampler_compare: #sampler_compare,
                                 sampler_no_unnormalized_coordinates: #sampler_no_unnormalized_coordinates,
                                 sampler_no_ycbcr_conversion: #sampler_no_ycbcr_conversion,
-                                sampler_with_images: [#(#sampler_with_images_items),*].into_iter().collect(),
+                                sampler_with_images: [ #( #sampler_with_images_items ),* ]
+                                    .into_iter()
+                                    .collect(),
                                 storage_image_atomic: #storage_image_atomic,
                             }
                         )
@@ -205,22 +203,22 @@ fn write_descriptor_binding_requirements(
                     (
                         (#set_num, #binding_num),
                         ::vulkano::shader::DescriptorBindingRequirements {
-                            descriptor_types: vec![#(#descriptor_types_items),*],
+                            descriptor_types: vec![ #( #descriptor_types_items ),* ],
                             descriptor_count: #descriptor_count,
                             image_format: #image_format,
                             image_multisampled: #image_multisampled,
                             image_scalar_type: #image_scalar_type,
                             image_view_type: #image_view_type,
                             stages: #stages,
-                            descriptors: [#(#descriptor_items),*].into_iter().collect(),
+                            descriptors: [ #( #descriptor_items ),* ].into_iter().collect(),
                         },
-                    ),
+                    )
                 }
             });
 
     quote! {
         [
-            #( #descriptor_binding_requirements )*
+            #( #descriptor_binding_requirements ),*
         ]
     }
 }
@@ -264,13 +262,13 @@ fn write_specialization_constant_requirements(
                         ::vulkano::shader::SpecializationConstantRequirements {
                             size: #size,
                         },
-                    ),
+                    )
                 }
             });
 
     quote! {
         [
-            #( #specialization_constant_requirements )*
+            #( #specialization_constant_requirements ),*
         ]
     }
 }
@@ -301,15 +299,15 @@ fn write_interface(interface: &ShaderInterface) -> TokenStream {
                         num_elements: #num_elements,
                         is_64bit: #is_64bit,
                     },
-                    name: Some(::std::borrow::Cow::Borrowed(#name))
-                },
+                    name: ::std::option::Option::Some(::std::borrow::Cow::Borrowed(#name)),
+                }
             }
         },
     );
 
     quote! {
         ::vulkano::shader::ShaderInterface::new_unchecked(vec![
-            #( #items )*
+            #( #items ),*
         ])
     }
 }
@@ -363,6 +361,6 @@ fn stages_to_items(stages: ShaderStages) -> TokenStream {
         .into_iter()
         .flatten();
 
-        quote! { #(#stages_items)|* }
+        quote! { #( #stages_items )|* }
     }
 }

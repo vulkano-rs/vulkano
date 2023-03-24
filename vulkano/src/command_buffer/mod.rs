@@ -71,11 +71,10 @@
 //! use vulkano::command_buffer::PrimaryCommandBufferAbstract;
 //! use vulkano::command_buffer::SubpassContents;
 //!
-//! # use vulkano::pipeline::graphics::vertex_input::Vertex;
-//! # use bytemuck::{Pod, Zeroable};
+//! # use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 //!
+//! # #[derive(BufferContents, Vertex)]
 //! # #[repr(C)]
-//! # #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
 //! # struct PosVertex {
 //! #     #[format(R32G32B32_SFLOAT)]
 //! #     position: [f32; 3]

@@ -128,7 +128,7 @@ unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, SurfaceCreationError> {
-    use winit::platform::unix::WindowExtUnix;
+    use winit::platform::{wayland::WindowExtWayland, x11::WindowExtX11};
 
     match (window.wayland_display(), window.wayland_surface()) {
         (Some(display), Some(surface)) => {

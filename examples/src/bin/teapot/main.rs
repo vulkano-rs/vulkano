@@ -56,8 +56,8 @@ use winit::{
 };
 
 fn main() {
-    // The start of this example is exactly the same as `triangle`. You should read the
-    // `triangle` example if you haven't done so yet.
+    // The start of this example is exactly the same as `triangle`. You should read the `triangle`
+    // example if you haven't done so yet.
 
     let library = VulkanLibrary::new().unwrap();
     let required_extensions = vulkano_win::required_extensions(&library);
@@ -65,7 +65,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -264,7 +263,7 @@ fn main() {
                         }) {
                             Ok(r) => r,
                             Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                            Err(e) => panic!("failed to recreate swapchain: {e}"),
                         };
 
                     swapchain = new_swapchain;
@@ -303,7 +302,7 @@ fn main() {
                     );
                     let scale = Matrix4::from_scale(0.01);
 
-                    let uniform_data = vs::ty::Data {
+                    let uniform_data = vs::Data {
                         world: Matrix4::from(rotation).into(),
                         view: (view * scale).into(),
                         proj: proj.into(),
@@ -330,7 +329,7 @@ fn main() {
                             recreate_swapchain = true;
                             return;
                         }
-                        Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                        Err(e) => panic!("failed to acquire next image: {e}"),
                     };
 
                 if suboptimal {
@@ -393,7 +392,7 @@ fn main() {
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                     Err(e) => {
-                        println!("Failed to flush future: {e:?}");
+                        println!("failed to flush future: {e}");
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }
@@ -403,7 +402,7 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
+/// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     memory_allocator: &StandardMemoryAllocator,
     vs: &ShaderModule,
@@ -433,9 +432,9 @@ fn window_size_dependent_setup(
         })
         .collect::<Vec<_>>();
 
-    // In the triangle example we use a dynamic viewport, as its a simple example.
-    // However in the teapot example, we recreate the pipelines with a hardcoded viewport instead.
-    // This allows the driver to optimize things, at the cost of slower window resizes.
+    // In the triangle example we use a dynamic viewport, as its a simple example. However in the
+    // teapot example, we recreate the pipelines with a hardcoded viewport instead. This allows the
+    // driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
     let pipeline = GraphicsPipeline::start()
         .vertex_input_state([Position::per_vertex(), Normal::per_vertex()])
@@ -467,6 +466,6 @@ mod vs {
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "src/bin/teapot/frag.glsl"
+        path: "src/bin/teapot/frag.glsl",
     }
 }

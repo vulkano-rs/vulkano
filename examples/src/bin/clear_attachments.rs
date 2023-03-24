@@ -35,8 +35,8 @@ use winit::{
 };
 
 fn main() {
-    // The start of this example is exactly the same as `triangle`. You should read the
-    // `triangle` example if you haven't done so yet.
+    // The start of this example is exactly the same as `triangle`. You should read the `triangle`
+    // example if you haven't done so yet.
 
     let library = VulkanLibrary::new().unwrap();
     let required_extensions = vulkano_win::required_extensions(&library);
@@ -44,7 +44,6 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
             ..Default::default()
         },
@@ -192,7 +191,7 @@ fn main() {
                 }) {
                     Ok(r) => r,
                     Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                    Err(e) => panic!("failed to recreate swapchain: {e}"),
                 };
 
                 swapchain = new_swapchain;
@@ -209,7 +208,7 @@ fn main() {
                         recreate_swapchain = true;
                         return;
                     }
-                    Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                    Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
             if suboptimal {
@@ -233,29 +232,28 @@ fn main() {
                     SubpassContents::Inline,
                 )
                 .unwrap()
-                // Clear attachments with clear values and rects information, all the rects will be cleared by the same value
-                // Note that the ClearRect offsets and extents are not affected by the viewport,
-                // they are directly applied to the rendering image
+                // Clear attachments with clear values and rects information. All the rects will be
+                // cleared by the same value. Note that the ClearRect offsets and extents are not
+                // affected by the viewport, they are directly applied to the rendering image.
                 .clear_attachments(
                     [ClearAttachment::Color {
                         color_attachment: 0,
                         clear_value: [1.0, 0.0, 0.0, 1.0].into(),
                     }],
                     [
-                        // Fixed offset and extent
+                        // Fixed offset and extent.
                         ClearRect {
                             offset: [0, 0],
                             extent: [100, 100],
                             array_layers: 0..1,
                         },
-                        // Fixed offset
-                        // Relative extent
+                        // Fixed offset, relative extent.
                         ClearRect {
                             offset: [100, 150],
                             extent: [width / 4, height / 4],
                             array_layers: 0..1,
                         },
-                        // Relative offset and extent
+                        // Relative offset and extent.
                         ClearRect {
                             offset: [width / 2, height / 2],
                             extent: [width / 3, height / 5],
@@ -289,7 +287,7 @@ fn main() {
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
-                    println!("Failed to flush future: {e:?}");
+                    println!("failed to flush future: {e}");
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }
@@ -298,7 +296,7 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
+/// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,

@@ -16,26 +16,42 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned, Queue},
     format::Format,
-    image::{sys::ImageCreateInfo, view::ImageView, ImageFormatInfo, ImageTiling},
+    image::{sys::ImageCreateInfo, view::ImageView, ImageFormatInfo},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationType, MemoryAlloc, MemoryAllocatePreference,
+            AllocationCreateInfo, AllocationType, MemoryAllocatePreference,
             MemoryAllocator, MemoryUsage,
         },
-        DedicatedAllocation, DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes, MemoryAllocateFlags, MemoryAllocateInfo,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes,
     },
     sync::Sharing,
     DeviceSize,
 };
-use ash::vk::{ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout};
 use smallvec::SmallVec;
+
 #[cfg(target_os = "linux")]
 use std::os::unix::prelude::{FromRawFd, IntoRawFd, RawFd};
+#[cfg(target_os = "linux")]
+use ash::vk::{ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout};
+#[cfg(target_os = "linux")]
+use crate::{
+    image::ImageTiling,
+    memory::{
+        allocator::MemoryAlloc,
+        DeviceMemory,
+        MemoryAllocateFlags,
+        MemoryAllocateInfo
+    }
+};
+
 use std::{
     fs::File,
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
@@ -43,6 +59,10 @@ use std::{
 #[derive(Debug)]
 pub struct StorageImage {
     inner: Arc<Image>,
+
+    // If true, then the image is in the layout `General`. If false, then it
+    // is still `Undefined`.
+    layout_initialized: AtomicBool,
 }
 
 impl StorageImage {
@@ -130,7 +150,10 @@ impl StorageImage {
                         .map_err(|(err, _, _)| err)?
                 });
 
-                Ok(Arc::new(StorageImage { inner }))
+                Ok(Arc::new(StorageImage {
+                    inner,
+                    layout_initialized: AtomicBool::new(false),
+                }))
             }
             Err(err) => Err(err.into()),
         }
@@ -207,7 +230,10 @@ impl StorageImage {
                         .map_err(|(err, _, _)| err)?
                 });
 
-                Ok(Arc::new(StorageImage { inner }))
+                Ok(Arc::new(StorageImage {
+                    inner,
+                    layout_initialized: AtomicBool::new(false),
+                }))
             }
             Err(err) => Err(err.into()),
         }
@@ -338,7 +364,7 @@ impl StorageImage {
                 .bind_memory_unchecked([x])
                 .map_err(|(err, _, _)| err)?
         });
-        Ok(Arc::new(StorageImage { inner }))
+        Ok(Arc::new(StorageImage { inner, layout_initialized: AtomicBool::new(false) }))
     }
     /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.
     #[inline]
@@ -443,6 +469,16 @@ unsafe impl ImageAccess for StorageImage {
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         ImageLayout::General
+    }
+
+    #[inline]
+    unsafe fn layout_initialized(&self) {
+        self.layout_initialized.store(true, Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn is_layout_initialized(&self) -> bool {
+        self.layout_initialized.load(Ordering::Relaxed)
     }
 
     #[inline]

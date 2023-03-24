@@ -7,21 +7,23 @@ publish = false
 
 [dependencies]
 # The `vulkano` crate is the main crate that you must use to use Vulkan.
-vulkano = { path = "../vulkano" }
+vulkano = { path = "../vulkano", features = ["serde"] }
 # Provides the `shader!` macro that is used to generate code for using shaders.
 vulkano-shaders = { path = "../vulkano-shaders" }
 # The Vulkan library doesn't provide any functionality to create and handle windows, as
 # this would be out of scope. In order to open a window, we are going to use the `winit` crate.
-winit = "0.27"
+winit = "0.28"
 # The `vulkano_win` crate is the link between `vulkano` and `winit`. Vulkano doesn't know about winit,
 # and winit doesn't know about vulkano, so import a crate that will provide a link between the two.
 vulkano-win = { path = "../vulkano-win" }
 vulkano-util = { path = "../vulkano-util" }
 
-bytemuck = { version = "1.7", features = ["derive", "extern_crate_std", "min_const_generics"] }
 cgmath = "0.18"
-png = "0.17"
-serde = { version = "1.0", features = ["derive"] }
-ron = "0.8"
-rand = "0.8.4"
 glium = "0.32.1"
+png = "0.17"
+rand = "0.8.4"
+ron = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+
+# Glium has still not been updated to the latest winit version
+winit_glium = { package = "winit", version = "0.27.1"}

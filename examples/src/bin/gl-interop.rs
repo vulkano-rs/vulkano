@@ -8,14 +8,13 @@ fn main() {
 // TODO: Can this be demonstrated for other platforms as well?
 #[cfg(target_os = "linux")]
 mod linux {
-    use bytemuck::{Pod, Zeroable};
     use glium::glutin::{self, platform::unix::HeadlessContextExt};
     use std::{
         sync::{Arc, Barrier},
         time::Instant,
     };
     use vulkano::{
-        buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+        buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
             CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
@@ -68,25 +67,28 @@ mod linux {
     };
 
     pub fn main() {
-        let event_loop = EventLoop::new();
+        let event_loop_gl = winit_glium::event_loop::EventLoop::new();
         // For some reason, this must be created before the vulkan window
         let hrb = glutin::ContextBuilder::new()
             .with_gl_debug_flag(true)
             .with_gl(glutin::GlRequest::Latest)
-            .build_surfaceless(&event_loop)
+            .build_surfaceless(&event_loop_gl)
             .unwrap();
 
         let hrb_vk = glutin::ContextBuilder::new()
             .with_gl_debug_flag(true)
             .with_gl(glutin::GlRequest::Latest)
-            .build_surfaceless(&event_loop)
+            .build_surfaceless(&event_loop_gl)
             .unwrap();
 
+        // Used for checking device and driver UUIDs.
         let display = glium::HeadlessRenderer::with_debug(
             hrb_vk,
             glium::debug::DebugCallbackBehavior::PrintAll,
         )
-        .unwrap(); // Used for checking device and driver UUIDs
+        .unwrap();
+
+        let event_loop = EventLoop::new();
         let (
             device,
             _instance,
@@ -293,7 +295,7 @@ mod linux {
                                 Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => {
                                     return
                                 }
-                                Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
+                                Err(e) => panic!("failed to recreate swapchain: {e}"),
                             };
 
                         swapchain = new_swapchain;
@@ -312,7 +314,7 @@ mod linux {
                                 recreate_swapchain = true;
                                 return;
                             }
-                            Err(e) => panic!("Failed to acquire next image: {e:?}"),
+                            Err(e) => panic!("failed to acquire next image: {e}"),
                         };
 
                     if suboptimal {
@@ -375,7 +377,7 @@ mod linux {
                             previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
                         }
                         Err(e) => {
-                            println!("Failed to flush future: {e:?}");
+                            println!("failed to flush future: {e}");
                             previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
                         }
                     };
@@ -386,8 +388,8 @@ mod linux {
         });
     }
 
+    #[derive(BufferContents, Vertex)]
     #[repr(C)]
-    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, Vertex)]
     struct MyVertex {
         #[format(R32G32_SFLOAT)]
         position: [f32; 2],
@@ -427,7 +429,6 @@ mod linux {
                 }
                 .union(&required_extensions),
 
-                // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
                 enumerate_portability: true,
 
                 ..Default::default()
@@ -444,7 +445,7 @@ mod linux {
                         msg.layer_prefix.unwrap_or("unknown"),
                         msg.ty,
                         msg.severity,
-                        msg.description
+                        msg.description,
                     );
                 })),
             )
@@ -695,28 +696,30 @@ mod linux {
     mod vs {
         vulkano_shaders::shader! {
             ty: "vertex",
-            src: "
-#version 450
-layout(location = 0) in vec2 position;
-layout(location = 0) out vec2 tex_coords;
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-    tex_coords = position + vec2(0.5);
-}"
+            src: r"
+                #version 450
+                layout(location = 0) in vec2 position;
+                layout(location = 0) out vec2 tex_coords;
+                void main() {
+                    gl_Position = vec4(position, 0.0, 1.0);
+                    tex_coords = position + vec2(0.5);
+                }
+            ",
         }
     }
 
     mod fs {
         vulkano_shaders::shader! {
             ty: "fragment",
-            src: "
-#version 450
-layout(location = 0) in vec2 tex_coords;
-layout(location = 0) out vec4 f_color;
-layout(set = 0, binding = 0) uniform sampler2D tex;
-void main() {
-    f_color = texture(tex, tex_coords);
-}"
+            src: r"
+                #version 450
+                layout(location = 0) in vec2 tex_coords;
+                layout(location = 0) out vec4 f_color;
+                layout(set = 0, binding = 0) uniform sampler2D tex;
+                void main() {
+                    f_color = texture(tex, tex_coords);
+                }
+            ",
         }
     }
 }
