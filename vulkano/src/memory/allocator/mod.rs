@@ -600,11 +600,11 @@ impl From<VulkanError> for AllocationCreationError {
 
 /// Standard memory allocator intended as a global and general-purpose allocator.
 ///
-/// This type of allocator should work well in most cases, it is however **not** to be used when
-/// allocations need to be made very frequently (say, once or more per frame). For that purpose,
-/// use [`FastMemoryAllocator`].
+/// This type of allocator is what you should always use, unless you know, for a fact, that it is
+/// not suited to the task.
 ///
-/// See [`FreeListAllocator`] for details about the allocation algorithm and example usage.
+/// See also [`GenericMemoryAllocator`] for details about the allocation algorithm, and
+/// [`FreeListAllocator`] for details about the suballocation algorithm and example usage.
 pub type StandardMemoryAllocator = GenericMemoryAllocator<Arc<FreeListAllocator>>;
 
 impl StandardMemoryAllocator {
@@ -616,33 +616,6 @@ impl StandardMemoryAllocator {
             block_sizes: &[
                 (0 * B,  64 * M),
                 (1 * G, 256 * M),
-            ],
-            ..Default::default()
-        };
-
-        unsafe { Self::new_unchecked(device, create_info) }
-    }
-}
-
-/// Fast memory allocator intended as a local and special-purpose allocator.
-///
-/// This type of allocator is only useful when you need to allocate a lot, for example once or more
-/// per frame. It is **not** to be used when allocations are long-lived. For that purpose use
-/// [`StandardMemoryAllocator`].
-///
-/// See [`BumpAllocator`] for details about the allocation algorithm.
-pub type FastMemoryAllocator = GenericMemoryAllocator<Arc<BumpAllocator>>;
-
-impl FastMemoryAllocator {
-    /// Creates a new `FastMemoryAllocator` with default configuration.
-    pub fn new_default(device: Arc<Device>) -> Self {
-        #[allow(clippy::erasing_op, clippy::identity_op)]
-        let create_info = GenericMemoryAllocatorCreateInfo {
-            #[rustfmt::skip]
-            block_sizes: &[
-                (  0 * B, 16 * M),
-                (512 * M, 32 * M),
-                (  1 * G, 64 * M),
             ],
             ..Default::default()
         };
