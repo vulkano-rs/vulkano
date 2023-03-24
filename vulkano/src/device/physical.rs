@@ -19,7 +19,7 @@ use crate::{
     },
     instance::Instance,
     macros::{vulkan_bitflags, vulkan_enum},
-    memory::MemoryProperties,
+    memory::{ExternalMemoryHandleType, MemoryProperties},
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceApi, SurfaceCapabilities,
         SurfaceInfo, SurfaceTransforms,
@@ -1156,6 +1156,12 @@ impl PhysicalDevice {
                     } else {
                         // Can't query this, return unsupported
                         if !info2_vk.p_next.is_null() {
+                            return Ok(None);
+                        }
+                        if let Some(ExternalMemoryHandleType::DmaBuf) = external_memory_handle_type
+                        {
+                            // VUID-vkGetPhysicalDeviceImageFormatProperties-tiling-02248
+                            // VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249
                             return Ok(None);
                         }
 
