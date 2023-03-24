@@ -13,7 +13,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    macros::vulkan_enum,
+    macros::{impl_id_counter, vulkan_enum},
     sampler::Sampler,
     shader::{DescriptorBindingRequirements, ShaderStages},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
@@ -457,7 +457,7 @@ unsafe impl DeviceOwned for DescriptorSetLayout {
     }
 }
 
-crate::impl_id_counter!(DescriptorSetLayout);
+impl_id_counter!(DescriptorSetLayout);
 
 /// Error related to descriptor set layout.
 #[derive(Debug, Clone, PartialEq, Eq)]

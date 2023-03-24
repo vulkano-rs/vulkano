@@ -20,7 +20,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures},
     image::{ImageAspects, ImageCreateFlags, ImageTiling, ImageType, SampleCount},
-    macros::vulkan_enum,
+    macros::{impl_id_counter, vulkan_enum},
     sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -797,7 +797,7 @@ where
     }
 }
 
-crate::impl_id_counter!(ImageView<I: ImageAccess + ?Sized>);
+impl_id_counter!(ImageView<I: ImageAccess + ?Sized>);
 
 /// Parameters to create a new `ImageView`.
 #[derive(Debug)]

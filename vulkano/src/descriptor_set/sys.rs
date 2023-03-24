@@ -15,6 +15,7 @@ use crate::{
         update::{DescriptorWriteInfo, WriteDescriptorSet},
     },
     device::DeviceOwned,
+    macros::impl_id_counter,
     VulkanObject,
 };
 use smallvec::SmallVec;
@@ -129,4 +130,4 @@ impl Debug for UnsafeDescriptorSet {
     }
 }
 
-crate::impl_id_counter!(UnsafeDescriptorSet);
+impl_id_counter!(UnsafeDescriptorSet);

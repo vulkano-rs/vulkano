@@ -27,6 +27,7 @@ use crate::{
         view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType,
         SparseImageFormatProperties,
     },
+    macros::impl_id_counter,
     memory::{
         allocator::{AllocationCreationError, AllocationType, DeviceLayout, MemoryAlloc},
         is_aligned, DedicatedTo, DeviceAlignment, ExternalMemoryHandleType,
@@ -1877,7 +1878,7 @@ unsafe impl DeviceOwned for RawImage {
     }
 }
 
-crate::impl_id_counter!(RawImage);
+impl_id_counter!(RawImage);
 
 /// Parameters to create a new `Image`.
 #[derive(Clone, Debug)]

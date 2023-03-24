@@ -13,6 +13,7 @@ use crate::{
         sys::UnsafeDescriptorSet,
     },
     device::{Device, DeviceOwned},
+    macros::impl_id_counter,
     OomError, Version, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
@@ -346,7 +347,7 @@ unsafe impl DeviceOwned for DescriptorPool {
     }
 }
 
-crate::impl_id_counter!(DescriptorPool);
+impl_id_counter!(DescriptorPool);
 
 /// Parameters to create a new `UnsafeDescriptorPool`.
 #[derive(Clone, Debug)]

@@ -66,6 +66,7 @@
 use crate::{
     descriptor_set::layout::{DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorType},
     device::{Device, DeviceOwned},
+    macros::impl_id_counter,
     shader::{DescriptorBindingRequirements, ShaderStages},
     OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
@@ -694,7 +695,7 @@ unsafe impl DeviceOwned for PipelineLayout {
     }
 }
 
-crate::impl_id_counter!(PipelineLayout);
+impl_id_counter!(PipelineLayout);
 
 /// Error that can happen when creating a pipeline layout.
 #[derive(Clone, Debug, PartialEq, Eq)]

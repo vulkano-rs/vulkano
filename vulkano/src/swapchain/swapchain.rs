@@ -19,7 +19,7 @@ use crate::{
         sys::Image, ImageFormatInfo, ImageLayout, ImageTiling, ImageType, ImageUsage,
         SwapchainImage,
     },
-    macros::vulkan_enum,
+    macros::{impl_id_counter, vulkan_enum},
     swapchain::{PresentInfo, SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
     sync::{
         fence::{Fence, FenceError},
@@ -934,7 +934,7 @@ unsafe impl DeviceOwned for Swapchain {
     }
 }
 
-crate::impl_id_counter!(Swapchain);
+impl_id_counter!(Swapchain);
 
 impl Debug for Swapchain {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
