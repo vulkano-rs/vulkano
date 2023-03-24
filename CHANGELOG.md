@@ -63,6 +63,7 @@ Changes to memory and allocation:
 - `MemoryRequirements::{size, alignment}` fields have been replaced with a single `layout` field.
 - `Suballocator::allocate_unchecked` has been removed.
 - Device properties that represent alignments are now generated with the type `DeviceAlignment` instead of `DeviceSize`.
+- Removed `FastMemoryAllocator`, because it was giving people the wrong impression that this is a type of allocator that is employed often and for general tasks, which couldn't be further from the truth.
 
 Changes to vulkano-shaders:
 - Struct fields are now padded using `Padded`, instead of generating additional fields.
