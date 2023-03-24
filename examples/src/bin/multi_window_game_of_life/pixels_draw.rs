@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::app::App;
 use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
@@ -19,7 +20,6 @@ use vulkano::{
     },
     device::Queue,
     image::ImageViewAbstract,
-    memory::allocator::MemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -78,14 +78,9 @@ pub struct PixelsDrawPipeline {
 }
 
 impl PixelsDrawPipeline {
-    pub fn new(
-        gfx_queue: Arc<Queue>,
-        subpass: Subpass,
-        memory_allocator: &impl MemoryAllocator,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    ) -> PixelsDrawPipeline {
+    pub fn new(app: &App, gfx_queue: Arc<Queue>, subpass: Subpass) -> PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
+        let memory_allocator = app.context.memory_allocator();
         let vertex_buffer = Buffer::from_iter(
             memory_allocator,
             BufferAllocateInfo {
@@ -123,8 +118,8 @@ impl PixelsDrawPipeline {
             gfx_queue,
             subpass,
             pipeline,
-            command_buffer_allocator,
-            descriptor_set_allocator,
+            command_buffer_allocator: app.command_buffer_allocator.clone(),
+            descriptor_set_allocator: app.descriptor_set_allocator.clone(),
             vertices: vertex_buffer,
             indices: index_buffer,
         }
