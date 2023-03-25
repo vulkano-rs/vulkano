@@ -12,12 +12,30 @@
 #![allow(clippy::missing_safety_doc)]
 #![warn(rust_2018_idioms, rust_2021_compatibility)]
 
+#[cfg(feature = "raw-window-handle")]
+mod raw_window_handle;
+#[cfg(feature = "raw-window-handle")]
+pub use crate::raw_window_handle::*;
+
+#[cfg(feature = "winit")]
+mod winit;
+#[cfg(feature = "winit")]
+pub use crate::winit::*;
+
 #[cfg(feature = "raw-window-handle_")]
+#[deprecated(
+    since = "0.33.0",
+    note = "the `raw-window-handle_` feature is deprecated, use `raw-window-handle` instead"
+)]
 mod raw_window_handle;
 #[cfg(feature = "raw-window-handle_")]
 pub use crate::raw_window_handle::*;
 
 #[cfg(feature = "winit_")]
+#[deprecated(
+    since = "0.33.0",
+    note = "the `winit_` feature is deprecated, use `winit` instead"
+)]
 mod winit;
 #[cfg(feature = "winit_")]
 pub use crate::winit::*;
