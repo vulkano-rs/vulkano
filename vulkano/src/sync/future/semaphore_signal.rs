@@ -251,18 +251,12 @@ where
     F: GpuFuture,
 {
     fn drop(&mut self) {
-        if thread::panicking() {
-            return;
-        }
-
-        unsafe {
-            if !*self.finished.get_mut() {
-                // TODO: handle errors?
-                self.flush().unwrap();
-                // Block until the queue finished.
-                self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
-                self.previous.signal_finished();
-            }
+        if !*self.finished.get_mut() && !thread::panicking() {
+            // TODO: handle errors?
+            self.flush().unwrap();
+            // Block until the queue finished.
+            self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
+            unsafe { self.previous.signal_finished() };
         }
     }
 }
