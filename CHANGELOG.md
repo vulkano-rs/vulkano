@@ -112,6 +112,7 @@ Changes to vulkano-shaders:
 - [#2149](https://github.com/vulkano-rs/vulkano/issues/2149): Image data being discarded when transitioning from UNDEFINED in StorageImage
 - Vulkano-shaders: `mat3xN` is now generated correctly, taking its matrix stride into account.
 - Vulkano-shaders: Row-major matrices are now generated correctly.
+- Fixed potential panics during panics.
 
 # Version 0.32.3 (2022-12-07)
 
