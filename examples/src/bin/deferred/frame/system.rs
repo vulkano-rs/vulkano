@@ -101,7 +101,8 @@ impl FrameSystem {
         // currently being processed by the fragment shader. If you want to read from attachments
         // but can't deal with these restrictions, then you should create multiple render passes
         // instead.
-        let render_pass = vulkano::ordered_passes_renderpass!(gfx_queue.device().clone(),
+        let render_pass = vulkano::ordered_passes_renderpass!(
+            gfx_queue.device().clone(),
             attachments: {
                 // The image that will contain the final rendering (in this example the swapchain
                 // image, but it could be another image).
@@ -131,22 +132,22 @@ impl FrameSystem {
                     store: DontCare,
                     format: Format::D16_UNORM,
                     samples: 1,
-                }
+                },
             },
             passes: [
                 // Write to the diffuse, normals and depth attachments.
                 {
                     color: [diffuse, normals],
                     depth_stencil: {depth},
-                    input: []
+                    input: [],
                 },
                 // Apply lighting by reading these three attachments and writing to `final_color`.
                 {
                     color: [final_color],
                     depth_stencil: {},
-                    input: [diffuse, normals, depth]
-                }
-            ]
+                    input: [diffuse, normals, depth],
+                },
+            ],
         )
         .unwrap();
 

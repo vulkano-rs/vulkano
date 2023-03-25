@@ -199,7 +199,8 @@ fn main() {
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
-    let render_pass = vulkano::single_pass_renderpass!(device.clone(),
+    let render_pass = vulkano::single_pass_renderpass!(
+        device.clone(),
         attachments: {
             color: {
                 load: Clear,
@@ -212,12 +213,12 @@ fn main() {
                 store: DontCare,
                 format: Format::D16_UNORM,
                 samples: 1,
-            }
+            },
         },
         pass: {
             color: [color],
-            depth_stencil: {depth}
-        }
+            depth_stencil: {depth},
+        },
     )
     .unwrap();
 

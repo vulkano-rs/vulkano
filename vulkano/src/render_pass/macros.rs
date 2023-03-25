@@ -233,7 +233,8 @@ mod tests {
     #[test]
     fn single_pass_resolve() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = single_pass_renderpass!(device,
+        let _ = single_pass_renderpass!(
+            device,
             attachments: {
                 a: {
                     load: Clear,
@@ -246,13 +247,13 @@ mod tests {
                     store: Store,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
-                }
+                },
             },
             pass: {
                 color: [a],
                 depth_stencil: {},
                 resolve: [b],
-            }
+            },
         )
         .unwrap();
     }
