@@ -100,6 +100,7 @@ Changes to vulkano-shaders:
 - Vulkano-shaders: Added support for arrays (and by extension matrices) whose stride exceeds the size of the element type in Rust (e.g. `vec3[]`).
 - Vulkano-shaders: Added a `linalg_type` option to the macro, for generating types from external linear algebra crates.
 - Vulkano-win: Added `create_surface_from_handle_ref`.
+- Vulkano-win: The features `winit` and `raw-window-handle` can now be used directly, `winit_` and `raw-window-handle_` have been deprecated.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
