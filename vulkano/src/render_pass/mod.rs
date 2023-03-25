@@ -79,7 +79,8 @@ mod framebuffer;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// use vulkano::format::Format;
 ///
-/// let render_pass = single_pass_renderpass!(device.clone(),
+/// let render_pass = single_pass_renderpass!(
+///     device.clone(),
 ///     attachments: {
 ///         // `foo` is a custom name we give to the first and only attachment.
 ///         foo: {
@@ -87,13 +88,14 @@ mod framebuffer;
 ///             store: Store,
 ///             format: Format::R8G8B8A8_UNORM,
 ///             samples: 1,
-///         }
+///         },
 ///     },
 ///     pass: {
 ///         color: [foo],       // Repeat the attachment name here.
-///         depth_stencil: {}
-///     }
-/// ).unwrap();
+///         depth_stencil: {},
+///     },
+/// )
+/// .unwrap();
 /// # }
 /// ```
 ///
@@ -1261,7 +1263,7 @@ mod tests {
             return; // test ignored
         }
 
-        let rp = single_pass_renderpass! {
+        let rp = single_pass_renderpass!(
             device,
             attachments: {
                 a1: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
@@ -1273,13 +1275,13 @@ mod tests {
                 a7: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
                 a8: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
                 a9: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a10: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, }
+                a10: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
             },
             pass: {
                 color: [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10],
-                depth_stencil: {}
-            }
-        };
+                depth_stencil: {},
+            },
+        );
 
         match rp {
             Err(RenderPassCreationError::SubpassMaxColorAttachmentsExceeded { .. }) => (),
@@ -1291,16 +1293,16 @@ mod tests {
     fn non_zero_granularity() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = single_pass_renderpass! {
+        let rp = single_pass_renderpass!(
             device,
             attachments: {
-                a: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, }
+                a: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
             },
             pass: {
                 color: [a],
-                depth_stencil: {}
-            }
-        }
+                depth_stencil: {},
+            },
+        )
         .unwrap();
 
         let granularity = rp.granularity();

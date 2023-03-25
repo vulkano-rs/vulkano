@@ -40,19 +40,20 @@ impl RenderPassPlaceOverFrame {
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
         output_format: Format,
     ) -> RenderPassPlaceOverFrame {
-        let render_pass = vulkano::single_pass_renderpass!(gfx_queue.device().clone(),
+        let render_pass = vulkano::single_pass_renderpass!(
+            gfx_queue.device().clone(),
             attachments: {
                 color: {
                     load: Clear,
                     store: Store,
                     format: output_format,
                     samples: 1,
-                }
+                },
             },
             pass: {
                 color: [color],
-                depth_stencil: {}
-            }
+                depth_stencil: {},
+            },
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();

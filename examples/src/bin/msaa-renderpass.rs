@@ -201,7 +201,7 @@ fn main() {
                 format: Format::R8G8B8A8_UNORM,
                 // Same here, this has to match.
                 samples: 1,
-            }
+            },
         },
         pass: {
             // When drawing, we have only one output which is the intermediary image.
@@ -213,7 +213,7 @@ fn main() {
             // the end of the pass, the `intermediary` attachment will be copied to the attachment
             // named `color`.
             resolve: [color],
-        }
+        },
     )
     .unwrap();
 
