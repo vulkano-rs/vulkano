@@ -34,6 +34,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    thread,
 };
 
 pub unsafe trait PrimaryCommandBufferAbstract:
@@ -441,6 +442,10 @@ where
     F: GpuFuture,
 {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             if !*self.finished.get_mut() {
                 // TODO: handle errors?

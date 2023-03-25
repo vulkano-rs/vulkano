@@ -33,6 +33,7 @@ use std::{
     ops::{Deref, DerefMut, Range, RangeBounds},
     ptr::{self, NonNull},
     sync::Arc,
+    thread,
 };
 
 pub use vulkano_macros::BufferContents;
@@ -632,6 +633,10 @@ pub struct BufferWriteGuard<'a, T: ?Sized> {
 
 impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         let allocation = match self.subbuffer.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => unreachable!(),

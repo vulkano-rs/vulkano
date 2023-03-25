@@ -29,6 +29,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+    thread,
     time::Duration,
 };
 
@@ -523,6 +524,10 @@ where
     F: GpuFuture,
 {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         let mut state = self.state.lock();
 
         // We ignore any possible error while submitting for now. Problems are handled below.

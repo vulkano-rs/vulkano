@@ -25,6 +25,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    thread,
 };
 
 /// Builds a new semaphore signal future.
@@ -250,6 +251,10 @@ where
     F: GpuFuture,
 {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             if !*self.finished.get_mut() {
                 // TODO: handle errors?
