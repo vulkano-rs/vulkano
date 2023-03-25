@@ -30,7 +30,7 @@ use crate::{
     OomError,
 };
 use crossbeam_queue::ArrayQueue;
-use std::{cell::UnsafeCell, mem::ManuallyDrop, num::NonZeroU64, sync::Arc};
+use std::{cell::UnsafeCell, mem::ManuallyDrop, num::NonZeroU64, sync::Arc, thread};
 use thread_local::ThreadLocal;
 
 const MAX_POOLS: usize = 32;
@@ -417,7 +417,11 @@ impl VariablePool {
 impl Drop for VariablePool {
     fn drop(&mut self) {
         let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
-        // TODO: This should not return `Result`, resetting a pool can't fail.
+
+        if thread::panicking() {
+            return;
+        }
+
         unsafe { inner.reset() }.unwrap();
 
         // If there is not enough space in the reserve, we destroy the pool. The only way this can

@@ -33,6 +33,7 @@ use std::{
     marker::PhantomData,
     mem::ManuallyDrop,
     sync::Arc,
+    thread,
 };
 use thread_local::ThreadLocal;
 
@@ -498,6 +499,11 @@ impl Pool {
 impl Drop for Pool {
     fn drop(&mut self) {
         let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
+
+        if thread::panicking() {
+            return;
+        }
+
         unsafe { inner.inner.reset(false) }.unwrap();
         inner.primary_allocations.set(0);
         inner.secondary_allocations.set(0);
@@ -623,6 +629,8 @@ impl Drop for StandardCommandBufferAlloc {
             CommandBufferLevel::Primary => &self.pool.inner.primary_pool,
             CommandBufferLevel::Secondary => &self.pool.inner.secondary_pool,
         };
+        // This can't panic, because if an allocation from a particular kind of pool was made, then
+        // the pool must exist.
         let _ = pool.as_ref().unwrap().push(inner);
     }
 }

@@ -42,6 +42,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
+    thread,
     time::Duration,
 };
 
@@ -1743,7 +1744,11 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
 
 impl Drop for SwapchainAcquireFuture {
     fn drop(&mut self) {
-        if let Some(ref fence) = self.fence {
+        if thread::panicking() {
+            return;
+        }
+
+        if let Some(fence) = &self.fence {
             fence.wait(None).unwrap(); // TODO: handle error?
             self.semaphore = None;
         }
@@ -2184,6 +2189,10 @@ where
     P: GpuFuture,
 {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             if !*self.flushed.get_mut() {
                 // Flushing may fail, that's okay. We will still wait for the queue later, so any
