@@ -633,16 +633,12 @@ pub struct BufferWriteGuard<'a, T: ?Sized> {
 
 impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
     fn drop(&mut self) {
-        if thread::panicking() {
-            return;
-        }
-
         let allocation = match self.subbuffer.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => unreachable!(),
         };
 
-        if allocation.atom_size().is_some() {
+        if allocation.atom_size().is_some() && !thread::panicking() {
             unsafe { allocation.flush_range(self.range.clone()).unwrap() };
         }
 

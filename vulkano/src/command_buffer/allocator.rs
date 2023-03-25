@@ -498,11 +498,12 @@ impl Pool {
 
 impl Drop for Pool {
     fn drop(&mut self) {
+        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
+
         if thread::panicking() {
             return;
         }
 
-        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
         unsafe { inner.inner.reset(false) }.unwrap();
         inner.primary_allocations.set(0);
         inner.secondary_allocations.set(0);

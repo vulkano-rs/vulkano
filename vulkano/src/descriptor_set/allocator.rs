@@ -416,11 +416,12 @@ impl VariablePool {
 
 impl Drop for VariablePool {
     fn drop(&mut self) {
+        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
+
         if thread::panicking() {
             return;
         }
 
-        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
         unsafe { inner.reset() }.unwrap();
 
         // If there is not enough space in the reserve, we destroy the pool. The only way this can
