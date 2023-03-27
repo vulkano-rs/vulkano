@@ -253,7 +253,7 @@ impl StorageImage {
     ) -> Result<Arc<StorageImage>, ImageError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        // TODO: Support multiplanar image iimporting from Linux FD
+        // TODO: Support multiplanar image importing from Linux FD
         if subresource_data.len() > 1 {
             panic!("Only single-planar image importing is currently supported.")
         }
@@ -359,14 +359,14 @@ impl StorageImage {
             .unwrap() // TODO: Handle
         };
 
-        let x = MemoryAlloc::new(memory).unwrap();
+        let mem_alloc = MemoryAlloc::new(memory).unwrap();
 
-        debug_assert!(x.offset() % requirements.layout.alignment().as_nonzero() == 0);
-        debug_assert!(x.size() == requirements.layout.size());
+        debug_assert!(mem_alloc.offset() % requirements.layout.alignment().as_nonzero() == 0);
+        debug_assert!(mem_alloc.size() == requirements.layout.size());
 
         let inner = Arc::new(unsafe {
             image
-                .bind_memory_unchecked([x])
+                .bind_memory_unchecked([mem_alloc])
                 .map_err(|(err, _, _)| err)?
         });
         Ok(Arc::new(StorageImage {
