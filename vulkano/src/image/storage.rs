@@ -19,8 +19,8 @@ use crate::{
     image::{sys::ImageCreateInfo, view::ImageView, ImageFormatInfo},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationType, MemoryAllocatePreference,
-            MemoryAllocator, MemoryUsage,
+            AllocationCreateInfo, AllocationType, MemoryAllocatePreference, MemoryAllocator,
+            MemoryUsage,
         },
         DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes,
@@ -31,19 +31,14 @@ use crate::{
 use smallvec::SmallVec;
 
 #[cfg(target_os = "linux")]
-use std::os::unix::prelude::{FromRawFd, IntoRawFd, RawFd};
+use crate::{
+    image::ImageTiling,
+    memory::{allocator::MemoryAlloc, DeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo},
+};
 #[cfg(target_os = "linux")]
 use ash::vk::{ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout};
 #[cfg(target_os = "linux")]
-use crate::{
-    image::ImageTiling,
-    memory::{
-        allocator::MemoryAlloc,
-        DeviceMemory,
-        MemoryAllocateFlags,
-        MemoryAllocateInfo
-    }
-};
+use std::os::unix::prelude::{FromRawFd, IntoRawFd, RawFd};
 
 use std::{
     fs::File,
@@ -258,7 +253,17 @@ impl StorageImage {
     ) -> Result<Arc<StorageImage>, ImageError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
+        // TODO: Support multiplanar image iimporting from Linux FD
+        if subresource_data.len() > 1 {
+            panic!("Only single-planar image importing is currently supported.")
+        }
+
         // Create a vector of the layout of each image plane.
+
+        // All of the following are automatically true, since the values are explicitly set as such:
+        // VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-size-02267
+        // VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-arrayPitch-02268
+        // VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-depthPitch-02269
         let layout: Vec<SubresourceLayout> = subresource_data
             .iter_mut()
             .map(
@@ -364,7 +369,10 @@ impl StorageImage {
                 .bind_memory_unchecked([x])
                 .map_err(|(err, _, _)| err)?
         });
-        Ok(Arc::new(StorageImage { inner, layout_initialized: AtomicBool::new(false) }))
+        Ok(Arc::new(StorageImage {
+            inner,
+            layout_initialized: AtomicBool::new(false),
+        }))
     }
     /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.
     #[inline]

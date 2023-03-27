@@ -1023,6 +1023,9 @@ impl PhysicalDevice {
             image_view_type.validate_physical_device(self)?;
         }
 
+        // TODO:  VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02313
+        // Currently there is nothing in Vulkano for for adding a VkImageFormatListCreateInfo.
+
         Ok(())
     }
 

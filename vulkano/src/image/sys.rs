@@ -228,6 +228,9 @@ impl RawImage {
             }
         };
 
+        // TODO: VUID-VkImageCreateInfo-tiling-02353
+        // Vulkano currently has no high-level way to add or check for VkImageFormatListCreateInfo.
+
         // Format isn't supported at all?
         if format_features.is_empty() {
             return Err(ImageError::FormatNotSupported);
@@ -1777,7 +1780,10 @@ impl RawImage {
         // Ensured by use of enum `ImageAspect`.
 
         // VUID-vkGetImageSubresourceLayout-image-02270
-        if !matches!(self.tiling, ImageTiling::Linear) {
+        if !matches!(
+            self.tiling,
+            ImageTiling::DrmFormatModifier | ImageTiling::Linear
+        ) {
             return Err(ImageError::OptimalTilingNotSupported);
         }
 
@@ -1813,6 +1819,11 @@ impl RawImage {
         {
             allowed_aspects -= ImageAspects::COLOR;
         }
+
+        // TODO:  VUID-vkGetImageSubresourceLayout-tiling-02271
+        //if self.tiling == ImageTiling::DrmFormatModifier {
+        // Only one-plane image importing is possible for now.
+        //}
 
         // VUID-vkGetImageSubresourceLayout-format-04461
         // VUID-vkGetImageSubresourceLayout-format-04462
