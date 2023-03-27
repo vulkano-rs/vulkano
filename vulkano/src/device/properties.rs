@@ -1,17 +1,14 @@
 use super::physical::{
-    MemoryDecompressionMethods, OpticalFlowGridSizes, PipelineRobustnessBufferBehavior,
-    PipelineRobustnessImageBehavior, RayTracingInvocationReorderMode,
+    ConformanceVersion, DriverId, MemoryDecompressionMethods, OpticalFlowGridSizes,
+    PhysicalDeviceType, PipelineRobustnessBufferBehavior, PipelineRobustnessImageBehavior,
+    PointClippingBehavior, RayTracingInvocationReorderMode, ShaderCoreProperties,
+    ShaderFloatControlsIndependence, SubgroupFeatures,
 };
 use crate::{
-    device::{
-        physical::{
-            ConformanceVersion, DriverId, PhysicalDeviceType, PointClippingBehavior,
-            ShaderCoreProperties, ShaderFloatControlsIndependence, SubgroupFeatures,
-        },
-        DeviceExtensions, QueueFlags,
-    },
+    device::{DeviceExtensions, QueueFlags},
     image::{SampleCount, SampleCounts},
     instance::InstanceExtensions,
+    memory::DeviceAlignment,
     render_pass::ResolveModes,
     shader::ShaderStages,
     DeviceSize, Version,
@@ -62,6 +59,13 @@ impl FromVulkan<u64> for u64 {
     #[inline]
     fn from_vulkan(val: u64) -> Option<Self> {
         Some(val)
+    }
+}
+
+impl FromVulkan<u64> for DeviceAlignment {
+    #[inline]
+    fn from_vulkan(val: u64) -> Option<Self> {
+        DeviceAlignment::new(val)
     }
 }
 

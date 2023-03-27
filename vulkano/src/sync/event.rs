@@ -26,6 +26,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
+    macros::impl_id_counter,
     OomError, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
@@ -247,7 +248,7 @@ unsafe impl DeviceOwned for Event {
     }
 }
 
-crate::impl_id_counter!(Event);
+impl_id_counter!(Event);
 
 /// Parameters to create a new `Event`.
 #[derive(Clone, Debug)]

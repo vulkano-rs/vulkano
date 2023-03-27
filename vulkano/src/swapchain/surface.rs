@@ -13,7 +13,7 @@ use crate::{
     format::Format,
     image::ImageUsage,
     instance::Instance,
-    macros::{vulkan_bitflags_enum, vulkan_enum},
+    macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
     swapchain::{
         display::{DisplayMode, DisplayPlane},
         SurfaceSwapchainLock,
@@ -1305,7 +1305,7 @@ unsafe impl VulkanObject for Surface {
     }
 }
 
-crate::impl_id_counter!(Surface);
+impl_id_counter!(Surface);
 
 impl Debug for Surface {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {

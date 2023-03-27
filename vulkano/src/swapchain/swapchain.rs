@@ -19,7 +19,7 @@ use crate::{
         sys::Image, ImageFormatInfo, ImageLayout, ImageTiling, ImageType, ImageUsage,
         SwapchainImage,
     },
-    macros::vulkan_enum,
+    macros::{impl_id_counter, vulkan_enum},
     swapchain::{PresentInfo, SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
     sync::{
         fence::{Fence, FenceError},
@@ -42,6 +42,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
+    thread,
     time::Duration,
 };
 
@@ -934,7 +935,7 @@ unsafe impl DeviceOwned for Swapchain {
     }
 }
 
-crate::impl_id_counter!(Swapchain);
+impl_id_counter!(Swapchain);
 
 impl Debug for Swapchain {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
@@ -1743,7 +1744,11 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
 
 impl Drop for SwapchainAcquireFuture {
     fn drop(&mut self) {
-        if let Some(ref fence) = self.fence {
+        if thread::panicking() {
+            return;
+        }
+
+        if let Some(fence) = &self.fence {
             fence.wait(None).unwrap(); // TODO: handle error?
             self.semaphore = None;
         }
@@ -2184,6 +2189,10 @@ where
     P: GpuFuture,
 {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             if !*self.flushed.get_mut() {
                 // Flushing may fail, that's okay. We will still wait for the queue later, so any

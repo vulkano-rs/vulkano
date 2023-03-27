@@ -59,9 +59,11 @@ Changes to `impl_vertex`, `VertexMember` and `VertexMemberInfo`:
 - `VertexMemberInfo` now holds format and `VertexMemberTy` was removed.
 - `impl_vertex` was updated to correctly use the new `VertexMember::format` signature.
 
-Changes to memory allocation:
+Changes to memory and allocation:
 - `MemoryRequirements::{size, alignment}` fields have been replaced with a single `layout` field.
 - `Suballocator::allocate_unchecked` has been removed.
+- Device properties that represent alignments are now generated with the type `DeviceAlignment` instead of `DeviceSize`.
+- Removed `FastMemoryAllocator`, because it was giving people the wrong impression that this is a type of allocator that is employed often and for general tasks, which couldn't be further from the truth.
 
 Changes to vulkano-shaders:
 - Struct fields are now padded using `Padded`, instead of generating additional fields.
@@ -97,6 +99,8 @@ Changes to vulkano-shaders:
 - Vulkano-shaders: All error messages are now appropriately spanned compile-errors, instead of being panics.
 - Vulkano-shaders: Added support for arrays (and by extension matrices) whose stride exceeds the size of the element type in Rust (e.g. `vec3[]`).
 - Vulkano-shaders: Added a `linalg_type` option to the macro, for generating types from external linear algebra crates.
+- Vulkano-win: Added `create_surface_from_handle_ref`.
+- Vulkano-win: The features `winit` and `raw-window-handle` can now be used directly, `winit_` and `raw-window-handle_` have been deprecated.
 
 ### Bugs fixed
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
@@ -109,6 +113,7 @@ Changes to vulkano-shaders:
 - [#2149](https://github.com/vulkano-rs/vulkano/issues/2149): Image data being discarded when transitioning from UNDEFINED in StorageImage
 - Vulkano-shaders: `mat3xN` is now generated correctly, taking its matrix stride into account.
 - Vulkano-shaders: Row-major matrices are now generated correctly.
+- Fixed potential panics during panics.
 
 # Version 0.32.3 (2022-12-07)
 

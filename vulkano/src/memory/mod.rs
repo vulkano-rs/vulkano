@@ -91,7 +91,8 @@
 //! get memory from that pool. By default if you don't specify any pool when creating a buffer or
 //! an image, an instance of `StandardMemoryPool` that is shared by the `Device` object is used.
 
-use self::allocator::{DeviceAlignment, DeviceLayout};
+pub use self::alignment::DeviceAlignment;
+use self::allocator::DeviceLayout;
 pub use self::device_memory::{
     DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
     MappedDeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryImportInfo, MemoryMapError,
@@ -109,6 +110,7 @@ use std::{
     sync::Arc,
 };
 
+mod alignment;
 pub mod allocator;
 mod device_memory;
 

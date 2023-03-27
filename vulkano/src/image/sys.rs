@@ -27,12 +27,11 @@ use crate::{
         view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType,
         SparseImageFormatProperties,
     },
+    macros::impl_id_counter,
     memory::{
-        allocator::{
-            AllocationCreationError, AllocationType, DeviceAlignment, DeviceLayout, MemoryAlloc,
-        },
-        DedicatedTo, ExternalMemoryHandleType, ExternalMemoryHandleTypes, MemoryPropertyFlags,
-        MemoryRequirements,
+        allocator::{AllocationCreationError, AllocationType, DeviceLayout, MemoryAlloc},
+        is_aligned, DedicatedTo, DeviceAlignment, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes, MemoryPropertyFlags, MemoryRequirements,
     },
     range_map::RangeMap,
     swapchain::Swapchain,
@@ -1503,7 +1502,7 @@ impl RawImage {
 
             // VUID-VkBindImageMemoryInfo-pNext-01616
             // VUID-VkBindImageMemoryInfo-pNext-01620
-            if memory_offset % memory_requirements.layout.alignment().as_nonzero() != 0 {
+            if !is_aligned(memory_offset, memory_requirements.layout.alignment()) {
                 return Err(ImageError::MemoryAllocationNotAligned {
                     allocations_index,
                     allocation_offset: memory_offset,
@@ -1911,7 +1910,7 @@ unsafe impl DeviceOwned for RawImage {
     }
 }
 
-crate::impl_id_counter!(RawImage);
+impl_id_counter!(RawImage);
 
 /// Parameters to create a new `Image`.
 #[derive(Clone, Debug)]

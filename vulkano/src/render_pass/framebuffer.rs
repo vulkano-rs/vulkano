@@ -12,6 +12,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::Format,
     image::{view::ImageViewType, ImageDimensions, ImageUsage, ImageViewAbstract, SampleCount},
+    macros::impl_id_counter,
     OomError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -422,7 +423,7 @@ unsafe impl DeviceOwned for Framebuffer {
     }
 }
 
-crate::impl_id_counter!(Framebuffer);
+impl_id_counter!(Framebuffer);
 
 /// Parameters to create a new `Framebuffer`.
 #[derive(Clone, Debug)]
@@ -718,19 +719,20 @@ mod tests {
     fn simple_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = single_pass_renderpass!(device.clone(),
+        let render_pass = single_pass_renderpass!(
+            device.clone(),
             attachments: {
                 color: {
                     load: Clear,
                     store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
-                }
+                },
             },
             pass: {
                 color: [color],
-                depth_stencil: {}
-            }
+                depth_stencil: {},
+            },
         )
         .unwrap();
 
@@ -786,19 +788,20 @@ mod tests {
     fn attachment_format_mismatch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = single_pass_renderpass!(device.clone(),
+        let render_pass = single_pass_renderpass!(
+            device.clone(),
             attachments: {
                 color: {
                     load: Clear,
                     store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
-                }
+                },
             },
             pass: {
                 color: [color],
-                depth_stencil: {}
-            }
+                depth_stencil: {},
+            },
         )
         .unwrap();
 
@@ -826,19 +829,20 @@ mod tests {
     fn attachment_dims_larger_than_specified_valid() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = single_pass_renderpass!(device.clone(),
+        let render_pass = single_pass_renderpass!(
+            device.clone(),
             attachments: {
                 color: {
                     load: Clear,
                     store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
-                }
+                },
             },
             pass: {
                 color: [color],
-                depth_stencil: {}
-            }
+                depth_stencil: {},
+            },
         )
         .unwrap();
 
@@ -864,19 +868,20 @@ mod tests {
     fn attachment_dims_smaller_than_specified() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = single_pass_renderpass!(device.clone(),
+        let render_pass = single_pass_renderpass!(
+            device.clone(),
             attachments: {
                 color: {
                     load: Clear,
                     store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
-                }
+                },
             },
             pass: {
                 color: [color],
-                depth_stencil: {}
-            }
+                depth_stencil: {},
+            },
         )
         .unwrap();
 
@@ -904,7 +909,8 @@ mod tests {
     fn multi_attachments_auto_smaller() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = single_pass_renderpass!(device.clone(),
+        let render_pass = single_pass_renderpass!(
+            device.clone(),
             attachments: {
                 a: {
                     load: Clear,
@@ -917,12 +923,12 @@ mod tests {
                     store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
-                }
+                },
             },
             pass: {
                 color: [a, b],
-                depth_stencil: {}
-            }
+                depth_stencil: {},
+            },
         )
         .unwrap();
 
@@ -955,7 +961,8 @@ mod tests {
     fn not_enough_attachments() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = single_pass_renderpass!(device.clone(),
+        let render_pass = single_pass_renderpass!(
+            device.clone(),
             attachments: {
                 a: {
                     load: Clear,
@@ -968,12 +975,12 @@ mod tests {
                     store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
-                }
+                },
             },
             pass: {
                 color: [a, b],
-                depth_stencil: {}
-            }
+                depth_stencil: {},
+            },
         )
         .unwrap();
 
@@ -1004,19 +1011,20 @@ mod tests {
     fn too_many_attachments() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = single_pass_renderpass!(device.clone(),
+        let render_pass = single_pass_renderpass!(
+            device.clone(),
             attachments: {
                 a: {
                     load: Clear,
                     store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
-                }
+                },
             },
             pass: {
                 color: [a],
-                depth_stencil: {}
-            }
+                depth_stencil: {},
+            },
         )
         .unwrap();
 

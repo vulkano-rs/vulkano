@@ -23,6 +23,7 @@ use crate::{
         WriteDescriptorSet,
     },
     device::{DeviceOwned, QueueFlags},
+    memory::{is_aligned, DeviceAlignment},
     pipeline::{
         graphics::{
             input_assembly::{Index, IndexType},
@@ -132,8 +133,8 @@ where
         }
 
         let properties = self.device().physical_device().properties();
-        let uniform_alignment = properties.min_uniform_buffer_offset_alignment as u32;
-        let storage_alignment = properties.min_storage_buffer_offset_alignment as u32;
+        let uniform_alignment = properties.min_uniform_buffer_offset_alignment;
+        let storage_alignment = properties.min_storage_buffer_offset_alignment;
 
         for (i, set) in descriptor_sets.iter().enumerate() {
             let set_num = first_set + i as u32;
@@ -183,7 +184,7 @@ where
                     {
                         // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971
                         // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01972
-                        if offset % required_alignment != 0 {
+                        if !is_aligned(offset as DeviceSize, required_alignment) {
                             return Err(BindPushError::DynamicOffsetNotAligned {
                                 set_num,
                                 binding_num,
@@ -1341,7 +1342,7 @@ pub(in super::super) enum BindPushError {
         binding_num: u32,
         index: u32,
         offset: u32,
-        required_alignment: u32,
+        required_alignment: DeviceAlignment,
     },
 
     /// In an element of `descriptor_sets`, a provided dynamic offset, when added to the end of the
@@ -1459,7 +1460,7 @@ impl Display for BindPushError {
                 "in the element of `descriptor_sets` being bound to slot {}, the dynamic offset \
                 provided for binding {} index {} ({}) is not a multiple of the value of the \
                 `min_uniform_buffer_offset_alignment` or `min_storage_buffer_offset_alignment` \
-                property ({})",
+                property ({:?})",
                 set_num, binding_num, index, offset, required_alignment,
             ),
             Self::DynamicOffsetOutOfBufferBounds {

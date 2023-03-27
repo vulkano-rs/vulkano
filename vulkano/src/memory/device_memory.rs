@@ -7,11 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{DedicatedAllocation, DedicatedTo};
+use super::{DedicatedAllocation, DedicatedTo, DeviceAlignment};
 use crate::{
     device::{Device, DeviceOwned},
-    macros::{vulkan_bitflags, vulkan_bitflags_enum},
-    memory::MemoryPropertyFlags,
+    macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
+    memory::{is_aligned, MemoryPropertyFlags},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use std::{
@@ -748,7 +748,7 @@ unsafe impl DeviceOwned for DeviceMemory {
     }
 }
 
-crate::impl_id_counter!(DeviceMemory);
+impl_id_counter!(DeviceMemory);
 
 /// Parameters to allocate a new `DeviceMemory`.
 #[derive(Clone, Debug)]
@@ -1188,7 +1188,7 @@ pub struct MappedDeviceMemory {
     pointer: *mut c_void, // points to `range.start`
     range: Range<DeviceSize>,
 
-    atom_size: DeviceSize,
+    atom_size: DeviceAlignment,
     coherent: bool,
 }
 
@@ -1249,8 +1249,8 @@ impl MappedDeviceMemory {
         // parts of the mapped memory at the start and end that they're not able to
         // invalidate/flush, which is probably unintended.
         if !coherent
-            && (range.start % atom_size != 0
-                || (range.end % atom_size != 0 && range.end != memory.allocation_size))
+            && (!is_aligned(range.start, atom_size)
+                || (!is_aligned(range.end, atom_size) && range.end != memory.allocation_size))
         {
             return Err(MemoryMapError::RangeNotAlignedToAtomSize { range, atom_size });
         }
@@ -1275,7 +1275,6 @@ impl MappedDeviceMemory {
             memory,
             pointer,
             range,
-
             atom_size,
             coherent,
         })
@@ -1460,8 +1459,9 @@ impl MappedDeviceMemory {
         if !self.coherent {
             // VUID-VkMappedMemoryRange-offset-00687
             // VUID-VkMappedMemoryRange-size-01390
-            if range.start % self.atom_size != 0
-                || (range.end % self.atom_size != 0 && range.end != self.memory.allocation_size)
+            if !is_aligned(range.start, self.atom_size)
+                || (!is_aligned(range.end, self.atom_size)
+                    && range.end != self.memory.allocation_size)
             {
                 return Err(MemoryMapError::RangeNotAlignedToAtomSize {
                     range,
@@ -1521,7 +1521,7 @@ pub enum MemoryMapError {
     /// property.
     RangeNotAlignedToAtomSize {
         range: Range<DeviceSize>,
-        atom_size: DeviceSize,
+        atom_size: DeviceAlignment,
     },
 }
 
@@ -1554,7 +1554,7 @@ impl Display for MemoryMapError {
             Self::RangeNotAlignedToAtomSize { range, atom_size } => write!(
                 f,
                 "the memory is not host-coherent, and the specified `range` bounds ({:?}) are not \
-                a multiple of the `non_coherent_atom_size` device property ({})",
+                a multiple of the `non_coherent_atom_size` device property ({:?})",
                 range, atom_size,
             ),
         }

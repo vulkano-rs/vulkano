@@ -282,12 +282,12 @@ fn main() {
                 store: Store,
                 format: swapchain.image_format(),
                 samples: 1,
-            }
+            },
         },
         pass: {
             color: [color],
-            depth_stencil: {}
-        }
+            depth_stencil: {},
+        },
     )
     .unwrap();
 

@@ -67,6 +67,7 @@ use self::{
 use super::{DynamicState, Pipeline, PipelineBindPoint, PipelineLayout};
 use crate::{
     device::{Device, DeviceOwned},
+    macros::impl_id_counter,
     shader::{DescriptorBindingRequirements, FragmentTestsStages, ShaderStage},
     VulkanObject,
 };
@@ -298,4 +299,4 @@ impl Drop for GraphicsPipeline {
     }
 }
 
-crate::impl_id_counter!(GraphicsPipeline);
+impl_id_counter!(GraphicsPipeline);

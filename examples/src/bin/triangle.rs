@@ -365,14 +365,14 @@ fn main() {
                 // (multisampling) for antialiasing. An example of this can be found in
                 // msaa-renderpass.rs.
                 samples: 1,
-            }
+            },
         },
         pass: {
             // We use the attachment named `color` as the one and only color attachment.
             color: [color],
             // No depth-stencil attachment is indicated with empty brackets.
-            depth_stencil: {}
-        }
+            depth_stencil: {},
+        },
     )
     .unwrap();
 

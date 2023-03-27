@@ -306,12 +306,12 @@ mod simple_rp {
                 load: Clear,
                 store: Store,
                 format: Format,
-            }
+            },
         },
         pass: {
             color: [color],
-            depth_stencil: {}
-        }
+            depth_stencil: {},
+        },
     }
 }
 

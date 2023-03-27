@@ -15,8 +15,8 @@ use crate::{
     macros::try_opt,
     memory::{
         self,
-        allocator::{align_down, align_up, DeviceAlignment, DeviceLayout},
-        is_aligned,
+        allocator::{align_down, align_up, DeviceLayout},
+        is_aligned, DeviceAlignment,
     },
     DeviceSize, NonZeroDeviceSize,
 };
@@ -33,6 +33,7 @@ use std::{
     ops::{Deref, DerefMut, Range, RangeBounds},
     ptr::{self, NonNull},
     sync::Arc,
+    thread,
 };
 
 pub use vulkano_macros::BufferContents;
@@ -637,7 +638,7 @@ impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
             BufferMemory::Sparse => unreachable!(),
         };
 
-        if allocation.atom_size().is_some() {
+        if allocation.atom_size().is_some() && !thread::panicking() {
             unsafe { allocation.flush_range(self.range.clone()).unwrap() };
         }
 

@@ -16,7 +16,7 @@
 use crate::{
     buffer::BufferContents,
     device::{Device, DeviceOwned},
-    macros::vulkan_bitflags,
+    macros::{impl_id_counter, vulkan_bitflags},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
@@ -198,7 +198,7 @@ unsafe impl DeviceOwned for QueryPool {
     }
 }
 
-crate::impl_id_counter!(QueryPool);
+impl_id_counter!(QueryPool);
 
 /// Parameters to create a new `QueryPool`.
 #[derive(Clone, Debug)]

@@ -28,6 +28,7 @@ use crate::{
         DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
     },
     device::{Device, DeviceOwned},
+    macros::impl_id_counter,
     pipeline::{
         cache::PipelineCache,
         layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutSupersetError},
@@ -279,7 +280,7 @@ impl Debug for ComputePipeline {
     }
 }
 
-crate::impl_id_counter!(ComputePipeline);
+impl_id_counter!(ComputePipeline);
 
 unsafe impl VulkanObject for ComputePipeline {
     type Handle = ash::vk::Pipeline;

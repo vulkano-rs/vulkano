@@ -15,7 +15,6 @@ use std::{collections::HashMap, sync::Arc};
 use vulkano::{
     command_buffer::allocator::StandardCommandBufferAllocator,
     descriptor_set::allocator::StandardDescriptorSetAllocator, device::Queue, format::Format,
-    memory::allocator::StandardMemoryAllocator,
 };
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
@@ -30,35 +29,15 @@ pub struct RenderPipeline {
 
 impl RenderPipeline {
     pub fn new(
+        app: &App,
         compute_queue: Arc<Queue>,
         gfx_queue: Arc<Queue>,
         size: [u32; 2],
         swapchain_format: Format,
     ) -> RenderPipeline {
-        let memory_allocator = StandardMemoryAllocator::new_default(gfx_queue.device().clone());
-        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            gfx_queue.device().clone(),
-            Default::default(),
-        ));
-        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            gfx_queue.device().clone(),
-        ));
-
         RenderPipeline {
-            compute: GameOfLifeComputePipeline::new(
-                compute_queue,
-                &memory_allocator,
-                command_buffer_allocator.clone(),
-                descriptor_set_allocator.clone(),
-                size,
-            ),
-            place_over_frame: RenderPassPlaceOverFrame::new(
-                gfx_queue,
-                &memory_allocator,
-                command_buffer_allocator,
-                descriptor_set_allocator,
-                swapchain_format,
-            ),
+            compute: GameOfLifeComputePipeline::new(app, compute_queue, size),
+            place_over_frame: RenderPassPlaceOverFrame::new(app, gfx_queue, swapchain_format),
         }
     }
 }
@@ -66,6 +45,8 @@ impl RenderPipeline {
 pub struct App {
     pub context: VulkanoContext,
     pub windows: VulkanoWindows,
+    pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    pub descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     pub pipelines: HashMap<WindowId, RenderPipeline>,
 }
 
@@ -97,6 +78,7 @@ impl App {
         self.pipelines.insert(
             id1,
             RenderPipeline::new(
+                self,
                 // Use same queue.. for synchronization.
                 self.context.graphics_queue().clone(),
                 self.context.graphics_queue().clone(),
@@ -113,6 +95,7 @@ impl App {
         self.pipelines.insert(
             id2,
             RenderPipeline::new(
+                self,
                 self.context.graphics_queue().clone(),
                 self.context.graphics_queue().clone(),
                 [
@@ -127,9 +110,20 @@ impl App {
 
 impl Default for App {
     fn default() -> Self {
+        let context = VulkanoContext::new(VulkanoConfig::default());
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            context.device().clone(),
+            Default::default(),
+        ));
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            context.device().clone(),
+        ));
+
         App {
-            context: VulkanoContext::new(VulkanoConfig::default()),
+            context,
             windows: VulkanoWindows::default(),
+            command_buffer_allocator,
+            descriptor_set_allocator,
             pipelines: HashMap::new(),
         }
     }

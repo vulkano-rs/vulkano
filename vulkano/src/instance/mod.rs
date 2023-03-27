@@ -84,8 +84,8 @@ use self::debug::{
 };
 pub use self::{extensions::InstanceExtensions, layers::LayerProperties};
 use crate::{
-    device::physical::PhysicalDevice, instance::debug::trampoline, OomError, RequiresOneOf,
-    VulkanError, VulkanLibrary, VulkanObject,
+    device::physical::PhysicalDevice, instance::debug::trampoline, macros::impl_id_counter,
+    OomError, RequiresOneOf, VulkanError, VulkanLibrary, VulkanObject,
 };
 pub use crate::{
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
@@ -658,7 +658,7 @@ unsafe impl VulkanObject for Instance {
     }
 }
 
-crate::impl_id_counter!(Instance);
+impl_id_counter!(Instance);
 
 impl Debug for Instance {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {

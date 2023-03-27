@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::app::App;
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
@@ -57,13 +58,8 @@ fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 2]) -> Subbuff
 }
 
 impl GameOfLifeComputePipeline {
-    pub fn new(
-        compute_queue: Arc<Queue>,
-        memory_allocator: &impl MemoryAllocator,
-        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-        size: [u32; 2],
-    ) -> GameOfLifeComputePipeline {
+    pub fn new(app: &App, compute_queue: Arc<Queue>, size: [u32; 2]) -> GameOfLifeComputePipeline {
+        let memory_allocator = app.context.memory_allocator();
         let life_in = rand_grid(memory_allocator, size);
         let life_out = rand_grid(memory_allocator, size);
 
@@ -91,8 +87,8 @@ impl GameOfLifeComputePipeline {
         GameOfLifeComputePipeline {
             compute_queue,
             compute_life_pipeline,
-            command_buffer_allocator,
-            descriptor_set_allocator,
+            command_buffer_allocator: app.command_buffer_allocator.clone(),
+            descriptor_set_allocator: app.descriptor_set_allocator.clone(),
             life_in,
             life_out,
             image,

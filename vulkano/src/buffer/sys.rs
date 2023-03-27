@@ -16,10 +16,11 @@
 use super::{Buffer, BufferCreateFlags, BufferError, BufferMemory, BufferUsage};
 use crate::{
     device::{Device, DeviceOwned},
+    macros::impl_id_counter,
     memory::{
-        allocator::{AllocationType, DeviceAlignment, DeviceLayout, MemoryAlloc},
-        DedicatedTo, ExternalMemoryHandleTypes, MemoryAllocateFlags, MemoryPropertyFlags,
-        MemoryRequirements,
+        allocator::{AllocationType, DeviceLayout, MemoryAlloc},
+        is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryAllocateFlags,
+        MemoryPropertyFlags, MemoryRequirements,
     },
     sync::Sharing,
     DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
@@ -290,27 +291,21 @@ impl RawBuffer {
         if usage.intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER) {
             memory_requirements.layout = memory_requirements
                 .layout
-                .align_to(
-                    DeviceAlignment::new(properties.min_texel_buffer_offset_alignment).unwrap(),
-                )
+                .align_to(properties.min_texel_buffer_offset_alignment)
                 .unwrap();
         }
 
         if usage.intersects(BufferUsage::STORAGE_BUFFER) {
             memory_requirements.layout = memory_requirements
                 .layout
-                .align_to(
-                    DeviceAlignment::new(properties.min_storage_buffer_offset_alignment).unwrap(),
-                )
+                .align_to(properties.min_storage_buffer_offset_alignment)
                 .unwrap();
         }
 
         if usage.intersects(BufferUsage::UNIFORM_BUFFER) {
             memory_requirements.layout = memory_requirements
                 .layout
-                .align_to(
-                    DeviceAlignment::new(properties.min_uniform_buffer_offset_alignment).unwrap(),
-                )
+                .align_to(properties.min_uniform_buffer_offset_alignment)
                 .unwrap();
         }
 
@@ -445,7 +440,7 @@ impl RawBuffer {
         }
 
         // VUID-VkBindBufferMemoryInfo-memoryOffset-01036
-        if memory_offset % memory_requirements.layout.alignment().as_nonzero() != 0 {
+        if !is_aligned(memory_offset, memory_requirements.layout.alignment()) {
             return Err(BufferError::MemoryAllocationNotAligned {
                 allocation_offset: memory_offset,
                 required_alignment: memory_requirements.layout.alignment(),
@@ -634,7 +629,7 @@ unsafe impl DeviceOwned for RawBuffer {
     }
 }
 
-crate::impl_id_counter!(RawBuffer);
+impl_id_counter!(RawBuffer);
 
 /// Parameters to create a new [`Buffer`].
 #[derive(Clone, Debug)]

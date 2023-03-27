@@ -12,7 +12,7 @@
 
 use crate::{
     device::{Device, DeviceOwned, Queue},
-    macros::{vulkan_bitflags, vulkan_bitflags_enum},
+    macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -1019,7 +1019,7 @@ unsafe impl DeviceOwned for Semaphore {
     }
 }
 
-crate::impl_id_counter!(Semaphore);
+impl_id_counter!(Semaphore);
 
 #[derive(Debug, Default)]
 pub(crate) struct SemaphoreState {

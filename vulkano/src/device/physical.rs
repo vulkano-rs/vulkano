@@ -18,7 +18,7 @@ use crate::{
         SparseImageFormatProperties,
     },
     instance::Instance,
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     memory::{ExternalMemoryHandleType, MemoryProperties},
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceApi, SurfaceCapabilities,
@@ -2430,7 +2430,7 @@ unsafe impl VulkanObject for PhysicalDevice {
     }
 }
 
-crate::impl_id_counter!(PhysicalDevice);
+impl_id_counter!(PhysicalDevice);
 
 vulkan_enum! {
     #[non_exhaustive]

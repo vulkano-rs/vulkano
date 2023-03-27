@@ -289,12 +289,12 @@ fn main() {
                 store: DontCare,
                 format: Format::D16_UNORM,
                 samples: 1,
-            }
+            },
         },
         pass: {
             color: [color],
-            depth_stencil: {depth}
-        }
+            depth_stencil: {depth},
+        },
     )
     .unwrap();
 
