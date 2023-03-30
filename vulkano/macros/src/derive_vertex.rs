@@ -52,7 +52,7 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
             } else if attr_ident == "format" {
                 let format_ident = attr.parse_args_with(Ident::parse)?;
                 format = quote! {
-                    let format = ::#crate_ident::format::Format::#format_ident;
+                    ::#crate_ident::format::Format::#format_ident;
                 };
             }
         }
@@ -66,23 +66,34 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
             members = quote! {
                 #members
 
-                let field_size = ::std::mem::size_of::<#field_ty>() as u32;
                 {
-                    #format
-                    let format_size = format.block_size().expect("no block size for format") as u32;
+                    let field_align = ::std::mem::align_of::<#field_ty>();
+                    offset = (offset + field_align - 1) & !(field_align - 1);
+
+                    let field_size = ::std::mem::size_of::<#field_ty>();
+                    let format = #format;
+                    let format_size = format
+                        .block_size()
+                        .expect("no block size for format") as usize;
                     let num_elements = field_size / format_size;
                     let remainder = field_size % format_size;
-                    ::std::assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", #field_name_lit);
+                    ::std::assert!(
+                        remainder == 0,
+                        "struct field `{}` size does not fit multiple of format size",
+                        #field_name_lit,
+                    );
+
                     members.insert(
                         #name.to_string(),
                         ::#crate_ident::pipeline::graphics::vertex_input::VertexMemberInfo {
-                            offset,
+                            offset: offset.try_into().unwrap(),
                             format,
-                            num_elements,
+                            num_elements: num_elements.try_into().unwrap(),
                         },
                     );
+
+                    offset += field_size;
                 }
-                offset += field_size as usize;
             };
         }
     }
