@@ -968,7 +968,7 @@ impl RawImage {
             info_vk.p_next = next as *const _ as *const _;
         }
 
-        if external_memory_handle_types.contains_enum(ExternalMemoryHandleType::DmaBuf) {
+        if external_memory_handle_types.intersects(ExternalMemoryHandleTypes::DMA_BUF) {
             let next = image_drm_format_modifier_create_info.as_mut().unwrap();
 
             next.p_next = info_vk.p_next;

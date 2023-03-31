@@ -255,7 +255,7 @@ impl StorageImage {
 
         // TODO: Support multiplanar image importing from Linux FD
         if subresource_data.len() > 1 {
-            panic!("Only single-planar image importing is currently supported.")
+            todo!();
         }
 
         // Create a vector of the layout of each image plane.
@@ -332,12 +332,12 @@ impl StorageImage {
         let memory = unsafe {
             // TODO: For completeness, importing memory from muliple file descriptors should be added (In order to support importing multiplanar images). As of now, only single planar image importing will work.
             if fds.len() != 1 {
-                panic!("Only single-planar image importing is currently supported.")
+                todo!();
             }
 
             // Try cloning underlying fd
-            let file = File::from_raw_fd(*fds.first().expect("File descriptor Vec is empty"));
-            let new_file = file.try_clone().expect("Error cloning file descriptor");
+            let file = File::from_raw_fd(*fds.first().expect("file descriptor Vec is empty"));
+            let new_file = file.try_clone().expect("error cloning file descriptor");
 
             // Turn the original file descriptor back into a raw fd to avoid ownership problems
             file.into_raw_fd();
@@ -440,13 +440,13 @@ impl StorageImage {
 /// Struct that contains a Linux file descriptor for importing, when creating an image. Since a file descriptor is used for each
 /// plane in the case of multiplanar images, each fd needs to have an offset and a row pitch in order to interpret the imported data.
 pub struct SubresourceData {
-    // The file descriptor hanfle of a layer of an image.
+    /// The file descriptor handle of a layer of an image.
     pub fd: RawFd,
 
-    // The byte offset from the start of the plane where the image subresource begins.
+    /// The byte offset from the start of the plane where the image subresource begins.
     pub offset: u64,
 
-    //  Describes the number of bytes between each row of texels in an image plane.
+    ///  Describes the number of bytes between each row of texels in an image plane.
     pub row_pitch: u64,
 }
 
