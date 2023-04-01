@@ -58,6 +58,10 @@ pub use self::{
     usage::ImageUsage,
     view::{ImageViewAbstract, ImageViewType},
 };
+
+#[cfg(target_os = "linux")]
+pub use self::storage::SubresourceData;
+
 use crate::{
     format::Format,
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
@@ -367,11 +371,10 @@ vulkan_enum! {
     // TODO: document
     Linear = LINEAR,
 
-    /* TODO: enable
     // TODO: document
     DrmFormatModifier = DRM_FORMAT_MODIFIER_EXT {
         device_extensions: [ext_image_drm_format_modifier],
-    },*/
+    },
 }
 
 /// The dimensions of an image.

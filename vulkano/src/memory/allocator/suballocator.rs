@@ -784,6 +784,7 @@ impl From<ImageTiling> for AllocationType {
         match tiling {
             ImageTiling::Optimal => AllocationType::NonLinear,
             ImageTiling::Linear => AllocationType::Linear,
+            ImageTiling::DrmFormatModifier => AllocationType::Linear, // TODO: improve
         }
     }
 }

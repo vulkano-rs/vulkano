@@ -19,7 +19,7 @@ use crate::{
     },
     instance::Instance,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    memory::MemoryProperties,
+    memory::{ExternalMemoryHandleType, MemoryProperties},
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceApi, SurfaceCapabilities,
         SurfaceInfo, SurfaceTransforms,
@@ -1023,6 +1023,9 @@ impl PhysicalDevice {
             image_view_type.validate_physical_device(self)?;
         }
 
+        // TODO:  VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02313
+        // Currently there is nothing in Vulkano for for adding a VkImageFormatListCreateInfo.
+
         Ok(())
     }
 
@@ -1156,6 +1159,12 @@ impl PhysicalDevice {
                     } else {
                         // Can't query this, return unsupported
                         if !info2_vk.p_next.is_null() {
+                            return Ok(None);
+                        }
+                        if let Some(ExternalMemoryHandleType::DmaBuf) = external_memory_handle_type
+                        {
+                            // VUID-vkGetPhysicalDeviceImageFormatProperties-tiling-02248
+                            // VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249
                             return Ok(None);
                         }
 

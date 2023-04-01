@@ -38,6 +38,7 @@ use crate::{
     sync::{future::AccessError, CurrentAccess, Sharing},
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
+use ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -134,6 +135,7 @@ impl RawImage {
             initial_layout,
             external_memory_handle_types,
             _ne: _,
+            image_drm_format_modifier_create_info,
         } = create_info;
 
         let physical_device = device.physical_device();
@@ -206,6 +208,14 @@ impl RawImage {
                 || flags.intersects(ImageCreateFlags::MUTABLE_FORMAT)
         );
 
+        // VUID-VkImageCreateInfo-tiling-02261
+        // VUID-VkImageCreateInfo-pNext-02262
+        if (tiling == ImageTiling::DrmFormatModifier)
+            != image_drm_format_modifier_create_info.is_some()
+        {
+            return Err(ImageError::DrmFormatModifierRequiresCreateInfo);
+        }
+
         // Get format features
         let format_features = {
             // Use unchecked, because all validation has been done above.
@@ -213,8 +223,12 @@ impl RawImage {
             match tiling {
                 ImageTiling::Linear => format_properties.linear_tiling_features,
                 ImageTiling::Optimal => format_properties.optimal_tiling_features,
+                ImageTiling::DrmFormatModifier => format_properties.linear_tiling_features, // TODO: Improve
             }
         };
+
+        // TODO: VUID-VkImageCreateInfo-tiling-02353
+        // Vulkano currently has no high-level way to add or check for VkImageFormatListCreateInfo.
 
         // Format isn't supported at all?
         if format_features.is_empty() {
@@ -871,6 +885,7 @@ impl RawImage {
             initial_layout,
             external_memory_handle_types,
             _ne: _,
+            mut image_drm_format_modifier_create_info,
         } = &create_info;
 
         let aspects = format.map_or_else(Default::default, |format| format.aspects());
@@ -953,6 +968,13 @@ impl RawImage {
             info_vk.p_next = next as *const _ as *const _;
         }
 
+        if external_memory_handle_types.intersects(ExternalMemoryHandleTypes::DMA_BUF) {
+            let next = image_drm_format_modifier_create_info.as_mut().unwrap();
+
+            next.p_next = info_vk.p_next;
+            info_vk.p_next = next as *const _ as *const _;
+        }
+
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
@@ -1000,6 +1022,7 @@ impl RawImage {
             initial_layout,
             external_memory_handle_types,
             _ne: _,
+            image_drm_format_modifier_create_info: _,
         } = create_info;
 
         let aspects = format.map_or_else(Default::default, |format| format.aspects());
@@ -1020,6 +1043,7 @@ impl RawImage {
             match tiling {
                 ImageTiling::Linear => format_properties.linear_tiling_features,
                 ImageTiling::Optimal => format_properties.optimal_tiling_features,
+                ImageTiling::DrmFormatModifier => format_properties.linear_tiling_features, // TODO: improve
             }
         };
 
@@ -1755,7 +1779,10 @@ impl RawImage {
         // Ensured by use of enum `ImageAspect`.
 
         // VUID-vkGetImageSubresourceLayout-image-02270
-        if !matches!(self.tiling, ImageTiling::Linear) {
+        if !matches!(
+            self.tiling,
+            ImageTiling::DrmFormatModifier | ImageTiling::Linear
+        ) {
             return Err(ImageError::OptimalTilingNotSupported);
         }
 
@@ -1791,6 +1818,11 @@ impl RawImage {
         {
             allowed_aspects -= ImageAspects::COLOR;
         }
+
+        // TODO:  VUID-vkGetImageSubresourceLayout-tiling-02271
+        //if self.tiling == ImageTiling::DrmFormatModifier {
+        // Only one-plane image importing is possible for now.
+        //}
 
         // VUID-vkGetImageSubresourceLayout-format-04461
         // VUID-vkGetImageSubresourceLayout-format-04462
@@ -1962,6 +1994,9 @@ pub struct ImageCreateInfo {
     /// The default value is [`ExternalMemoryHandleTypes::empty()`].
     pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
+    /// Specify that an image be created with the provided DRM format modifier and explicit memory layout
+    pub image_drm_format_modifier_create_info: Option<ImageDrmFormatModifierExplicitCreateInfoEXT>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1984,6 +2019,7 @@ impl Default for ImageCreateInfo {
             sharing: Sharing::Exclusive,
             initial_layout: ImageLayout::Undefined,
             external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
+            image_drm_format_modifier_create_info: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -2960,6 +2996,9 @@ pub enum ImageError {
     YcbcrFormatNot2d,
 
     DirectImageViewCreationFailed(ImageViewCreationError),
+
+    /// If and only if tiling is `DRMFormatModifier`, then `image_drm_format_modifier_create_info` must not be `None`.
+    DrmFormatModifierRequiresCreateInfo,
 }
 
 impl Error for ImageError {
@@ -3219,6 +3258,7 @@ impl Display for ImageError {
                 write!(f, "a YCbCr format was given, but the image type was not 2D")
             }
             Self::DirectImageViewCreationFailed(e) => write!(f, "Image view creation failed {}", e),
+	    Self::DrmFormatModifierRequiresCreateInfo => write!(f, "If and only if tiling is `DRMFormatModifier`, then `image_drm_format_modifier_create_info` must be `Some`"),
         }
     }
 }
