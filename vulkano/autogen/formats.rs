@@ -231,7 +231,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
              ..
          }| {
             (type_cgmath.as_ref().or(type_std_array.as_ref())).map(|ty| {
-                quote! { (#name) => { #ty }; }
+                quote! { (cgmath, #name) => { #ty }; }
             })
         },
     );
@@ -243,7 +243,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
              ..
          }| {
             (type_nalgebra.as_ref().or(type_std_array.as_ref())).map(|ty| {
-                quote! { (#name) => { #ty }; }
+                quote! { (nalgebra, #name) => { #ty }; }
             })
         },
     );
@@ -551,87 +551,36 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         ///
         /// # Examples
         ///
+        /// For arrays:
+        ///
         /// ```
-        /// # #[macro_use] extern crate vulkano;
-        /// # fn main() {
+        /// # use vulkano::type_for_format;
         /// let pixel: type_for_format!(R32G32B32A32_SFLOAT);
-        /// # }
+        /// pixel = [1.0f32, 0.0, 0.0, 1.0];
         /// ```
         ///
-        /// The type of `pixel` will be `[f32; 4]`.
+        /// For [`cgmath`]:
+        ///
+        /// ```
+        /// # use vulkano::type_for_format;
+        /// let pixel: type_for_format!(cgmath, R32G32B32A32_SFLOAT);
+        /// pixel = cgmath::Vector4::new(1.0f32, 0.0, 0.0, 1.0);
+        /// ```
+        ///
+        /// For [`nalgebra`]:
+        ///
+        /// ```
+        /// # use vulkano::type_for_format;
+        /// let pixel: type_for_format!(nalgebra, R32G32B32A32_SFLOAT);
+        /// pixel = nalgebra::vector![1.0f32, 0.0, 0.0, 1.0];
+        /// ```
+        ///
+        /// [`cgmath`]: https://crates.io/crates/cgmath
+        /// [`nalgebra`]: https://crates.io/crates/nalgebra
         #[macro_export]
         macro_rules! type_for_format {
             #(#type_for_format_items)*
-        }
-
-        /// Converts a format enum identifier to a [`cgmath`] or standard Rust type that is
-        /// suitable for representing the format in a buffer or image.
-        ///
-        /// This macro returns one possible suitable representation, but there are usually other
-        /// possibilities for a given format. A compile error occurs for formats that have no
-        /// well-defined size (the `size` method returns `None`).
-        ///
-        /// - For regular unpacked formats with one component, this returns a single floating point,
-        ///   signed or unsigned integer with the appropriate number of bits. For formats with
-        ///   multiple components, a [`cgmath`] `Vector` is returned.
-        /// - For packed formats, this returns an unsigned integer with the size of the packed
-        ///   element. For multi-packed formats (such as `2PACK16`), an array is returned.
-        /// - For compressed formats, this returns `[u8; N]` where N is the size of a block.
-        ///
-        /// Note: for 16-bit floating point values, you need to import the [`half::f16`] type.
-        ///
-        /// # Examples
-        ///
-        /// ```
-        /// # #[macro_use] extern crate vulkano;
-        /// # fn main() {
-        /// let pixel: type_for_format_cgmath!(R32G32B32A32_SFLOAT);
-        /// # }
-        /// ```
-        ///
-        /// The type of `pixel` will be [`Vector4<f32>`].
-        ///
-        /// [`cgmath`]: https://crates.io/crates/cgmath
-        /// [`Vector4<f32>`]: https://docs.rs/cgmath/latest/cgmath/struct.Vector4.html
-        #[cfg(feature = "cgmath")]
-        #[macro_export]
-        macro_rules! type_for_format_cgmath {
             #(#type_for_format_cgmath_items)*
-        }
-
-        /// Converts a format enum identifier to a [`nalgebra`] or standard Rust type that is
-        /// suitable for representing the format in a buffer or image.
-        ///
-        /// This macro returns one possible suitable representation, but there are usually other
-        /// possibilities for a given format. A compile error occurs for formats that have no
-        /// well-defined size (the `size` method returns `None`).
-        ///
-        /// - For regular unpacked formats with one component, this returns a single floating point,
-        ///   signed or unsigned integer with the appropriate number of bits. For formats with
-        ///   multiple components, a [`nalgebra`] [`SVector`] is returned.
-        /// - For packed formats, this returns an unsigned integer with the size of the packed
-        ///   element. For multi-packed formats (such as `2PACK16`), an array is returned.
-        /// - For compressed formats, this returns `[u8; N]` where N is the size of a block.
-        ///
-        /// Note: for 16-bit floating point values, you need to import the [`half::f16`] type.
-        ///
-        /// # Examples
-        ///
-        /// ```
-        /// # #[macro_use] extern crate vulkano;
-        /// # fn main() {
-        /// let pixel: type_for_format_nalgebra!(R32G32B32A32_SFLOAT);
-        /// # }
-        /// ```
-        ///
-        /// The type of `pixel` will be [`Vector4<f32>`].
-        ///
-        /// [`nalgebra`]: https://crates.io/crates/nalgebra
-        /// [`SVector`]: https://docs.rs/nalgebra/latest/nalgebra/base/type.SVector.html
-        /// [`Vector4<f32>`]: https://docs.rs/nalgebra/latest/nalgebra/base/type.Vector4.html
-        #[cfg(feature = "nalgebra")]
-        #[macro_export]
-        macro_rules! type_for_format_nalgebra {
             #(#type_for_format_nalgebra_items)*
         }
     }

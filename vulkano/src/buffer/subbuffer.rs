@@ -1277,7 +1277,7 @@ mod tests {
                     ..requirements
                 },
                 allocation_type: AllocationType::Linear,
-                usage: MemoryUsage::GpuOnly,
+                usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             })
             .unwrap();
@@ -1286,7 +1286,7 @@ mod tests {
             .allocate(AllocationCreateInfo {
                 requirements,
                 allocation_type: AllocationType::Linear,
-                usage: MemoryUsage::GpuOnly,
+                usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             })
             .unwrap();

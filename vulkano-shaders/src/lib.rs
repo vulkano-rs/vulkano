@@ -1,33 +1,6 @@
 //! The procedural macro for vulkano's shader system.
 //! Manages the compile-time compilation of GLSL into SPIR-V and generation of associated Rust code.
 //!
-//! # Cargo features
-//!
-//! | Feature                     | Description                                             |
-//! |-----------------------------|---------------------------------------------------------|
-//! | `shaderc-build-from-source` | Build the `shaderc` library from source when compiling. |
-//! | `shaderc-debug`             | Compile shaders with debug information included.        |
-//!
-//! # Basic usage
-//!
-//! ```
-//! mod vs {
-//!     vulkano_shaders::shader!{
-//!         ty: "vertex",
-//!         src: r"
-//!             #version 450
-//!
-//!             layout(location = 0) in vec3 position;
-//!
-//!             void main() {
-//!                 gl_Position = vec4(position, 1.0);
-//!             }
-//!         ",
-//!     }
-//! }
-//! # fn main() {}
-//! ```
-//!
 //! # Details
 //!
 //! If you want to take a look at what the macro generates, your best option is to use
@@ -199,6 +172,33 @@
 //! ## `dump: true`
 //!
 //! The crate fails to compile but prints the generated Rust code to stdout.
+//!
+//! # Cargo features
+//!
+//! | Feature                     | Description                                             |
+//! |-----------------------------|---------------------------------------------------------|
+//! | `shaderc-build-from-source` | Build the `shaderc` library from source when compiling. |
+//! | `shaderc-debug`             | Compile shaders with debug information included.        |
+//!
+//! # Basic usage
+//!
+//! ```
+//! mod vs {
+//!     vulkano_shaders::shader!{
+//!         ty: "vertex",
+//!         src: r"
+//!             #version 450
+//!
+//!             layout(location = 0) in vec3 position;
+//!
+//!             void main() {
+//!                 gl_Position = vec4(position, 1.0);
+//!             }
+//!         ",
+//!     }
+//! }
+//! # fn main() {}
+//! ```
 //!
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [`ShaderModule::from_words_with_data`]: vulkano::shader::ShaderModule::from_words_with_data

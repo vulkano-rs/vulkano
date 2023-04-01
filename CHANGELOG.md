@@ -20,7 +20,7 @@
 ### Public dependency updates
 
 - [ash](https://crates.io/crates/ash) 0.37.2
-- [bytemuck](https://crates.io/crates/bytemuck) 1.7
+- [bytemuck](https://crates.io/crates/bytemuck) 1.9
 - [nalgebra](https://crates.io/crates/nalgebra) 0.32
 - [winit](https://crates.io/crates/winit) 0.28
 
@@ -74,6 +74,8 @@ Changes to memory and allocation:
 - `Suballocator::allocate_unchecked` has been removed.
 - Device properties that represent alignments are now generated with the type `DeviceAlignment` instead of `DeviceSize`.
 - Removed `FastMemoryAllocator`, because it was giving people the wrong impression that this is a type of allocator that is employed often and for general tasks, which couldn't be further from the truth.
+- Renamed `MemoryUsage::GpuOnly` to `MemoryUsage::DeviceOnly`.
+- Marked `MemoryUsage`, `MemoryAllocatePreference` and `AllocationType` as non-exhaustive.
 
 Changes to vulkano-shaders:
 - Struct fields are now padded using `Padded`, instead of generating additional fields.
@@ -82,7 +84,7 @@ Changes to vulkano-shaders:
 
 ### Additions
 
-- Added `CpuBufferAllocatorCreateInfo`.
+- Added `SubbufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
 - Implement `IntoIterator` for `Features`, `DeviceExtensions` and `InstanceExtensions`.
 - A `buffer_with_range` constructor for `WriteDescriptorSet`, which can be used to select the range within the buffer that should be bound. This must be used when using dynamic buffers.

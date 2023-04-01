@@ -351,7 +351,7 @@ impl From<MemoryUsage> for MemoryTypeFilter {
         let mut filter = Self::default();
 
         match usage {
-            MemoryUsage::GpuOnly => {
+            MemoryUsage::DeviceOnly => {
                 filter.preferred_flags |= MemoryPropertyFlags::DEVICE_LOCAL;
                 filter.not_preferred_flags |= MemoryPropertyFlags::HOST_VISIBLE;
             }
@@ -410,7 +410,7 @@ pub struct AllocationCreateInfo<'d> {
 
     /// The intended usage for the allocation.
     ///
-    /// The default value is [`MemoryUsage::GpuOnly`].
+    /// The default value is [`MemoryUsage::DeviceOnly`].
     pub usage: MemoryUsage,
 
     /// How eager the allocator should be to allocate [`DeviceMemory`].
@@ -450,7 +450,7 @@ impl Default for AllocationCreateInfo<'_> {
                 requires_dedicated_allocation: false,
             },
             allocation_type: AllocationType::Unknown,
-            usage: MemoryUsage::GpuOnly,
+            usage: MemoryUsage::DeviceOnly,
             allocate_preference: MemoryAllocatePreference::Unknown,
             dedicated_allocation: None,
             _ne: crate::NonExhaustive(()),
@@ -460,14 +460,15 @@ impl Default for AllocationCreateInfo<'_> {
 
 /// Describes how a memory allocation is going to be used.
 ///
-/// This is mostly an optimization, except for `MemoryUsage::GpuOnly` which will pick a memory type
-/// that is not CPU-accessible if such a type exists.
+/// This is mostly an optimization, except for `MemoryUsage::DeviceOnly` which will pick a memory
+/// type that is not host-accessible if such a type exists.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum MemoryUsage {
-    /// The memory is intended to only be used by the GPU.
+    /// The memory is intended to only be used by the device.
     ///
-    /// Prefers picking a memory type with the [`DEVICE_LOCAL`] flag and
-    /// without the [`HOST_VISIBLE`] flag.
+    /// Prefers picking a memory type with the [`DEVICE_LOCAL`] flag and without the
+    /// [`HOST_VISIBLE`] flag.
     ///
     /// This option is what you will always want to use unless the memory needs to be accessed by
     /// the CPU, because a memory type that can only be accessed by the GPU is going to give the
@@ -477,16 +478,16 @@ pub enum MemoryUsage {
     ///
     /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
-    GpuOnly,
+    DeviceOnly,
 
-    /// The memory is intended for upload to the GPU.
+    /// The memory is intended for upload to the device.
     ///
     /// Guarantees picking a memory type with the [`HOST_VISIBLE`] flag. Prefers picking one
     /// without the [`HOST_CACHED`] flag and with the [`DEVICE_LOCAL`] flag.
     ///
     /// This option is best suited for resources that need to be constantly updated by the CPU,
     /// like vertex and index buffers for example. It is also neccessary for *staging buffers*,
-    /// whose only purpose in life it is to get data into `device_local` memory or texels into an
+    /// whose only purpose in life it is to get data into device-local memory or texels into an
     /// optimal image.
     ///
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
@@ -494,14 +495,14 @@ pub enum MemoryUsage {
     /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
     Upload,
 
-    /// The memory is intended for download from the GPU.
+    /// The memory is intended for download from the device.
     ///
     /// Guarantees picking a memory type with the [`HOST_VISIBLE`] flag. Prefers picking one with
     /// the [`HOST_CACHED`] flag and without the [`DEVICE_LOCAL`] flag.
     ///
-    /// This option is best suited if you're using the GPU for things other than rendering and you
-    /// need to get the results back to the CPU. That might be compute shading, or image or video
-    /// manipulation, or screenshotting for example.
+    /// This option is best suited if you're using the device for things other than rendering and
+    /// you need to get the results back to the host. That might be compute shading, or image or
+    /// video manipulation, or screenshotting for example.
     ///
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
     /// [`HOST_CACHED`]: MemoryPropertyFlags::HOST_CACHED
@@ -511,6 +512,7 @@ pub enum MemoryUsage {
 
 /// Describes whether allocating [`DeviceMemory`] is desired.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum MemoryAllocatePreference {
     /// There is no known preference, let the allocator decide.
     Unknown,
@@ -1183,7 +1185,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///   `create_info.requirements.size` doesn't match the memory requirements of the resource.
     /// - Panics if finding a suitable memory type failed. This only happens if the
     ///   `create_info.requirements` correspond to those of an optimal image but
-    ///   `create_info.usage` is not [`MemoryUsage::GpuOnly`].
+    ///   `create_info.usage` is not [`MemoryUsage::DeviceOnly`].
     ///
     /// # Errors
     ///

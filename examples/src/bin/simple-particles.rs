@@ -370,7 +370,7 @@ fn main() {
                     | BufferUsage::TRANSFER_DST
                     | BufferUsage::VERTEX_BUFFER,
                 // Specify this buffer will only be used by the device.
-                memory_usage: MemoryUsage::GpuOnly,
+                memory_usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             },
             PARTICLE_COUNT as vulkano::DeviceSize,

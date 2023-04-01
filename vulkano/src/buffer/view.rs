@@ -443,7 +443,7 @@ mod tests {
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::UNIFORM_TEXEL_BUFFER,
-                memory_usage: MemoryUsage::GpuOnly,
+                memory_usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             },
             128,
@@ -469,7 +469,7 @@ mod tests {
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
-                memory_usage: MemoryUsage::GpuOnly,
+                memory_usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             },
             128,
@@ -495,7 +495,7 @@ mod tests {
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
-                memory_usage: MemoryUsage::GpuOnly,
+                memory_usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             },
             128,
@@ -521,7 +521,7 @@ mod tests {
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::TRANSFER_DST, // Dummy value
-                memory_usage: MemoryUsage::GpuOnly,
+                memory_usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             },
             128,
@@ -549,7 +549,7 @@ mod tests {
             &memory_allocator,
             BufferAllocateInfo {
                 buffer_usage: BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER,
-                memory_usage: MemoryUsage::GpuOnly,
+                memory_usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             },
             128,

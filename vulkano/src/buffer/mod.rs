@@ -51,7 +51,7 @@
 //! When allocating memory for a buffer, you have to specify a *memory usage*. This tells the
 //! memory allocator what memory type it should pick for the allocation.
 //!
-//! - [`MemoryUsage::GpuOnly`] will allocate a buffer that's usually located in device-local
+//! - [`MemoryUsage::DeviceOnly`] will allocate a buffer that's usually located in device-local
 //!   memory and whose content can't be directly accessed by your application. Accessing this
 //!   buffer from the device is generally faster compared to accessing a buffer that's located in
 //!   host-visible memory.
@@ -195,7 +195,7 @@ pub mod view;
 ///         // Specify use as a storage buffer and transfer destination.
 ///         buffer_usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
 ///         // Specify use by the device only.
-///         memory_usage: MemoryUsage::GpuOnly,
+///         memory_usage: MemoryUsage::DeviceOnly,
 ///         ..Default::default()
 ///     },
 ///     10_000 as DeviceSize,
@@ -565,7 +565,7 @@ pub struct BufferAllocateInfo {
 
     /// The memory usage to use for the allocation.
     ///
-    /// If this is set to [`MemoryUsage::GpuOnly`], then the buffer may need to be initialized
+    /// If this is set to [`MemoryUsage::DeviceOnly`], then the buffer may need to be initialized
     /// using a staging buffer. The exception is some integrated GPUs and laptop GPUs, which do not
     /// have memory types that are not host-visible. With [`MemoryUsage::Upload`] and
     /// [`MemoryUsage::Download`], a staging buffer is never needed.
