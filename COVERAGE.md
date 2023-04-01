@@ -204,6 +204,11 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `VkDebugUtilsObjectNameInfoEXT` extending `VkPipelineShaderStageCreateInfo`
 - [`VK_EXT_full_screen_exclusive`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_full_screen_exclusive.html)
 	- `vkGetPhysicalDeviceSurfacePresentModes2EXT`
+- [`VK_EXT_image_drm_format_modifier`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_drm_format_modifier.html)
+	- `vkGetImageDrmFormatModifierPropertiesEXT` / `VkDrmFormatModifierPropertiesEXT` / `VkDrmFormatModifierProperties2EXT` / `VkImageDrmFormatModifierPropertiesEXT`
+	- `VkDrmFormatModifierPropertiesListEXT` / `VkDrmFormatModifierPropertiesList2EXT`
+	- `VkImageDrmFormatModifierListCreateInfoEXT`
+	- `VkPhysicalDeviceImageDrmFormatModifierInfoEXT`
 
 ### Unsupported
 
@@ -259,7 +264,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_image_2d_view_of_3d`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_2d_view_of_3d.html)
 - [`VK_EXT_image_compression_control`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_compression_control.html)
 - [`VK_EXT_image_compression_control_swapchain`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_compression_control_swapchain.html)
-- [`VK_EXT_image_drm_format_modifier`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_drm_format_modifier.html)
 - [`VK_EXT_image_view_min_lod`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_view_min_lod.html)
 - [`VK_EXT_legacy_dithering`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_legacy_dithering.html)
 - [`VK_EXT_load_store_op_none`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_load_store_op_none.html)
