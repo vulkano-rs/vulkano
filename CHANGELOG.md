@@ -96,6 +96,7 @@ Changes to vulkano-shaders:
 - Added `BufferContentsLayout`.
 - Added support for allocating buffers with any kind of unsized contents, not just slices. These can also be read/written from the host.
 - Added `Padded`, which can be used to pad struct fields as well as array elements/matrix columns.
+- Added support for the `VK_EXT_external_memory_dma_buf` extension, which allows importing an image from a Linux dma_buf.
 - Vulkano-shaders: All error messages are now appropriately spanned compile-errors, instead of being panics.
 - Vulkano-shaders: Added support for arrays (and by extension matrices) whose stride exceeds the size of the element type in Rust (e.g. `vec3[]`).
 - Vulkano-shaders: Added a `linalg_type` option to the macro, for generating types from external linear algebra crates.
