@@ -162,68 +162,11 @@ where
     }
 }
 
-#[allow(unused_macros)]
-macro_rules! impl_vertex_member_generic {
-    ($first:ident$(::$rest:ident)*, $len:literal) => {
-        #[allow(deprecated)]
-        unsafe impl<T> VertexMember for $first$(::$rest)*<T>
-        where
-            [T; $len]: VertexMember,
-        {
-            fn format() -> Format {
-                <[T; $len] as VertexMember>::format()
-            }
-        }
-    };
-}
-
-#[cfg(feature = "cgmath")]
-impl_vertex_member_generic!(cgmath::Vector1, 1);
-#[cfg(feature = "cgmath")]
-impl_vertex_member_generic!(cgmath::Vector2, 2);
-#[cfg(feature = "cgmath")]
-impl_vertex_member_generic!(cgmath::Vector3, 3);
-#[cfg(feature = "cgmath")]
-impl_vertex_member_generic!(cgmath::Vector4, 4);
-#[cfg(feature = "cgmath")]
-impl_vertex_member_generic!(cgmath::Point1, 1);
-#[cfg(feature = "cgmath")]
-impl_vertex_member_generic!(cgmath::Point2, 2);
-#[cfg(feature = "cgmath")]
-impl_vertex_member_generic!(cgmath::Point3, 3);
-#[cfg(feature = "cgmath")]
-impl_vertex_member_generic!(cgmath::Matrix3, 9);
-#[cfg(feature = "cgmath")]
-impl_vertex_member_generic!(cgmath::Matrix4, 16);
-
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Vector1, 1);
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Vector2, 2);
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Vector3, 3);
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Vector4, 4);
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Point1, 1);
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Point2, 2);
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Point3, 3);
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Point4, 4);
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Matrix3, 9);
-#[cfg(feature = "nalgebra")]
-impl_vertex_member_generic!(nalgebra::Matrix4, 16);
-
 #[cfg(test)]
 mod tests {
-    use std::marker::PhantomData;
-
     use crate::format::Format;
     #[allow(deprecated)]
-    use crate::pipeline::graphics::vertex_input::{Vertex, VertexMember};
+    use crate::pipeline::graphics::vertex_input::Vertex;
 
     use bytemuck::{Pod, Zeroable};
 
@@ -253,15 +196,5 @@ mod tests {
         assert_eq!(scalar.format, Format::R16_UINT);
         assert_eq!(scalar.offset, 16 * 5);
         assert_eq!(scalar.num_elements, 1);
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn impl_vertex_member_generic() {
-        struct TestGeneric<T> {
-            _data: PhantomData<T>,
-        }
-        impl_vertex_member_generic!(TestGeneric, 1);
-        assert_eq!(TestGeneric::<u8>::format(), Format::R8_UINT);
     }
 }
