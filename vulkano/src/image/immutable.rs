@@ -141,7 +141,7 @@ impl ImmutableImage {
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::NonLinear,
-            usage: MemoryUsage::GpuOnly,
+            usage: MemoryUsage::DeviceOnly,
             allocate_preference: MemoryAllocatePreference::Unknown,
             dedicated_allocation: Some(DedicatedAllocation::Image(&raw_image)),
             ..Default::default()
