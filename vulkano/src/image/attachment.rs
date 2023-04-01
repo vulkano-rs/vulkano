@@ -419,7 +419,7 @@ impl AttachmentImage {
         let create_info = AllocationCreateInfo {
             requirements,
             allocation_type: AllocationType::NonLinear,
-            usage: MemoryUsage::GpuOnly,
+            usage: MemoryUsage::DeviceOnly,
             allocate_preference: MemoryAllocatePreference::Unknown,
             dedicated_allocation: Some(DedicatedAllocation::Image(&raw_image)),
             ..Default::default()
@@ -520,7 +520,10 @@ impl AttachmentImage {
         )?;
         let requirements = raw_image.memory_requirements()[0];
         let memory_type_index = allocator
-            .find_memory_type_index(requirements.memory_type_bits, MemoryUsage::GpuOnly.into())
+            .find_memory_type_index(
+                requirements.memory_type_bits,
+                MemoryUsage::DeviceOnly.into(),
+            )
             .expect("failed to find a suitable memory type");
 
         match unsafe {

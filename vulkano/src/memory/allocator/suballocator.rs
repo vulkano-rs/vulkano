@@ -763,6 +763,7 @@ impl From<AllocationCreateInfo<'_>> for SuballocationCreateInfo {
 /// [suballocator]: Suballocator
 /// [buffer-image granularity]: super#buffer-image-granularity
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum AllocationType {
     /// The type of resource is unknown, it might be either linear or non-linear. What this means is
     /// that allocations created with this type must always be aligned to the buffer-image
