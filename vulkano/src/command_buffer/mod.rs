@@ -31,10 +31,10 @@
 //!
 //! There are two levels of command buffers:
 //!
-//! - [`PrimaryCommandBuffer`] can be executed on a queue, and is the main command buffer type.
-//!   It cannot be executed within another command buffer.
-//! - [`SecondaryCommandBuffer`] can only be executed within a primary command buffer, not directly
-//!   on a queue.
+//! - [`PrimaryCommandBufferAbstract`] can be executed on a queue, and is the main command buffer
+//!   type. It cannot be executed within another command buffer.
+//! - [`SecondaryCommandBufferAbstract`] can only be executed within a primary command buffer,
+//!   not directly on a queue.
 //!
 //! Using secondary command buffers, there is slightly more overhead than using primary command
 //! buffers alone, but there are also advantages. A single command buffer cannot be recorded
@@ -48,15 +48,16 @@
 //! # Recording a command buffer
 //!
 //! To record a new command buffer, the most direct way is to create a new
-//! [`CommandBufferBuilder`]. You can then call methods on this object to record new commands to
+//! [`AutoCommandBufferBuilder`]. You can then call methods on this object to record new commands to
 //! the command buffer. When you are done recording, you call [`build`] to finalise the command
-//! buffer and turn it into either a [`PrimaryCommandBuffer`] or a [`SecondaryCommandBuffer`].
+//! buffer and turn it into either a [`PrimaryCommandBufferAbstract`] or a
+//! [`SecondaryCommandBufferAbstract`].
 //!
-//! Using the standard `CommandBufferBuilder`, you must enter synchronization commands such as
-//! [pipeline barriers], to ensure that there are no races and memory access hazards. This can be
-//! difficult to do manually, so Vulkano also provides an alternative builder,
-//! [`AutoCommandBufferBuilder`]. Using this builder, you do not have to worry about managing
-//! synchronization, but the end result may not be quite as efficient.
+// //! Using the standard `CommandBufferBuilder`, you must enter synchronization commands such as
+// //! [pipeline barriers], to ensure that there are no races and memory access hazards. This can be
+// //! difficult to do manually, so Vulkano also provides an alternative builder,
+// //! [`AutoCommandBufferBuilder`]. Using this builder, you do not have to worry about managing
+// //! synchronization, but the end result may not be quite as efficient.
 //!
 //! # Submitting a primary command buffer
 //!
@@ -108,7 +109,7 @@
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
 #[doc(no_inline)]
-pub use self::standard::{CommandBufferBuilder, PrimaryCommandBuffer, SecondaryCommandBuffer};
+pub(crate) use self::standard::{PrimaryCommandBuffer, SecondaryCommandBuffer};
 pub use self::{
     auto::{
         AutoCommandBufferBuilder, BuildError, CommandBufferBeginError, PrimaryAutoCommandBuffer,
@@ -154,7 +155,7 @@ pub mod allocator;
 mod auto;
 mod commands;
 pub mod pool;
-pub mod standard;
+pub(crate) mod standard;
 pub mod synced;
 pub mod sys;
 mod traits;

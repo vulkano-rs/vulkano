@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-util"
-version = "0.32.0"
+version = "0.33.0"
 edition = "2021"
 authors = ["The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
@@ -13,6 +13,6 @@ categories = ["rendering::graphics-api"]
 
 [dependencies]
 ahash = "0.8"
-vulkano = { version = "0.32.0", path = "../vulkano" }
-vulkano-win = { version = "0.32.0", path = "../vulkano-win" }
+vulkano = { version = "0.33.0", path = "../vulkano" }
+vulkano-win = { version = "0.33.0", path = "../vulkano-win" }
 winit = { version = "0.28" }

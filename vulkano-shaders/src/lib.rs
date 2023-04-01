@@ -732,17 +732,12 @@ impl Parse for MacroInput {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum LinAlgType {
+    #[default]
     Std,
     CgMath,
     Nalgebra,
-}
-
-impl Default for LinAlgType {
-    fn default() -> Self {
-        LinAlgType::Std
-    }
 }
 
 macro_rules! bail {

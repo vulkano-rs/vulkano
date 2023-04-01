@@ -138,6 +138,7 @@
 #![allow(
     clippy::collapsible_else_if,
     clippy::collapsible_if,
+    clippy::derivable_impls, // TODO: remove
     clippy::large_enum_variant,
     clippy::len_without_is_empty,
     clippy::missing_safety_doc, // TODO: remove

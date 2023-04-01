@@ -145,7 +145,7 @@ impl From<DeviceAlignment> for DeviceSize {
 
 // This is a false-positive, the underlying values that this impl and the derived `PartialEq` work
 // with are the same.
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for DeviceAlignment {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
