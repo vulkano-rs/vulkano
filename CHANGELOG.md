@@ -86,9 +86,6 @@ Changes to vulkano-shaders:
 - Allow waiting on `SwapchainAcquireFuture`.
 - Implement `IntoIterator` for `Features`, `DeviceExtensions` and `InstanceExtensions`.
 - A `buffer_with_range` constructor for `WriteDescriptorSet`, which can be used to select the range within the buffer that should be bound. This must be used when using dynamic buffers.
-- Better cgmath and nalgebra support, enabled by the `cgmath` or `nalgebra` features:
-- `VertexMember` is now implemented for cgmath `Vector`s and `Point`s.
-- `type_for_format_cgmath` and `type_for_format_nalgebra` macros, next to the existing `type_for_format` macro.
 - Added a derive macro for the `Vertex` trait. The `impl_vertex` macro and `VertexMember` trait are deprecated.
 - `BufferDefinition` matching logic was updated to work with the new `VertexMemberInfo` and now matches based on scalar type, number of components and number of elements allowing the use of formats such as `*_UNORM`.
 - `GraphicsPipelineBuilder` validation was extended to make sure locations are not bound multiple times when a single attribute spans multiple locations (e.g. using double precision float formats).
