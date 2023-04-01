@@ -15,8 +15,6 @@
 //! | Feature              | Description                                                                   |
 //! |----------------------|-------------------------------------------------------------------------------|
 //! | `document_unchecked` | Include `_unchecked` functions in the generated documentation.                |
-//! | `cgmath`             | Generate additional definitions and functions using the [`cgmath`] library.   |
-//! | `nalgebra`           | Generate additional definitions and functions using the [`nalgebra`] library. |
 //! | `serde`              | Enables (de)serialization of certain types using [`serde`].                   |
 //!
 //! # Starting off with Vulkano
