@@ -15,8 +15,8 @@
 
 use self::host::SlotId;
 use super::{
-    align_down, align_up, array_vec::ArrayVec, AllocationCreateInfo, AllocationCreationError,
-    DeviceAlignment, DeviceLayout,
+    align_down, align_up, array_vec::ArrayVec, AllocationCreationError, DeviceAlignment,
+    DeviceLayout,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -741,17 +741,6 @@ impl Default for SuballocationCreateInfo {
             )
             .unwrap(),
             allocation_type: AllocationType::Unknown,
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-impl From<AllocationCreateInfo<'_>> for SuballocationCreateInfo {
-    #[inline]
-    fn from(create_info: AllocationCreateInfo<'_>) -> Self {
-        SuballocationCreateInfo {
-            layout: create_info.requirements.layout,
-            allocation_type: create_info.allocation_type,
             _ne: crate::NonExhaustive(()),
         }
     }

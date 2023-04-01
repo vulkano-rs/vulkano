@@ -14,7 +14,7 @@
 
 use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
         CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo, SubpassContents,
@@ -29,7 +29,7 @@ use vulkano::{
         ImageSubresourceLayers, ImageUsage, SampleCount, StorageImage,
     },
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -166,8 +166,12 @@ fn main() {
     ];
     let vertex_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferAllocateInfo {
-            buffer_usage: BufferUsage::VERTEX_BUFFER,
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            usage: MemoryUsage::Upload,
             ..Default::default()
         },
         vertices,
@@ -278,8 +282,12 @@ fn main() {
     let create_buffer = || {
         Buffer::from_iter(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::TRANSFER_DST,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),

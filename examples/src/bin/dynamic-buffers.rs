@@ -15,7 +15,7 @@
 
 use std::{iter::repeat, mem::size_of};
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
@@ -28,7 +28,7 @@ use vulkano::{
         QueueFlags,
     },
     instance::{Instance, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
     DeviceSize, VulkanLibrary,
@@ -167,8 +167,12 @@ fn main() {
 
     let input_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferAllocateInfo {
-            buffer_usage: BufferUsage::UNIFORM_BUFFER,
+        BufferCreateInfo {
+            usage: BufferUsage::UNIFORM_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            usage: MemoryUsage::Upload,
             ..Default::default()
         },
         aligned_data,
@@ -177,8 +181,12 @@ fn main() {
 
     let output_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferAllocateInfo {
-            buffer_usage: BufferUsage::STORAGE_BUFFER,
+        BufferCreateInfo {
+            usage: BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            usage: MemoryUsage::Upload,
             ..Default::default()
         },
         (0..12).map(|_| 0u32),

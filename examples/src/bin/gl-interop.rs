@@ -14,7 +14,7 @@ mod linux {
         time::Instant,
     };
     use vulkano::{
-        buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
+        buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
             CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
@@ -33,7 +33,7 @@ mod linux {
             debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
             Instance, InstanceCreateInfo, InstanceExtensions,
         },
-        memory::allocator::StandardMemoryAllocator,
+        memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
         pipeline::{
             graphics::{
                 color_blend::ColorBlendState,
@@ -570,8 +570,12 @@ mod linux {
         ];
         let vertex_buffer = Buffer::from_iter(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::VERTEX_BUFFER,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             vertices,

@@ -1138,7 +1138,7 @@ mod tests {
     use crate::{
         buffer::{
             sys::{BufferCreateInfo, RawBuffer},
-            BufferAllocateInfo, BufferUsage,
+            BufferUsage,
         },
         memory::{
             allocator::{
@@ -1218,8 +1218,12 @@ mod tests {
 
         let buffer = Buffer::new_slice::<u32>(
             &allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::TRANSFER_SRC,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             6,
@@ -1271,24 +1275,24 @@ mod tests {
 
         // Allocate some junk in the same block as the buffer.
         let _junk = allocator
-            .allocate(AllocationCreateInfo {
-                requirements: MemoryRequirements {
+            .allocate(
+                MemoryRequirements {
                     layout: DeviceLayout::from_size_alignment(17, 1).unwrap(),
                     ..requirements
                 },
-                allocation_type: AllocationType::Linear,
-                usage: MemoryUsage::DeviceOnly,
-                ..Default::default()
-            })
+                AllocationType::Linear,
+                AllocationCreateInfo::default(),
+                None,
+            )
             .unwrap();
 
         let allocation = allocator
-            .allocate(AllocationCreateInfo {
+            .allocate(
                 requirements,
-                allocation_type: AllocationType::Linear,
-                usage: MemoryUsage::DeviceOnly,
-                ..Default::default()
-            })
+                AllocationType::Linear,
+                AllocationCreateInfo::default(),
+                None,
+            )
             .unwrap();
 
         let buffer = Buffer::from_raw(raw_buffer, BufferMemory::Normal(allocation));

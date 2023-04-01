@@ -14,7 +14,7 @@ use super::{
     ImageLayout, ImageSubresourceLayers, ImageUsage, MipmapsCount,
 };
 use crate::{
-    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferError, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferError, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
         BufferImageCopy, CommandBufferBeginError, CopyBufferToImageInfo, ImageBlit,
@@ -138,25 +138,28 @@ impl ImmutableImage {
             },
         )?;
         let requirements = raw_image.memory_requirements()[0];
-        let create_info = AllocationCreateInfo {
-            requirements,
-            allocation_type: AllocationType::NonLinear,
-            usage: MemoryUsage::DeviceOnly,
-            allocate_preference: MemoryAllocatePreference::Unknown,
-            dedicated_allocation: Some(DedicatedAllocation::Image(&raw_image)),
-            ..Default::default()
+        let res = unsafe {
+            allocator.allocate_unchecked(
+                requirements,
+                AllocationType::NonLinear,
+                AllocationCreateInfo {
+                    usage: MemoryUsage::DeviceOnly,
+                    allocate_preference: MemoryAllocatePreference::Unknown,
+                    _ne: crate::NonExhaustive(()),
+                },
+                Some(DedicatedAllocation::Image(&raw_image)),
+            )
         };
 
-        match unsafe { allocator.allocate_unchecked(create_info) } {
+        match res {
             Ok(alloc) => {
                 debug_assert!(is_aligned(alloc.offset(), requirements.layout.alignment()));
                 debug_assert!(alloc.size() == requirements.layout.size());
 
-                let inner = Arc::new(unsafe {
-                    raw_image
-                        .bind_memory_unchecked([alloc])
-                        .map_err(|(err, _, _)| err)?
-                });
+                let inner = Arc::new(
+                    unsafe { raw_image.bind_memory_unchecked([alloc]) }
+                        .map_err(|(err, _, _)| err)?,
+                );
 
                 let image = Arc::new(ImmutableImage { inner, layout });
 
@@ -191,9 +194,12 @@ impl ImmutableImage {
     {
         let source = Buffer::from_iter(
             allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::TRANSFER_SRC,
-                memory_usage: MemoryUsage::Upload,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             iter,

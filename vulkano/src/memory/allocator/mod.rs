@@ -234,7 +234,7 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    DeviceSize, NonZeroDeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError,
+    DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
@@ -290,9 +290,52 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     ) -> Result<MemoryAlloc, AllocationCreationError>;
 
     /// Allocates memory according to requirements.
+    ///
+    /// # Arguments
+    ///
+    /// - `requirements` - Requirements of the resource you want to allocate memory for.
+    ///
+    ///   If you plan to bind this memory directly to a non-sparse resource, then this must
+    ///   correspond to the value returned by either [`RawBuffer::memory_requirements`] or
+    ///   [`RawImage::memory_requirements`] for the respective buffer or image.
+    ///
+    ///   [`memory_type_bits`] must be below 2<sup>*n*</sup> where *n* is the number of available
+    ///   memory types.
+    ///
+    ///   The default is a layout with size [`DeviceLayout::MAX_SIZE`] and alignment
+    ///   [`DeviceAlignment::MIN`] and the rest all zeroes, which must be overridden.
+    ///
+    /// - `allocation_type` - What type of resource this allocation will be used for.
+    ///
+    ///   This should be [`Linear`] for buffers and linear images, and [`NonLinear`] for optimal
+    ///   images. You can not bind memory allocated with the [`Linear`] type to optimal images or
+    ///   bind memory allocated with the [`NonLinear`] type to buffers and linear images. You
+    ///   should never use the [`Unknown`] type unless you have to, as that can be less memory
+    ///   efficient.
+    ///
+    /// - `dedicated_allocation` - Allows a dedicated allocation to be created.
+    ///
+    ///   You should always fill this field in if you are allocating memory for a non-sparse
+    ///   resource, otherwise the allocator won't be able to create a dedicated allocation if one
+    ///   is recommended.
+    ///
+    ///   This option is silently ignored (treated as `None`) if the device API version is below
+    ///   1.1 and the [`khr_dedicated_allocation`] extension is not enabled on the device.
+    ///
+    /// [`alignment`]: MemoryRequirements::alignment
+    /// [`memory_type_bits`]: MemoryRequirements::memory_type_bits
+    /// [`RawBuffer::memory_requirements`]: crate::buffer::sys::RawBuffer::memory_requirements
+    /// [`RawImage::memory_requirements`]: crate::image::sys::RawImage::memory_requirements
+    /// [`Linear`]: AllocationType::Linear
+    /// [`NonLinear`]: AllocationType::NonLinear
+    /// [`Unknown`]: AllocationType::Unknown
+    /// [`khr_dedicated_allocation`]: crate::device::DeviceExtensions::khr_dedicated_allocation
     fn allocate(
         &self,
-        create_info: AllocationCreateInfo<'_>,
+        requirements: MemoryRequirements,
+        allocation_type: AllocationType,
+        create_info: AllocationCreateInfo,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, AllocationCreationError>;
 
     /// Allocates memory according to requirements without checking the parameters.
@@ -306,7 +349,10 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     unsafe fn allocate_unchecked(
         &self,
-        create_info: AllocationCreateInfo<'_>,
+        requirements: MemoryRequirements,
+        allocation_type: AllocationType,
+        create_info: AllocationCreateInfo,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, AllocationCreationError>;
 
     /// Creates a root allocation/dedicated allocation without checking the parameters.
@@ -375,39 +421,7 @@ impl From<MemoryUsage> for MemoryTypeFilter {
 /// [allocation]: MemoryAlloc
 /// [memory allocator]: MemoryAllocator
 #[derive(Clone, Debug)]
-pub struct AllocationCreateInfo<'d> {
-    /// Requirements of the resource you want to allocate memory for.
-    ///
-    /// If you plan to bind this memory directly to a non-sparse resource, then this must
-    /// correspond to the value returned by either [`RawBuffer::memory_requirements`] or
-    /// [`RawImage::memory_requirements`] for the respective buffer or image.
-    ///
-    /// [`memory_type_bits`] must be below 2<sup>*n*</sup> where *n* is the number of available
-    /// memory types.
-    ///
-    /// The default is a layout with size [`DeviceLayout::MAX_SIZE`] and alignment
-    /// [`DeviceAlignment::MIN`] and the rest all zeroes, which must be overridden.
-    ///
-    /// [`alignment`]: MemoryRequirements::alignment
-    /// [`memory_type_bits`]: MemoryRequirements::memory_type_bits
-    /// [`RawBuffer::memory_requirements`]: crate::buffer::sys::RawBuffer::memory_requirements
-    /// [`RawImage::memory_requirements`]: crate::image::sys::RawImage::memory_requirements
-    pub requirements: MemoryRequirements,
-
-    /// What type of resource this allocation will be used for.
-    ///
-    /// This should be [`Linear`] for buffers and linear images, and [`NonLinear`] for optimal
-    /// images. You can not bind memory allocated with the [`Linear`] type to optimal images or
-    /// bind memory allocated with the [`NonLinear`] type to buffers and linear images. You should
-    /// never use the [`Unknown`] type unless you have to, as that can be less memory efficient.
-    ///
-    /// The default value is [`AllocationType::Unknown`].
-    ///
-    /// [`Linear`]: AllocationType::Linear
-    /// [`NonLinear`]: AllocationType::NonLinear
-    /// [`Unknown`]: AllocationType::Unknown
-    pub allocation_type: AllocationType,
-
+pub struct AllocationCreateInfo {
     /// The intended usage for the allocation.
     ///
     /// The default value is [`MemoryUsage::DeviceOnly`].
@@ -418,41 +432,15 @@ pub struct AllocationCreateInfo<'d> {
     /// The default value is [`MemoryAllocatePreference::Unknown`].
     pub allocate_preference: MemoryAllocatePreference,
 
-    /// Allows a dedicated allocation to be created.
-    ///
-    /// You should always fill this field in if you are allocating memory for a non-sparse
-    /// resource, otherwise the allocator won't be able to create a dedicated allocation if one is
-    /// recommended.
-    ///
-    /// This option is silently ignored (treated as `None`) if the device API version is below 1.1
-    /// and the [`khr_dedicated_allocation`] extension is not enabled on the device.
-    ///
-    /// The default value is [`None`].
-    ///
-    /// [`khr_dedicated_allocation`]: crate::device::DeviceExtensions::khr_dedicated_allocation
-    pub dedicated_allocation: Option<DedicatedAllocation<'d>>,
-
     pub _ne: crate::NonExhaustive,
 }
 
-impl Default for AllocationCreateInfo<'_> {
+impl Default for AllocationCreateInfo {
     #[inline]
     fn default() -> Self {
         AllocationCreateInfo {
-            requirements: MemoryRequirements {
-                layout: DeviceLayout::new(
-                    NonZeroDeviceSize::new(DeviceLayout::MAX_SIZE).unwrap(),
-                    DeviceAlignment::MIN,
-                )
-                .unwrap(),
-                memory_type_bits: 0,
-                prefers_dedicated_allocation: false,
-                requires_dedicated_allocation: false,
-            },
-            allocation_type: AllocationType::Unknown,
             usage: MemoryUsage::DeviceOnly,
             allocate_preference: MemoryAllocatePreference::Unknown,
-            dedicated_allocation: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -894,16 +882,11 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         );
     }
 
-    fn validate_allocate(&self, create_info: &AllocationCreateInfo<'_>) {
-        let &AllocationCreateInfo {
-            requirements,
-            allocation_type: _,
-            usage: _,
-            allocate_preference: _,
-            dedicated_allocation,
-            _ne: _,
-        } = create_info;
-
+    fn validate_allocate(
+        &self,
+        requirements: MemoryRequirements,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
+    ) {
         assert!(requirements.memory_type_bits != 0);
         assert!(requirements.memory_type_bits < 1 << self.pools.len());
 
@@ -1211,33 +1194,47 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     fn allocate(
         &self,
-        create_info: AllocationCreateInfo<'_>,
+        requirements: MemoryRequirements,
+        allocation_type: AllocationType,
+        create_info: AllocationCreateInfo,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, AllocationCreationError> {
-        self.validate_allocate(&create_info);
+        self.validate_allocate(requirements, dedicated_allocation);
 
-        unsafe { self.allocate_unchecked(create_info) }
+        unsafe {
+            self.allocate_unchecked(
+                requirements,
+                allocation_type,
+                create_info,
+                dedicated_allocation,
+            )
+        }
     }
 
     unsafe fn allocate_unchecked(
         &self,
-        create_info: AllocationCreateInfo<'_>,
+        requirements: MemoryRequirements,
+        allocation_type: AllocationType,
+        create_info: AllocationCreateInfo,
+        mut dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, AllocationCreationError> {
+        let MemoryRequirements {
+            layout,
+            mut memory_type_bits,
+            mut prefers_dedicated_allocation,
+            requires_dedicated_allocation,
+        } = requirements;
         let AllocationCreateInfo {
-            requirements:
-                MemoryRequirements {
-                    layout,
-                    mut memory_type_bits,
-                    mut prefers_dedicated_allocation,
-                    requires_dedicated_allocation,
-                },
-            allocation_type: _,
             usage,
             allocate_preference,
-            mut dedicated_allocation,
             _ne: _,
         } = create_info;
 
-        let create_info = SuballocationCreateInfo::from(create_info);
+        let create_info = SuballocationCreateInfo {
+            layout,
+            allocation_type,
+            _ne: crate::NonExhaustive(()),
+        };
 
         let size = layout.size();
         memory_type_bits &= self.memory_type_bits;
@@ -1412,16 +1409,32 @@ unsafe impl<S: Suballocator> MemoryAllocator for Arc<GenericMemoryAllocator<S>> 
 
     fn allocate(
         &self,
-        create_info: AllocationCreateInfo<'_>,
+        requirements: MemoryRequirements,
+        allocation_type: AllocationType,
+        create_info: AllocationCreateInfo,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, AllocationCreationError> {
-        (**self).allocate(create_info)
+        (**self).allocate(
+            requirements,
+            allocation_type,
+            create_info,
+            dedicated_allocation,
+        )
     }
 
     unsafe fn allocate_unchecked(
         &self,
-        create_info: AllocationCreateInfo<'_>,
+        requirements: MemoryRequirements,
+        allocation_type: AllocationType,
+        create_info: AllocationCreateInfo,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, AllocationCreationError> {
-        (**self).allocate_unchecked(create_info)
+        (**self).allocate_unchecked(
+            requirements,
+            allocation_type,
+            create_info,
+            dedicated_allocation,
+        )
     }
 
     unsafe fn allocate_dedicated_unchecked(

@@ -397,14 +397,14 @@ impl From<VulkanError> for ComputePipelineCreationError {
 #[cfg(test)]
 mod tests {
     use crate::{
-        buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+        buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
         },
-        memory::allocator::StandardMemoryAllocator,
+        memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
         pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
         shader::{ShaderModule, SpecializationConstants, SpecializationMapEntry},
         sync::{now, GpuFuture},
@@ -490,8 +490,12 @@ mod tests {
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let data_buffer = Buffer::from_data(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::STORAGE_BUFFER,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             0,

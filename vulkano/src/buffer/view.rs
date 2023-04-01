@@ -19,18 +19,20 @@
 //!
 //! ```
 //! # use std::sync::Arc;
-//! use vulkano::buffer::{Buffer, BufferAllocateInfo, BufferUsage};
+//! use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 //! use vulkano::buffer::view::{BufferView, BufferViewCreateInfo};
 //! use vulkano::format::Format;
+//! use vulkano::memory::allocator::AllocationCreateInfo;
 //!
 //! # let queue: Arc<vulkano::device::Queue> = return;
 //! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
 //! let buffer = Buffer::new_slice::<u32>(
 //!     &memory_allocator,
-//!     BufferAllocateInfo {
-//!         buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
+//!     BufferCreateInfo {
+//!         usage: BufferUsage::STORAGE_TEXEL_BUFFER,
 //!         ..Default::default()
 //!     },
+//!     AllocationCreateInfo::default(),
 //!     128,
 //! )
 //! .unwrap();
@@ -428,9 +430,9 @@ impl From<RequirementNotMet> for BufferViewCreationError {
 mod tests {
     use super::{BufferView, BufferViewCreateInfo, BufferViewCreationError};
     use crate::{
-        buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+        buffer::{Buffer, BufferCreateInfo, BufferUsage},
         format::Format,
-        memory::allocator::{MemoryUsage, StandardMemoryAllocator},
+        memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     };
 
     #[test]
@@ -441,9 +443,12 @@ mod tests {
 
         let buffer = Buffer::new_slice::<[u8; 4]>(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::UNIFORM_TEXEL_BUFFER,
-                memory_usage: MemoryUsage::DeviceOnly,
+            BufferCreateInfo {
+                usage: BufferUsage::UNIFORM_TEXEL_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             128,
@@ -467,11 +472,11 @@ mod tests {
 
         let buffer = Buffer::new_slice::<[u8; 4]>(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
-                memory_usage: MemoryUsage::DeviceOnly,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_TEXEL_BUFFER,
                 ..Default::default()
             },
+            AllocationCreateInfo::default(),
             128,
         )
         .unwrap();
@@ -493,11 +498,11 @@ mod tests {
 
         let buffer = Buffer::new_slice::<u32>(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::STORAGE_TEXEL_BUFFER,
-                memory_usage: MemoryUsage::DeviceOnly,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_TEXEL_BUFFER,
                 ..Default::default()
             },
+            AllocationCreateInfo::default(),
             128,
         )
         .unwrap();
@@ -519,11 +524,11 @@ mod tests {
 
         let buffer = Buffer::new_slice::<[u8; 4]>(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::TRANSFER_DST, // Dummy value
-                memory_usage: MemoryUsage::DeviceOnly,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_DST, // Dummy value
                 ..Default::default()
             },
+            AllocationCreateInfo::default(),
             128,
         )
         .unwrap();
@@ -547,11 +552,11 @@ mod tests {
 
         let buffer = Buffer::new_slice::<[f64; 4]>(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER,
-                memory_usage: MemoryUsage::DeviceOnly,
+            BufferCreateInfo {
+                usage: BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER,
                 ..Default::default()
             },
+            AllocationCreateInfo::default(),
             128,
         )
         .unwrap();

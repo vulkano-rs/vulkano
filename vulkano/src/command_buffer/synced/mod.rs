@@ -173,7 +173,7 @@ impl Debug for dyn Command {
 mod tests {
     use super::*;
     use crate::{
-        buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+        buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
             allocator::{
                 CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
@@ -190,7 +190,7 @@ mod tests {
             },
             PersistentDescriptorSet, WriteDescriptorSet,
         },
-        memory::allocator::StandardMemoryAllocator,
+        memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
         pipeline::{layout::PipelineLayoutCreateInfo, PipelineBindPoint, PipelineLayout},
         sampler::{Sampler, SamplerCreateInfo},
         shader::ShaderStages,
@@ -239,8 +239,12 @@ mod tests {
             // Create a tiny test buffer
             let buffer = Buffer::from_data(
                 &memory_allocator,
-                BufferAllocateInfo {
-                    buffer_usage: BufferUsage::TRANSFER_DST,
+                BufferCreateInfo {
+                    usage: BufferUsage::TRANSFER_DST,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    usage: MemoryUsage::Upload,
                     ..Default::default()
                 },
                 0u32,
@@ -351,8 +355,12 @@ mod tests {
             let memory_allocator = StandardMemoryAllocator::new_default(device);
             let buf = Buffer::from_data(
                 &memory_allocator,
-                BufferAllocateInfo {
-                    buffer_usage: BufferUsage::VERTEX_BUFFER,
+                BufferCreateInfo {
+                    usage: BufferUsage::VERTEX_BUFFER,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    usage: MemoryUsage::Upload,
                     ..Default::default()
                 },
                 0u32,

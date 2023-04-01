@@ -14,7 +14,7 @@
 // GPU", or *GPGPU*. This is what this example demonstrates.
 
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
@@ -26,7 +26,7 @@ use vulkano::{
         QueueFlags,
     },
     instance::{Instance, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
     VulkanLibrary,
@@ -154,8 +154,12 @@ fn main() {
     // We start by creating the buffer that will store the data.
     let data_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferAllocateInfo {
-            buffer_usage: BufferUsage::STORAGE_BUFFER,
+        BufferCreateInfo {
+            usage: BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            usage: MemoryUsage::Upload,
             ..Default::default()
         },
         // Iterator that produces the data.

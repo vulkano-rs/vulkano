@@ -11,7 +11,7 @@ use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryCommandBufferAbstract,
@@ -21,7 +21,7 @@ use vulkano::{
     },
     device::Queue,
     image::ImageAccess,
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::GpuFuture,
 };
@@ -57,8 +57,12 @@ impl FractalComputePipeline {
         let palette_size = colors.len() as i32;
         let palette = Buffer::from_iter(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::STORAGE_BUFFER,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             colors,
@@ -102,8 +106,12 @@ impl FractalComputePipeline {
         }
         self.palette = Buffer::from_iter(
             &self.memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::STORAGE_BUFFER,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             colors,
