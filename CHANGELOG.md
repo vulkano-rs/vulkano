@@ -66,6 +66,8 @@ Changes to memory and allocation:
 - Removed `FastMemoryAllocator`, because it was giving people the wrong impression that this is a type of allocator that is employed often and for general tasks, which couldn't be further from the truth.
 - Renamed `MemoryUsage::GpuOnly` to `MemoryUsage::DeviceOnly`.
 - Marked `MemoryUsage`, `MemoryAllocatePreference` and `AllocationType` as non-exhaustive.
+- `AllocationCreateInfo::{requirements, allocation_type, dedicated_allocation}` fields were removed.
+- Added the parameters `requirements`, `allocation_type`, `dedicated_allocation` to `MemoryAllocator::allocate[_unchecked]`.
 
 Changes to vulkano-shaders:
 - Struct fields are now padded using `Padded`, instead of generating additional fields.
