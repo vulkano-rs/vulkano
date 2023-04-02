@@ -9,14 +9,16 @@
 
 //! Efficiently suballocates buffers into smaller subbuffers.
 
-use super::{Buffer, BufferContents, BufferError, BufferMemory, BufferUsage, Subbuffer};
+use super::{
+    sys::BufferCreateInfo, Buffer, BufferContents, BufferError, BufferMemory, BufferUsage,
+    Subbuffer,
+};
 use crate::{
-    buffer::BufferAllocateInfo,
     device::{Device, DeviceOwned},
     memory::{
         allocator::{
-            align_up, AllocationCreationError, DeviceLayout, MemoryAllocator, MemoryUsage,
-            StandardMemoryAllocator,
+            align_up, AllocationCreateInfo, AllocationCreationError, DeviceLayout, MemoryAllocator,
+            MemoryUsage, StandardMemoryAllocator,
         },
         DeviceAlignment,
     },
@@ -353,9 +355,12 @@ where
     fn create_arena(&self) -> Result<Arc<Buffer>, AllocationCreationError> {
         Buffer::new(
             &self.memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: self.buffer_usage,
-                memory_usage: self.memory_usage,
+            BufferCreateInfo {
+                usage: self.buffer_usage,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: self.memory_usage,
                 ..Default::default()
             },
             DeviceLayout::from_size_alignment(self.arena_size, 1).unwrap(),

@@ -10,7 +10,7 @@
 use cgmath::{Matrix4, Vector3};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
@@ -20,7 +20,7 @@ use vulkano::{
     },
     device::Queue,
     image::ImageViewAbstract,
-    memory::allocator::MemoryAllocator,
+    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
@@ -68,8 +68,12 @@ impl PointLightingSystem {
         ];
         let vertex_buffer = Buffer::from_iter(
             memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::VERTEX_BUFFER,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             vertices,

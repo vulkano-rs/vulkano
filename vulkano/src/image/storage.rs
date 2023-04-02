@@ -125,25 +125,28 @@ impl StorageImage {
             },
         )?;
         let requirements = raw_image.memory_requirements()[0];
-        let create_info = AllocationCreateInfo {
-            requirements,
-            allocation_type: AllocationType::NonLinear,
-            usage: MemoryUsage::DeviceOnly,
-            allocate_preference: MemoryAllocatePreference::Unknown,
-            dedicated_allocation: Some(DedicatedAllocation::Image(&raw_image)),
-            ..Default::default()
+        let res = unsafe {
+            allocator.allocate_unchecked(
+                requirements,
+                AllocationType::NonLinear,
+                AllocationCreateInfo {
+                    usage: MemoryUsage::DeviceOnly,
+                    allocate_preference: MemoryAllocatePreference::Unknown,
+                    _ne: crate::NonExhaustive(()),
+                },
+                Some(DedicatedAllocation::Image(&raw_image)),
+            )
         };
 
-        match unsafe { allocator.allocate_unchecked(create_info) } {
+        match res {
             Ok(alloc) => {
                 debug_assert!(is_aligned(alloc.offset(), requirements.layout.alignment()));
                 debug_assert!(alloc.size() == requirements.layout.size());
 
-                let inner = Arc::new(unsafe {
-                    raw_image
-                        .bind_memory_unchecked([alloc])
-                        .map_err(|(err, _, _)| err)?
-                });
+                let inner = Arc::new(
+                    unsafe { raw_image.bind_memory_unchecked([alloc]) }
+                        .map_err(|(err, _, _)| err)?,
+                );
 
                 Ok(Arc::new(StorageImage {
                     inner,

@@ -863,13 +863,13 @@ enum SubmitState {
 mod tests {
     use super::*;
     use crate::{
-        buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+        buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
             synced::SyncCommandBufferBuilderError, BufferCopy, CopyBufferInfoTyped, CopyError,
             ExecuteCommandsError,
         },
         device::{DeviceCreateInfo, QueueCreateInfo},
-        memory::allocator::StandardMemoryAllocator,
+        memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
         sync::GpuFuture,
     };
 
@@ -899,8 +899,12 @@ mod tests {
 
         let source = Buffer::from_iter(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::TRANSFER_SRC,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             [1_u32, 2].iter().copied(),
@@ -909,8 +913,12 @@ mod tests {
 
         let destination = Buffer::from_iter(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::TRANSFER_DST,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             [0_u32, 10, 20, 3, 4].iter().copied(),
@@ -1032,8 +1040,12 @@ mod tests {
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let source = Buffer::from_iter(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             [0_u32, 1, 2, 3].iter().copied(),
@@ -1082,8 +1094,12 @@ mod tests {
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let source = Buffer::from_iter(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             [0_u32, 1, 2, 3].iter().copied(),

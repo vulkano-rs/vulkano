@@ -9,7 +9,7 @@
 
 use std::{io::Cursor, sync::Arc};
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
         BufferImageCopy, ClearColorImageInfo, CommandBufferUsage, CopyBufferToImageInfo,
@@ -29,7 +29,7 @@ use vulkano::{
         SwapchainImage,
     },
     instance::{Instance, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -182,8 +182,12 @@ fn main() {
     ];
     let vertex_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferAllocateInfo {
-            buffer_usage: BufferUsage::VERTEX_BUFFER,
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            usage: MemoryUsage::Upload,
             ..Default::default()
         },
         vertices,
@@ -245,8 +249,12 @@ fn main() {
 
         let buffer = Buffer::from_iter(
             &memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::TRANSFER_SRC,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             image_data,

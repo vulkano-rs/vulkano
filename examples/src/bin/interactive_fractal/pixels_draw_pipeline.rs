@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
@@ -19,7 +19,7 @@ use vulkano::{
     },
     device::Queue,
     image::ImageViewAbstract,
-    memory::allocator::MemoryAllocator,
+    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -88,8 +88,12 @@ impl PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let vertex_buffer = Buffer::from_iter(
             memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::VERTEX_BUFFER,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             vertices,
@@ -97,8 +101,12 @@ impl PixelsDrawPipeline {
         .unwrap();
         let index_buffer = Buffer::from_iter(
             memory_allocator,
-            BufferAllocateInfo {
-                buffer_usage: BufferUsage::INDEX_BUFFER,
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             indices,

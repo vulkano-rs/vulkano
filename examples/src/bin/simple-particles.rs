@@ -14,7 +14,7 @@
 
 use std::{sync::Arc, time::SystemTime};
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferContents, BufferUsage},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         CopyBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
@@ -28,7 +28,7 @@ use vulkano::{
     },
     image::{view::ImageView, ImageUsage},
     instance::{Instance, InstanceCreateInfo},
-    memory::allocator::{MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -349,11 +349,14 @@ fn main() {
         // Create a CPU-accessible buffer initialized with the vertex data.
         let temporary_accessible_buffer = Buffer::from_iter(
             &memory_allocator,
-            BufferAllocateInfo {
+            BufferCreateInfo {
                 // Specify this buffer will be used as a transfer source.
-                buffer_usage: BufferUsage::TRANSFER_SRC,
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
                 // Specify this buffer will be used for uploading to the GPU.
-                memory_usage: MemoryUsage::Upload,
+                usage: MemoryUsage::Upload,
                 ..Default::default()
             },
             vertices,
@@ -364,13 +367,16 @@ fn main() {
         // `Vertex`.
         let device_local_buffer = Buffer::new_slice::<Vertex>(
             &memory_allocator,
-            BufferAllocateInfo {
+            BufferCreateInfo {
                 // Specify use as a storage buffer, vertex buffer, and transfer destination.
-                buffer_usage: BufferUsage::STORAGE_BUFFER
+                usage: BufferUsage::STORAGE_BUFFER
                     | BufferUsage::TRANSFER_DST
                     | BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
                 // Specify this buffer will only be used by the device.
-                memory_usage: MemoryUsage::DeviceOnly,
+                usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             },
             PARTICLE_COUNT as vulkano::DeviceSize,

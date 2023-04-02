@@ -12,7 +12,7 @@ use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryAutoCommandBuffer,
@@ -23,7 +23,7 @@ use vulkano::{
     device::Queue,
     format::Format,
     image::{ImageAccess, ImageUsage, StorageImage},
-    memory::allocator::MemoryAllocator,
+    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::GpuFuture,
 };
@@ -46,8 +46,12 @@ pub struct GameOfLifeComputePipeline {
 fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 2]) -> Subbuffer<[u32]> {
     Buffer::from_iter(
         memory_allocator,
-        BufferAllocateInfo {
-            buffer_usage: BufferUsage::STORAGE_BUFFER,
+        BufferCreateInfo {
+            usage: BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            usage: MemoryUsage::Upload,
             ..Default::default()
         },
         (0..(size[0] * size[1]))

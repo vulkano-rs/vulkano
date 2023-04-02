@@ -95,16 +95,20 @@
 //!
 //! [`RawBuffer`]: self::sys::RawBuffer
 //! [`SubbufferAllocator`]: self::allocator::SubbufferAllocator
+//! [`MemoryUsage::DeviceOnly`]: crate::memory::allocator::MemoryUsage::DeviceOnly
+//! [`MemoryUsage::Upload`]: crate::memory::allocator::MemoryUsage::Upload
+//! [`MemoryUsage::Download`]: crate::memory::allocator::MemoryUsage::Download
 //! [the `view` module]: self::view
 //! [the `shader` module documentation]: crate::shader
 
 pub use self::{
     subbuffer::{BufferContents, BufferContentsLayout, Subbuffer},
+    sys::BufferCreateInfo,
     usage::BufferUsage,
 };
 use self::{
     subbuffer::{ReadLockError, WriteLockError},
-    sys::{BufferCreateInfo, RawBuffer},
+    sys::RawBuffer,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -112,7 +116,7 @@ use crate::{
     memory::{
         allocator::{
             AllocationCreateInfo, AllocationCreationError, AllocationType, DeviceLayout,
-            MemoryAlloc, MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
+            MemoryAlloc, MemoryAllocator,
         },
         is_aligned, DedicatedAllocation, DeviceAlignment, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, ExternalMemoryProperties, MemoryRequirements,
@@ -157,12 +161,12 @@ pub mod view;
 ///
 /// ```
 /// use vulkano::{
-///     buffer::{BufferUsage, Buffer, BufferAllocateInfo},
+///     buffer::{BufferUsage, Buffer, BufferCreateInfo},
 ///     command_buffer::{
 ///         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo,
 ///         PrimaryCommandBufferAbstract,
 ///     },
-///     memory::allocator::MemoryUsage,
+///     memory::allocator::{AllocationCreateInfo, MemoryUsage},
 ///     sync::GpuFuture,
 ///     DeviceSize,
 /// };
@@ -177,11 +181,14 @@ pub mod view;
 /// // Create a host-accessible buffer initialized with the data.
 /// let temporary_accessible_buffer = Buffer::from_iter(
 ///     &memory_allocator,
-///     BufferAllocateInfo {
+///     BufferCreateInfo {
 ///         // Specify that this buffer will be used as a transfer source.
-///         buffer_usage: BufferUsage::TRANSFER_SRC,
+///         usage: BufferUsage::TRANSFER_SRC,
+///         ..Default::default()
+///     },
+///     AllocationCreateInfo {
 ///         // Specify use for upload to the device.
-///         memory_usage: MemoryUsage::Upload,
+///         usage: MemoryUsage::Upload,
 ///         ..Default::default()
 ///     },
 ///     data,
@@ -191,11 +198,14 @@ pub mod view;
 /// // Create a buffer in device-local with enough space for a slice of `10_000` floats.
 /// let device_local_buffer = Buffer::new_slice::<f32>(
 ///     &memory_allocator,
-///     BufferAllocateInfo {
+///     BufferCreateInfo {
 ///         // Specify use as a storage buffer and transfer destination.
-///         buffer_usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
+///         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
+///         ..Default::default()
+///     },
+///     AllocationCreateInfo {
 ///         // Specify use by the device only.
-///         memory_usage: MemoryUsage::DeviceOnly,
+///         usage: MemoryUsage::DeviceOnly,
 ///         ..Default::default()
 ///     },
 ///     10_000 as DeviceSize,
@@ -255,19 +265,23 @@ impl Buffer {
     /// buffer allocated in device-local memory, you will need to create a staging buffer and copy
     /// the contents over.
     ///
+    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
+    /// > itself.
+    ///
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
     /// - Panics if `T` has an alignment greater than `64`.
     pub fn from_data<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        allocate_info: BufferAllocateInfo,
+        buffer_info: BufferCreateInfo,
+        allocation_info: AllocationCreateInfo,
         data: T,
     ) -> Result<Subbuffer<T>, BufferError>
     where
         T: BufferContents,
     {
-        let buffer = Buffer::new_sized(allocator, allocate_info)?;
+        let buffer = Buffer::new_sized(allocator, buffer_info, allocation_info)?;
 
         unsafe { ptr::write(&mut *buffer.write()?, data) };
 
@@ -281,12 +295,16 @@ impl Buffer {
     /// buffer allocated in device-local memory, you will need to create a staging buffer and copy
     /// the contents over.
     ///
+    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
+    /// > itself.
+    ///
     /// # Panics
     ///
     /// - Panics if `iter` is empty.
     pub fn from_iter<T, I>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        allocate_info: BufferAllocateInfo,
+        buffer_info: BufferCreateInfo,
+        allocation_info: AllocationCreateInfo,
         iter: I,
     ) -> Result<Subbuffer<[T]>, BufferError>
     where
@@ -295,7 +313,12 @@ impl Buffer {
         I::IntoIter: ExactSizeIterator,
     {
         let iter = iter.into_iter();
-        let buffer = Buffer::new_slice(allocator, allocate_info, iter.len().try_into().unwrap())?;
+        let buffer = Buffer::new_slice(
+            allocator,
+            buffer_info,
+            allocation_info,
+            iter.len().try_into().unwrap(),
+        )?;
 
         for (o, i) in buffer.write()?.iter_mut().zip(iter) {
             unsafe { ptr::write(o, i) };
@@ -306,15 +329,24 @@ impl Buffer {
 
     /// Creates a new uninitialized `Buffer` for sized data. Returns a [`Subbuffer`] spanning the
     /// whole buffer.
+    ///
+    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
+    /// > itself.
     pub fn new_sized<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        allocate_info: BufferAllocateInfo,
+        buffer_info: BufferCreateInfo,
+        allocation_info: AllocationCreateInfo,
     ) -> Result<Subbuffer<T>, BufferError>
     where
         T: BufferContents,
     {
         let layout = T::LAYOUT.unwrap_sized();
-        let buffer = Subbuffer::new(Buffer::new(allocator, allocate_info, layout)?);
+        let buffer = Subbuffer::new(Buffer::new(
+            allocator,
+            buffer_info,
+            allocation_info,
+            layout,
+        )?);
 
         Ok(unsafe { buffer.reinterpret_unchecked() })
     }
@@ -322,29 +354,37 @@ impl Buffer {
     /// Creates a new uninitialized `Buffer` for a slice. Returns a [`Subbuffer`] spanning the
     /// whole buffer.
     ///
+    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
+    /// > itself.
+    ///
     /// # Panics
     ///
     /// - Panics if `len` is zero.
     pub fn new_slice<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        allocate_info: BufferAllocateInfo,
+        buffer_info: BufferCreateInfo,
+        allocation_info: AllocationCreateInfo,
         len: DeviceSize,
     ) -> Result<Subbuffer<[T]>, BufferError>
     where
         T: BufferContents,
     {
-        Buffer::new_unsized(allocator, allocate_info, len)
+        Buffer::new_unsized(allocator, buffer_info, allocation_info, len)
     }
 
     /// Creates a new uninitialized `Buffer` for unsized data. Returns a [`Subbuffer`] spanning the
     /// whole buffer.
+    ///
+    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
+    /// > itself.
     ///
     /// # Panics
     ///
     /// - Panics if `len` is zero.
     pub fn new_unsized<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        allocate_info: BufferAllocateInfo,
+        buffer_info: BufferCreateInfo,
+        allocation_info: AllocationCreateInfo,
         len: DeviceSize,
     ) -> Result<Subbuffer<T>, BufferError>
     where
@@ -352,48 +392,54 @@ impl Buffer {
     {
         let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
-        let buffer = Subbuffer::new(Buffer::new(allocator, allocate_info, layout)?);
+        let buffer = Subbuffer::new(Buffer::new(
+            allocator,
+            buffer_info,
+            allocation_info,
+            layout,
+        )?);
 
         Ok(unsafe { buffer.reinterpret_unchecked() })
     }
 
     /// Creates a new uninitialized `Buffer` with the given `layout`.
     ///
+    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
+    /// > itself.
+    ///
     /// # Panics
     ///
     /// - Panics if `layout.alignment()` is greater than 64.
     pub fn new(
         allocator: &(impl MemoryAllocator + ?Sized),
-        allocate_info: BufferAllocateInfo,
+        mut buffer_info: BufferCreateInfo,
+        allocation_info: AllocationCreateInfo,
         layout: DeviceLayout,
     ) -> Result<Arc<Self>, BufferError> {
         assert!(layout.alignment().as_devicesize() <= 64);
         // TODO: Enable once sparse binding materializes
         // assert!(!allocate_info.flags.contains(BufferCreateFlags::SPARSE_BINDING));
 
-        let raw_buffer = RawBuffer::new(
-            allocator.device().clone(),
-            BufferCreateInfo {
-                flags: allocate_info.flags,
-                sharing: allocate_info.sharing,
-                size: layout.size(),
-                usage: allocate_info.buffer_usage,
-                external_memory_handle_types: allocate_info.external_memory_handle_types,
-                _ne: crate::NonExhaustive(()),
-            },
-        )?;
+        assert!(
+            buffer_info.size == 0,
+            "`Buffer::new*` functions set the `buffer_info.size` field themselves, you should not \
+            set it yourself",
+        );
+
+        buffer_info.size = layout.size();
+
+        let raw_buffer = RawBuffer::new(allocator.device().clone(), buffer_info)?;
         let mut requirements = *raw_buffer.memory_requirements();
         requirements.layout = requirements.layout.align_to(layout.alignment()).unwrap();
-        let create_info = AllocationCreateInfo {
-            requirements,
-            allocation_type: AllocationType::Linear,
-            usage: allocate_info.memory_usage,
-            dedicated_allocation: Some(DedicatedAllocation::Buffer(&raw_buffer)),
-            allocate_preference: allocate_info.allocate_preference,
-            _ne: crate::NonExhaustive(()),
-        };
 
-        let mut allocation = unsafe { allocator.allocate_unchecked(create_info) }?;
+        let mut allocation = unsafe {
+            allocator.allocate_unchecked(
+                requirements,
+                AllocationType::Linear,
+                allocation_info,
+                Some(DedicatedAllocation::Buffer(&raw_buffer)),
+            )
+        }?;
         debug_assert!(is_aligned(
             allocation.offset(),
             requirements.layout.alignment(),
@@ -532,67 +578,6 @@ impl Eq for Buffer {}
 impl Hash for Buffer {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
-    }
-}
-
-/// Parameters to create a new [`RawBuffer`] and allocate and bind memory to it.
-#[derive(Clone, Debug)]
-pub struct BufferAllocateInfo {
-    /// Flags to enable.
-    ///
-    /// The default value is [`BufferCreateFlags::empty()`].
-    pub flags: BufferCreateFlags,
-
-    /// Whether the buffer can be shared across multiple queues, or is limited to a single queue.
-    ///
-    /// The default value is [`Sharing::Exclusive`].
-    pub sharing: Sharing<SmallVec<[u32; 4]>>,
-
-    /// How the buffer is going to be used.
-    ///
-    /// The default value is [`BufferUsage::empty()`], which must be overridden.
-    pub buffer_usage: BufferUsage,
-
-    /// The external memory handle types that are going to be used with the buffer.
-    ///
-    /// If this value is not empty, then the device API version must be at least 1.1, or the
-    /// [`khr_external_memory`] extension must be enabled on the device.
-    ///
-    /// The default value is [`ExternalMemoryHandleTypes::empty()`].
-    ///
-    /// [`khr_external_memory`]: crate::device::DeviceExtensions::khr_external_memory
-    pub external_memory_handle_types: ExternalMemoryHandleTypes,
-
-    /// The memory usage to use for the allocation.
-    ///
-    /// If this is set to [`MemoryUsage::DeviceOnly`], then the buffer may need to be initialized
-    /// using a staging buffer. The exception is some integrated GPUs and laptop GPUs, which do not
-    /// have memory types that are not host-visible. With [`MemoryUsage::Upload`] and
-    /// [`MemoryUsage::Download`], a staging buffer is never needed.
-    ///
-    /// The default value is [`MemoryUsage::Upload`].
-    pub memory_usage: MemoryUsage,
-
-    /// The memory allocate preference to use for the allocation.
-    ///
-    /// The default value is [`MemoryAllocatePreference::Unknown`].
-    pub allocate_preference: MemoryAllocatePreference,
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl Default for BufferAllocateInfo {
-    #[inline]
-    fn default() -> Self {
-        BufferAllocateInfo {
-            flags: BufferCreateFlags::empty(),
-            sharing: Sharing::Exclusive,
-            buffer_usage: BufferUsage::empty(),
-            external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
-            memory_usage: MemoryUsage::Upload,
-            allocate_preference: MemoryAllocatePreference::Unknown,
-            _ne: crate::NonExhaustive(()),
-        }
     }
 }
 

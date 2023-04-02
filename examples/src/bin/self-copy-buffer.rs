@@ -12,7 +12,7 @@
 // second half.
 
 use vulkano::{
-    buffer::{Buffer, BufferAllocateInfo, BufferUsage},
+    buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferCopy,
         CommandBufferUsage, CopyBufferInfoTyped,
@@ -25,7 +25,7 @@ use vulkano::{
         QueueFlags,
     },
     instance::{Instance, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
     VulkanLibrary,
@@ -126,10 +126,14 @@ fn main() {
 
     let data_buffer = Buffer::from_iter(
         &memory_allocator,
-        BufferAllocateInfo {
-            buffer_usage: BufferUsage::STORAGE_BUFFER
+        BufferCreateInfo {
+            usage: BufferUsage::STORAGE_BUFFER
                 | BufferUsage::TRANSFER_SRC
                 | BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            usage: MemoryUsage::Upload,
             ..Default::default()
         },
         // We intitialize half of the array and leave the other half at 0, we will use the copy
