@@ -10,13 +10,6 @@
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 //! Safe and rich Rust wrapper around the Vulkan API.
 //!
-//! # Cargo features
-//!
-//! | Feature              | Description                                                                   |
-//! |----------------------|-------------------------------------------------------------------------------|
-//! | `document_unchecked` | Include `_unchecked` functions in the generated documentation.                |
-//! | `serde`              | Enables (de)serialization of certain types using [`serde`].                   |
-//!
 //! # Starting off with Vulkano
 //!
 //! The steps for using Vulkan through Vulkano are in principle not any different from using
@@ -101,6 +94,13 @@
 //! `document_unchecked` cargo feature, and then generating the documentation with the command
 //! `cargo doc --open`.
 //!
+//! # Cargo features
+//!
+//! | Feature              | Description                                                                   |
+//! |----------------------|-------------------------------------------------------------------------------|
+//! | `document_unchecked` | Include `_unchecked` functions in the generated documentation.                |
+//! | `serde`              | Enables (de)serialization of certain types using [`serde`].                   |
+//!
 //! [`cgmath`]: https://crates.io/crates/cgmath
 //! [`nalgebra`]: https://crates.io/crates/nalgebra
 //! [`serde`]: https://crates.io/crates/serde
@@ -136,6 +136,7 @@
 #![allow(
     clippy::collapsible_else_if,
     clippy::collapsible_if,
+    clippy::derivable_impls, // TODO: remove
     clippy::large_enum_variant,
     clippy::len_without_is_empty,
     clippy::missing_safety_doc, // TODO: remove

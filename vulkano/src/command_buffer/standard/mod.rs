@@ -12,6 +12,8 @@
 //! Using `CommandBufferBuilder`, you must manually record synchronization commands to ensure
 //! correct operation.
 
+#![allow(dead_code)]
+
 pub use self::builder::*;
 use super::{
     allocator::{CommandBufferAlloc, StandardCommandBufferAlloc},

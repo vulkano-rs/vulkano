@@ -9,6 +9,16 @@
 
 ### Public dependency updates
 
+### Breaking changes
+
+### Additions
+
+### Bugs fixed
+
+# Version 0.33.0 (2023-04-01)
+
+### Public dependency updates
+
 - [ash](https://crates.io/crates/ash) 0.37.2
 - [bytemuck](https://crates.io/crates/bytemuck) 1.9
 - [nalgebra](https://crates.io/crates/nalgebra) 0.32
@@ -75,15 +85,11 @@ Changes to vulkano-shaders:
 - The `ty` module is no longer generated. All types are generated in the same module where the macro call resides.
 
 ### Additions
-- Added `CpuBufferAllocatorCreateInfo`.
+
+- Added `SubbufferAllocatorCreateInfo`.
 - Allow waiting on `SwapchainAcquireFuture`.
 - Implement `IntoIterator` for `Features`, `DeviceExtensions` and `InstanceExtensions`.
-- A new `CommandBufferBuilder` type, that provides validation and keeps resources alive, but requires manual synchronization commands.
-- The `PrimaryCommandBuffer` and `SecondaryCommandBuffer` types.
 - A `buffer_with_range` constructor for `WriteDescriptorSet`, which can be used to select the range within the buffer that should be bound. This must be used when using dynamic buffers.
-- Better cgmath and nalgebra support, enabled by the `cgmath` or `nalgebra` features:
-- `VertexMember` is now implemented for cgmath `Vector`s and `Point`s.
-- `type_for_format_cgmath` and `type_for_format_nalgebra` macros, next to the existing `type_for_format` macro.
 - Added a derive macro for the `Vertex` trait. The `impl_vertex` macro and `VertexMember` trait are deprecated.
 - `BufferDefinition` matching logic was updated to work with the new `VertexMemberInfo` and now matches based on scalar type, number of components and number of elements allowing the use of formats such as `*_UNORM`.
 - `GraphicsPipelineBuilder` validation was extended to make sure locations are not bound multiple times when a single attribute spans multiple locations (e.g. using double precision float formats).
@@ -108,6 +114,7 @@ Changes to vulkano-shaders:
 - Vulkano-win: The features `winit` and `raw-window-handle` can now be used directly, `winit_` and `raw-window-handle_` have been deprecated.
 
 ### Bugs fixed
+
 - [#2094](https://github.com/vulkano-rs/vulkano/issues/2094): Fixed debug assertion when the first command in a command buffer that uses an image expects it to be in the `Undefined` layout.
 - Fixed wrong aspects being used in pipeline barriers when an image view selects one aspect of a combined depth+stencil image.
 - Fixed panic when building a finished command buffer, if the command buffer contains commands that use only some subresources of an image.

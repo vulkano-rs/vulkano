@@ -1,13 +1,6 @@
 //! The procedural macro for vulkano's shader system.
 //! Manages the compile-time compilation of GLSL into SPIR-V and generation of associated Rust code.
 //!
-//! # Cargo features
-//!
-//! | Feature                     | Description                                             |
-//! |-----------------------------|---------------------------------------------------------|
-//! | `shaderc-build-from-source` | Build the `shaderc` library from source when compiling. |
-//! | `shaderc-debug`             | Compile shaders with debug information included.        |
-//!
 //! # Basic usage
 //!
 //! ```
@@ -199,6 +192,13 @@
 //! ## `dump: true`
 //!
 //! The crate fails to compile but prints the generated Rust code to stdout.
+//!
+//! # Cargo features
+//!
+//! | Feature                     | Description                                             |
+//! |-----------------------------|---------------------------------------------------------|
+//! | `shaderc-build-from-source` | Build the `shaderc` library from source when compiling. |
+//! | `shaderc-debug`             | Compile shaders with debug information included.        |
 //!
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [`ShaderModule::from_words_with_data`]: vulkano::shader::ShaderModule::from_words_with_data
@@ -732,17 +732,12 @@ impl Parse for MacroInput {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum LinAlgType {
+    #[default]
     Std,
     CgMath,
     Nalgebra,
-}
-
-impl Default for LinAlgType {
-    fn default() -> Self {
-        LinAlgType::Std
-    }
 }
 
 macro_rules! bail {
