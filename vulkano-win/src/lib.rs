@@ -1,7 +1,7 @@
 //! # Cargo features
 //!
 //! | Feature             | Description                                                                |
-//! |----------------------|---------------------------------------------------------------------------|
+//! |---------------------|----------------------------------------------------------------------------|
 //! | `raw_window_handle` | Include support for the [`raw_window_handle`] library. Enabled by default. |
 //! | `winit`             | Include support for the [`winit`] library. Enabled by default.             |
 //!

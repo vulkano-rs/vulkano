@@ -97,7 +97,7 @@
 //! # Cargo features
 //!
 //! | Feature              | Description                                                    |
-//! |----------------------|---------------------------------------------------------------||
+//! |----------------------|----------------------------------------------------------------|
 //! | `macros`             | Include reexports from [`vulkano-macros`]. Enabled by default. |
 //! | `document_unchecked` | Include `_unchecked` functions in the generated documentation. |
 //! | `serde`              | Enables (de)serialization of certain types using [`serde`].    |
