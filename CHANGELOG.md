@@ -99,7 +99,6 @@ Changes to vulkano-shaders:
 - Added the type alias `NonZeroDeviceSize`.
 - Added `VertexBufferDescription` and three new methods to the `Vertex` trait that return it: `per_vertex`, `per_instance` and `per_instance_with_divisor`. This deprecates and replaces `BuffersDefinition`.
 - Implemented `From<SampleCount>` for `u32`.
-- Added `BufferAllocateInfo`.
 - Added documentation to the `shader` module to explain the layout of buffers, push constants and other data accessed by shaders.
 - The macros `single_pass_renderpass!` and `ordered_passes_renderpass!` now allow trailing commas in various places.
 - Added a `BufferContents` derive macro. You no longer need to use `bytemuck` to read/write your structs form/to buffers.
