@@ -1,9 +1,9 @@
 //! # Cargo features
 //!
-//! | Feature              | Description                                                                |
-//! |----------------------|----------------------------------------------------------------------------|
-//! | `raw_window_handle_` | Include support for the [`raw_window_handle`] library. Enabled by default. |
-//! | `winit_`             | Include support for the [`winit`] library. Enabled by default.             |
+//! | Feature             | Description                                                                |
+//! |----------------------|---------------------------------------------------------------------------|
+//! | `raw_window_handle` | Include support for the [`raw_window_handle`] library. Enabled by default. |
+//! | `winit`             | Include support for the [`winit`] library. Enabled by default.             |
 //!
 //! [`raw_window_handle`]: https://crates.io/crates/raw_window_handle
 //! [`winit`]: https://crates.io/crates/winit
