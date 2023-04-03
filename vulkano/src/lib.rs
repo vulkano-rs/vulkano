@@ -96,14 +96,12 @@
 //!
 //! # Cargo features
 //!
-//! | Feature              | Description                                                                   |
-//! |----------------------|-------------------------------------------------------------------------------|
-//! | `document_unchecked` | Include `_unchecked` functions in the generated documentation.                |
-//! | `serde`              | Enables (de)serialization of certain types using [`serde`].                   |
+//! | Feature              | Description                                                    |
+//! |----------------------|---------------------------------------------------------------||
+//! | `macros`             | Include reexports from [`vulkano-macros`]. Enabled by default. |
+//! | `document_unchecked` | Include `_unchecked` functions in the generated documentation. |
+//! | `serde`              | Enables (de)serialization of certain types using [`serde`].    |
 //!
-//! [`cgmath`]: https://crates.io/crates/cgmath
-//! [`nalgebra`]: https://crates.io/crates/nalgebra
-//! [`serde`]: https://crates.io/crates/serde
 //! [`VulkanLibrary`]: crate::VulkanLibrary
 //! [`Instance`]: crate::instance::Instance
 //! [`Surface`]: crate::swapchain::Surface
@@ -125,6 +123,8 @@
 //! [`PipelineLayout`]: crate::pipeline::layout
 //! [`RenderPass`]: crate::render_pass::RenderPass
 //! [`Framebuffer`]: crate::render_pass::Framebuffer
+//! [`vulkano-macros`]: vulkano_macros
+//! [`serde`]: https://crates.io/crates/serde
 
 //#![warn(missing_docs)]        // TODO: activate
 #![warn(
