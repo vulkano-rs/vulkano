@@ -10,6 +10,7 @@
 use super::VertexInputRate;
 use crate::{buffer::BufferContents, format::Format};
 use std::collections::HashMap;
+#[cfg(feature = "macros")]
 pub use vulkano_macros::Vertex;
 
 /// Describes an individual `Vertex`. In other words a collection of attributes that can be read

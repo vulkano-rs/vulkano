@@ -36,6 +36,7 @@ use std::{
     thread,
 };
 
+#[cfg(feature = "macros")]
 pub use vulkano_macros::BufferContents;
 
 /// A subpart of a buffer.

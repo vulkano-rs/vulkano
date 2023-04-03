@@ -7,6 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Macros for [`vulkano`].
+//!
+//! [`vulkano`]: https://crates.io/crates/vulkano
+
 use proc_macro::TokenStream;
 use proc_macro_crate::{crate_name, FoundCrate};
 use syn::{parse_macro_input, DeriveInput, Error};
@@ -14,6 +18,9 @@ use syn::{parse_macro_input, DeriveInput, Error};
 mod derive_buffer_contents;
 mod derive_vertex;
 
+/// Derives the [`Vertex`] trait.
+///
+/// [`Vertex`]: https://docs.rs/vulkano/latest/vulkano/pipeline/graphics/vertex_input/trait.Vertex.html
 #[proc_macro_derive(Vertex, attributes(name, format))]
 pub fn derive_vertex(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
@@ -23,6 +30,9 @@ pub fn derive_vertex(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Derives the [`BufferContents`] trait.
+///
+/// [`BufferContents`]: https://docs.rs/vulkano/latest/vulkano/buffer/trait.BufferContents.html
 #[proc_macro_derive(BufferContents)]
 pub fn derive_buffer_contents(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);

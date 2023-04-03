@@ -30,7 +30,7 @@ parking_lot = { version = "0.12", features = ["send_guard"] }
 serde = { version = "1.0", optional = true }
 smallvec = "1.8"
 thread_local = "1.1"
-vulkano-macros = { path = "macros", version = "0.33.0" }
+vulkano-macros = { path = "../vulkano-macros", version = "0.33.0", optional = true }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc = "0.2.5"
@@ -53,4 +53,6 @@ cgmath = "0.18"
 nalgebra = "0.32"
 
 [features]
+default = ["macros"]
+macros = ["vulkano-macros"]
 document_unchecked = []
