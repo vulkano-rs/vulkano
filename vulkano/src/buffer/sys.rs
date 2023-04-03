@@ -646,7 +646,12 @@ pub struct BufferCreateInfo {
 
     /// The size in bytes of the buffer.
     ///
-    /// The default value is `0`, which must be overridden.
+    /// When using the [`Buffer`] constructors, you must leave this at `0`. They fill this field
+    /// based on the data type of the contents and the other parameters you provide, and then pass
+    /// this create-info to [`RawBuffer::new`]. You must override the default when constructing
+    /// [`RawBuffer`] directly.
+    ///
+    /// The default value is `0`.
     pub size: DeviceSize,
 
     /// How the buffer is going to be used.

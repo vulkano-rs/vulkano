@@ -261,17 +261,14 @@ impl Buffer {
     /// Creates a new `Buffer` and writes `data` in it. Returns a [`Subbuffer`] spanning the whole
     /// buffer.
     ///
-    /// This only works with memory types that are host-visible. If you want to upload data to a
-    /// buffer allocated in device-local memory, you will need to create a staging buffer and copy
-    /// the contents over.
-    ///
-    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
-    /// > itself.
+    /// > **Note**: This only works with memory types that are host-visible. If you want to upload
+    /// > data to a buffer allocated in device-local memory, you will need to create a staging
+    /// > buffer and copy the contents over.
     ///
     /// # Panics
     ///
-    /// - Panics if `T` has zero size.
-    /// - Panics if `T` has an alignment greater than `64`.
+    /// - Panics if `buffer_info.size` is not zero.
+    /// - Panics if the chosen memory type is not host-visible.
     pub fn from_data<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
         buffer_info: BufferCreateInfo,
@@ -291,15 +288,14 @@ impl Buffer {
     /// Creates a new `Buffer` and writes all elements of `iter` in it. Returns a [`Subbuffer`]
     /// spanning the whole buffer.
     ///
-    /// This only works with memory types that are host-visible. If you want to upload data to a
-    /// buffer allocated in device-local memory, you will need to create a staging buffer and copy
-    /// the contents over.
-    ///
-    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
-    /// > itself.
+    /// > **Note**: This only works with memory types that are host-visible. If you want to upload
+    /// > data to a buffer allocated in device-local memory, you will need to create a staging
+    /// > buffer and copy the contents over.
     ///
     /// # Panics
     ///
+    /// - Panics if `buffer_info.size` is not zero.
+    /// - Panics if the chosen memory type is not host-visible.
     /// - Panics if `iter` is empty.
     pub fn from_iter<T, I>(
         allocator: &(impl MemoryAllocator + ?Sized),
@@ -330,8 +326,9 @@ impl Buffer {
     /// Creates a new uninitialized `Buffer` for sized data. Returns a [`Subbuffer`] spanning the
     /// whole buffer.
     ///
-    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
-    /// > itself.
+    /// # Panics
+    ///
+    /// - Panics if `buffer_info.size` is not zero.
     pub fn new_sized<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
         buffer_info: BufferCreateInfo,
@@ -354,11 +351,9 @@ impl Buffer {
     /// Creates a new uninitialized `Buffer` for a slice. Returns a [`Subbuffer`] spanning the
     /// whole buffer.
     ///
-    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
-    /// > itself.
-    ///
     /// # Panics
     ///
+    /// - Panics if `buffer_info.size` is not zero.
     /// - Panics if `len` is zero.
     pub fn new_slice<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
@@ -375,11 +370,9 @@ impl Buffer {
     /// Creates a new uninitialized `Buffer` for unsized data. Returns a [`Subbuffer`] spanning the
     /// whole buffer.
     ///
-    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
-    /// > itself.
-    ///
     /// # Panics
     ///
+    /// - Panics if `buffer_info.size` is not zero.
     /// - Panics if `len` is zero.
     pub fn new_unsized<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
@@ -404,11 +397,9 @@ impl Buffer {
 
     /// Creates a new uninitialized `Buffer` with the given `layout`.
     ///
-    /// > **Note**: You should **not** set the `buffer_info.size` field. The function does that
-    /// > itself.
-    ///
     /// # Panics
     ///
+    /// - Panics if `buffer_info.size` is not zero.
     /// - Panics if `layout.alignment()` is greater than 64.
     pub fn new(
         allocator: &(impl MemoryAllocator + ?Sized),
