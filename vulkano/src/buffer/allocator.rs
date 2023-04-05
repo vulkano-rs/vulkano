@@ -44,10 +44,11 @@ const MAX_ARENAS: usize = 32;
 ///
 /// The allocator keeps a pool of *arenas*. An arena is simply a buffer in which *arena allocation*
 /// takes place, also known as *bump allocation* or *linear allocation*. Every time you allocate,
-/// one of these arenas is suballocated. If there is no arena that is currently available, one will
-/// be allocated. After all subbuffers allocated from an arena are dropped, the arena is
-/// automatically returned to the arena pool. If you try to allocate a subbuffer larger than the
-/// current size of an arena, the arenas are automatically resized.
+/// one of these arenas is suballocated. An arena is suballocated until it runs out of space, at
+/// which point a free one is taken from the pool. If there is no arena that is currently
+/// available, one will be allocated. After all subbuffers allocated from an arena are dropped, the
+/// arena is automatically returned to the arena pool for reuse. If you try to allocate a subbuffer
+/// larger than the current size of an arena, the arenas are automatically resized.
 ///
 /// No memory is allocated when the allocator is created, be it on the Vulkan or Rust side. That
 /// only happens once you allocate a subbuffer.
