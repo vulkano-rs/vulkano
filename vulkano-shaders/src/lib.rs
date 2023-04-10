@@ -251,8 +251,8 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
     let root_path = Path::new(&root);
     let shaders = mem::take(&mut input.shaders); // yoink
 
-    let mut shaders_code = Vec::with_capacity(input.shaders.len());
-    let mut types_code = Vec::with_capacity(input.shaders.len());
+    let mut shaders_code = Vec::with_capacity(shaders.len());
+    let mut types_code = Vec::with_capacity(shaders.len());
     let mut type_registry = TypeRegistry::default();
 
     for (name, (shader_kind, source_kind)) in shaders {
