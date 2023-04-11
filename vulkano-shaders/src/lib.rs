@@ -209,7 +209,7 @@
 //! | `shaderc-build-from-source` | Build the `shaderc` library from source when compiling. |
 //! | `shaderc-debug`             | Compile shaders with debug information included.        |
 //!
-//! [cargo-env-vars]: https://doc.rust-lang.org/cargo/reference/environment-variables.html
+//! [`cargo-env-vars`]: https://doc.rust-lang.org/cargo/reference/environment-variables.html
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [`ShaderModule::from_words_with_data`]: vulkano::shader::ShaderModule::from_words_with_data
 //! [`SpecializationConstants`]: vulkano::shader::SpecializationConstants
@@ -268,9 +268,9 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                 Err(e) => {
                     bail!(
                         root_path_env,
-                        "env variable `{root_path_env:?}` provided by `root_path_env` parameter of \
-                        the shader was {e:?}! Typical parameters are `OUT_DIR` to gather results \
-                        from your build script, or left default to search relative to your Cargo.toml."
+                        "failed to fetch environment variable: {e}; typical parameters are \
+                        `OUT_DIR` to gather results from your build script, or left default to \
+                        search relative to your Cargo.toml",
                     )
                 }
             };
