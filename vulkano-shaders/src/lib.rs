@@ -33,18 +33,15 @@
 //!
 //! - The `load` constructor. This function takes an `Arc<Device>`, calls
 //!   [`ShaderModule::from_words_with_data`] with the passed-in device and the shader data provided
-//!   via the macro, and returns `Result<Arc<ShaderModule>, ShaderCreationError>`. Before doing so,
-//!   it loops through every capability instruction in the shader data, verifying that the
-//!   passed-in `Device` has the appropriate features enabled.
+//!   via the macro, and returns `Result<Arc<ShaderModule>, ShaderModuleCreationError>`.
+//!   Before doing so, it loops through every capability instruction in the shader data,
+//!   verifying that the passed-in `Device` has the appropriate features enabled.
 //! - If the `shaders` option is used, then instead of one `load` constructor, there is one for
 //!   each shader. They are named based on the provided names, `load_first`, `load_second` etc.
 //! - A Rust struct translated from each struct contained in the shader data. By default each
 //!   structure has a `Clone` and a `Copy` implementation. This behavior could be customized
 //!   through the `custom_derives` macro option (see below for details). Each struct also has an
 //!   implementation of [`BufferContents`], so that it can be read from/written to a buffer.
-//! - The `SpecializationConstants` struct. This contains a field for every specialization constant
-//!   found in the shader data. Implementations of [`Default`] and [`SpecializationConstants`] are
-//!   also generated for the struct.
 //!
 //! All of these generated items will be accessed through the module where the macro was invoked.
 //! If you wanted to store the `ShaderModule` in a struct of your own, you could do something like
@@ -53,7 +50,7 @@
 //! ```
 //! # fn main() {}
 //! # use std::sync::Arc;
-//! # use vulkano::shader::{ShaderCreationError, ShaderModule};
+//! # use vulkano::shader::{ShaderModuleCreationError, ShaderModule};
 //! # use vulkano::device::Device;
 //! #
 //! # mod vs {
@@ -78,7 +75,7 @@
 //! }
 //!
 //! impl Shaders {
-//!     pub fn load(device: Arc<Device>) -> Result<Self, ShaderCreationError> {
+//!     pub fn load(device: Arc<Device>) -> Result<Self, ShaderModuleCreationError> {
 //!         Ok(Self {
 //!             vs: vs::load(device)?,
 //!         })
@@ -129,17 +126,12 @@
 //! ## `shaders: { first: { src: "...", ty: "..." }, ... }`
 //!
 //! With these options the user can compile several shaders in a single macro invocation. Each
-//! entry key will be the suffix of the generated `load` function (`load_first` in this case) and
-//! the prefix of the `SpecializationConstants` struct (`FirstSpecializationConstants` in this
-//! case). However all other Rust structs translated from the shader source will be shared between
+//! entry key will be the suffix of the generated `load` function (`load_first` in this case).
+//! However all other Rust structs translated from the shader source will be shared between
 //! shaders. The macro checks that the source structs with the same names between different shaders
 //! have the same declaration signature, and throws a compile-time error if they don't.
 //!
 //! Each entry expects a `src`, `path`, `bytes`, and `ty` pairs same as above.
-//!
-//! Also, `SpecializationConstants` can be shared between all shaders by specifying the
-//! `shared_constants: true,` entry-flag in the `shaders` map. This feature is turned off by
-//! default.
 //!
 //! ## `include: ["...", "...", ...]`
 //!
@@ -202,7 +194,6 @@
 //!
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [`ShaderModule::from_words_with_data`]: vulkano::shader::ShaderModule::from_words_with_data
-//! [`SpecializationConstants`]: vulkano::shader::SpecializationConstants
 //! [pipeline]: vulkano::pipeline
 //! [`set_target_env`]: shaderc::CompileOptions::set_target_env
 //! [`set_target_spirv`]: shaderc::CompileOptions::set_target_spirv
@@ -352,7 +343,6 @@ enum SourceKind {
 struct MacroInput {
     include_directories: Vec<PathBuf>,
     macro_defines: Vec<(String, String)>,
-    shared_constants: bool,
     shaders: HashMap<String, (ShaderKind, SourceKind)>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
@@ -367,7 +357,6 @@ impl MacroInput {
         MacroInput {
             include_directories: Vec::new(),
             macro_defines: Vec::new(),
-            shared_constants: false,
             shaders: HashMap::default(),
             vulkan_version: None,
             spirv_version: None,
@@ -384,7 +373,6 @@ impl Parse for MacroInput {
 
         let mut include_directories = Vec::new();
         let mut macro_defines = Vec::new();
-        let mut shared_constants = None;
         let mut shaders = HashMap::default();
         let mut vulkan_version = None;
         let mut spirv_version = None;
@@ -494,22 +482,6 @@ impl Parse for MacroInput {
                     while !in_braces.is_empty() {
                         let name_ident = in_braces.parse::<Ident>()?;
                         let name = name_ident.to_string();
-
-                        if &name == "shared_constants" {
-                            in_braces.parse::<Token![:]>()?;
-
-                            let lit = in_braces.parse::<LitBool>()?;
-                            if shared_constants.is_some() {
-                                bail!(lit, "field `shared_constants` is already defined");
-                            }
-                            shared_constants = Some(lit.value);
-
-                            if !in_braces.is_empty() {
-                                in_braces.parse::<Token![,]>()?;
-                            }
-
-                            continue;
-                        }
 
                         if shaders.contains_key(&name) {
                             bail!(name_ident, "shader entry `{name}` is already defined");
@@ -711,7 +683,6 @@ impl Parse for MacroInput {
         Ok(MacroInput {
             include_directories,
             macro_defines,
-            shared_constants: shared_constants.unwrap_or(false),
             shaders: shaders
                 .into_iter()
                 .map(|(key, (shader_kind, shader_source))| {

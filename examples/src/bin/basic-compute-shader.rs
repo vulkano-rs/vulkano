@@ -28,6 +28,7 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
 };
@@ -138,8 +139,7 @@ fn main() {
 
         ComputePipeline::new(
             device.clone(),
-            shader.entry_point("main").unwrap(),
-            &(),
+            PipelineShaderStageCreateInfo::entry_point(shader.entry_point("main").unwrap()),
             None,
             |_| {},
         )

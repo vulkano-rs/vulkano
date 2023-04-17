@@ -37,7 +37,9 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
+            multisample::MultisampleState,
             rasterization::{PolygonMode, RasterizationState},
             tessellation::TessellationState,
             vertex_input::Vertex,
@@ -46,6 +48,7 @@ use vulkano::{
         GraphicsPipeline,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -338,17 +341,14 @@ fn main() {
     .unwrap();
 
     let pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(tcs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(tes.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+        ])
         .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        // Actually use the tessellation shaders.
-        .tessellation_shaders(
-            tcs.entry_point("main").unwrap(),
-            (),
-            tes.entry_point("main").unwrap(),
-            (),
-        )
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PatchList))
-        .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::Line))
         .tessellation_state(
             TessellationState::new()
                 // Use a patch_control_points of 3, because we want to convert one triangle into
@@ -357,7 +357,9 @@ fn main() {
                 .patch_control_points(3),
         )
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::Line))
+        .multisample_state(MultisampleState::default())
+        .color_blend_state(ColorBlendState::default())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

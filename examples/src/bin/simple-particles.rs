@@ -31,13 +31,17 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
+    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, PresentMode, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
@@ -411,8 +415,7 @@ fn main() {
     // Create a compute-pipeline for applying the compute shader to vertices.
     let compute_pipeline = vulkano::pipeline::ComputePipeline::new(
         device.clone(),
-        cs.entry_point("main").unwrap(),
-        &(),
+        PipelineShaderStageCreateInfo::entry_point(cs.entry_point("main").unwrap()),
         None,
         |_| {},
     )
@@ -445,12 +448,17 @@ fn main() {
 
     // Create a basic graphics pipeline for rendering particles.
     let graphics_pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+        ])
         .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
         // Vertices will be rendered as a list of points.
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList))
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .rasterization_state(RasterizationState::default())
+        .multisample_state(MultisampleState::default())
+        .color_blend_state(ColorBlendState::default())
         .render_pass(Subpass::from(render_pass, 0).unwrap())
         .build(device.clone())
         .unwrap();

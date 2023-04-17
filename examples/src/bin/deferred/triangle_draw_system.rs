@@ -18,14 +18,18 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             depth_stencil::DepthStencilState,
             input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
     },
     render_pass::Subpass,
+    shader::PipelineShaderStageCreateInfo,
 };
 
 pub struct TriangleDrawSystem {
@@ -74,12 +78,17 @@ impl TriangleDrawSystem {
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
 
             GraphicsPipeline::start()
+                .stages([
+                    PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
+                    PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+                ])
                 .vertex_input_state(TriangleVertex::per_vertex())
-                .vertex_shader(vs.entry_point("main").unwrap(), ())
-                .input_assembly_state(InputAssemblyState::new())
+                .input_assembly_state(InputAssemblyState::default())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                .fragment_shader(fs.entry_point("main").unwrap(), ())
+                .rasterization_state(RasterizationState::default())
                 .depth_stencil_state(DepthStencilState::simple_depth_test())
+                .multisample_state(MultisampleState::default())
+                .color_blend_state(ColorBlendState::default())
                 .render_pass(subpass.clone())
                 .build(gfx_queue.device().clone())
                 .unwrap()

@@ -37,7 +37,9 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
             rasterization::{CullMode, FrontFace, RasterizationState},
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
@@ -45,7 +47,7 @@ use vulkano::{
         GraphicsPipeline,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::ShaderModule,
+    shader::{PipelineShaderStageCreateInfo, ShaderModule},
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -199,16 +201,20 @@ fn main() {
     };
 
     let graphics_pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+        ])
         .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
+        .input_assembly_state(InputAssemblyState::default())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .rasterization_state(
             RasterizationState::new()
                 .cull_mode(CullMode::Front)
                 .front_face(FrontFace::CounterClockwise),
         )
+        .multisample_state(MultisampleState::default())
+        .color_blend_state(ColorBlendState::default())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

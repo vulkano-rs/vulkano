@@ -22,7 +22,10 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
@@ -30,6 +33,7 @@ use vulkano::{
     },
     render_pass::Subpass,
     sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
+    shader::PipelineShaderStageCreateInfo,
 };
 
 /// Vertex for textured quads.
@@ -116,12 +120,18 @@ impl PixelsDrawPipeline {
         let pipeline = {
             let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
+
             GraphicsPipeline::start()
+                .stages([
+                    PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
+                    PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+                ])
                 .vertex_input_state(TexturedVertex::per_vertex())
-                .vertex_shader(vs.entry_point("main").unwrap(), ())
-                .input_assembly_state(InputAssemblyState::new())
-                .fragment_shader(fs.entry_point("main").unwrap(), ())
+                .input_assembly_state(InputAssemblyState::default())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+                .rasterization_state(RasterizationState::default())
+                .multisample_state(MultisampleState::default())
+                .color_blend_state(ColorBlendState::default())
                 .render_pass(subpass.clone())
                 .build(gfx_queue.device().clone())
                 .unwrap()

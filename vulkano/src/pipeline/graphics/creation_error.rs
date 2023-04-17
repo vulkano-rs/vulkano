@@ -12,7 +12,7 @@ use crate::{
     descriptor_set::layout::DescriptorSetLayoutCreationError,
     format::{Format, NumericType},
     pipeline::layout::{PipelineLayoutCreationError, PipelineLayoutSupersetError},
-    shader::{ShaderInterfaceMismatchError, ShaderScalarType},
+    shader::{ShaderInterfaceMismatchError, ShaderScalarType, ShaderStage, SpecializationConstant},
     OomError, RequirementNotMet, RequiresOneOf, VulkanError,
 };
 use std::{
@@ -21,7 +21,7 @@ use std::{
 };
 
 /// Error that can happen when creating a graphics pipeline.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GraphicsPipelineCreationError {
     RequirementNotMet {
         required_for: &'static str,
@@ -46,9 +46,6 @@ pub enum GraphicsPipelineCreationError {
 
     /// The pipeline layout is not compatible with what the shaders expect.
     IncompatiblePipelineLayout(PipelineLayoutSupersetError),
-
-    /// The provided specialization constants are not compatible with what the shader expects.
-    IncompatibleSpecializationConstants,
 
     /// The vertex definition is not compatible with the input of the vertex shader.
     IncompatibleVertexDefinition(IncompatibleVertexDefinitionError),
@@ -157,14 +154,47 @@ pub enum GraphicsPipelineCreationError {
     /// Not enough memory.
     OomError(OomError),
 
+    /// Only one tessellation shader stage was provided, the other was not.
+    OtherTessellationShaderStageMissing,
+
     /// Error while creating a descriptor set layout object.
     DescriptorSetLayoutCreationError(DescriptorSetLayoutCreationError),
 
     /// Error while creating the pipeline layout object.
     PipelineLayoutCreationError(PipelineLayoutCreationError),
 
+    /// The value provided for a shader specialization constant has a
+    /// different type than the constant's default value.
+    ShaderSpecializationConstantTypeMismatch {
+        stage_index: usize,
+        constant_id: u32,
+        default_value: SpecializationConstant,
+        provided_value: SpecializationConstant,
+    },
+
+    /// A shader stage was provided more than once.
+    ShaderStageDuplicate {
+        stage_index: usize,
+        stage: ShaderStage,
+    },
+
+    /// A shader stage is not a graphics shader.
+    ShaderStageInvalid {
+        stage_index: usize,
+        stage: ShaderStage,
+    },
+
+    /// The configuration of the pipeline does not use a shader stage, but it was provided.
+    ShaderStageUnused { stage: ShaderStage },
+
     /// The output interface of one shader and the input interface of the next shader do not match.
     ShaderStagesMismatch(ShaderInterfaceMismatchError),
+
+    /// The configuration of the pipeline requires a state to be provided, but it was not.
+    StateMissing { state: &'static str },
+
+    /// The configuration of the pipeline does not use a state, but it was provided.
+    StateUnused { state: &'static str },
 
     /// The stencil attachment has a format that does not support that usage.
     StencilAttachmentFormatUsageNotSupported,
@@ -197,6 +227,9 @@ pub enum GraphicsPipelineCreationError {
 
     /// The format specified by a vertex input attribute is not supported for vertex buffers.
     VertexInputAttributeUnsupportedFormat { location: u32, format: Format },
+
+    /// No vertex shader stage was provided.
+    VertexShaderStageMissing,
 
     /// The minimum or maximum bounds of viewports have been exceeded.
     ViewportBoundsExceeded,
@@ -260,11 +293,6 @@ impl Display for GraphicsPipelineCreationError {
             Self::IncompatiblePipelineLayout(_) => write!(
                 f,
                 "the pipeline layout is not compatible with what the shaders expect",
-            ),
-            Self::IncompatibleSpecializationConstants => write!(
-                f,
-                "the provided specialization constants are not compatible with what the shader \
-                expects",
             ),
             Self::IncompatibleVertexDefinition(_) => write!(
                 f,
@@ -336,16 +364,64 @@ impl Display for GraphicsPipelineCreationError {
                 "the stencil attachment of the render pass does not match the stencil test",
             ),
             Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::OtherTessellationShaderStageMissing => write!(
+                f,
+                "only one tessellation shader stage was provided, the other was not",
+            ),
             Self::DescriptorSetLayoutCreationError(_) => {
                 write!(f, "error while creating a descriptor set layout object")
             }
             Self::PipelineLayoutCreationError(_) => {
                 write!(f, "error while creating the pipeline layout object")
             }
+            Self::ShaderSpecializationConstantTypeMismatch {
+                stage_index,
+                constant_id,
+                default_value,
+                provided_value,
+            } => write!(
+                f,
+                "the value provided for shader {} specialization constant id {} ({:?}) has a \
+                different type than the constant's default value ({:?})",
+                stage_index, constant_id, provided_value, default_value,
+            ),
+            Self::ShaderStageDuplicate {
+                stage_index,
+                stage,
+            } => write!(
+                f,
+                "the shader stage at index {} (stage: {:?}) was provided more than once",
+                stage_index, stage,
+            ),
+            Self::ShaderStageInvalid {
+                stage_index,
+                stage,
+            } => write!(
+                f,
+                "the shader stage at index {} (stage: {:?}) is not a graphics shader",
+                stage_index, stage,
+            ),
+            Self::ShaderStageUnused {
+                stage,
+            } => write!(
+                f,
+                "the configuration of the pipeline does not use the `{:?}` shader stage, but it was provided",
+                stage,
+            ),
             Self::ShaderStagesMismatch(_) => write!(
                 f,
                 "the output interface of one shader and the input interface of the next shader do \
                 not match",
+            ),
+            Self::StateMissing { state } => write!(
+                f,
+                "the configuration of the pipeline requires `{}` to be provided, but it was not",
+                state,
+            ),
+            Self::StateUnused { state } => write!(
+                f,
+                "the configuration of the pipeline does not use `{}`, but it was provided",
+                state,
             ),
             Self::StencilAttachmentFormatUsageNotSupported => write!(
                 f,
@@ -390,6 +466,10 @@ impl Display for GraphicsPipelineCreationError {
                 "the format {:?} specified by vertex input attribute location {} is not supported \
                 for vertex buffers",
                 format, location,
+            ),
+            Self::VertexShaderStageMissing => write!(
+                f,
+                "no vertex shader stage was provided",
             ),
             Self::ViewportBoundsExceeded => write!(
                 f,

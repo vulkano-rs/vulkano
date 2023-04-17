@@ -8,46 +8,37 @@
 // according to those terms.
 
 use ahash::HashMap;
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::TokenStream;
 use vulkano::{
     pipeline::layout::PushConstantRange,
     shader::{
-        spirv::ExecutionModel, DescriptorBindingRequirements, DescriptorIdentifier,
-        DescriptorRequirements, EntryPointInfo, ShaderExecution, ShaderInterface,
-        ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderStages,
-        SpecializationConstantRequirements,
+        DescriptorBindingRequirements, DescriptorIdentifier, DescriptorRequirements,
+        EntryPointInfo, ShaderExecution, ShaderInterface, ShaderInterfaceEntry,
+        ShaderInterfaceEntryType, ShaderStages, SpecializationConstant,
     },
 };
 
-pub(super) fn write_entry_point(
-    name: &str,
-    model: ExecutionModel,
-    info: &EntryPointInfo,
-) -> TokenStream {
+pub(super) fn write_entry_point(info: &EntryPointInfo) -> TokenStream {
+    let name = &info.name;
     let execution = write_shader_execution(&info.execution);
-    let model = Ident::new(&format!("{:?}", model), Span::call_site());
     let descriptor_binding_requirements =
         write_descriptor_binding_requirements(&info.descriptor_binding_requirements);
     let push_constant_requirements =
         write_push_constant_requirements(&info.push_constant_requirements);
-    let specialization_constant_requirements =
-        write_specialization_constant_requirements(&info.specialization_constant_requirements);
+    let specialization_constants = write_specialization_constants(&info.specialization_constants);
     let input_interface = write_interface(&info.input_interface);
     let output_interface = write_interface(&info.output_interface);
 
     quote! {
-        (
-            #name.to_owned(),
-            ::vulkano::shader::spirv::ExecutionModel::#model,
-            ::vulkano::shader::EntryPointInfo {
-                execution: #execution,
-                descriptor_binding_requirements: #descriptor_binding_requirements.into_iter().collect(),
-                push_constant_requirements: #push_constant_requirements,
-                specialization_constant_requirements: #specialization_constant_requirements.into_iter().collect(),
-                input_interface: #input_interface,
-                output_interface: #output_interface,
-            },
-        )
+        ::vulkano::shader::EntryPointInfo {
+            name: #name.to_owned(),
+            execution: #execution,
+            descriptor_binding_requirements: #descriptor_binding_requirements.into_iter().collect(),
+            push_constant_requirements: #push_constant_requirements,
+            specialization_constants: #specialization_constants.into_iter().collect(),
+            input_interface: #input_interface,
+            output_interface: #output_interface,
+        },
     }
 }
 
@@ -248,27 +239,47 @@ fn write_push_constant_requirements(
     }
 }
 
-fn write_specialization_constant_requirements(
-    specialization_constant_requirements: &HashMap<u32, SpecializationConstantRequirements>,
+fn write_specialization_constants(
+    specialization_constants: &HashMap<u32, SpecializationConstant>,
 ) -> TokenStream {
-    let specialization_constant_requirements =
-        specialization_constant_requirements
-            .iter()
-            .map(|(&constant_id, reqs)| {
-                let SpecializationConstantRequirements { size } = reqs;
-                quote! {
-                    (
-                        #constant_id,
-                        ::vulkano::shader::SpecializationConstantRequirements {
-                            size: #size,
-                        },
-                    )
+    let specialization_constants = specialization_constants
+        .iter()
+        .map(|(&constant_id, value)| {
+            let value = match value {
+                SpecializationConstant::Bool(value) => quote! { Bool(#value) },
+                SpecializationConstant::I8(value) => quote! { I8(#value) },
+                SpecializationConstant::I16(value) => quote! { I16(#value) },
+                SpecializationConstant::I32(value) => quote! { I32(#value) },
+                SpecializationConstant::I64(value) => quote! { I64(#value) },
+                SpecializationConstant::U8(value) => quote! { U8(#value) },
+                SpecializationConstant::U16(value) => quote! { U16(#value) },
+                SpecializationConstant::U32(value) => quote! { U32(#value) },
+                SpecializationConstant::U64(value) => quote! { U64(#value) },
+                SpecializationConstant::F16(value) => {
+                    let bits = value.to_bits();
+                    quote! { F16(f16::from_bits(#bits)) }
                 }
-            });
+                SpecializationConstant::F32(value) => {
+                    let bits = value.to_bits();
+                    quote! { F32(f32::from_bits(#bits)) }
+                }
+                SpecializationConstant::F64(value) => {
+                    let bits = value.to_bits();
+                    quote! { F64(f64::from_bits(#bits)) }
+                }
+            };
+
+            quote! {
+                (
+                    #constant_id,
+                    ::vulkano::shader::SpecializationConstant::#value,
+                )
+            }
+        });
 
     quote! {
         [
-            #( #specialization_constant_requirements ),*
+            #( #specialization_constants ),*
         ]
     }
 }

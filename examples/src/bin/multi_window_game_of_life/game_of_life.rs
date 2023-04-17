@@ -25,6 +25,7 @@ use vulkano::{
     image::{ImageAccess, ImageUsage, StorageImage},
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    shader::PipelineShaderStageCreateInfo,
     sync::GpuFuture,
 };
 use vulkano_util::renderer::DeviceImageView;
@@ -71,8 +72,7 @@ impl GameOfLifeComputePipeline {
             let shader = compute_life_cs::load(compute_queue.device().clone()).unwrap();
             ComputePipeline::new(
                 compute_queue.device().clone(),
-                shader.entry_point("main").unwrap(),
-                &(),
+                PipelineShaderStageCreateInfo::entry_point(shader.entry_point("main").unwrap()),
                 None,
                 |_| {},
             )

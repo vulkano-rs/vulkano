@@ -35,6 +35,9 @@ use vulkano::{
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
+            input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
@@ -43,6 +46,7 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -356,7 +360,10 @@ fn main() {
         let mut layout_create_infos: Vec<_> = DescriptorSetLayoutCreateInfo::from_requirements(
             fs.entry_point("main")
                 .unwrap()
-                .descriptor_binding_requirements(),
+                .info()
+                .descriptor_binding_requirements
+                .iter()
+                .map(|(k, v)| (*k, v)),
         );
 
         // Set 0, Binding 0.
@@ -377,9 +384,10 @@ fn main() {
                 push_constant_ranges: fs
                     .entry_point("main")
                     .unwrap()
-                    .push_constant_requirements()
+                    .info()
+                    .push_constant_requirements
+                    .iter()
                     .cloned()
-                    .into_iter()
                     .collect(),
                 ..Default::default()
             },
@@ -389,10 +397,15 @@ fn main() {
 
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+        ])
         .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::default())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .rasterization_state(RasterizationState::default())
+        .multisample_state(MultisampleState::default())
         .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
         .render_pass(subpass)
         .with_pipeline_layout(device.clone(), pipeline_layout)

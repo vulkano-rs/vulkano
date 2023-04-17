@@ -28,13 +28,17 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::PipelineShaderStageCreateInfo,
     single_pass_renderpass,
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
@@ -293,13 +297,18 @@ fn main() {
     .unwrap();
 
     let pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+        ])
         // Use the implementations of the `Vertex` trait to describe to vulkano how the two vertex
         // types are expected to be used.
         .vertex_input_state([TriangleVertex::per_vertex(), InstanceData::per_instance()])
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
+        .input_assembly_state(InputAssemblyState::default())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .rasterization_state(RasterizationState::default())
+        .multisample_state(MultisampleState::default())
+        .color_blend_state(ColorBlendState::default())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

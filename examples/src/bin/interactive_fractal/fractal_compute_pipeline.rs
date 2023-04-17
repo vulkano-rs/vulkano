@@ -23,6 +23,7 @@ use vulkano::{
     image::ImageAccess,
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    shader::PipelineShaderStageCreateInfo,
     sync::GpuFuture,
 };
 use vulkano_util::renderer::DeviceImageView;
@@ -74,8 +75,7 @@ impl FractalComputePipeline {
             let shader = cs::load(queue.device().clone()).unwrap();
             ComputePipeline::new(
                 queue.device().clone(),
-                shader.entry_point("main").unwrap(),
-                &(),
+                PipelineShaderStageCreateInfo::entry_point(shader.entry_point("main").unwrap()),
                 None,
                 |_| {},
             )

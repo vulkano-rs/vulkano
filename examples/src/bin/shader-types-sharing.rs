@@ -41,6 +41,7 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
 };
@@ -118,11 +119,6 @@ fn main() {
             // such types, and include it in each shader entry-point file using the `#include`
             // directive.
             shaders: {
-                // Generate single unique `SpecializationConstants` struct for all shaders, since
-                // their specialization interfaces are the same. This option is turned off by
-                // default and the macro by default produces unique structs
-                // (`MultSpecializationConstants` and `AddSpecializationConstants` in this case).
-                shared_constants: true,
                 mult: {
                     ty: "compute",
                     src: r"
@@ -179,7 +175,6 @@ fn main() {
         // The macro will create the following things in this module:
         // - `load_mult` for the first shader loader/entry-point.
         // - `load_add` for the second shader loader/entry-point.
-        // - `SpecializationConstants` struct for both shaders' specialization constants.
         // - `Parameters` struct common for both shaders.
     }
 
@@ -253,11 +248,15 @@ fn main() {
     // Load the first shader, and create a pipeline for the shader.
     let mult_pipeline = ComputePipeline::new(
         device.clone(),
-        shaders::load_mult(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap(),
-        &shaders::SpecializationConstants { enabled: 1 },
+        PipelineShaderStageCreateInfo {
+            specialization_info: [(0, true.into())].into_iter().collect(),
+            ..PipelineShaderStageCreateInfo::entry_point(
+                shaders::load_mult(device.clone())
+                    .unwrap()
+                    .entry_point("main")
+                    .unwrap(),
+            )
+        },
         None,
         |_| {},
     )
@@ -266,11 +265,15 @@ fn main() {
     // Load the second shader, and create a pipeline for the shader.
     let add_pipeline = ComputePipeline::new(
         device.clone(),
-        shaders::load_add(device)
-            .unwrap()
-            .entry_point("main")
-            .unwrap(),
-        &shaders::SpecializationConstants { enabled: 1 },
+        PipelineShaderStageCreateInfo {
+            specialization_info: [(0, true.into())].into_iter().collect(),
+            ..PipelineShaderStageCreateInfo::entry_point(
+                shaders::load_add(device)
+                    .unwrap()
+                    .entry_point("main")
+                    .unwrap(),
+            )
+        },
         None,
         |_| {},
     )

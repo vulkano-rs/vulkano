@@ -28,8 +28,11 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             depth_stencil::DepthStencilState,
             input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
@@ -37,6 +40,7 @@ use vulkano::{
     },
     query::{QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryResultFlags, QueryType},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -303,16 +307,21 @@ fn main() {
     .unwrap();
 
     let pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+        ])
         .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
+        .input_assembly_state(InputAssemblyState::default())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .rasterization_state(RasterizationState::default())
+        .multisample_state(MultisampleState::default())
         // Enable depth testing, which is needed for occlusion queries to make sense at all. If you
         // disable depth testing, every pixel is considered to pass the depth test, so every query
         // will return a nonzero result.
         .depth_stencil_state(DepthStencilState::simple_depth_test())
+        .color_blend_state(ColorBlendState::default())
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();
 
