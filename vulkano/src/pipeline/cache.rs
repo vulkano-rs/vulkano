@@ -291,7 +291,7 @@ mod tests {
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
-        let module = unsafe {
+        let shader = unsafe {
             /*
              * #version 450
              * void main() {
@@ -307,12 +307,13 @@ mod tests {
                 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
                 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
+            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+            module.entry_point("main").unwrap()
         };
 
         let _pipeline = ComputePipeline::new(
             device,
-            PipelineShaderStageCreateInfo::entry_point(module.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(shader),
             Some(cache.clone()),
             |_| {},
         )
@@ -330,7 +331,7 @@ mod tests {
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
-        let first_module = unsafe {
+        let first_shader = unsafe {
             /*
              * #version 450
              * void main() {
@@ -346,10 +347,11 @@ mod tests {
                 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
                 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
+            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+            module.entry_point("main").unwrap()
         };
 
-        let second_module = unsafe {
+        let second_shader = unsafe {
             /*
              * #version 450
              *
@@ -357,7 +359,7 @@ mod tests {
              *     uint idx = gl_GlobalInvocationID.x;
              * }
              */
-            const SECOND_MODULE: [u8; 432] = [
+            const MODULE: [u8; 432] = [
                 3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 16, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1, 0,
                 0, 0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52, 53, 48,
                 0, 0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 6, 0, 5, 0, 0, 0, 4, 0, 0,
@@ -377,12 +379,13 @@ mod tests {
                 0, 15, 0, 0, 0, 14, 0, 0, 0, 62, 0, 3, 0, 8, 0, 0, 0, 15, 0, 0, 0, 253, 0, 1, 0,
                 56, 0, 1, 0,
             ];
-            ShaderModule::from_bytes(device.clone(), &SECOND_MODULE).unwrap()
+            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+            module.entry_point("main").unwrap()
         };
 
-        let _pipeline = ComputePipeline::new(
+        let _first_pipeline = ComputePipeline::new(
             device.clone(),
-            PipelineShaderStageCreateInfo::entry_point(first_module.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(first_shader),
             Some(cache.clone()),
             |_| {},
         )
@@ -392,7 +395,7 @@ mod tests {
 
         let _second_pipeline = ComputePipeline::new(
             device,
-            PipelineShaderStageCreateInfo::entry_point(second_module.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(second_shader),
             Some(cache.clone()),
             |_| {},
         )
@@ -413,7 +416,7 @@ mod tests {
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
-        let module = unsafe {
+        let shader = unsafe {
             /*
              * #version 450
              * void main() {
@@ -429,12 +432,13 @@ mod tests {
                 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
                 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
+            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+            module.entry_point("main").unwrap()
         };
 
         let _pipeline = ComputePipeline::new(
             device.clone(),
-            PipelineShaderStageCreateInfo::entry_point(module.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(shader.clone()),
             Some(cache.clone()),
             |_| {},
         )
@@ -444,7 +448,7 @@ mod tests {
 
         let _second_pipeline = ComputePipeline::new(
             device,
-            PipelineShaderStageCreateInfo::entry_point(module.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(shader),
             Some(cache.clone()),
             |_| {},
         )

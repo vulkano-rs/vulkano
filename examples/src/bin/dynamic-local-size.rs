@@ -150,8 +150,6 @@ fn main() {
         }
     }
 
-    let shader = cs::load(device.clone()).unwrap();
-
     // Fetching subgroup size from the physical device properties to determine an appropriate
     // compute shader local size.
     //
@@ -176,6 +174,10 @@ fn main() {
 
     println!("Local size will be set to: ({local_size_x}, {local_size_y}, 1)");
 
+    let shader = cs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let pipeline = ComputePipeline::new(
         device.clone(),
         PipelineShaderStageCreateInfo {
@@ -188,7 +190,7 @@ fn main() {
             ]
             .into_iter()
             .collect(),
-            ..PipelineShaderStageCreateInfo::entry_point(shader.entry_point("main").unwrap())
+            ..PipelineShaderStageCreateInfo::entry_point(shader)
         },
         None,
         |_| {},

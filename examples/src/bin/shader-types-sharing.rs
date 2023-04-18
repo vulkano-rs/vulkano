@@ -246,16 +246,15 @@ fn main() {
     .unwrap();
 
     // Load the first shader, and create a pipeline for the shader.
+    let mult_shader = shaders::load_mult(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let mult_pipeline = ComputePipeline::new(
         device.clone(),
         PipelineShaderStageCreateInfo {
             specialization_info: [(0, true.into())].into_iter().collect(),
-            ..PipelineShaderStageCreateInfo::entry_point(
-                shaders::load_mult(device.clone())
-                    .unwrap()
-                    .entry_point("main")
-                    .unwrap(),
-            )
+            ..PipelineShaderStageCreateInfo::entry_point(mult_shader)
         },
         None,
         |_| {},
@@ -263,16 +262,15 @@ fn main() {
     .unwrap();
 
     // Load the second shader, and create a pipeline for the shader.
+    let add_shader = shaders::load_add(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let add_pipeline = ComputePipeline::new(
-        device.clone(),
+        device,
         PipelineShaderStageCreateInfo {
             specialization_info: [(0, true.into())].into_iter().collect(),
-            ..PipelineShaderStageCreateInfo::entry_point(
-                shaders::load_add(device)
-                    .unwrap()
-                    .entry_point("main")
-                    .unwrap(),
-            )
+            ..PipelineShaderStageCreateInfo::entry_point(add_shader)
         },
         None,
         |_| {},

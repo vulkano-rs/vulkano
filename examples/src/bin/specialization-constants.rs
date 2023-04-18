@@ -111,15 +111,17 @@ fn main() {
         }
     }
 
-    let shader = cs::load(device.clone()).unwrap();
-
+    let shader = cs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let pipeline = ComputePipeline::new(
         device.clone(),
         PipelineShaderStageCreateInfo {
             specialization_info: [(0, 1i32.into()), (1, 1.0f32.into()), (2, true.into())]
                 .into_iter()
                 .collect(),
-            ..PipelineShaderStageCreateInfo::entry_point(shader.entry_point("main").unwrap())
+            ..PipelineShaderStageCreateInfo::entry_point(shader)
         },
         None,
         |_| {},

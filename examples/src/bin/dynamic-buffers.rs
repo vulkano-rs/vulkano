@@ -119,10 +119,13 @@ fn main() {
         }
     }
 
-    let shader = shader::load(device.clone()).unwrap();
+    let shader = shader::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let pipeline = ComputePipeline::new(
         device.clone(),
-        PipelineShaderStageCreateInfo::entry_point(shader.entry_point("main").unwrap()),
+        PipelineShaderStageCreateInfo::entry_point(shader),
         None,
         |layout_create_infos| {
             let binding = layout_create_infos[0].bindings.get_mut(&0).unwrap();

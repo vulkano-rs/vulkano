@@ -108,11 +108,14 @@ fn main() {
                 ",
             }
         }
-        let shader = cs::load(device.clone()).unwrap();
+        let shader = cs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
 
         ComputePipeline::new(
             device.clone(),
-            PipelineShaderStageCreateInfo::entry_point(shader.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(shader),
             None,
             |_| {},
         )
