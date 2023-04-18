@@ -833,21 +833,7 @@ impl SpecializationConstant {
     /// Returns whether `self` and `other` have the same type, ignoring the value.
     #[inline]
     pub fn eq_type(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::Bool(_), Self::Bool(_))
-                | (Self::I8(_), Self::I8(_))
-                | (Self::I16(_), Self::I16(_))
-                | (Self::I32(_), Self::I32(_))
-                | (Self::I64(_), Self::I64(_))
-                | (Self::U8(_), Self::U8(_))
-                | (Self::U16(_), Self::U16(_))
-                | (Self::U32(_), Self::U32(_))
-                | (Self::U64(_), Self::U64(_))
-                | (Self::F16(_), Self::F16(_))
-                | (Self::F32(_), Self::F32(_))
-                | (Self::F64(_), Self::F64(_))
-        )
+        mem::discriminant(self) == mem::discriminant(other)
     }
 }
 
