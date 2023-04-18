@@ -373,21 +373,28 @@ fn main() {
         }
     }
 
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
     // implicitly does a lot of computation whenever you draw. In Vulkan, you have to do all this
     // manually.
 
+    // A Vulkan shader can in theory contain multiple entry points, so we have to specify which
+    // one.
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
     let pipeline = GraphicsPipeline::start()
-        // A Vulkan shader can in theory contain multiple entry points, so we have to specify which
-        // one.
+        // Specify the shader stages that the pipeline will have.
         .stages([
-            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
-            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
         ])
         // How vertex data is read from the vertex buffers into the vertex shader.
         .vertex_input_state(Vertex::per_vertex())

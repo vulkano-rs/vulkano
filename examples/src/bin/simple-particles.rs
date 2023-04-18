@@ -321,10 +321,6 @@ fn main() {
         }
     }
 
-    let cs = cs::load(device.clone()).unwrap();
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator =
@@ -413,9 +409,13 @@ fn main() {
     };
 
     // Create a compute-pipeline for applying the compute shader to vertices.
+    let cs = cs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let compute_pipeline = vulkano::pipeline::ComputePipeline::new(
         device.clone(),
-        PipelineShaderStageCreateInfo::entry_point(cs.entry_point("main").unwrap()),
+        PipelineShaderStageCreateInfo::entry_point(cs),
         None,
         |_| {},
     )
@@ -447,10 +447,18 @@ fn main() {
     };
 
     // Create a basic graphics pipeline for rendering particles.
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let graphics_pipeline = GraphicsPipeline::start()
         .stages([
-            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
-            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
         ])
         .vertex_input_state(Vertex::per_vertex())
         // Vertices will be rendered as a list of points.

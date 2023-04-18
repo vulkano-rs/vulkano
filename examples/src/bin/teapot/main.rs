@@ -43,7 +43,7 @@ use vulkano::{
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::{PipelineShaderStageCreateInfo, ShaderModule},
+    shader::{EntryPoint, PipelineShaderStageCreateInfo},
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -211,9 +211,6 @@ fn main() {
         },
     );
 
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
@@ -237,8 +234,22 @@ fn main() {
     )
     .unwrap();
 
-    let (mut pipeline, mut framebuffers) =
-        window_size_dependent_setup(&memory_allocator, &vs, &fs, &images, render_pass.clone());
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+
+    let (mut pipeline, mut framebuffers) = window_size_dependent_setup(
+        &memory_allocator,
+        vs.clone(),
+        fs.clone(),
+        &images,
+        render_pass.clone(),
+    );
     let mut recreate_swapchain = false;
 
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -285,8 +296,8 @@ fn main() {
                     swapchain = new_swapchain;
                     let (new_pipeline, new_framebuffers) = window_size_dependent_setup(
                         &memory_allocator,
-                        &vs,
-                        &fs,
+                        vs.clone(),
+                        fs.clone(),
                         &new_images,
                         render_pass.clone(),
                     );
@@ -421,8 +432,8 @@ fn main() {
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     memory_allocator: &StandardMemoryAllocator,
-    vs: &Arc<ShaderModule>,
-    fs: &Arc<ShaderModule>,
+    vs: EntryPoint,
+    fs: EntryPoint,
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
@@ -454,8 +465,8 @@ fn window_size_dependent_setup(
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
     let pipeline = GraphicsPipeline::start()
         .stages([
-            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
-            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
         ])
         .vertex_input_state([Position::per_vertex(), Normal::per_vertex()])
         .input_assembly_state(InputAssemblyState::default())

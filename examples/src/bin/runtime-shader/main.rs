@@ -188,7 +188,8 @@ fn main() {
 
         // Create a ShaderModule on a device the same Shader::load does it.
         // NOTE: You will have to verify correctness of the data by yourself!
-        unsafe { ShaderModule::from_bytes(device.clone(), &v) }.unwrap()
+        let module = unsafe { ShaderModule::from_bytes(device.clone(), &v).unwrap() };
+        module.entry_point("main").unwrap()
     };
 
     let fs = {
@@ -197,13 +198,14 @@ fn main() {
         let mut v = vec![];
         f.read_to_end(&mut v).unwrap();
 
-        unsafe { ShaderModule::from_bytes(device.clone(), &v) }.unwrap()
+        let module = unsafe { ShaderModule::from_bytes(device.clone(), &v).unwrap() };
+        module.entry_point("main").unwrap()
     };
 
     let graphics_pipeline = GraphicsPipeline::start()
         .stages([
-            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
-            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
         ])
         .vertex_input_state(Vertex::per_vertex())
         .input_assembly_state(InputAssemblyState::default())

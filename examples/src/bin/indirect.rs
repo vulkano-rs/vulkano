@@ -246,10 +246,6 @@ fn main() {
         }
     }
 
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-    let cs = cs::load(device.clone()).unwrap();
-
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     // Each frame we generate a new set of vertices and each frame we need a new
@@ -269,9 +265,13 @@ fn main() {
         },
     );
 
+    let cs = cs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let compute_pipeline = ComputePipeline::new(
         device.clone(),
-        PipelineShaderStageCreateInfo::entry_point(cs.entry_point("main").unwrap()),
+        PipelineShaderStageCreateInfo::entry_point(cs),
         None,
         |_| {},
     )
@@ -303,10 +303,18 @@ fn main() {
         position: [f32; 2],
     }
 
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let render_pipeline = GraphicsPipeline::start()
         .stages([
-            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
-            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
         ])
         .vertex_input_state(Vertex::per_vertex())
         .input_assembly_state(InputAssemblyState::default())

@@ -259,9 +259,6 @@ fn main() {
     )
     .unwrap();
 
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
@@ -356,11 +353,17 @@ fn main() {
     )
     .unwrap();
 
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let pipeline_layout = {
         let mut layout_create_infos: Vec<_> = DescriptorSetLayoutCreateInfo::from_requirements(
-            fs.entry_point("main")
-                .unwrap()
-                .info()
+            fs.info()
                 .descriptor_binding_requirements
                 .iter()
                 .map(|(k, v)| (*k, v)),
@@ -382,8 +385,6 @@ fn main() {
             PipelineLayoutCreateInfo {
                 set_layouts,
                 push_constant_ranges: fs
-                    .entry_point("main")
-                    .unwrap()
                     .info()
                     .push_constant_requirements
                     .iter()
@@ -398,8 +399,8 @@ fn main() {
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .stages([
-            PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
-            PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
         ])
         .vertex_input_state(Vertex::per_vertex())
         .input_assembly_state(InputAssemblyState::default())

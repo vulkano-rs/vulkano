@@ -74,13 +74,19 @@ impl TriangleDrawSystem {
         .expect("failed to create buffer");
 
         let pipeline = {
-            let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
-            let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
+            let vs = vs::load(gfx_queue.device().clone())
+                .expect("failed to create shader module")
+                .entry_point("main")
+                .expect("shader entry point not found");
+            let fs = fs::load(gfx_queue.device().clone())
+                .expect("failed to create shader module")
+                .entry_point("main")
+                .expect("shader entry point not found");
 
             GraphicsPipeline::start()
                 .stages([
-                    PipelineShaderStageCreateInfo::entry_point(vs.entry_point("main").unwrap()),
-                    PipelineShaderStageCreateInfo::entry_point(fs.entry_point("main").unwrap()),
+                    PipelineShaderStageCreateInfo::entry_point(vs),
+                    PipelineShaderStageCreateInfo::entry_point(fs),
                 ])
                 .vertex_input_state(TriangleVertex::per_vertex())
                 .input_assembly_state(InputAssemblyState::default())
