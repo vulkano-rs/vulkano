@@ -94,7 +94,7 @@ impl TriangleDrawSystem {
                 .rasterization_state(RasterizationState::default())
                 .depth_stencil_state(DepthStencilState::simple_depth_test())
                 .multisample_state(MultisampleState::default())
-                .color_blend_state(ColorBlendState::default())
+                .color_blend_state(ColorBlendState::new(2))
                 .render_pass(subpass.clone())
                 .build(gfx_queue.device().clone())
                 .unwrap()

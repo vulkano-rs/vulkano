@@ -370,7 +370,7 @@ fn main() {
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::Line))
         .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::default())
+        .color_blend_state(ColorBlendState::new(1))
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

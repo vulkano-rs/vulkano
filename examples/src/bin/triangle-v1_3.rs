@@ -412,7 +412,7 @@ fn main() {
         .multisample_state(MultisampleState::default())
         // How pixel values are combined with the values already present in the framebuffer.
         // The default value overwrites the old value with the new one, without any blending.
-        .color_blend_state(ColorBlendState::default())
+        .color_blend_state(ColorBlendState::new(1))
         // We describe the formats of attachment images where the colors, depth and/or stencil
         // information will be written. The pipeline will only be usable with this particular
         // configuration of the attachment images.

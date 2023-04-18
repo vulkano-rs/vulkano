@@ -416,7 +416,7 @@ fn main() {
         .multisample_state(MultisampleState::default())
         // How pixel values are combined with the values already present in the framebuffer.
         // The default value overwrites the old value with the new one, without any blending.
-        .color_blend_state(ColorBlendState::default())
+        .color_blend_state(ColorBlendState::new(1))
         // We have to indicate which subpass of which render pass this pipeline is going to be used
         // in. The pipeline will only be usable from this particular subpass.
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())

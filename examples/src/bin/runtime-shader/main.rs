@@ -216,7 +216,7 @@ fn main() {
                 .front_face(FrontFace::CounterClockwise),
         )
         .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::default())
+        .color_blend_state(ColorBlendState::new(1))
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

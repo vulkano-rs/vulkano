@@ -325,7 +325,7 @@ fn main() {
         // disable depth testing, every pixel is considered to pass the depth test, so every query
         // will return a nonzero result.
         .depth_stencil_state(DepthStencilState::simple_depth_test())
-        .color_blend_state(ColorBlendState::default())
+        .color_blend_state(ColorBlendState::new(1))
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

@@ -133,7 +133,7 @@ impl PixelsDrawPipeline {
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                 .rasterization_state(RasterizationState::default())
                 .multisample_state(MultisampleState::default())
-                .color_blend_state(ColorBlendState::default())
+                .color_blend_state(ColorBlendState::new(1))
                 .render_pass(subpass.clone())
                 .build(gfx_queue.device().clone())
                 .unwrap()

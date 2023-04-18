@@ -480,7 +480,7 @@ fn window_size_dependent_setup(
         .rasterization_state(RasterizationState::default())
         .depth_stencil_state(DepthStencilState::simple_depth_test())
         .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::default())
+        .color_blend_state(ColorBlendState::new(1))
         .render_pass(Subpass::from(render_pass, 0).unwrap())
         .build(memory_allocator.device().clone())
         .unwrap();
