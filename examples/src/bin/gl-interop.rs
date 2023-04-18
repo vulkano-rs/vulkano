@@ -636,7 +636,7 @@ mod linux {
             })
             .rasterization_state(RasterizationState::default())
             .multisample_state(MultisampleState::default())
-            .color_blend_state(ColorBlendState::new(1).blend_alpha())
+            .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
             .render_pass(subpass)
             .build(device.clone())
             .unwrap();

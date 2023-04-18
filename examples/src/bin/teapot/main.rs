@@ -463,6 +463,7 @@ fn window_size_dependent_setup(
     // teapot example, we recreate the pipelines with a hardcoded viewport instead. This allows the
     // driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
+    let subpass = Subpass::from(render_pass, 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .stages([
             PipelineShaderStageCreateInfo::entry_point(vs),
@@ -480,8 +481,8 @@ fn window_size_dependent_setup(
         .rasterization_state(RasterizationState::default())
         .depth_stencil_state(DepthStencilState::simple_depth_test())
         .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::new(1))
-        .render_pass(Subpass::from(render_pass, 0).unwrap())
+        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
+        .render_pass(subpass)
         .build(memory_allocator.device().clone())
         .unwrap();
 

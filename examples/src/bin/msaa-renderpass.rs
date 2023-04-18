@@ -321,7 +321,7 @@ fn main() {
             rasterization_samples: subpass.num_samples().unwrap(),
             ..Default::default()
         })
-        .color_blend_state(ColorBlendState::new(1))
+        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
         .render_pass(subpass)
         .build(device.clone())
         .unwrap();

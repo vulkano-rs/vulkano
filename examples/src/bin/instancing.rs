@@ -301,6 +301,7 @@ fn main() {
         .unwrap()
         .entry_point("main")
         .unwrap();
+    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .stages([
             PipelineShaderStageCreateInfo::entry_point(vs),
@@ -313,8 +314,8 @@ fn main() {
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .rasterization_state(RasterizationState::default())
         .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::new(1))
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
+        .render_pass(subpass)
         .build(device.clone())
         .unwrap();
 

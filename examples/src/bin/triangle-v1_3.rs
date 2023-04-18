@@ -388,6 +388,17 @@ fn main() {
         .entry_point("main")
         .unwrap();
 
+    // We describe the formats of attachment images where the colors, depth and/or stencil
+    // information will be written. The pipeline will only be usable with this particular
+    // configuration of the attachment images.
+    let subpass = PipelineRenderingCreateInfo {
+        // We specify a single color attachment that will be rendered to. When we begin
+        // rendering, we will specify a swapchain image to be used as this attachment, so here
+        // we set its format to be the same format as the swapchain.
+        color_attachment_formats: vec![Some(swapchain.image_format())],
+        ..Default::default()
+    };
+
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
     let pipeline = GraphicsPipeline::start()
@@ -412,17 +423,10 @@ fn main() {
         .multisample_state(MultisampleState::default())
         // How pixel values are combined with the values already present in the framebuffer.
         // The default value overwrites the old value with the new one, without any blending.
-        .color_blend_state(ColorBlendState::new(1))
-        // We describe the formats of attachment images where the colors, depth and/or stencil
-        // information will be written. The pipeline will only be usable with this particular
-        // configuration of the attachment images.
-        .render_pass(PipelineRenderingCreateInfo {
-            // We specify a single color attachment that will be rendered to. When we begin
-            // rendering, we will specify a swapchain image to be used as this attachment, so here
-            // we set its format to be the same format as the swapchain.
-            color_attachment_formats: vec![Some(swapchain.image_format())],
-            ..Default::default()
-        })
+        .color_blend_state(ColorBlendState::new(
+            subpass.color_attachment_formats.len() as u32
+        ))
+        .render_pass(subpass)
         // Now that our builder is filled, we call `build()` to obtain an actual pipeline.
         .build(device.clone())
         .unwrap();

@@ -392,6 +392,10 @@ fn main() {
         .entry_point("main")
         .unwrap();
 
+    // We have to indicate which subpass of which render pass this pipeline is going to be used
+    // in. The pipeline will only be usable from this particular subpass.
+    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
     let pipeline = GraphicsPipeline::start()
@@ -416,10 +420,8 @@ fn main() {
         .multisample_state(MultisampleState::default())
         // How pixel values are combined with the values already present in the framebuffer.
         // The default value overwrites the old value with the new one, without any blending.
-        .color_blend_state(ColorBlendState::new(1))
-        // We have to indicate which subpass of which render pass this pipeline is going to be used
-        // in. The pipeline will only be usable from this particular subpass.
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
+        .render_pass(subpass)
         // Now that our builder is filled, we call `build()` to obtain an actual pipeline.
         .build(device.clone())
         .unwrap();
