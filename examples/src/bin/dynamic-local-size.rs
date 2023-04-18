@@ -32,6 +32,7 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
 };
@@ -149,8 +150,6 @@ fn main() {
         }
     }
 
-    let shader = cs::load(device.clone()).unwrap();
-
     // Fetching subgroup size from the physical device properties to determine an appropriate
     // compute shader local size.
     //
@@ -175,18 +174,24 @@ fn main() {
 
     println!("Local size will be set to: ({local_size_x}, {local_size_y}, 1)");
 
-    let spec_consts = cs::SpecializationConstants {
-        red: 0.2,
-        green: 0.5,
-        blue: 1.0,
-        // Specify the local size constants.
-        constant_1: local_size_x,
-        constant_2: local_size_y,
-    };
+    let shader = cs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let pipeline = ComputePipeline::new(
         device.clone(),
-        shader.entry_point("main").unwrap(),
-        &spec_consts,
+        PipelineShaderStageCreateInfo {
+            specialization_info: [
+                (0, 0.2f32.into()),
+                (1, local_size_x.into()),
+                (2, local_size_y.into()),
+                (3, 0.5f32.into()),
+                (4, 1.0f32.into()),
+            ]
+            .into_iter()
+            .collect(),
+            ..PipelineShaderStageCreateInfo::entry_point(shader)
+        },
         None,
         |_| {},
     )

@@ -45,13 +45,17 @@ use vulkano::{
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::PipelineShaderStageCreateInfo,
     single_pass_renderpass,
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
@@ -242,10 +246,6 @@ fn main() {
         }
     }
 
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-    let cs = cs::load(device.clone()).unwrap();
-
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     // Each frame we generate a new set of vertices and each frame we need a new
@@ -265,10 +265,13 @@ fn main() {
         },
     );
 
+    let cs = cs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let compute_pipeline = ComputePipeline::new(
         device.clone(),
-        cs.entry_point("main").unwrap(),
-        &(),
+        PipelineShaderStageCreateInfo::entry_point(cs),
         None,
         |_| {},
     )
@@ -300,13 +303,27 @@ fn main() {
         position: [f32; 2],
     }
 
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let render_pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
+        ])
         .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
+        .input_assembly_state(InputAssemblyState::default())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .rasterization_state(RasterizationState::default())
+        .multisample_state(MultisampleState::default())
+        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
+        .render_pass(subpass)
         .build(device.clone())
         .unwrap();
 

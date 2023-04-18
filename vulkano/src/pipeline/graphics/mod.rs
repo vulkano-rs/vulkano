@@ -127,19 +127,7 @@ impl GraphicsPipeline {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
     #[inline]
-    pub fn start() -> GraphicsPipelineBuilder<
-        'static,
-        'static,
-        'static,
-        'static,
-        'static,
-        VertexInputState,
-        (),
-        (),
-        (),
-        (),
-        (),
-    > {
+    pub fn start() -> GraphicsPipelineBuilder<VertexInputState> {
         GraphicsPipelineBuilder::new()
     }
 

@@ -32,15 +32,18 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             depth_stencil::DepthStencilState,
             input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::ShaderModule,
+    shader::{EntryPoint, PipelineShaderStageCreateInfo},
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -208,9 +211,6 @@ fn main() {
         },
     );
 
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
@@ -234,8 +234,22 @@ fn main() {
     )
     .unwrap();
 
-    let (mut pipeline, mut framebuffers) =
-        window_size_dependent_setup(&memory_allocator, &vs, &fs, &images, render_pass.clone());
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+
+    let (mut pipeline, mut framebuffers) = window_size_dependent_setup(
+        &memory_allocator,
+        vs.clone(),
+        fs.clone(),
+        &images,
+        render_pass.clone(),
+    );
     let mut recreate_swapchain = false;
 
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -282,8 +296,8 @@ fn main() {
                     swapchain = new_swapchain;
                     let (new_pipeline, new_framebuffers) = window_size_dependent_setup(
                         &memory_allocator,
-                        &vs,
-                        &fs,
+                        vs.clone(),
+                        fs.clone(),
                         &new_images,
                         render_pass.clone(),
                     );
@@ -418,8 +432,8 @@ fn main() {
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     memory_allocator: &StandardMemoryAllocator,
-    vs: &ShaderModule,
-    fs: &ShaderModule,
+    vs: EntryPoint,
+    fs: EntryPoint,
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
@@ -449,10 +463,14 @@ fn window_size_dependent_setup(
     // teapot example, we recreate the pipelines with a hardcoded viewport instead. This allows the
     // driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
+    let subpass = Subpass::from(render_pass, 0).unwrap();
     let pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
+        ])
         .vertex_input_state([Position::per_vertex(), Normal::per_vertex()])
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
+        .input_assembly_state(InputAssemblyState::default())
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
             Viewport {
                 origin: [0.0, 0.0],
@@ -460,9 +478,11 @@ fn window_size_dependent_setup(
                 depth_range: 0.0..1.0,
             },
         ]))
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .rasterization_state(RasterizationState::default())
         .depth_stencil_state(DepthStencilState::simple_depth_test())
-        .render_pass(Subpass::from(render_pass, 0).unwrap())
+        .multisample_state(MultisampleState::default())
+        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
+        .render_pass(subpass)
         .build(memory_allocator.device().clone())
         .unwrap();
 

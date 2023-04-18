@@ -35,6 +35,7 @@ use vulkano::{
     },
     instance::{Instance, InstanceCreateInfo},
     pipeline::{cache::PipelineCache, ComputePipeline},
+    shader::PipelineShaderStageCreateInfo,
     VulkanLibrary,
 };
 
@@ -127,11 +128,13 @@ fn main() {
                 ",
             }
         }
-        let shader = cs::load(device.clone()).unwrap();
+        let shader = cs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
         ComputePipeline::new(
             device.clone(),
-            shader.entry_point("main").unwrap(),
-            &(),
+            PipelineShaderStageCreateInfo::entry_point(shader),
             Some(pipeline_cache.clone()),
             |_| {},
         )

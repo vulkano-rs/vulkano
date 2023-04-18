@@ -21,7 +21,10 @@
 //! of [`get_data`](crate::pipeline::cache::PipelineCache::get_data) for example of how to store the data
 //! on the disk, and [`with_data`](crate::pipeline::cache::PipelineCache::with_data) for how to reload it.
 
-use crate::{device::Device, OomError, VulkanError, VulkanObject};
+use crate::{
+    device::{Device, DeviceOwned},
+    OomError, VulkanError, VulkanObject,
+};
 use std::{mem::MaybeUninit, ptr, sync::Arc};
 
 /// Opaque cache that contains pipeline objects.
@@ -30,7 +33,7 @@ use std::{mem::MaybeUninit, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct PipelineCache {
     device: Arc<Device>,
-    cache: ash::vk::PipelineCache,
+    handle: ash::vk::PipelineCache,
 }
 
 impl PipelineCache {
@@ -131,7 +134,7 @@ impl PipelineCache {
 
         Ok(Arc::new(PipelineCache {
             device: device.clone(),
-            cache,
+            handle: cache,
         }))
     }
 
@@ -156,13 +159,13 @@ impl PipelineCache {
                 .into_iter()
                 .map(|pipeline| {
                     assert!(&***pipeline as *const _ != self as *const _);
-                    pipeline.cache
+                    pipeline.handle
                 })
                 .collect::<Vec<_>>();
 
             (fns.v1_0.merge_pipeline_caches)(
                 self.device.handle(),
-                self.cache,
+                self.handle,
                 pipelines.len() as u32,
                 pipelines.as_ptr(),
             )
@@ -210,7 +213,7 @@ impl PipelineCache {
                 let mut count = 0;
                 (fns.v1_0.get_pipeline_cache_data)(
                     self.device.handle(),
-                    self.cache,
+                    self.handle,
                     &mut count,
                     ptr::null_mut(),
                 )
@@ -220,7 +223,7 @@ impl PipelineCache {
                 let mut data: Vec<u8> = Vec::with_capacity(count);
                 let result = (fns.v1_0.get_pipeline_cache_data)(
                     self.device.handle(),
-                    self.cache,
+                    self.handle,
                     &mut count,
                     data.as_mut_ptr() as *mut _,
                 );
@@ -240,22 +243,29 @@ impl PipelineCache {
     }
 }
 
-unsafe impl VulkanObject for PipelineCache {
-    type Handle = ash::vk::PipelineCache;
-
-    #[inline]
-    fn handle(&self) -> Self::Handle {
-        self.cache
-    }
-}
-
 impl Drop for PipelineCache {
     #[inline]
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline_cache)(self.device.handle(), self.cache, ptr::null());
+            (fns.v1_0.destroy_pipeline_cache)(self.device.handle(), self.handle, ptr::null());
         }
+    }
+}
+
+unsafe impl VulkanObject for PipelineCache {
+    type Handle = ash::vk::PipelineCache;
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        self.handle
+    }
+}
+
+unsafe impl DeviceOwned for PipelineCache {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
@@ -263,7 +273,7 @@ impl Drop for PipelineCache {
 mod tests {
     use crate::{
         pipeline::{cache::PipelineCache, ComputePipeline},
-        shader::ShaderModule,
+        shader::{PipelineShaderStageCreateInfo, ShaderModule},
     };
 
     #[test]
@@ -281,7 +291,7 @@ mod tests {
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
-        let module = unsafe {
+        let shader = unsafe {
             /*
              * #version 450
              * void main() {
@@ -297,13 +307,13 @@ mod tests {
                 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
                 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
+            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+            module.entry_point("main").unwrap()
         };
 
         let _pipeline = ComputePipeline::new(
             device,
-            module.entry_point("main").unwrap(),
-            &(),
+            PipelineShaderStageCreateInfo::entry_point(shader),
             Some(cache.clone()),
             |_| {},
         )
@@ -321,7 +331,7 @@ mod tests {
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
-        let first_module = unsafe {
+        let first_shader = unsafe {
             /*
              * #version 450
              * void main() {
@@ -337,10 +347,11 @@ mod tests {
                 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
                 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
+            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+            module.entry_point("main").unwrap()
         };
 
-        let second_module = unsafe {
+        let second_shader = unsafe {
             /*
              * #version 450
              *
@@ -348,7 +359,7 @@ mod tests {
              *     uint idx = gl_GlobalInvocationID.x;
              * }
              */
-            const SECOND_MODULE: [u8; 432] = [
+            const MODULE: [u8; 432] = [
                 3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 16, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1, 0,
                 0, 0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52, 53, 48,
                 0, 0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 6, 0, 5, 0, 0, 0, 4, 0, 0,
@@ -368,13 +379,13 @@ mod tests {
                 0, 15, 0, 0, 0, 14, 0, 0, 0, 62, 0, 3, 0, 8, 0, 0, 0, 15, 0, 0, 0, 253, 0, 1, 0,
                 56, 0, 1, 0,
             ];
-            ShaderModule::from_bytes(device.clone(), &SECOND_MODULE).unwrap()
+            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+            module.entry_point("main").unwrap()
         };
 
-        let _pipeline = ComputePipeline::new(
+        let _first_pipeline = ComputePipeline::new(
             device.clone(),
-            first_module.entry_point("main").unwrap(),
-            &(),
+            PipelineShaderStageCreateInfo::entry_point(first_shader),
             Some(cache.clone()),
             |_| {},
         )
@@ -384,8 +395,7 @@ mod tests {
 
         let _second_pipeline = ComputePipeline::new(
             device,
-            second_module.entry_point("main").unwrap(),
-            &(),
+            PipelineShaderStageCreateInfo::entry_point(second_shader),
             Some(cache.clone()),
             |_| {},
         )
@@ -406,7 +416,7 @@ mod tests {
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
-        let module = unsafe {
+        let shader = unsafe {
             /*
              * #version 450
              * void main() {
@@ -422,13 +432,13 @@ mod tests {
                 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
                 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
+            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+            module.entry_point("main").unwrap()
         };
 
         let _pipeline = ComputePipeline::new(
             device.clone(),
-            module.entry_point("main").unwrap(),
-            &(),
+            PipelineShaderStageCreateInfo::entry_point(shader.clone()),
             Some(cache.clone()),
             |_| {},
         )
@@ -438,8 +448,7 @@ mod tests {
 
         let _second_pipeline = ComputePipeline::new(
             device,
-            module.entry_point("main").unwrap(),
-            &(),
+            PipelineShaderStageCreateInfo::entry_point(shader),
             Some(cache.clone()),
             |_| {},
         )

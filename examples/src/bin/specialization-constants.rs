@@ -24,6 +24,7 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
 };
@@ -110,17 +111,18 @@ fn main() {
         }
     }
 
-    let shader = cs::load(device.clone()).unwrap();
-
-    let spec_consts = cs::SpecializationConstants {
-        enable: 1,
-        multiple: 1,
-        addend: 1.0,
-    };
+    let shader = cs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let pipeline = ComputePipeline::new(
         device.clone(),
-        shader.entry_point("main").unwrap(),
-        &spec_consts,
+        PipelineShaderStageCreateInfo {
+            specialization_info: [(0, 1i32.into()), (1, 1.0f32.into()), (2, true.into())]
+                .into_iter()
+                .collect(),
+            ..PipelineShaderStageCreateInfo::entry_point(shader)
+        },
         None,
         |_| {},
     )

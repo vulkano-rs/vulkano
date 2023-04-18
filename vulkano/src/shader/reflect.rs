@@ -21,12 +21,12 @@ use crate::{
         },
         DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, GeometryShaderExecution,
         GeometryShaderInput, ShaderExecution, ShaderInterface, ShaderInterfaceEntry,
-        ShaderInterfaceEntryType, ShaderScalarType, ShaderStage,
-        SpecializationConstantRequirements,
+        ShaderInterfaceEntryType, ShaderScalarType, ShaderStage, SpecializationConstant,
     },
     DeviceSize,
 };
 use ahash::{HashMap, HashSet};
+use half::f16;
 use std::borrow::Cow;
 
 /// Returns an iterator of the capabilities used by `spirv`.
@@ -53,9 +53,7 @@ pub fn spirv_extensions(spirv: &Spirv) -> impl Iterator<Item = &str> {
 
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
 #[inline]
-pub fn entry_points(
-    spirv: &Spirv,
-) -> impl Iterator<Item = (String, ExecutionModel, EntryPointInfo)> + '_ {
+pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ {
     let interface_variables = interface_variables(spirv);
 
     spirv.iter_entry_point().filter_map(move |instruction| {
@@ -71,7 +69,7 @@ pub fn entry_points(
         };
 
         let execution = shader_execution(spirv, execution_model, function_id);
-        let stage = ShaderStage::from(execution);
+        let stage = ShaderStage::from(&execution);
 
         let descriptor_binding_requirements = inspect_entry_point(
             &interface_variables.descriptor_binding,
@@ -80,7 +78,7 @@ pub fn entry_points(
             function_id,
         );
         let push_constant_requirements = push_constant_requirements(spirv, stage);
-        let specialization_constant_requirements = specialization_constant_requirements(spirv);
+        let specialization_constants = specialization_constants(spirv);
         let input_interface = shader_interface(
             spirv,
             interface,
@@ -99,18 +97,15 @@ pub fn entry_points(
             matches!(execution_model, ExecutionModel::TessellationControl),
         );
 
-        Some((
-            entry_point_name.clone(),
-            execution_model,
-            EntryPointInfo {
-                execution,
-                descriptor_binding_requirements,
-                push_constant_requirements,
-                specialization_constant_requirements,
-                input_interface,
-                output_interface,
-            },
-        ))
+        Some(EntryPointInfo {
+            name: entry_point_name.clone(),
+            execution,
+            descriptor_binding_requirements,
+            push_constant_requirements,
+            specialization_constants,
+            input_interface,
+            output_interface,
+        })
     })
 }
 
@@ -1029,57 +1024,87 @@ fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushC
         })
 }
 
-/// Extracts the `SpecializationConstantRequirements` from `spirv`.
-fn specialization_constant_requirements(
-    spirv: &Spirv,
-) -> HashMap<u32, SpecializationConstantRequirements> {
+/// Extracts the `SpecializationConstant` map from `spirv`.
+fn specialization_constants(spirv: &Spirv) -> HashMap<u32, SpecializationConstant> {
+    let get_constant_id = |result_id| {
+        spirv
+            .id(result_id)
+            .iter_decoration()
+            .find_map(|instruction| match *instruction {
+                Instruction::Decorate {
+                    decoration:
+                        Decoration::SpecId {
+                            specialization_constant_id,
+                        },
+                    ..
+                } => Some(specialization_constant_id),
+                _ => None,
+            })
+    };
+
     spirv
         .iter_global()
-        .filter_map(|instruction| {
-            match *instruction {
-                Instruction::SpecConstantTrue {
-                    result_type_id,
-                    result_id,
-                }
-                | Instruction::SpecConstantFalse {
-                    result_type_id,
-                    result_id,
-                }
-                | Instruction::SpecConstant {
-                    result_type_id,
-                    result_id,
-                    ..
-                }
-                | Instruction::SpecConstantComposite {
-                    result_type_id,
-                    result_id,
-                    ..
-                } => spirv
-                    .id(result_id)
-                    .iter_decoration()
-                    .find_map(|instruction| match *instruction {
-                        Instruction::Decorate {
-                            decoration:
-                                Decoration::SpecId {
-                                    specialization_constant_id,
-                                },
-                            ..
-                        } => Some(specialization_constant_id),
-                        _ => None,
-                    })
-                    .map(|constant_id| {
-                        let size = match *spirv.id(result_type_id).instruction() {
-                            Instruction::TypeBool { .. } => {
-                                // Translate bool to Bool32
-                                std::mem::size_of::<ash::vk::Bool32>() as DeviceSize
-                            }
-                            _ => size_of_type(spirv, result_type_id)
-                                .expect("Found runtime-sized specialization constant"),
-                        };
-                        (constant_id, SpecializationConstantRequirements { size })
-                    }),
-                _ => None,
-            }
+        .filter_map(|instruction| match *instruction {
+            Instruction::SpecConstantFalse { result_id, .. } => get_constant_id(result_id)
+                .map(|constant_id| (constant_id, SpecializationConstant::Bool(false))),
+            Instruction::SpecConstantTrue { result_id, .. } => get_constant_id(result_id)
+                .map(|constant_id| (constant_id, SpecializationConstant::Bool(true))),
+            Instruction::SpecConstant {
+                result_type_id,
+                result_id,
+                ref value,
+            } => get_constant_id(result_id).map(|constant_id| {
+                let value = match *spirv.id(result_type_id).instruction() {
+                    Instruction::TypeInt {
+                        width, signedness, ..
+                    } => {
+                        if width == 64 {
+                            assert!(value.len() == 2);
+                        } else {
+                            assert!(value.len() == 1);
+                        }
+
+                        match (signedness, width) {
+                            (0, 8) => SpecializationConstant::U8(value[0] as u8),
+                            (0, 16) => SpecializationConstant::U16(value[0] as u16),
+                            (0, 32) => SpecializationConstant::U32(value[0]),
+                            (0, 64) => SpecializationConstant::U64(
+                                (value[0] as u64) | ((value[1] as u64) << 32),
+                            ),
+                            (1, 8) => SpecializationConstant::I8(value[0] as i8),
+                            (1, 16) => SpecializationConstant::I16(value[0] as i16),
+                            (1, 32) => SpecializationConstant::I32(value[0] as i32),
+                            (1, 64) => SpecializationConstant::I64(
+                                (value[0] as i64) | ((value[1] as i64) << 32),
+                            ),
+                            _ => unimplemented!(),
+                        }
+                    }
+                    Instruction::TypeFloat { width, .. } => {
+                        if width == 64 {
+                            assert!(value.len() == 2);
+                        } else {
+                            assert!(value.len() == 1);
+                        }
+
+                        match width {
+                            16 => SpecializationConstant::F16(f16::from_bits(value[0] as u16)),
+                            32 => SpecializationConstant::F32(f32::from_bits(value[0])),
+                            64 => SpecializationConstant::F64(f64::from_bits(
+                                (value[0] as u64) | ((value[1] as u64) << 32),
+                            )),
+                            _ => unimplemented!(),
+                        }
+                    }
+                    _ => panic!(
+                        "Specialization constant {} has a non-scalar type",
+                        constant_id
+                    ),
+                };
+
+                (constant_id, value)
+            }),
+            _ => None,
         })
         .collect()
 }

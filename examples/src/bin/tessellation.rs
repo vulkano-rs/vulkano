@@ -37,7 +37,9 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
+            multisample::MultisampleState,
             rasterization::{PolygonMode, RasterizationState},
             tessellation::TessellationState,
             vertex_input::Vertex,
@@ -46,6 +48,7 @@ use vulkano::{
         GraphicsPipeline,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -315,11 +318,6 @@ fn main() {
     )
     .unwrap();
 
-    let vs = vs::load(device.clone()).unwrap();
-    let tcs = tcs::load(device.clone()).unwrap();
-    let tes = tes::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
@@ -337,18 +335,32 @@ fn main() {
     )
     .unwrap();
 
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let tcs = tcs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let tes = tes::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(tcs),
+            PipelineShaderStageCreateInfo::entry_point(tes),
+            PipelineShaderStageCreateInfo::entry_point(fs),
+        ])
         .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        // Actually use the tessellation shaders.
-        .tessellation_shaders(
-            tcs.entry_point("main").unwrap(),
-            (),
-            tes.entry_point("main").unwrap(),
-            (),
-        )
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PatchList))
-        .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::Line))
         .tessellation_state(
             TessellationState::new()
                 // Use a patch_control_points of 3, because we want to convert one triangle into
@@ -357,8 +369,10 @@ fn main() {
                 .patch_control_points(3),
         )
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::Line))
+        .multisample_state(MultisampleState::default())
+        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
+        .render_pass(subpass)
         .build(device.clone())
         .unwrap();
 

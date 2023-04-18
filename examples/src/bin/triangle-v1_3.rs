@@ -37,7 +37,10 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             render_pass::PipelineRenderingCreateInfo,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
@@ -45,6 +48,7 @@ use vulkano::{
         GraphicsPipeline,
     },
     render_pass::{LoadOp, StoreOp},
+    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -369,37 +373,60 @@ fn main() {
         }
     }
 
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
     // implicitly does a lot of computation whenever you draw. In Vulkan, you have to do all this
     // manually.
 
+    // A Vulkan shader can in theory contain multiple entry points, so we have to specify which
+    // one.
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+
+    // We describe the formats of attachment images where the colors, depth and/or stencil
+    // information will be written. The pipeline will only be usable with this particular
+    // configuration of the attachment images.
+    let subpass = PipelineRenderingCreateInfo {
+        // We specify a single color attachment that will be rendered to. When we begin
+        // rendering, we will specify a swapchain image to be used as this attachment, so here
+        // we set its format to be the same format as the swapchain.
+        color_attachment_formats: vec![Some(swapchain.image_format())],
+        ..Default::default()
+    };
+
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
     let pipeline = GraphicsPipeline::start()
-        // We describe the formats of attachment images where the colors, depth and/or stencil
-        // information will be written. The pipeline will only be usable with this particular
-        // configuration of the attachment images.
-        .render_pass(PipelineRenderingCreateInfo {
-            // We specify a single color attachment that will be rendered to. When we begin
-            // rendering, we will specify a swapchain image to be used as this attachment, so here
-            // we set its format to be the same format as the swapchain.
-            color_attachment_formats: vec![Some(swapchain.image_format())],
-            ..Default::default()
-        })
-        // We need to indicate the layout of the vertices.
+        // Specify the shader stages that the pipeline will have.
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
+        ])
+        // How vertex data is read from the vertex buffers into the vertex shader.
         .vertex_input_state(Vertex::per_vertex())
-        // The content of the vertex buffer describes a list of triangles.
-        .input_assembly_state(InputAssemblyState::new())
-        // A Vulkan shader can in theory contain multiple entry points, so we have to specify which
-        // one.
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        // Use a resizable viewport set to draw over the entire window
+        // How vertices are arranged into primitive shapes.
+        // The default primitive shape is a triangle.
+        .input_assembly_state(InputAssemblyState::default())
+        // How primitives are transformed and clipped to fit the framebuffer.
+        // We use a resizable viewport, set to draw over the entire window.
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        // See `vertex_shader`.
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        // How polygons are culled and converted into a raster of pixels.
+        // The default value does not perform any culling.
+        .rasterization_state(RasterizationState::default())
+        // How multiple fragment shader samples are converted to a single pixel value.
+        // The default value does not perform any multisampling.
+        .multisample_state(MultisampleState::default())
+        // How pixel values are combined with the values already present in the framebuffer.
+        // The default value overwrites the old value with the new one, without any blending.
+        .color_blend_state(ColorBlendState::new(
+            subpass.color_attachment_formats.len() as u32
+        ))
+        .render_pass(subpass)
         // Now that our builder is filled, we call `build()` to obtain an actual pipeline.
         .build(device.clone())
         .unwrap();

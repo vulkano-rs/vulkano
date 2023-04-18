@@ -38,6 +38,8 @@ mod linux {
             graphics::{
                 color_blend::ColorBlendState,
                 input_assembly::{InputAssemblyState, PrimitiveTopology},
+                multisample::MultisampleState,
+                rasterization::RasterizationState,
                 vertex_input::Vertex,
                 viewport::{Scissor, Viewport, ViewportState},
             },
@@ -45,6 +47,7 @@ mod linux {
         },
         render_pass::{Framebuffer, RenderPass, Subpass},
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+        shader::PipelineShaderStageCreateInfo,
         swapchain::{
             AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
             SwapchainPresentInfo,
@@ -582,9 +585,6 @@ mod linux {
         )
         .unwrap();
 
-        let vs = vs::load(device.clone()).unwrap();
-        let fs = fs::load(device.clone()).unwrap();
-
         let render_pass = vulkano::single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
@@ -612,11 +612,21 @@ mod linux {
         )
         .unwrap();
 
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-
         let pipeline = GraphicsPipeline::start()
+            .stages([
+                PipelineShaderStageCreateInfo::entry_point(vs),
+                PipelineShaderStageCreateInfo::entry_point(fs),
+            ])
             .vertex_input_state(MyVertex::per_vertex())
-            .vertex_shader(vs.entry_point("main").unwrap(), ())
             .input_assembly_state(
                 InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
             )
@@ -624,8 +634,9 @@ mod linux {
                 scissors: (0..1).map(|_| Scissor::irrelevant()).collect(),
                 viewport_count_dynamic: false,
             })
-            .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .color_blend_state(ColorBlendState::new(1).blend_alpha())
+            .rasterization_state(RasterizationState::default())
+            .multisample_state(MultisampleState::default())
+            .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
             .render_pass(subpass)
             .build(device.clone())
             .unwrap();

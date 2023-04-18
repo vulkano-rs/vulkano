@@ -31,13 +31,17 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
+    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, PresentMode, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
@@ -317,10 +321,6 @@ fn main() {
         }
     }
 
-    let cs = cs::load(device.clone()).unwrap();
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator =
@@ -409,10 +409,13 @@ fn main() {
     };
 
     // Create a compute-pipeline for applying the compute shader to vertices.
+    let cs = cs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
     let compute_pipeline = vulkano::pipeline::ComputePipeline::new(
         device.clone(),
-        cs.entry_point("main").unwrap(),
-        &(),
+        PipelineShaderStageCreateInfo::entry_point(cs),
         None,
         |_| {},
     )
@@ -444,14 +447,28 @@ fn main() {
     };
 
     // Create a basic graphics pipeline for rendering particles.
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let subpass = Subpass::from(render_pass, 0).unwrap();
     let graphics_pipeline = GraphicsPipeline::start()
+        .stages([
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
+        ])
         .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
         // Vertices will be rendered as a list of points.
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList))
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass, 0).unwrap())
+        .rasterization_state(RasterizationState::default())
+        .multisample_state(MultisampleState::default())
+        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
+        .render_pass(subpass)
         .build(device.clone())
         .unwrap();
 
