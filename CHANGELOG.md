@@ -17,6 +17,7 @@ Changes to shaders and pipelines:
 - Specialization constants are now provided with a `HashMap` containing `SpecializationConstant` enum values. The `SpecializationConstants` trait is removed, and `vulkano_shaders` no longer generates structs for specialization constants.
 - `GraphicsPipelineBuilder` now has a `stages` method that takes an iterator with all shader stages at once, instead of separate methods for each shader type.
 - `GraphicsPipelineBuilder` now requires you to provide `input_assembly_state`, `rasterization_state`, `multisample_state` and `color_blend_state` instead of them having default values. You can still call `default()` to generate default values for each of them.
+- `GraphicsPipelineBuilder::vertex_input_state` now requires a `VertexInputState` object directly, instead of a `VertexDefinition`. The `VertexDefinition` trait can be used to create the object.
 
 ### Additions
 
