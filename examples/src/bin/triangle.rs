@@ -36,7 +36,7 @@ use vulkano::{
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            vertex_input::Vertex,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -392,6 +392,12 @@ fn main() {
         .entry_point("main")
         .unwrap();
 
+    // Automatically generate a vertex input state from the vertex shader's input interface,
+    // that takes a single vertex buffer containing `Vertex` structs.
+    let vertex_input_state = Vertex::per_vertex()
+        .definition(&vs.info().input_interface)
+        .unwrap();
+
     // We have to indicate which subpass of which render pass this pipeline is going to be used
     // in. The pipeline will only be usable from this particular subpass.
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
@@ -405,7 +411,7 @@ fn main() {
             PipelineShaderStageCreateInfo::entry_point(fs),
         ])
         // How vertex data is read from the vertex buffers into the vertex shader.
-        .vertex_input_state(Vertex::per_vertex())
+        .vertex_input_state(vertex_input_state)
         // How vertices are arranged into primitive shapes.
         // The default primitive shape is a triangle.
         .input_assembly_state(InputAssemblyState::default())

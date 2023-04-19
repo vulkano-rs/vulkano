@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::vertex_input::IncompatibleVertexDefinitionError;
 use crate::{
     descriptor_set::layout::DescriptorSetLayoutCreationError,
     format::{Format, NumericType},
@@ -46,9 +45,6 @@ pub enum GraphicsPipelineCreationError {
 
     /// The pipeline layout is not compatible with what the shaders expect.
     IncompatiblePipelineLayout(PipelineLayoutSupersetError),
-
-    /// The vertex definition is not compatible with the input of the vertex shader.
-    IncompatibleVertexDefinition(IncompatibleVertexDefinitionError),
 
     /// Tried to use a patch list without a tessellation shader, or a non-patch-list with a
     /// tessellation shader.
@@ -250,7 +246,6 @@ impl Error for GraphicsPipelineCreationError {
             Self::PipelineLayoutCreationError(err) => Some(err),
             Self::IncompatiblePipelineLayout(err) => Some(err),
             Self::ShaderStagesMismatch(err) => Some(err),
-            Self::IncompatibleVertexDefinition(err) => Some(err),
             _ => None,
         }
     }
@@ -293,10 +288,6 @@ impl Display for GraphicsPipelineCreationError {
             Self::IncompatiblePipelineLayout(_) => write!(
                 f,
                 "the pipeline layout is not compatible with what the shaders expect",
-            ),
-            Self::IncompatibleVertexDefinition(_) => write!(
-                f,
-                "the vertex definition is not compatible with the input of the vertex shader",
             ),
             Self::InvalidPrimitiveTopology => write!(
                 f,
@@ -502,12 +493,6 @@ impl From<PipelineLayoutCreationError> for GraphicsPipelineCreationError {
 impl From<PipelineLayoutSupersetError> for GraphicsPipelineCreationError {
     fn from(err: PipelineLayoutSupersetError) -> Self {
         Self::IncompatiblePipelineLayout(err)
-    }
-}
-
-impl From<IncompatibleVertexDefinitionError> for GraphicsPipelineCreationError {
-    fn from(err: IncompatibleVertexDefinitionError) -> Self {
-        Self::IncompatibleVertexDefinition(err)
     }
 }
 

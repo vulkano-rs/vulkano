@@ -32,7 +32,7 @@ use vulkano::{
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            vertex_input::Vertex,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -301,6 +301,9 @@ fn main() {
         .unwrap()
         .entry_point("main")
         .unwrap();
+    let vertex_input_state = [TriangleVertex::per_vertex(), InstanceData::per_instance()]
+        .definition(&vs.info().input_interface)
+        .unwrap();
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .stages([
@@ -309,7 +312,7 @@ fn main() {
         ])
         // Use the implementations of the `Vertex` trait to describe to vulkano how the two vertex
         // types are expected to be used.
-        .vertex_input_state([TriangleVertex::per_vertex(), InstanceData::per_instance()])
+        .vertex_input_state(vertex_input_state)
         .input_assembly_state(InputAssemblyState::default())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .rasterization_state(RasterizationState::default())

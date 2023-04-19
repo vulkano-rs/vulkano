@@ -37,7 +37,7 @@ use vulkano::{
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            vertex_input::Vertex,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -463,13 +463,16 @@ fn window_size_dependent_setup(
     // teapot example, we recreate the pipelines with a hardcoded viewport instead. This allows the
     // driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
+    let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
+        .definition(&vs.info().input_interface)
+        .unwrap();
     let subpass = Subpass::from(render_pass, 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .stages([
             PipelineShaderStageCreateInfo::entry_point(vs),
             PipelineShaderStageCreateInfo::entry_point(fs),
         ])
-        .vertex_input_state([Position::per_vertex(), Normal::per_vertex()])
+        .vertex_input_state(vertex_input_state)
         .input_assembly_state(InputAssemblyState::default())
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
             Viewport {

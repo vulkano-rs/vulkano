@@ -42,7 +42,7 @@ use vulkano::{
             multisample::MultisampleState,
             rasterization::{PolygonMode, RasterizationState},
             tessellation::TessellationState,
-            vertex_input::Vertex,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -351,6 +351,9 @@ fn main() {
         .unwrap()
         .entry_point("main")
         .unwrap();
+    let vertex_input_state = Vertex::per_vertex()
+        .definition(&vs.info().input_interface)
+        .unwrap();
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .stages([
@@ -359,7 +362,7 @@ fn main() {
             PipelineShaderStageCreateInfo::entry_point(tes),
             PipelineShaderStageCreateInfo::entry_point(fs),
         ])
-        .vertex_input_state(Vertex::per_vertex())
+        .vertex_input_state(vertex_input_state)
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PatchList))
         .tessellation_state(
             TessellationState::new()

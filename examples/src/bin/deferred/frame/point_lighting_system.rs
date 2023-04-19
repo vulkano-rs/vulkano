@@ -27,7 +27,7 @@ use vulkano::{
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            vertex_input::Vertex,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -92,13 +92,16 @@ impl PointLightingSystem {
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
+            let vertex_input_state = LightingVertex::per_vertex()
+                .definition(&vs.info().input_interface)
+                .unwrap();
 
             GraphicsPipeline::start()
                 .stages([
                     PipelineShaderStageCreateInfo::entry_point(vs),
                     PipelineShaderStageCreateInfo::entry_point(fs),
                 ])
-                .vertex_input_state(LightingVertex::per_vertex())
+                .vertex_input_state(vertex_input_state)
                 .input_assembly_state(InputAssemblyState::default())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                 .rasterization_state(RasterizationState::default())
