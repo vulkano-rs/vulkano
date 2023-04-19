@@ -40,7 +40,7 @@ mod linux {
                 input_assembly::{InputAssemblyState, PrimitiveTopology},
                 multisample::MultisampleState,
                 rasterization::RasterizationState,
-                vertex_input::Vertex,
+                vertex_input::{Vertex, VertexDefinition},
                 viewport::{Scissor, Viewport, ViewportState},
             },
             GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -620,13 +620,16 @@ mod linux {
             .unwrap()
             .entry_point("main")
             .unwrap();
+        let vertex_input_state = MyVertex::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
         let pipeline = GraphicsPipeline::start()
             .stages([
                 PipelineShaderStageCreateInfo::entry_point(vs),
                 PipelineShaderStageCreateInfo::entry_point(fs),
             ])
-            .vertex_input_state(MyVertex::per_vertex())
+            .vertex_input_state(vertex_input_state)
             .input_assembly_state(
                 InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
             )

@@ -33,7 +33,7 @@ use vulkano::{
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            vertex_input::Vertex,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -311,13 +311,16 @@ fn main() {
         .unwrap()
         .entry_point("main")
         .unwrap();
+    let vertex_input_state = Vertex::per_vertex()
+        .definition(&vs.info().input_interface)
+        .unwrap();
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .stages([
             PipelineShaderStageCreateInfo::entry_point(vs),
             PipelineShaderStageCreateInfo::entry_point(fs),
         ])
-        .vertex_input_state(Vertex::per_vertex())
+        .vertex_input_state(vertex_input_state)
         .input_assembly_state(InputAssemblyState::default())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .rasterization_state(RasterizationState::default())

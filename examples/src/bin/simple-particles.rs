@@ -35,7 +35,7 @@ use vulkano::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            vertex_input::Vertex,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline, PipelineBindPoint,
@@ -455,13 +455,16 @@ fn main() {
         .unwrap()
         .entry_point("main")
         .unwrap();
+    let vertex_input_state = Vertex::per_vertex()
+        .definition(&vs.info().input_interface)
+        .unwrap();
     let subpass = Subpass::from(render_pass, 0).unwrap();
     let graphics_pipeline = GraphicsPipeline::start()
         .stages([
             PipelineShaderStageCreateInfo::entry_point(vs),
             PipelineShaderStageCreateInfo::entry_point(fs),
         ])
-        .vertex_input_state(Vertex::per_vertex())
+        .vertex_input_state(vertex_input_state)
         // Vertices will be rendered as a list of points.
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList))
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))

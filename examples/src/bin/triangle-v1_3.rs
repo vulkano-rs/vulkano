@@ -42,7 +42,7 @@ use vulkano::{
             multisample::MultisampleState,
             rasterization::RasterizationState,
             render_pass::PipelineRenderingCreateInfo,
-            vertex_input::Vertex,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
@@ -388,6 +388,12 @@ fn main() {
         .entry_point("main")
         .unwrap();
 
+    // Automatically generate a vertex input state from the vertex shader's input interface,
+    // that takes a single vertex buffer containing `Vertex` structs.
+    let vertex_input_state = Vertex::per_vertex()
+        .definition(&vs.info().input_interface)
+        .unwrap();
+
     // We describe the formats of attachment images where the colors, depth and/or stencil
     // information will be written. The pipeline will only be usable with this particular
     // configuration of the attachment images.
@@ -408,7 +414,7 @@ fn main() {
             PipelineShaderStageCreateInfo::entry_point(fs),
         ])
         // How vertex data is read from the vertex buffers into the vertex shader.
-        .vertex_input_state(Vertex::per_vertex())
+        .vertex_input_state(vertex_input_state)
         // How vertices are arranged into primitive shapes.
         // The default primitive shape is a triangle.
         .input_assembly_state(InputAssemblyState::default())

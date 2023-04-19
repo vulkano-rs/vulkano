@@ -19,8 +19,7 @@ use super::{
     render_pass::{PipelineRenderPassType, PipelineRenderingCreateInfo},
     tessellation::TessellationState,
     vertex_input::{
-        VertexDefinition, VertexInputAttributeDescription, VertexInputBindingDescription,
-        VertexInputState,
+        VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputState,
     },
     viewport::ViewportState,
     GraphicsPipeline, GraphicsPipelineCreationError,
@@ -53,12 +52,12 @@ use std::{collections::hash_map::Entry, ffi::CString, mem::MaybeUninit, ptr, syn
 
 /// Prototype for a `GraphicsPipeline`.
 #[derive(Clone, Debug)]
-pub struct GraphicsPipelineBuilder<Vdef> {
+pub struct GraphicsPipelineBuilder {
     render_pass: Option<PipelineRenderPassType>,
     cache: Option<Arc<PipelineCache>>,
     stages: SmallVec<[PipelineShaderStageCreateInfo; 5]>,
 
-    vertex_input_state: Option<Vdef>,
+    vertex_input_state: Option<VertexInputState>,
     input_assembly_state: Option<InputAssemblyState>,
     tessellation_state: Option<TessellationState>,
     viewport_state: Option<ViewportState>,
@@ -69,7 +68,7 @@ pub struct GraphicsPipelineBuilder<Vdef> {
     color_blend_state: Option<ColorBlendState>,
 }
 
-impl GraphicsPipelineBuilder<VertexInputState> {
+impl GraphicsPipelineBuilder {
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
@@ -88,12 +87,7 @@ impl GraphicsPipelineBuilder<VertexInputState> {
             color_blend_state: None,
         }
     }
-}
 
-impl<Vdef> GraphicsPipelineBuilder<Vdef>
-where
-    Vdef: VertexDefinition,
-{
     /// Builds the graphics pipeline, using an inferred a pipeline layout.
     #[inline]
     pub fn build(
@@ -205,27 +199,17 @@ where
         device: Arc<Device>,
         pipeline_layout: Arc<PipelineLayout>,
     ) -> Result<Arc<GraphicsPipeline>, GraphicsPipelineCreationError> {
-        let vertex_input_state = self
-            .stages
-            .iter()
-            .find(|stage| matches!(stage.entry_point.info().execution, ShaderExecution::Vertex))
-            .zip(self.vertex_input_state.as_ref())
-            .map(|(stage, vertex_input_state)| {
-                vertex_input_state.definition(&stage.entry_point.info().input_interface)
-            })
-            .transpose()?;
-
-        self.validate_create(&device, &pipeline_layout, vertex_input_state.as_ref())?;
+        self.validate_create(&device, &pipeline_layout)?;
 
         let (handle, descriptor_requirements, dynamic_state, shaders, fragment_tests_stages) =
-            unsafe { self.record_create(&device, &pipeline_layout, vertex_input_state.as_ref())? };
+            unsafe { self.record_create(&device, &pipeline_layout)? };
 
         let Self {
             mut render_pass,
             cache: _,
             stages: _,
 
-            vertex_input_state: _,
+            vertex_input_state,
             input_assembly_state,
             tessellation_state,
             viewport_state,
@@ -272,7 +256,6 @@ where
         &self,
         device: &Device,
         pipeline_layout: &PipelineLayout,
-        vertex_input_state: Option<&VertexInputState>,
     ) -> Result<(), GraphicsPipelineCreationError> {
         let physical_device = device.physical_device();
         let properties = physical_device.properties();
@@ -282,7 +265,7 @@ where
             cache: _,
             stages,
 
-            vertex_input_state: _,
+            vertex_input_state,
             input_assembly_state,
             tessellation_state,
             viewport_state,
@@ -2689,7 +2672,6 @@ where
         &self,
         device: &Device,
         pipeline_layout: &PipelineLayout,
-        vertex_input_state: Option<&VertexInputState>,
     ) -> Result<
         (
             ash::vk::Pipeline,
@@ -2705,7 +2687,7 @@ where
             cache,
             stages,
 
-            vertex_input_state: _,
+            vertex_input_state,
             input_assembly_state,
             tessellation_state,
             viewport_state,
@@ -3722,10 +3704,6 @@ where
         ))
     }
 
-    // TODO: add build_with_cache method
-}
-
-impl<Vdef> GraphicsPipelineBuilder<Vdef> {
     /// Sets the shader stages to use.
     ///
     /// A vertex shader must always be included. Other stages are optional.
@@ -3743,25 +3721,9 @@ impl<Vdef> GraphicsPipelineBuilder<Vdef> {
     /// This state is always used, and must be provided.
     ///
     /// The default value is `None`.
-    pub fn vertex_input_state<T>(self, vertex_input_state: T) -> GraphicsPipelineBuilder<T>
-    where
-        T: VertexDefinition,
-    {
-        GraphicsPipelineBuilder {
-            render_pass: self.render_pass,
-            cache: self.cache,
-            stages: self.stages,
-
-            vertex_input_state: Some(vertex_input_state),
-            input_assembly_state: self.input_assembly_state,
-            tessellation_state: self.tessellation_state,
-            viewport_state: self.viewport_state,
-            discard_rectangle_state: self.discard_rectangle_state,
-            rasterization_state: self.rasterization_state,
-            multisample_state: self.multisample_state,
-            depth_stencil_state: self.depth_stencil_state,
-            color_blend_state: self.color_blend_state,
-        }
+    pub fn vertex_input_state(mut self, vertex_input_state: VertexInputState) -> Self {
+        self.vertex_input_state = Some(vertex_input_state);
+        self
     }
 
     /// Sets the input assembly state.
