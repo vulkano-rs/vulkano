@@ -72,7 +72,7 @@ use self::{
 };
 use super::{
     cache::PipelineCache, layout::PipelineLayoutSupersetError, DynamicState, Pipeline,
-    PipelineBindPoint, PipelineLayout, StateMode,
+    PipelineBindPoint, PipelineCreateFlags, PipelineLayout, StateMode,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -174,6 +174,7 @@ impl GraphicsPipeline {
         let properties = physical_device.properties();
 
         let &GraphicsPipelineCreateInfo {
+            flags: _,
             ref stages,
 
             ref vertex_input_state,
@@ -2591,6 +2592,7 @@ impl GraphicsPipeline {
         create_info: GraphicsPipelineCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
         let &GraphicsPipelineCreateInfo {
+            flags,
             ref stages,
 
             ref vertex_input_state,
@@ -3493,7 +3495,7 @@ impl GraphicsPipeline {
         */
 
         let mut create_info_vk = ash::vk::GraphicsPipelineCreateInfo {
-            flags: ash::vk::PipelineCreateFlags::empty(), // TODO: some flags are available but none are critical
+            flags: flags.into(),
             stage_count: stages_vk.len() as u32,
             p_stages: stages_vk.as_ptr(),
             p_vertex_input_state: vertex_input_state_vk
@@ -3589,12 +3591,13 @@ impl GraphicsPipeline {
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
     #[inline]
-    pub fn from_handle(
+    pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Pipeline,
         create_info: GraphicsPipelineCreateInfo,
     ) -> Arc<Self> {
         let GraphicsPipelineCreateInfo {
+            flags: _,
             stages,
 
             vertex_input_state,
@@ -4207,6 +4210,11 @@ impl_id_counter!(GraphicsPipeline);
 /// Parameters to create a new `GraphicsPipeline`.
 #[derive(Clone, Debug)]
 pub struct GraphicsPipelineCreateInfo {
+    /// Specifies how to create the pipeline.
+    ///
+    /// The default value is empty.
+    pub flags: PipelineCreateFlags,
+
     /// The shader stages to use.
     ///
     /// A vertex shader must always be included. Other stages are optional.
@@ -4307,6 +4315,7 @@ impl GraphicsPipelineCreateInfo {
     #[inline]
     pub fn layout(layout: Arc<PipelineLayout>) -> Self {
         Self {
+            flags: PipelineCreateFlags::empty(),
             stages: SmallVec::new(),
             vertex_input_state: None,
             input_assembly_state: None,

@@ -22,6 +22,7 @@
 //! any descriptor sets and/or push constants that the pipeline needs, and then issuing a `dispatch`
 //! command on the command buffer.
 
+use super::PipelineCreateFlags;
 use crate::{
     descriptor_set::layout::DescriptorSetLayoutCreationError,
     device::{Device, DeviceOwned},
@@ -89,6 +90,7 @@ impl ComputePipeline {
         }
 
         let &ComputePipelineCreateInfo {
+            flags: _,
             ref stage,
             ref layout,
             _ne: _,
@@ -164,9 +166,10 @@ impl ComputePipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
     ) -> Result<Arc<ComputePipeline>, VulkanError> {
-        let ComputePipelineCreateInfo {
-            stage,
-            layout,
+        let &ComputePipelineCreateInfo {
+            flags,
+            ref stage,
+            ref layout,
             _ne: _,
         } = &create_info;
 
@@ -225,7 +228,7 @@ impl ComputePipeline {
         }
 
         let create_infos_vk = ash::vk::ComputePipelineCreateInfo {
-            flags: ash::vk::PipelineCreateFlags::empty(),
+            flags: flags.into(),
             stage: stage_vk,
             layout: layout.handle(),
             base_pipeline_handle: ash::vk::Pipeline::null(),
@@ -265,6 +268,7 @@ impl ComputePipeline {
         create_info: ComputePipelineCreateInfo,
     ) -> Arc<ComputePipeline> {
         let ComputePipelineCreateInfo {
+            flags: _,
             stage,
             layout,
             _ne: _,
@@ -362,6 +366,11 @@ impl Drop for ComputePipeline {
 /// Parameters to create a new `ComputePipeline`.
 #[derive(Clone, Debug)]
 pub struct ComputePipelineCreateInfo {
+    /// Specifies how to create the pipeline.
+    ///
+    /// The default value is empty.
+    pub flags: PipelineCreateFlags,
+
     /// The compute shader stage to use.
     ///
     /// There is no default value.
@@ -380,6 +389,7 @@ impl ComputePipelineCreateInfo {
     #[inline]
     pub fn stage_layout(stage: PipelineShaderStageCreateInfo, layout: Arc<PipelineLayout>) -> Self {
         Self {
+            flags: PipelineCreateFlags::empty(),
             stage,
             layout,
             _ne: crate::NonExhaustive(()),

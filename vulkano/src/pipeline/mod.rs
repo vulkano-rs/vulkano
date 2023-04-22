@@ -18,7 +18,11 @@
 //! initialization or during a loading screen.
 
 pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::PipelineLayout};
-use crate::{device::DeviceOwned, macros::vulkan_enum, shader::DescriptorBindingRequirements};
+use crate::{
+    device::DeviceOwned,
+    macros::{vulkan_bitflags, vulkan_enum},
+    shader::DescriptorBindingRequirements,
+};
 use ahash::HashMap;
 use std::sync::Arc;
 
@@ -72,6 +76,193 @@ vulkan_enum! {
     // TODO: document
     SubpassShading = SUBPASS_SHADING_HUAWEI {
         device_extensions: [huawei_subpass_shading],
+    },*/
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags that control how a pipeline is created.
+    PipelineCreateFlags = PipelineCreateFlags(u32);
+
+    /// The pipeline will not be optimized.
+    DISABLE_OPTIMIZATION = DISABLE_OPTIMIZATION,
+
+    /* TODO: enable
+    // TODO: document
+    ALLOW_DERIVATIVES = ALLOW_DERIVATIVES,*/
+
+    /* TODO: enable
+    // TODO: document
+    DERIVATIVE = DERIVATIVE,*/
+
+    /* TODO: enable
+    // TODO: document
+    VIEW_INDEX_FROM_DEVICE_INDEX = VIEW_INDEX_FROM_DEVICE_INDEX {
+        api_version: V1_1,
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    DISPATCH_BASE = DISPATCH_BASE {
+        api_version: V1_1,
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    FAIL_ON_PIPELINE_COMPILE_REQUIRED = FAIL_ON_PIPELINE_COMPILE_REQUIRED {
+        api_version: V1_3,
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    EARLY_RETURN_ON_FAILURE = EARLY_RETURN_ON_FAILURE {
+        api_version: V1_3,
+    },
+    */
+
+    /* TODO: enable
+    // TODO: document
+    RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT = RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
+        // Provided by VK_KHR_dynamic_rendering with VK_KHR_fragment_shading_rate
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT = RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_EXT {
+        // Provided by VK_KHR_dynamic_rendering with VK_EXT_fragment_density_map
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_NO_NULL_ANY_HIT_SHADERS = RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_KHR {
+        device_extensions: [khr_ray_tracing_pipeline],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS = RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS_KHR {
+        device_extensions: [khr_ray_tracing_pipeline],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_NO_NULL_MISS_SHADERS = RAY_TRACING_NO_NULL_MISS_SHADERS_KHR {
+        device_extensions: [khr_ray_tracing_pipeline],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_NO_NULL_INTERSECTION_SHADERS = RAY_TRACING_NO_NULL_INTERSECTION_SHADERS_KHR {
+        device_extensions: [khr_ray_tracing_pipeline],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_SKIP_TRIANGLES = RAY_TRACING_SKIP_TRIANGLES_KHR {
+        device_extensions: [khr_ray_tracing_pipeline],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_SKIP_AABBS = RAY_TRACING_SKIP_AABBS_KHR {
+        device_extensions: [khr_ray_tracing_pipeline],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY = RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_KHR {
+        device_extensions: [khr_ray_tracing_pipeline],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    DEFER_COMPILE = DEFER_COMPILE_NV {
+        device_extensions: [nv_ray_tracing],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    CAPTURE_STATISTICS = CAPTURE_STATISTICS_KHR {
+        device_extensions: [khr_pipeline_executable_properties],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    CAPTURE_INTERNAL_REPRESENTATIONS = CAPTURE_INTERNAL_REPRESENTATIONS_KHR{
+        device_extensions: [khr_pipeline_executable_properties],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    INDIRECT_BINDABLE = INDIRECT_BINDABLE_NV{
+        device_extensions: [nv_device_generated_commands],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    LIBRARY = LIBRARY_KHR {
+        device_extensions: [khr_pipeline_library],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    DESCRIPTOR_BUFFER = DESCRIPTOR_BUFFER_EXT {
+        device_extensions: [ext_descriptor_buffer],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RETAIN_LINK_TIME_OPTIMIZATION_INFO = RETAIN_LINK_TIME_OPTIMIZATION_INFO_EXT {
+        device_extensions: [ext_graphics_pipeline_library],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    LINK_TIME_OPTIMIZATION = LINK_TIME_OPTIMIZATION_EXT {
+        device_extensions: [ext_graphics_pipeline_library],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_ALLOW_MOTION = RAY_TRACING_ALLOW_MOTION_NV {
+        device_extensions: [nv_ray_tracing_motion_blur],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    COLOR_ATTACHMENT_FEEDBACK_LOOP = COLOR_ATTACHMENT_FEEDBACK_LOOP_EXT {
+        device_extensions: [ext_attachment_feedback_loop_layout],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP = DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_EXT {
+        device_extensions: [ext_attachment_feedback_loop_layout],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_OPACITY_MICROMAP = RAY_TRACING_OPACITY_MICROMAP_EXT {
+        device_extensions: [ext_opacity_micromap],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    RAY_TRACING_DISPLACEMENT_MICROMAP = RAY_TRACING_DISPLACEMENT_MICROMAP_NV {
+        device_extensions: [nv_displacement_micromap],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    NO_PROTECTED_ACCESS = NO_PROTECTED_ACCESS_EXT {
+        device_extensions: [ext_pipeline_protected_access],
+    },*/
+
+    /* TODO: enable
+    // TODO: document
+    PROTECTED_ACCESS_ONLY = PROTECTED_ACCESS_ONLY_EXT {
+        device_extensions: [ext_pipeline_protected_access],
     },*/
 }
 
