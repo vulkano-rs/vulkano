@@ -11,13 +11,13 @@
 
 ### Breaking changes
 
-Changes to shaders and pipelines:
-- `EntryPoint` now owns instead of borrows a reference to the `ShaderModule`.
-- Instead of an entry point and specialization constants, pipeline construction now takes a `PipelineShaderStageCreateInfo` structure.
+Changes to pipeline construction:
+- Pipelines are now constructed with the standard complement of `new`, `new_unchecked` and `from_handle` constructors, that each take a `ComputePipelineCreateInfo` or `GraphicsPipelineCreateInfo` struct.
+- Pipeline layouts are no longer automatically constructed when creating a pipeline. You can auto-create a pipeline layout (and modify the auto-generated parameters if needed) using the new `PipelineDescriptorSetLayoutCreateInfo` type.
+- `GraphicsPipelineCreateInfo::vertex_input_state` requires a `VertexInputState` struct directly, instead of a `VertexDefinition`. The `VertexDefinition` trait can be used to create the struct.
+- `GraphicsPipelineCreateInfo` now requires you to provide `input_assembly_state`, `rasterization_state`, `multisample_state` and `color_blend_state` instead of them having default values. You can still call `default()` to generate default values for each of them.
+- Instead of an entry point and specialization constants, pipeline construction now takes a `PipelineShaderStageCreateInfo` structure. `GraphicsPipelineCreateInfo` has a `stages` member that takes all shader stages at once, instead of separate members for each shader type. `EntryPoint` now owns instead of borrows a reference to the `ShaderModule`, so this is easier.
 - Specialization constants are now provided with a `HashMap` containing `SpecializationConstant` enum values. The `SpecializationConstants` trait is removed, and `vulkano_shaders` no longer generates structs for specialization constants.
-- `GraphicsPipelineBuilder` now has a `stages` method that takes an iterator with all shader stages at once, instead of separate methods for each shader type.
-- `GraphicsPipelineBuilder` now requires you to provide `input_assembly_state`, `rasterization_state`, `multisample_state` and `color_blend_state` instead of them having default values. You can still call `default()` to generate default values for each of them.
-- `GraphicsPipelineBuilder::vertex_input_state` now requires a `VertexInputState` object directly, instead of a `VertexDefinition`. The `VertexDefinition` trait can be used to create the object.
 
 ### Additions
 
