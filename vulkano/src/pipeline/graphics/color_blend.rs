@@ -312,7 +312,7 @@ impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
             src_alpha_blend_factor: val.alpha_source.into(),
             dst_alpha_blend_factor: val.alpha_destination.into(),
             alpha_blend_op: val.alpha_op.into(),
-            color_write_mask: ash::vk::ColorComponentFlags::empty(), // Overwritten by GraphicsPipelineBuilder
+            color_write_mask: ash::vk::ColorComponentFlags::empty(),
         }
     }
 }

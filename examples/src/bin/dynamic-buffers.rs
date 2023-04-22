@@ -29,7 +29,10 @@ use vulkano::{
     },
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+    },
     shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     DeviceSize, VulkanLibrary,
@@ -90,7 +93,7 @@ fn main() {
     .unwrap();
     let queue = queues.next().unwrap();
 
-    mod shader {
+    mod cs {
         vulkano_shaders::shader! {
             ty: "compute",
             src: r"
@@ -119,20 +122,36 @@ fn main() {
         }
     }
 
-    let shader = shader::load(device.clone())
+    let pipeline = {
+        let cs = cs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+        let layout = {
+            let mut layout_create_info =
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage]);
+            layout_create_info.set_layouts[0]
+                .bindings
+                .get_mut(&0)
+                .unwrap()
+                .descriptor_type = DescriptorType::UniformBufferDynamic;
+            PipelineLayout::new(
+                device.clone(),
+                layout_create_info
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+
+        ComputePipeline::new(
+            device.clone(),
+            None,
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
+        )
         .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let pipeline = ComputePipeline::new(
-        device.clone(),
-        PipelineShaderStageCreateInfo::entry_point(shader),
-        None,
-        |layout_create_infos| {
-            let binding = layout_create_infos[0].bindings.get_mut(&0).unwrap();
-            binding.descriptor_type = DescriptorType::UniformBufferDynamic;
-        },
-    )
-    .unwrap();
+    };
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
@@ -208,7 +227,7 @@ fn main() {
             WriteDescriptorSet::buffer_with_range(
                 0,
                 input_buffer,
-                0..size_of::<shader::InData>() as DeviceSize,
+                0..size_of::<cs::InData>() as DeviceSize,
             ),
             WriteDescriptorSet::buffer(1, output_buffer.clone()),
         ],

@@ -30,6 +30,7 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
+        compute::ComputePipelineCreateInfo,
         graphics::{
             color_blend::ColorBlendState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -37,8 +38,10 @@ use vulkano::{
             rasterization::RasterizationState,
             vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline, PipelineBindPoint,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
     shader::PipelineShaderStageCreateInfo,
@@ -409,17 +412,26 @@ fn main() {
     };
 
     // Create a compute-pipeline for applying the compute shader to vertices.
-    let cs = cs::load(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let compute_pipeline = vulkano::pipeline::ComputePipeline::new(
-        device.clone(),
-        PipelineShaderStageCreateInfo::entry_point(cs),
-        None,
-        |_| {},
-    )
-    .expect("failed to create compute shader");
+    let compute_pipeline = {
+        let cs = cs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                .into_pipeline_layout_create_info(device.clone())
+                .expect("failed to create descriptor set layouts"),
+        )
+        .expect("failed to create pipeline layout");
+        ComputePipeline::new(
+            device.clone(),
+            None,
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
+        )
+        .expect("failed to create compute shader")
+    };
 
     // Create a new descriptor set for binding vertices as a storage buffer.
     use vulkano::pipeline::Pipeline; // Required to access the `layout` method of pipeline.
@@ -447,33 +459,50 @@ fn main() {
     };
 
     // Create a basic graphics pipeline for rendering particles.
-    let vs = vs::load(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let fs = fs::load(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let vertex_input_state = Vertex::per_vertex()
-        .definition(&vs.info().input_interface)
-        .unwrap();
-    let subpass = Subpass::from(render_pass, 0).unwrap();
-    let graphics_pipeline = GraphicsPipeline::start()
-        .stages([
+    let graphics_pipeline = {
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let vertex_input_state = Vertex::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
+        let stages = [
             PipelineShaderStageCreateInfo::entry_point(vs),
             PipelineShaderStageCreateInfo::entry_point(fs),
-        ])
-        .vertex_input_state(vertex_input_state)
-        // Vertices will be rendered as a list of points.
-        .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList))
-        .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
-        .rasterization_state(RasterizationState::default())
-        .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
-        .render_pass(subpass)
-        .build(device.clone())
+        ];
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
         .unwrap();
+        let subpass = Subpass::from(render_pass, 0).unwrap();
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                // Vertices will be rendered as a list of points.
+                input_assembly_state: Some(
+                    InputAssemblyState::new().topology(PrimitiveTopology::PointList),
+                ),
+                viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([viewport])),
+                rasterization_state: Some(RasterizationState::default()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    };
 
     let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; framebuffers.len()];
     let mut previous_fence_index = 0u32;

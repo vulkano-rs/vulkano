@@ -25,8 +25,10 @@ use vulkano::{
             rasterization::RasterizationState,
             vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, PipelineLayout,
     },
     render_pass::Subpass,
     shader::PipelineShaderStageCreateInfo,
@@ -74,33 +76,46 @@ impl TriangleDrawSystem {
         .expect("failed to create buffer");
 
         let pipeline = {
-            let vs = vs::load(gfx_queue.device().clone())
+            let device = gfx_queue.device();
+            let vs = vs::load(device.clone())
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
-            let fs = fs::load(gfx_queue.device().clone())
+            let fs = fs::load(device.clone())
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
             let vertex_input_state = TriangleVertex::per_vertex()
                 .definition(&vs.info().input_interface)
                 .unwrap();
-
-            GraphicsPipeline::start()
-                .stages([
-                    PipelineShaderStageCreateInfo::entry_point(vs),
-                    PipelineShaderStageCreateInfo::entry_point(fs),
-                ])
-                .vertex_input_state(vertex_input_state)
-                .input_assembly_state(InputAssemblyState::default())
-                .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                .rasterization_state(RasterizationState::default())
-                .depth_stencil_state(DepthStencilState::simple_depth_test())
-                .multisample_state(MultisampleState::default())
-                .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
-                .render_pass(subpass.clone())
-                .build(gfx_queue.device().clone())
-                .unwrap()
+            let stages = [
+                PipelineShaderStageCreateInfo::entry_point(vs),
+                PipelineShaderStageCreateInfo::entry_point(fs),
+            ];
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            GraphicsPipeline::new(
+                device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    input_assembly_state: Some(InputAssemblyState::default()),
+                    viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                    rasterization_state: Some(RasterizationState::default()),
+                    depth_stencil_state: Some(DepthStencilState::simple_depth_test()),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                    subpass: Some(subpass.clone().into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+            .unwrap()
         };
 
         TriangleDrawSystem {

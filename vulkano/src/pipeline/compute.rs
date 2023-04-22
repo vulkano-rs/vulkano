@@ -22,11 +22,9 @@
 //! any descriptor sets and/or push constants that the pipeline needs, and then issuing a `dispatch`
 //! command on the command buffer.
 
-use super::layout::PipelineLayoutCreateInfo;
+use super::PipelineCreateFlags;
 use crate::{
-    descriptor_set::layout::{
-        DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
-    },
+    descriptor_set::layout::DescriptorSetLayoutCreationError,
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
     pipeline::{
@@ -69,182 +67,168 @@ pub struct ComputePipeline {
 }
 
 impl ComputePipeline {
-    /// Builds a new `ComputePipeline`.
-    ///
-    /// `func` is a closure that is given a mutable reference to the inferred descriptor set
-    /// definitions. This can be used to make changes to the layout before it's created, for example
-    /// to add dynamic buffers or immutable samplers.
-    pub fn new<F>(
+    /// Creates a new `ComputePipeline`.
+    #[inline]
+    pub fn new(
         device: Arc<Device>,
-        stage: PipelineShaderStageCreateInfo,
         cache: Option<Arc<PipelineCache>>,
-        func: F,
-    ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
-    where
-        F: FnOnce(&mut [DescriptorSetLayoutCreateInfo]),
-    {
-        let layout = {
-            let entry_point_info = stage.entry_point.info();
-            let mut set_layout_create_infos = DescriptorSetLayoutCreateInfo::from_requirements(
-                entry_point_info
-                    .descriptor_binding_requirements
-                    .iter()
-                    .map(|(k, v)| (*k, v)),
-            );
-            func(&mut set_layout_create_infos);
-            let set_layouts = set_layout_create_infos
-                .iter()
-                .map(|desc| DescriptorSetLayout::new(device.clone(), desc.clone()))
-                .collect::<Result<Vec<_>, _>>()?;
+        create_info: ComputePipelineCreateInfo,
+    ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError> {
+        Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
 
-            PipelineLayout::new(
-                device.clone(),
-                PipelineLayoutCreateInfo {
-                    set_layouts,
-                    push_constant_ranges: entry_point_info
-                        .push_constant_requirements
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    ..Default::default()
-                },
-            )?
-        };
-
-        Self::with_pipeline_layout(device, stage, layout, cache)
+        unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
     }
 
-    /// Builds a new `ComputePipeline` with a specific pipeline layout.
-    ///
-    /// An error will be returned if the pipeline layout isn't a superset of what the shader
-    /// uses.
-    pub fn with_pipeline_layout(
-        device: Arc<Device>,
-        stage: PipelineShaderStageCreateInfo,
-        layout: Arc<PipelineLayout>,
-        cache: Option<Arc<PipelineCache>>,
-    ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError> {
+    fn validate_new(
+        device: &Device,
+        cache: Option<&PipelineCache>,
+        create_info: &ComputePipelineCreateInfo,
+    ) -> Result<(), ComputePipelineCreationError> {
         // VUID-vkCreateComputePipelines-pipelineCache-parent
         if let Some(cache) = &cache {
-            assert_eq!(&device, cache.device());
+            assert_eq!(device, cache.device().as_ref());
         }
 
-        let &PipelineShaderStageCreateInfo {
-            flags,
-            ref entry_point,
-            ref specialization_info,
+        let &ComputePipelineCreateInfo {
+            flags: _,
+            ref stage,
+            ref layout,
             _ne: _,
-        } = &stage;
+        } = create_info;
 
-        // VUID-VkPipelineShaderStageCreateInfo-flags-parameter
-        flags.validate_device(&device)?;
+        {
+            let &PipelineShaderStageCreateInfo {
+                flags,
+                ref entry_point,
+                ref specialization_info,
+                _ne: _,
+            } = &stage;
 
-        let entry_point_info = entry_point.info();
+            // VUID-VkPipelineShaderStageCreateInfo-flags-parameter
+            flags.validate_device(device)?;
 
-        // VUID-VkComputePipelineCreateInfo-stage-00701
-        // VUID-VkPipelineShaderStageCreateInfo-stage-parameter
-        if !matches!(entry_point_info.execution, ShaderExecution::Compute) {
-            return Err(ComputePipelineCreationError::ShaderStageInvalid {
-                stage: ShaderStage::from(&entry_point_info.execution),
-            });
-        }
+            let entry_point_info = entry_point.info();
 
-        for (&constant_id, provided_value) in specialization_info {
-            // Per `VkSpecializationMapEntry` spec:
-            // "If a constantID value is not a specialization constant ID used in the shader,
-            // that map entry does not affect the behavior of the pipeline."
-            // We *may* want to be stricter than this for the sake of catching user errors?
-            if let Some(default_value) = entry_point_info.specialization_constants.get(&constant_id)
-            {
-                // VUID-VkSpecializationMapEntry-constantID-00776
-                // Check for equal types rather than only equal size.
-                if !provided_value.eq_type(default_value) {
-                    return Err(
+            // VUID-VkComputePipelineCreateInfo-stage-00701
+            // VUID-VkPipelineShaderStageCreateInfo-stage-parameter
+            if !matches!(entry_point_info.execution, ShaderExecution::Compute) {
+                return Err(ComputePipelineCreationError::ShaderStageInvalid {
+                    stage: ShaderStage::from(&entry_point_info.execution),
+                });
+            }
+
+            for (&constant_id, provided_value) in specialization_info {
+                // Per `VkSpecializationMapEntry` spec:
+                // "If a constantID value is not a specialization constant ID used in the shader,
+                // that map entry does not affect the behavior of the pipeline."
+                // We *may* want to be stricter than this for the sake of catching user errors?
+                if let Some(default_value) =
+                    entry_point_info.specialization_constants.get(&constant_id)
+                {
+                    // VUID-VkSpecializationMapEntry-constantID-00776
+                    // Check for equal types rather than only equal size.
+                    if !provided_value.eq_type(default_value) {
+                        return Err(
                         ComputePipelineCreationError::ShaderSpecializationConstantTypeMismatch {
                             constant_id,
                             default_value: *default_value,
                             provided_value: *provided_value,
                         },
                     );
+                    }
                 }
             }
+
+            // VUID-VkComputePipelineCreateInfo-layout-07987
+            // VUID-VkComputePipelineCreateInfo-layout-07988
+            // VUID-VkComputePipelineCreateInfo-layout-07990
+            // VUID-VkComputePipelineCreateInfo-layout-07991
+            // TODO: Make sure that all of these are indeed checked.
+            layout.ensure_compatible_with_shader(
+                entry_point_info
+                    .descriptor_binding_requirements
+                    .iter()
+                    .map(|(k, v)| (*k, v)),
+                entry_point_info.push_constant_requirements.as_ref(),
+            )?;
+
+            // VUID-VkComputePipelineCreateInfo-stage-00702
+            // VUID-VkComputePipelineCreateInfo-layout-01687
+            // TODO:
         }
 
-        // VUID-VkComputePipelineCreateInfo-layout-07987
-        // VUID-VkComputePipelineCreateInfo-layout-07988
-        // VUID-VkComputePipelineCreateInfo-layout-07990
-        // VUID-VkComputePipelineCreateInfo-layout-07991
-        // TODO: Make sure that all of these are indeed checked.
-        layout.ensure_compatible_with_shader(
-            entry_point_info
-                .descriptor_binding_requirements
-                .iter()
-                .map(|(k, v)| (*k, v)),
-            entry_point_info.push_constant_requirements.as_ref(),
-        )?;
-
-        // VUID-VkComputePipelineCreateInfo-stage-00702
-        // VUID-VkComputePipelineCreateInfo-layout-01687
-        // TODO:
-
-        unsafe { Self::new_unchecked(device, stage, layout, cache) }
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
-        stage: PipelineShaderStageCreateInfo,
-        layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
-    ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError> {
-        let &PipelineShaderStageCreateInfo {
+        create_info: ComputePipelineCreateInfo,
+    ) -> Result<Arc<ComputePipeline>, VulkanError> {
+        let &ComputePipelineCreateInfo {
             flags,
-            ref entry_point,
-            ref specialization_info,
+            ref stage,
+            ref layout,
             _ne: _,
-        } = &stage;
+        } = &create_info;
 
-        let entry_point_info = entry_point.info();
-        let name_vk = CString::new(entry_point_info.name.as_str()).unwrap();
+        let stage_vk;
+        let name_vk;
+        let specialization_info_vk;
+        let specialization_map_entries_vk: Vec<_>;
+        let mut specialization_data_vk: Vec<u8>;
 
-        let mut specialization_data_vk: Vec<u8> = Vec::new();
-        let specialization_map_entries_vk: Vec<_> = specialization_info
-            .iter()
-            .map(|(&constant_id, value)| {
-                let data = value.as_bytes();
-                let offset = specialization_data_vk.len() as u32;
-                let size = data.len();
-                specialization_data_vk.extend(data);
+        {
+            let &PipelineShaderStageCreateInfo {
+                flags,
+                ref entry_point,
+                ref specialization_info,
+                _ne: _,
+            } = stage;
 
-                ash::vk::SpecializationMapEntry {
-                    constant_id,
-                    offset,
-                    size,
-                }
-            })
-            .collect();
+            let entry_point_info = entry_point.info();
+            name_vk = CString::new(entry_point_info.name.as_str()).unwrap();
 
-        let specialization_info_vk = ash::vk::SpecializationInfo {
-            map_entry_count: specialization_map_entries_vk.len() as u32,
-            p_map_entries: specialization_map_entries_vk.as_ptr(),
-            data_size: specialization_data_vk.len(),
-            p_data: specialization_data_vk.as_ptr() as *const _,
-        };
-        let stage_vk = ash::vk::PipelineShaderStageCreateInfo {
-            flags: flags.into(),
-            stage: ShaderStage::from(&entry_point_info.execution).into(),
-            module: entry_point.module().handle(),
-            p_name: name_vk.as_ptr(),
-            p_specialization_info: if specialization_info_vk.data_size == 0 {
-                ptr::null()
-            } else {
-                &specialization_info_vk
-            },
-            ..Default::default()
-        };
+            specialization_data_vk = Vec::new();
+            specialization_map_entries_vk = specialization_info
+                .iter()
+                .map(|(&constant_id, value)| {
+                    let data = value.as_bytes();
+                    let offset = specialization_data_vk.len() as u32;
+                    let size = data.len();
+                    specialization_data_vk.extend(data);
+
+                    ash::vk::SpecializationMapEntry {
+                        constant_id,
+                        offset,
+                        size,
+                    }
+                })
+                .collect();
+
+            specialization_info_vk = ash::vk::SpecializationInfo {
+                map_entry_count: specialization_map_entries_vk.len() as u32,
+                p_map_entries: specialization_map_entries_vk.as_ptr(),
+                data_size: specialization_data_vk.len(),
+                p_data: specialization_data_vk.as_ptr() as *const _,
+            };
+            stage_vk = ash::vk::PipelineShaderStageCreateInfo {
+                flags: flags.into(),
+                stage: ShaderStage::from(&entry_point_info.execution).into(),
+                module: entry_point.module().handle(),
+                p_name: name_vk.as_ptr(),
+                p_specialization_info: if specialization_info_vk.data_size == 0 {
+                    ptr::null()
+                } else {
+                    &specialization_info_vk
+                },
+                ..Default::default()
+            };
+        }
 
         let create_infos_vk = ash::vk::ComputePipelineCreateInfo {
-            flags: ash::vk::PipelineCreateFlags::empty(),
+            flags: flags.into(),
             stage: stage_vk,
             layout: layout.handle(),
             base_pipeline_handle: ash::vk::Pipeline::null(),
@@ -268,7 +252,7 @@ impl ComputePipeline {
             output.assume_init()
         };
 
-        Ok(Self::from_handle(device, handle, stage, layout))
+        Ok(Self::from_handle(device, handle, create_info))
     }
 
     /// Creates a new `ComputePipeline` from a raw object handle.
@@ -281,9 +265,15 @@ impl ComputePipeline {
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Pipeline,
-        stage: PipelineShaderStageCreateInfo,
-        layout: Arc<PipelineLayout>,
+        create_info: ComputePipelineCreateInfo,
     ) -> Arc<ComputePipeline> {
+        let ComputePipelineCreateInfo {
+            flags: _,
+            stage,
+            layout,
+            _ne: _,
+        } = create_info;
+
         let descriptor_binding_requirements: HashMap<_, _> = stage
             .entry_point
             .info()
@@ -369,6 +359,40 @@ impl Drop for ComputePipeline {
         unsafe {
             let fns = self.device.fns();
             (fns.v1_0.destroy_pipeline)(self.device.handle(), self.handle, ptr::null());
+        }
+    }
+}
+
+/// Parameters to create a new `ComputePipeline`.
+#[derive(Clone, Debug)]
+pub struct ComputePipelineCreateInfo {
+    /// Specifies how to create the pipeline.
+    ///
+    /// The default value is empty.
+    pub flags: PipelineCreateFlags,
+
+    /// The compute shader stage to use.
+    ///
+    /// There is no default value.
+    pub stage: PipelineShaderStageCreateInfo,
+
+    /// The pipeline layout to use.
+    ///
+    /// There is no default value.
+    pub layout: Arc<PipelineLayout>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl ComputePipelineCreateInfo {
+    /// Returns a `ComputePipelineCreateInfo` with the specified `stage` and `layout`.
+    #[inline]
+    pub fn stage_layout(stage: PipelineShaderStageCreateInfo, layout: Arc<PipelineLayout>) -> Self {
+        Self {
+            flags: PipelineCreateFlags::empty(),
+            stage,
+            layout,
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -512,7 +536,10 @@ mod tests {
             allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
         },
         memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-        pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+        pipeline::{
+            compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
+            ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        },
         shader::{PipelineShaderStageCreateInfo, ShaderModule},
         sync::{now, GpuFuture},
     };
@@ -528,7 +555,7 @@ mod tests {
 
         let (device, queue) = gfx_dev_and_queue!();
 
-        let module = unsafe {
+        let cs = unsafe {
             /*
             #version 450
 
@@ -565,19 +592,29 @@ mod tests {
                 0, 5, 0, 0, 0, 65, 0, 5, 0, 12, 0, 0, 0, 13, 0, 0, 0, 9, 0, 0, 0, 10, 0, 0, 0, 62,
                 0, 3, 0, 13, 0, 0, 0, 11, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
+            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+            module.entry_point("main").unwrap()
         };
 
-        let pipeline = ComputePipeline::new(
-            device.clone(),
-            PipelineShaderStageCreateInfo {
+        let pipeline = {
+            let stage = PipelineShaderStageCreateInfo {
                 specialization_info: [(83, 0x12345678i32.into())].into_iter().collect(),
-                ..PipelineShaderStageCreateInfo::entry_point(module.entry_point("main").unwrap())
-            },
-            None,
-            |_| {},
-        )
-        .unwrap();
+                ..PipelineShaderStageCreateInfo::entry_point(cs)
+            };
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            ComputePipeline::new(
+                device.clone(),
+                None,
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
+            )
+            .unwrap()
+        };
 
         let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
         let data_buffer = Buffer::from_data(

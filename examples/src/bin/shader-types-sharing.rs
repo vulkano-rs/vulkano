@@ -40,7 +40,10 @@ use vulkano::{
     },
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+    },
     shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
@@ -246,36 +249,54 @@ fn main() {
     .unwrap();
 
     // Load the first shader, and create a pipeline for the shader.
-    let mult_shader = shaders::load_mult(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let mult_pipeline = ComputePipeline::new(
-        device.clone(),
-        PipelineShaderStageCreateInfo {
+    let mult_pipeline = {
+        let cs = shaders::load_mult(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo {
             specialization_info: [(0, true.into())].into_iter().collect(),
-            ..PipelineShaderStageCreateInfo::entry_point(mult_shader)
-        },
-        None,
-        |_| {},
-    )
-    .unwrap();
+            ..PipelineShaderStageCreateInfo::entry_point(cs)
+        };
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
+        .unwrap();
+        ComputePipeline::new(
+            device.clone(),
+            None,
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
+        )
+        .unwrap()
+    };
 
     // Load the second shader, and create a pipeline for the shader.
-    let add_shader = shaders::load_add(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let add_pipeline = ComputePipeline::new(
-        device,
-        PipelineShaderStageCreateInfo {
+    let add_pipeline = {
+        let cs = shaders::load_add(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo {
             specialization_info: [(0, true.into())].into_iter().collect(),
-            ..PipelineShaderStageCreateInfo::entry_point(add_shader)
-        },
-        None,
-        |_| {},
-    )
-    .unwrap();
+            ..PipelineShaderStageCreateInfo::entry_point(cs)
+        };
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
+        .unwrap();
+        ComputePipeline::new(
+            device,
+            None,
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
+        )
+        .unwrap()
+    };
 
     // Multiply each value by 2.
     run_shader(

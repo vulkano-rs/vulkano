@@ -15,11 +15,7 @@ use vulkano::{
         PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator,
-        layout::{
-            DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
-        },
-        PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
@@ -40,8 +36,9 @@ use vulkano::{
             rasterization::RasterizationState,
             vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        layout::PipelineLayoutCreateInfo,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
@@ -353,67 +350,62 @@ fn main() {
     )
     .unwrap();
 
-    let vs = vs::load(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let fs = fs::load(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let pipeline_layout = {
-        let mut layout_create_infos: Vec<_> = DescriptorSetLayoutCreateInfo::from_requirements(
-            fs.info()
-                .descriptor_binding_requirements
-                .iter()
-                .map(|(k, v)| (*k, v)),
-        );
-
-        // Set 0, Binding 0.
-        let binding = layout_create_infos[0].bindings.get_mut(&0).unwrap();
-        binding.variable_descriptor_count = true;
-        binding.descriptor_count = 2;
-
-        let set_layouts = layout_create_infos
-            .into_iter()
-            .map(|desc| DescriptorSetLayout::new(device.clone(), desc))
-            .collect::<Result<Vec<_>, DescriptorSetLayoutCreationError>>()
+    let pipeline = {
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
             .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let vertex_input_state = Vertex::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
+        let stages = [
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
+        ];
+        let layout = {
+            let mut layout_create_info =
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages);
 
-        PipelineLayout::new(
+            // Adjust the info for set 0, binding 0 to make it variable with 2 descriptors.
+            let binding = layout_create_info.set_layouts[0]
+                .bindings
+                .get_mut(&0)
+                .unwrap();
+            binding.variable_descriptor_count = true;
+            binding.descriptor_count = 2;
+
+            PipelineLayout::new(
+                device.clone(),
+                layout_create_info
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+        GraphicsPipeline::new(
             device.clone(),
-            PipelineLayoutCreateInfo {
-                set_layouts,
-                push_constant_ranges: fs
-                    .info()
-                    .push_constant_requirements
-                    .iter()
-                    .cloned()
-                    .collect(),
-                ..Default::default()
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState::default()),
+                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                rasterization_state: Some(RasterizationState::default()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(
+                    ColorBlendState::new(subpass.num_color_attachments()).blend_alpha(),
+                ),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
             },
         )
         .unwrap()
     };
-
-    let vertex_input_state = Vertex::per_vertex()
-        .definition(&vs.info().input_interface)
-        .unwrap();
-    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-    let pipeline = GraphicsPipeline::start()
-        .stages([
-            PipelineShaderStageCreateInfo::entry_point(vs),
-            PipelineShaderStageCreateInfo::entry_point(fs),
-        ])
-        .vertex_input_state(vertex_input_state)
-        .input_assembly_state(InputAssemblyState::default())
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .rasterization_state(RasterizationState::default())
-        .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
-        .render_pass(subpass)
-        .with_pipeline_layout(device.clone(), pipeline_layout)
-        .unwrap();
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new_variable(
