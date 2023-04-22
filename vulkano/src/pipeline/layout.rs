@@ -469,11 +469,6 @@ impl PipelineLayout {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if any element of `create_info.set_layouts` is not
-    ///   [`DescriptorSetLayoutOrCreateInfo::Object`].
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,

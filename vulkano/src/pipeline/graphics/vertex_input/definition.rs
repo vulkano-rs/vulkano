@@ -23,7 +23,6 @@ use std::{
 /// Trait for types that can create a [`VertexInputState`] from a [`ShaderInterface`].
 pub unsafe trait VertexDefinition {
     /// Builds the `VertexInputState` for the provided `interface`.
-    // TODO: remove error return, move checks to GraphicsPipelineBuilder
     fn definition(
         &self,
         interface: &ShaderInterface,
@@ -94,11 +93,9 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
                         .get(&name)
                         .map(|infos| (infos.clone(), binding as u32))
                 })
-                .ok_or_else(||
-                    // TODO: move this check to GraphicsPipelineBuilder
-                    IncompatibleVertexDefinitionError::MissingAttribute {
-                        attribute: name.clone(),
-                    })?;
+                .ok_or_else(|| IncompatibleVertexDefinitionError::MissingAttribute {
+                    attribute: name.clone(),
+                })?;
 
             // TODO: ShaderInterfaceEntryType does not properly support 64bit.
             //       Once it does the below logic around num_elements and num_locations
