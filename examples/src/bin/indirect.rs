@@ -44,6 +44,7 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
+        compute::ComputePipelineCreateInfo,
         graphics::{
             color_blend::ColorBlendState,
             input_assembly::InputAssemblyState,
@@ -51,8 +52,10 @@ use vulkano::{
             rasterization::RasterizationState,
             vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::PipelineShaderStageCreateInfo,
@@ -265,17 +268,26 @@ fn main() {
         },
     );
 
-    let cs = cs::load(device.clone())
-        .unwrap()
-        .entry_point("main")
+    let compute_pipeline = {
+        let cs = cs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
         .unwrap();
-    let compute_pipeline = ComputePipeline::new(
-        device.clone(),
-        PipelineShaderStageCreateInfo::entry_point(cs),
-        None,
-        |_| {},
-    )
-    .unwrap();
+        ComputePipeline::new(
+            device.clone(),
+            None,
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
+        )
+        .unwrap()
+    };
 
     let render_pass = single_pass_renderpass!(
         device.clone(),
@@ -303,32 +315,47 @@ fn main() {
         position: [f32; 2],
     }
 
-    let vs = vs::load(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let fs = fs::load(device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let vertex_input_state = Vertex::per_vertex()
-        .definition(&vs.info().input_interface)
-        .unwrap();
-    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-    let render_pipeline = GraphicsPipeline::start()
-        .stages([
+    let render_pipeline = {
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let vertex_input_state = Vertex::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
+        let stages = [
             PipelineShaderStageCreateInfo::entry_point(vs),
             PipelineShaderStageCreateInfo::entry_point(fs),
-        ])
-        .vertex_input_state(vertex_input_state)
-        .input_assembly_state(InputAssemblyState::default())
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .rasterization_state(RasterizationState::default())
-        .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
-        .render_pass(subpass)
-        .build(device.clone())
+        ];
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
         .unwrap();
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState::default()),
+                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                rasterization_state: Some(RasterizationState::default()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    };
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],

@@ -27,7 +27,7 @@ use crate::{
     pipeline::{
         graphics::{
             input_assembly::{Index, IndexType},
-            render_pass::PipelineRenderPassType,
+            subpass::PipelineSubpassType,
             vertex_input::VertexBuffersCollection,
         },
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
@@ -372,9 +372,9 @@ where
             })
         {
             if let (
-                PipelineRenderPassType::BeginRendering(pipeline_rendering_info),
-                PipelineRenderPassType::BeginRendering(last_pipeline_rendering_info),
-            ) = (pipeline.render_pass(), last_pipeline.render_pass())
+                PipelineSubpassType::BeginRendering(pipeline_rendering_info),
+                PipelineSubpassType::BeginRendering(last_pipeline_rendering_info),
+            ) = (pipeline.subpass(), last_pipeline.subpass())
             {
                 // VUID-vkCmdBindPipeline-pipeline-06195
                 // VUID-vkCmdBindPipeline-pipeline-06196

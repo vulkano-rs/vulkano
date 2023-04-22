@@ -25,7 +25,7 @@ use crate::{
     pipeline::{
         graphics::{
             input_assembly::{IndexType, PrimitiveTopology},
-            render_pass::PipelineRenderPassType,
+            subpass::PipelineSubpassType,
             vertex_input::VertexInputRate,
         },
         DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineBindPoint,
@@ -1766,10 +1766,10 @@ where
             });
         }
 
-        match (&render_pass_state.render_pass, pipeline.render_pass()) {
+        match (&render_pass_state.render_pass, pipeline.subpass()) {
             (
                 RenderPassStateType::BeginRenderPass(state),
-                PipelineRenderPassType::BeginRenderPass(pipeline_subpass),
+                PipelineSubpassType::BeginRenderPass(pipeline_subpass),
             ) => {
                 // VUID-vkCmdDraw-renderPass-02684
                 if !pipeline_subpass
@@ -1789,7 +1789,7 @@ where
             }
             (
                 RenderPassStateType::BeginRendering(_),
-                PipelineRenderPassType::BeginRendering(pipeline_rendering_info),
+                PipelineSubpassType::BeginRendering(pipeline_rendering_info),
             ) => {
                 // VUID-vkCmdDraw-viewMask-06178
                 if pipeline_rendering_info.view_mask != render_pass_state.rendering_info.view_mask {
@@ -1971,11 +1971,9 @@ where
                 }
             }
 
-            let view_mask = match pipeline.render_pass() {
-                PipelineRenderPassType::BeginRenderPass(subpass) => {
-                    subpass.render_pass().views_used()
-                }
-                PipelineRenderPassType::BeginRendering(rendering_info) => rendering_info.view_mask,
+            let view_mask = match pipeline.subpass() {
+                PipelineSubpassType::BeginRenderPass(subpass) => subpass.render_pass().views_used(),
+                PipelineSubpassType::BeginRendering(rendering_info) => rendering_info.view_mask,
             };
 
             if view_mask != 0 {

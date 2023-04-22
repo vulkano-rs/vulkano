@@ -14,21 +14,21 @@ use crate::{
     render_pass::Subpass,
 };
 
-/// Selects the type of render pass that a graphics pipeline is created for.
+/// Selects the type of subpass that a graphics pipeline is created for.
 #[derive(Clone, Debug)]
-pub enum PipelineRenderPassType {
+pub enum PipelineSubpassType {
     BeginRenderPass(Subpass),
     BeginRendering(PipelineRenderingCreateInfo),
 }
 
-impl From<Subpass> for PipelineRenderPassType {
+impl From<Subpass> for PipelineSubpassType {
     #[inline]
     fn from(val: Subpass) -> Self {
         Self::BeginRenderPass(val)
     }
 }
 
-impl From<PipelineRenderingCreateInfo> for PipelineRenderPassType {
+impl From<PipelineRenderingCreateInfo> for PipelineSubpassType {
     #[inline]
     fn from(val: PipelineRenderingCreateInfo) -> Self {
         Self::BeginRendering(val)

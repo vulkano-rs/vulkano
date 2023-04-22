@@ -21,7 +21,7 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, NumericType},
     image::{ImageAspects, ImageLayout, ImageUsage, SampleCount},
-    pipeline::graphics::render_pass::PipelineRenderingCreateInfo,
+    pipeline::graphics::subpass::PipelineRenderingCreateInfo,
     render_pass::{AttachmentDescription, LoadOp, ResolveMode, SubpassDescription},
     sync::PipelineStageAccess,
     RequiresOneOf, Version, VulkanObject,

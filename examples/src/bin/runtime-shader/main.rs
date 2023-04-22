@@ -43,8 +43,10 @@ use vulkano::{
             rasterization::{CullMode, FrontFace, RasterizationState},
             vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, PipelineLayout,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::{PipelineShaderStageCreateInfo, ShaderModule},
@@ -178,52 +180,67 @@ fn main() {
     )
     .unwrap();
 
-    let vs = {
-        let mut f = File::open("src/bin/runtime-shader/vert.spv").expect(
+    let graphics_pipeline = {
+        let vs = {
+            let mut f = File::open("src/bin/runtime-shader/vert.spv").expect(
             "can't find file `src/bin/runtime-shader/vert.spv`, this example needs to be run from \
             the root of the example crate",
         );
-        let mut v = vec![];
-        f.read_to_end(&mut v).unwrap();
+            let mut v = vec![];
+            f.read_to_end(&mut v).unwrap();
 
-        // Create a ShaderModule on a device the same Shader::load does it.
-        // NOTE: You will have to verify correctness of the data by yourself!
-        let module = unsafe { ShaderModule::from_bytes(device.clone(), &v).unwrap() };
-        module.entry_point("main").unwrap()
-    };
+            // Create a ShaderModule on a device the same Shader::load does it.
+            // NOTE: You will have to verify correctness of the data by yourself!
+            let module = unsafe { ShaderModule::from_bytes(device.clone(), &v).unwrap() };
+            module.entry_point("main").unwrap()
+        };
 
-    let fs = {
-        let mut f = File::open("src/bin/runtime-shader/frag.spv")
-            .expect("can't find file `src/bin/runtime-shader/frag.spv`");
-        let mut v = vec![];
-        f.read_to_end(&mut v).unwrap();
+        let fs = {
+            let mut f = File::open("src/bin/runtime-shader/frag.spv")
+                .expect("can't find file `src/bin/runtime-shader/frag.spv`");
+            let mut v = vec![];
+            f.read_to_end(&mut v).unwrap();
 
-        let module = unsafe { ShaderModule::from_bytes(device.clone(), &v).unwrap() };
-        module.entry_point("main").unwrap()
-    };
+            let module = unsafe { ShaderModule::from_bytes(device.clone(), &v).unwrap() };
+            module.entry_point("main").unwrap()
+        };
 
-    let vertex_input_state = Vertex::per_vertex()
-        .definition(&vs.info().input_interface)
-        .unwrap();
-    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-    let graphics_pipeline = GraphicsPipeline::start()
-        .stages([
+        let vertex_input_state = Vertex::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
+        let stages = [
             PipelineShaderStageCreateInfo::entry_point(vs),
             PipelineShaderStageCreateInfo::entry_point(fs),
-        ])
-        .vertex_input_state(vertex_input_state)
-        .input_assembly_state(InputAssemblyState::default())
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .rasterization_state(
-            RasterizationState::new()
-                .cull_mode(CullMode::Front)
-                .front_face(FrontFace::CounterClockwise),
+        ];
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
         )
-        .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
-        .render_pass(subpass)
-        .build(device.clone())
         .unwrap();
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState::default()),
+                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                rasterization_state: Some(
+                    RasterizationState::new()
+                        .cull_mode(CullMode::Front)
+                        .front_face(FrontFace::CounterClockwise),
+                ),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    };
 
     let mut recreate_swapchain = false;
 

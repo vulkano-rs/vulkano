@@ -47,75 +47,21 @@ impl DescriptorSetLayout {
     #[inline]
     pub fn new(
         device: Arc<Device>,
-        mut create_info: DescriptorSetLayoutCreateInfo,
-    ) -> Result<Arc<DescriptorSetLayout>, DescriptorSetLayoutCreationError> {
-        let descriptor_counts = Self::validate(&device, &mut create_info)?;
-        let handle = unsafe { Self::create(&device, &create_info)? };
-
-        let DescriptorSetLayoutCreateInfo {
-            bindings,
-            push_descriptor,
-            _ne: _,
-        } = create_info;
-
-        Ok(Arc::new(DescriptorSetLayout {
-            handle,
-            device,
-            id: Self::next_id(),
-            bindings,
-            push_descriptor,
-            descriptor_counts,
-        }))
-    }
-
-    /// Creates a new `DescriptorSetLayout` from a raw object handle.
-    ///
-    /// # Safety
-    ///
-    /// - `handle` must be a valid Vulkan object handle created from `device`.
-    /// - `create_info` must match the info used to create the object.
-    #[inline]
-    pub unsafe fn from_handle(
-        device: Arc<Device>,
-        handle: ash::vk::DescriptorSetLayout,
         create_info: DescriptorSetLayoutCreateInfo,
-    ) -> Arc<DescriptorSetLayout> {
-        let DescriptorSetLayoutCreateInfo {
-            bindings,
-            push_descriptor,
-            _ne: _,
-        } = create_info;
-
-        let mut descriptor_counts = HashMap::default();
-        for binding in bindings.values() {
-            if binding.descriptor_count != 0 {
-                *descriptor_counts
-                    .entry(binding.descriptor_type)
-                    .or_default() += binding.descriptor_count;
-            }
-        }
-
-        Arc::new(DescriptorSetLayout {
-            handle,
-            device,
-            id: Self::next_id(),
-            bindings,
-            push_descriptor,
-            descriptor_counts,
-        })
+    ) -> Result<Arc<DescriptorSetLayout>, DescriptorSetLayoutCreationError> {
+        Self::validate_new(&device, &create_info)?;
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
     }
 
-    fn validate(
+    fn validate_new(
         device: &Device,
-        create_info: &mut DescriptorSetLayoutCreateInfo,
-    ) -> Result<HashMap<DescriptorType, u32>, DescriptorSetLayoutCreationError> {
-        let &mut DescriptorSetLayoutCreateInfo {
+        create_info: &DescriptorSetLayoutCreateInfo,
+    ) -> Result<(), DescriptorSetLayoutCreationError> {
+        let &DescriptorSetLayoutCreateInfo {
             ref bindings,
             push_descriptor,
             _ne: _,
         } = create_info;
-
-        let mut descriptor_counts = HashMap::default();
 
         if push_descriptor {
             if !device.enabled_extensions().khr_push_descriptor {
@@ -129,6 +75,7 @@ impl DescriptorSetLayout {
             }
         }
 
+        let mut descriptor_counts: HashMap<DescriptorType, u32> = HashMap::default();
         let highest_binding_num = bindings.keys().copied().next_back();
 
         for (&binding_num, binding) in bindings.iter() {
@@ -275,18 +222,19 @@ impl DescriptorSetLayout {
             );
         }
 
-        Ok(descriptor_counts)
+        Ok(())
     }
 
-    unsafe fn create(
-        device: &Device,
-        create_info: &DescriptorSetLayoutCreateInfo,
-    ) -> Result<ash::vk::DescriptorSetLayout, DescriptorSetLayoutCreationError> {
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: DescriptorSetLayoutCreateInfo,
+    ) -> Result<Arc<DescriptorSetLayout>, VulkanError> {
         let &DescriptorSetLayoutCreateInfo {
             ref bindings,
             push_descriptor,
             _ne: _,
-        } = create_info;
+        } = &create_info;
 
         let mut bindings_vk = Vec::with_capacity(bindings.len());
         let mut binding_flags_vk = Vec::with_capacity(bindings.len());
@@ -344,7 +292,7 @@ impl DescriptorSetLayout {
             None
         };
 
-        let mut create_info = ash::vk::DescriptorSetLayoutCreateInfo {
+        let mut create_info_vk = ash::vk::DescriptorSetLayoutCreateInfo {
             flags,
             binding_count: bindings_vk.len() as u32,
             p_bindings: bindings_vk.as_ptr(),
@@ -352,8 +300,8 @@ impl DescriptorSetLayout {
         };
 
         if let Some(binding_flags_create_info) = binding_flags_create_info.as_mut() {
-            binding_flags_create_info.p_next = create_info.p_next;
-            create_info.p_next = binding_flags_create_info as *const _ as *const _;
+            binding_flags_create_info.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = binding_flags_create_info as *const _ as *const _;
         }
 
         let handle = {
@@ -361,7 +309,7 @@ impl DescriptorSetLayout {
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_descriptor_set_layout)(
                 device.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -370,7 +318,44 @@ impl DescriptorSetLayout {
             output.assume_init()
         };
 
-        Ok(handle)
+        Ok(Self::from_handle(device, handle, create_info))
+    }
+
+    /// Creates a new `DescriptorSetLayout` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    #[inline]
+    pub unsafe fn from_handle(
+        device: Arc<Device>,
+        handle: ash::vk::DescriptorSetLayout,
+        create_info: DescriptorSetLayoutCreateInfo,
+    ) -> Arc<DescriptorSetLayout> {
+        let DescriptorSetLayoutCreateInfo {
+            bindings,
+            push_descriptor,
+            _ne: _,
+        } = create_info;
+
+        let mut descriptor_counts = HashMap::default();
+        for binding in bindings.values() {
+            if binding.descriptor_count != 0 {
+                *descriptor_counts
+                    .entry(binding.descriptor_type)
+                    .or_default() += binding.descriptor_count;
+            }
+        }
+
+        Arc::new(DescriptorSetLayout {
+            handle,
+            device,
+            id: Self::next_id(),
+            bindings,
+            push_descriptor,
+            descriptor_counts,
+        })
     }
 
     pub(crate) fn id(&self) -> NonZeroU64 {
@@ -628,31 +613,6 @@ impl Default for DescriptorSetLayoutCreateInfo {
             push_descriptor: false,
             _ne: crate::NonExhaustive(()),
         }
-    }
-}
-
-impl DescriptorSetLayoutCreateInfo {
-    /// Builds a list of `DescriptorSetLayoutCreateInfo` from an iterator of
-    /// `DescriptorBindingRequirements` originating from a shader.
-    pub fn from_requirements<'a>(
-        descriptor_requirements: impl IntoIterator<
-            Item = ((u32, u32), &'a DescriptorBindingRequirements),
-        >,
-    ) -> Vec<Self> {
-        let mut create_infos: Vec<Self> = Vec::new();
-
-        for ((set_num, binding_num), reqs) in descriptor_requirements {
-            let set_num = set_num as usize;
-
-            if set_num >= create_infos.len() {
-                create_infos.resize(set_num + 1, Self::default());
-            }
-
-            let bindings = &mut create_infos[set_num].bindings;
-            bindings.insert(binding_num, reqs.into());
-        }
-
-        create_infos
     }
 }
 

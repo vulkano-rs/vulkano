@@ -64,14 +64,20 @@
 //! type. Each pipeline that you create holds a pipeline layout object.
 
 use crate::{
-    descriptor_set::layout::{DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorType},
+    descriptor_set::layout::{
+        DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorSetLayoutBinding,
+        DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError, DescriptorType,
+    },
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
-    shader::{DescriptorBindingRequirements, ShaderStages},
+    shader::{DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderStages},
     OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
+use ahash::HashMap;
 use smallvec::SmallVec;
 use std::{
+    cmp::max,
+    collections::hash_map::Entry,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     mem::MaybeUninit,
@@ -104,86 +110,17 @@ impl PipelineLayout {
     /// - Panics if an element of `create_info.push_constant_ranges` has an `size` of zero.
     pub fn new(
         device: Arc<Device>,
-        mut create_info: PipelineLayoutCreateInfo,
+        create_info: PipelineLayoutCreateInfo,
     ) -> Result<Arc<PipelineLayout>, PipelineLayoutCreationError> {
-        Self::validate(&device, &mut create_info)?;
-        let handle = unsafe { Self::create(&device, &create_info)? };
-
-        let PipelineLayoutCreateInfo {
-            set_layouts,
-            mut push_constant_ranges,
-            _ne: _,
-        } = create_info;
-
-        // Sort the ranges for the purpose of comparing for equality.
-        // The stage mask is guaranteed to be unique, so it's a suitable sorting key.
-        push_constant_ranges.sort_unstable_by_key(|range| {
-            (
-                range.offset,
-                range.size,
-                ash::vk::ShaderStageFlags::from(range.stages),
-            )
-        });
-
-        let push_constant_ranges_disjoint =
-            Self::create_push_constant_ranges_disjoint(&push_constant_ranges);
-
-        Ok(Arc::new(PipelineLayout {
-            handle,
-            device,
-            id: Self::next_id(),
-            set_layouts,
-            push_constant_ranges,
-            push_constant_ranges_disjoint,
-        }))
+        Self::validate_new(&device, &create_info)?;
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
     }
 
-    fn create_push_constant_ranges_disjoint(
-        push_constant_ranges: &Vec<PushConstantRange>,
-    ) -> Vec<PushConstantRange> {
-        let mut push_constant_ranges_disjoint: Vec<PushConstantRange> =
-            Vec::with_capacity(push_constant_ranges.len());
-
-        if !push_constant_ranges.is_empty() {
-            let mut min_offset = push_constant_ranges[0].offset;
-            loop {
-                let mut max_offset = u32::MAX;
-                let mut stages = ShaderStages::empty();
-
-                for range in push_constant_ranges.iter() {
-                    // new start (begin next time from it)
-                    if range.offset > min_offset {
-                        max_offset = max_offset.min(range.offset);
-                        break;
-                    } else if range.offset + range.size > min_offset {
-                        // inside the range, include the stage
-                        // use the minimum of the end of all ranges that are overlapping
-                        max_offset = max_offset.min(range.offset + range.size);
-                        stages |= range.stages;
-                    }
-                }
-                // finished all stages
-                if stages.is_empty() {
-                    break;
-                }
-
-                push_constant_ranges_disjoint.push(PushConstantRange {
-                    stages,
-                    offset: min_offset,
-                    size: max_offset - min_offset,
-                });
-                // prepare for next range
-                min_offset = max_offset;
-            }
-        }
-        push_constant_ranges_disjoint
-    }
-
-    fn validate(
+    fn validate_new(
         device: &Device,
-        create_info: &mut PipelineLayoutCreateInfo,
+        create_info: &PipelineLayoutCreateInfo,
     ) -> Result<(), PipelineLayoutCreationError> {
-        let &mut PipelineLayoutCreateInfo {
+        let &PipelineLayoutCreateInfo {
             ref set_layouts,
             ref push_constant_ranges,
             _ne: _,
@@ -479,19 +416,19 @@ impl PipelineLayout {
         Ok(())
     }
 
-    unsafe fn create(
-        device: &Device,
-        create_info: &PipelineLayoutCreateInfo,
-    ) -> Result<ash::vk::PipelineLayout, PipelineLayoutCreationError> {
-        let PipelineLayoutCreateInfo {
-            set_layouts,
-            push_constant_ranges,
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: PipelineLayoutCreateInfo,
+    ) -> Result<Arc<PipelineLayout>, VulkanError> {
+        let &PipelineLayoutCreateInfo {
+            ref set_layouts,
+            ref push_constant_ranges,
             _ne: _,
-        } = create_info;
+        } = &create_info;
 
-        let set_layouts: SmallVec<[_; 4]> = set_layouts.iter().map(|l| l.handle()).collect();
-
-        let push_constant_ranges: SmallVec<[_; 4]> = push_constant_ranges
+        let set_layouts_vk: SmallVec<[_; 4]> = set_layouts.iter().map(|l| l.handle()).collect();
+        let push_constant_ranges_vk: SmallVec<[_; 4]> = push_constant_ranges
             .iter()
             .map(|range| ash::vk::PushConstantRange {
                 stage_flags: range.stages.into(),
@@ -500,12 +437,12 @@ impl PipelineLayout {
             })
             .collect();
 
-        let create_info = ash::vk::PipelineLayoutCreateInfo {
+        let create_info_vk = ash::vk::PipelineLayoutCreateInfo {
             flags: ash::vk::PipelineLayoutCreateFlags::empty(),
-            set_layout_count: set_layouts.len() as u32,
-            p_set_layouts: set_layouts.as_ptr(),
-            push_constant_range_count: push_constant_ranges.len() as u32,
-            p_push_constant_ranges: push_constant_ranges.as_ptr(),
+            set_layout_count: set_layouts_vk.len() as u32,
+            p_set_layouts: set_layouts_vk.as_ptr(),
+            push_constant_range_count: push_constant_ranges_vk.len() as u32,
+            p_push_constant_ranges: push_constant_ranges_vk.as_ptr(),
             ..Default::default()
         };
 
@@ -514,7 +451,7 @@ impl PipelineLayout {
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_pipeline_layout)(
                 device.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -523,7 +460,7 @@ impl PipelineLayout {
             output.assume_init()
         };
 
-        Ok(handle)
+        Ok(Self::from_handle(device, handle, create_info))
     }
 
     /// Creates a new `PipelineLayout` from a raw object handle.
@@ -532,6 +469,11 @@ impl PipelineLayout {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if any element of `create_info.set_layouts` is not
+    ///   [`DescriptorSetLayoutOrCreateInfo::Object`].
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
@@ -540,12 +482,55 @@ impl PipelineLayout {
     ) -> Arc<PipelineLayout> {
         let PipelineLayoutCreateInfo {
             set_layouts,
-            push_constant_ranges,
+            mut push_constant_ranges,
             _ne: _,
         } = create_info;
 
-        let push_constant_ranges_disjoint =
-            Self::create_push_constant_ranges_disjoint(&push_constant_ranges);
+        // Sort the ranges for the purpose of comparing for equality.
+        // The stage mask is guaranteed to be unique, so it's a suitable sorting key.
+        push_constant_ranges.sort_unstable_by_key(|range| {
+            (
+                range.offset,
+                range.size,
+                ash::vk::ShaderStageFlags::from(range.stages),
+            )
+        });
+
+        let mut push_constant_ranges_disjoint: Vec<PushConstantRange> =
+            Vec::with_capacity(push_constant_ranges.len());
+
+        if !push_constant_ranges.is_empty() {
+            let mut min_offset = push_constant_ranges[0].offset;
+            loop {
+                let mut max_offset = u32::MAX;
+                let mut stages = ShaderStages::empty();
+
+                for range in push_constant_ranges.iter() {
+                    // new start (begin next time from it)
+                    if range.offset > min_offset {
+                        max_offset = max_offset.min(range.offset);
+                        break;
+                    } else if range.offset + range.size > min_offset {
+                        // inside the range, include the stage
+                        // use the minimum of the end of all ranges that are overlapping
+                        max_offset = max_offset.min(range.offset + range.size);
+                        stages |= range.stages;
+                    }
+                }
+                // finished all stages
+                if stages.is_empty() {
+                    break;
+                }
+
+                push_constant_ranges_disjoint.push(PushConstantRange {
+                    stages,
+                    offset: min_offset,
+                    size: max_offset - min_offset,
+                });
+                // prepare for next range
+                min_offset = max_offset;
+            }
+        }
 
         Arc::new(PipelineLayout {
             handle,
@@ -1135,6 +1120,139 @@ impl Default for PipelineLayoutCreateInfo {
             push_constant_ranges: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+/// Parameters to create a new `PipelineLayout` as well as its accompanying `DescriptorSetLayout`
+/// objects.
+#[derive(Clone, Debug)]
+pub struct PipelineDescriptorSetLayoutCreateInfo {
+    pub set_layouts: Vec<DescriptorSetLayoutCreateInfo>,
+    pub push_constant_ranges: Vec<PushConstantRange>,
+}
+
+impl PipelineDescriptorSetLayoutCreateInfo {
+    /// Creates a new `PipelineDescriptorSetLayoutCreateInfo` from the union of the requirements of
+    /// each shader stage in `stages`.
+    pub fn from_stages<'a>(
+        stages: impl IntoIterator<Item = &'a PipelineShaderStageCreateInfo>,
+    ) -> Self {
+        // Produce `DescriptorBindingRequirements` for each binding, by iterating over all
+        // shaders and adding the requirements of each.
+        let mut descriptor_binding_requirements: HashMap<
+            (u32, u32),
+            DescriptorBindingRequirements,
+        > = HashMap::default();
+        let mut max_set_num = 0;
+        let mut push_constant_ranges: Vec<PushConstantRange> = Vec::new();
+
+        for stage in stages {
+            let entry_point_info = stage.entry_point.info();
+
+            for (&(set_num, binding_num), reqs) in &entry_point_info.descriptor_binding_requirements
+            {
+                max_set_num = max(max_set_num, set_num);
+
+                match descriptor_binding_requirements.entry((set_num, binding_num)) {
+                    Entry::Occupied(entry) => {
+                        // Previous shaders already added requirements, so we merge
+                        // requirements of the current shader into the requirements of the
+                        // previous ones.
+                        // TODO: return an error here instead of panicking?
+                        entry.into_mut().merge(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                    }
+                    Entry::Vacant(entry) => {
+                        // No previous shader had this descriptor yet, so we just insert the
+                        // requirements.
+                        entry.insert(reqs.clone());
+                    }
+                }
+            }
+
+            if let Some(range) = &entry_point_info.push_constant_requirements {
+                if let Some(existing_range) =
+                    push_constant_ranges.iter_mut().find(|existing_range| {
+                        existing_range.offset == range.offset && existing_range.size == range.size
+                    })
+                {
+                    // If this range was already used before, add our stage to it.
+                    existing_range.stages |= range.stages;
+                } else {
+                    // If this range is new, insert it.
+                    push_constant_ranges.push(*range)
+                }
+            }
+        }
+
+        // Convert the descriptor binding requirements.
+        let mut set_layouts =
+            vec![DescriptorSetLayoutCreateInfo::default(); max_set_num as usize + 1];
+
+        for ((set_num, binding_num), reqs) in descriptor_binding_requirements {
+            set_layouts[set_num as usize]
+                .bindings
+                .insert(binding_num, DescriptorSetLayoutBinding::from(&reqs));
+        }
+
+        Self {
+            set_layouts,
+            push_constant_ranges,
+        }
+    }
+
+    /// Converts the `PipelineDescriptorSetLayoutCreateInfo` into a `PipelineLayoutCreateInfo` by
+    /// creating the descriptor set layout objects.
+    pub fn into_pipeline_layout_create_info(
+        self,
+        device: Arc<Device>,
+    ) -> Result<PipelineLayoutCreateInfo, IntoPipelineLayoutCreateInfoError> {
+        let PipelineDescriptorSetLayoutCreateInfo {
+            set_layouts,
+            push_constant_ranges,
+        } = self;
+
+        let set_layouts = set_layouts
+            .into_iter()
+            .enumerate()
+            .map(|(set_num, create_info)| {
+                DescriptorSetLayout::new(device.clone(), create_info).map_err(|error| {
+                    IntoPipelineLayoutCreateInfoError {
+                        set_num: set_num as u32,
+                        error,
+                    }
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(PipelineLayoutCreateInfo {
+            set_layouts,
+            push_constant_ranges,
+            _ne: crate::NonExhaustive(()),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct IntoPipelineLayoutCreateInfoError {
+    pub set_num: u32,
+    pub error: DescriptorSetLayoutCreationError,
+}
+
+impl Display for IntoPipelineLayoutCreateInfoError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "an error occurred while creating a descriptor set layout for set number {}",
+            self.set_num
+        )
+    }
+}
+
+impl Error for IntoPipelineLayoutCreateInfoError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.error)
     }
 }
 

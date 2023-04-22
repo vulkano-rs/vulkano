@@ -39,8 +39,10 @@ use vulkano::{
             rasterization::RasterizationState,
             vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::{EntryPoint, PipelineShaderStageCreateInfo},
@@ -463,31 +465,47 @@ fn window_size_dependent_setup(
     // teapot example, we recreate the pipelines with a hardcoded viewport instead. This allows the
     // driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
-    let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
-        .definition(&vs.info().input_interface)
-        .unwrap();
-    let subpass = Subpass::from(render_pass, 0).unwrap();
-    let pipeline = GraphicsPipeline::start()
-        .stages([
+    let pipeline = {
+        let device = memory_allocator.device();
+        let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
+            .definition(&vs.info().input_interface)
+            .unwrap();
+        let stages = [
             PipelineShaderStageCreateInfo::entry_point(vs),
             PipelineShaderStageCreateInfo::entry_point(fs),
-        ])
-        .vertex_input_state(vertex_input_state)
-        .input_assembly_state(InputAssemblyState::default())
-        .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
-            Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                depth_range: 0.0..1.0,
-            },
-        ]))
-        .rasterization_state(RasterizationState::default())
-        .depth_stencil_state(DepthStencilState::simple_depth_test())
-        .multisample_state(MultisampleState::default())
-        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
-        .render_pass(subpass)
-        .build(memory_allocator.device().clone())
+        ];
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
         .unwrap();
+        let subpass = Subpass::from(render_pass, 0).unwrap();
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState::default()),
+                viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([
+                    Viewport {
+                        origin: [0.0, 0.0],
+                        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                        depth_range: 0.0..1.0,
+                    },
+                ])),
+                rasterization_state: Some(RasterizationState::default()),
+                depth_stencil_state: Some(DepthStencilState::simple_depth_test()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    };
 
     (pipeline, framebuffers)
 }
