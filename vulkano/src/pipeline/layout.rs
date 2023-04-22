@@ -1244,7 +1244,6 @@ impl Display for IntoPipelineLayoutCreateInfoError {
 }
 
 impl Error for IntoPipelineLayoutCreateInfoError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.error)
     }
