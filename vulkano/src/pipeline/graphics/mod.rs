@@ -3589,7 +3589,7 @@ impl GraphicsPipeline {
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
     #[inline]
-    pub fn from_handle(
+    pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Pipeline,
         create_info: GraphicsPipelineCreateInfo,
