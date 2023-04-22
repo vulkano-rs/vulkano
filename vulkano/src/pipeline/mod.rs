@@ -100,24 +100,28 @@ vulkan_bitflags! {
     // TODO: document
     VIEW_INDEX_FROM_DEVICE_INDEX = VIEW_INDEX_FROM_DEVICE_INDEX {
         api_version: V1_1,
+        device_extensions: [khr_device_group],
     },*/
 
     /* TODO: enable
     // TODO: document
     DISPATCH_BASE = DISPATCH_BASE {
         api_version: V1_1,
+        device_extensions: [khr_device_group],
     },*/
 
     /* TODO: enable
     // TODO: document
     FAIL_ON_PIPELINE_COMPILE_REQUIRED = FAIL_ON_PIPELINE_COMPILE_REQUIRED {
         api_version: V1_3,
+        device_extensions: [ext_pipeline_creation_cache_control],
     },*/
 
     /* TODO: enable
     // TODO: document
     EARLY_RETURN_ON_FAILURE = EARLY_RETURN_ON_FAILURE {
         api_version: V1_3,
+        device_extensions: [ext_pipeline_creation_cache_control],
     },
     */
 
