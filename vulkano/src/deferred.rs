@@ -20,7 +20,13 @@ use crate::{
     device::{Device, DeviceOwned},
     RequiresOneOf, VulkanError, VulkanObject,
 };
-use std::{mem::MaybeUninit, ptr, sync::Arc};
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
 /// An operation on the host that has been deferred.
 ///
@@ -207,6 +213,31 @@ pub enum DeferredOperationCreateError {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
     },
+}
+
+impl Display for DeferredOperationCreateError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
+    }
+}
+
+impl Error for DeferredOperationCreateError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::VulkanError(err) => Some(err),
+            _ => None,
+        }
+    }
 }
 
 impl From<VulkanError> for DeferredOperationCreateError {
