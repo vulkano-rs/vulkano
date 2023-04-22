@@ -1234,7 +1234,6 @@ pub struct IntoPipelineLayoutCreateInfoError {
 }
 
 impl Display for IntoPipelineLayoutCreateInfoError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
