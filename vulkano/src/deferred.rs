@@ -241,7 +241,6 @@ impl Error for DeferredOperationCreateError {
 }
 
 impl From<VulkanError> for DeferredOperationCreateError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         Self::VulkanError(err)
     }
