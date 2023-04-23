@@ -171,6 +171,7 @@ mod tests;
 mod extensions;
 pub mod buffer;
 pub mod command_buffer;
+pub mod deferred;
 pub mod descriptor_set;
 pub mod device;
 pub mod format;
