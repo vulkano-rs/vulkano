@@ -25,6 +25,8 @@ Changes to pipeline construction:
 
 ### Bugs fixed
 
+- [#2184](https://github.com/vulkano-rs/vulkano/issues/2184): `VK_KHR_get_physical_device_properties2` not used in `Device` creation for Vulkan 1.1 and later.
+
 # Version 0.33.0 (2023-04-01)
 
 ### Public dependency updates
