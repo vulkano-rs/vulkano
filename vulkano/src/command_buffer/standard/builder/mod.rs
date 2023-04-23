@@ -42,7 +42,7 @@ use crate::{
             depth_stencil::{CompareOp, StencilOps},
             input_assembly::{IndexType, PrimitiveTopology},
             rasterization::{CullMode, DepthBias, FrontFace, LineStipple},
-            render_pass::PipelineRenderingCreateInfo,
+            subpass::PipelineRenderingCreateInfo,
             viewport::{Scissor, Viewport},
         },
         ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,

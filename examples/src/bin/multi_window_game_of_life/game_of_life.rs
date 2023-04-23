@@ -24,7 +24,10 @@ use vulkano::{
     format::Format,
     image::{ImageAccess, ImageUsage, StorageImage},
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
-    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+    },
     shader::PipelineShaderStageCreateInfo,
     sync::GpuFuture,
 };
@@ -69,15 +72,23 @@ impl GameOfLifeComputePipeline {
         let life_out = rand_grid(memory_allocator, size);
 
         let compute_life_pipeline = {
-            let shader = compute_life_cs::load(compute_queue.device().clone())
+            let device = compute_queue.device();
+            let cs = compute_life_cs::load(device.clone())
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
+            let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
             ComputePipeline::new(
-                compute_queue.device().clone(),
-                PipelineShaderStageCreateInfo::entry_point(shader),
+                device.clone(),
                 None,
-                |_| {},
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
             )
             .unwrap()
         };

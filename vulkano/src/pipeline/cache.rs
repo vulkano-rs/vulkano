@@ -272,7 +272,10 @@ unsafe impl DeviceOwned for PipelineCache {
 #[cfg(test)]
 mod tests {
     use crate::{
-        pipeline::{cache::PipelineCache, ComputePipeline},
+        pipeline::{
+            cache::PipelineCache, compute::ComputePipelineCreateInfo,
+            layout::PipelineDescriptorSetLayoutCreateInfo, ComputePipeline, PipelineLayout,
+        },
         shader::{PipelineShaderStageCreateInfo, ShaderModule},
     };
 
@@ -291,7 +294,7 @@ mod tests {
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
-        let shader = unsafe {
+        let cs = unsafe {
             /*
              * #version 450
              * void main() {
@@ -311,13 +314,22 @@ mod tests {
             module.entry_point("main").unwrap()
         };
 
-        let _pipeline = ComputePipeline::new(
-            device,
-            PipelineShaderStageCreateInfo::entry_point(shader),
-            Some(cache.clone()),
-            |_| {},
-        )
-        .unwrap();
+        let _pipeline = {
+            let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            ComputePipeline::new(
+                device,
+                Some(cache.clone()),
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
+            )
+            .unwrap()
+        };
 
         let cache_data = cache.get_data().unwrap();
         let second_data = cache.get_data().unwrap();
@@ -331,75 +343,93 @@ mod tests {
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
-        let first_shader = unsafe {
-            /*
-             * #version 450
-             * void main() {
-             * }
-             */
-            const MODULE: [u8; 192] = [
-                3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 6, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1, 0, 0,
-                0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52, 53, 48, 0,
-                0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 5, 0, 5, 0, 0, 0, 4, 0, 0, 0,
-                109, 97, 105, 110, 0, 0, 0, 0, 16, 0, 6, 0, 4, 0, 0, 0, 17, 0, 0, 0, 1, 0, 0, 0, 1,
-                0, 0, 0, 1, 0, 0, 0, 3, 0, 3, 0, 2, 0, 0, 0, 194, 1, 0, 0, 5, 0, 4, 0, 4, 0, 0, 0,
-                109, 97, 105, 110, 0, 0, 0, 0, 19, 0, 2, 0, 2, 0, 0, 0, 33, 0, 3, 0, 3, 0, 0, 0, 2,
-                0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
-                5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
-            ];
-            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
-            module.entry_point("main").unwrap()
-        };
+        let _first_pipeline = {
+            let cs = unsafe {
+                /*
+                 * #version 450
+                 * void main() {
+                 * }
+                 */
+                const MODULE: [u8; 192] = [
+                    3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 6, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1,
+                    0, 0, 0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52,
+                    53, 48, 0, 0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 5, 0, 5, 0, 0,
+                    0, 4, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 16, 0, 6, 0, 4, 0, 0, 0, 17, 0,
+                    0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 3, 0, 2, 0, 0, 0, 194, 1, 0, 0,
+                    5, 0, 4, 0, 4, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 19, 0, 2, 0, 2, 0, 0, 0,
+                    33, 0, 3, 0, 3, 0, 0, 0, 2, 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0,
+                    0, 0, 3, 0, 0, 0, 248, 0, 2, 0, 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
+                ];
+                let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+                module.entry_point("main").unwrap()
+            };
 
-        let second_shader = unsafe {
-            /*
-             * #version 450
-             *
-             * void main() {
-             *     uint idx = gl_GlobalInvocationID.x;
-             * }
-             */
-            const MODULE: [u8; 432] = [
-                3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 16, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1, 0,
-                0, 0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52, 53, 48,
-                0, 0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 6, 0, 5, 0, 0, 0, 4, 0, 0,
-                0, 109, 97, 105, 110, 0, 0, 0, 0, 11, 0, 0, 0, 16, 0, 6, 0, 4, 0, 0, 0, 17, 0, 0,
-                0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 3, 0, 2, 0, 0, 0, 194, 1, 0, 0, 5, 0,
-                4, 0, 4, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 5, 0, 3, 0, 8, 0, 0, 0, 105, 100,
-                120, 0, 5, 0, 8, 0, 11, 0, 0, 0, 103, 108, 95, 71, 108, 111, 98, 97, 108, 73, 110,
-                118, 111, 99, 97, 116, 105, 111, 110, 73, 68, 0, 0, 0, 71, 0, 4, 0, 11, 0, 0, 0,
-                11, 0, 0, 0, 28, 0, 0, 0, 19, 0, 2, 0, 2, 0, 0, 0, 33, 0, 3, 0, 3, 0, 0, 0, 2, 0,
-                0, 0, 21, 0, 4, 0, 6, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 32, 0, 4, 0, 7, 0, 0, 0, 7,
-                0, 0, 0, 6, 0, 0, 0, 23, 0, 4, 0, 9, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 32, 0, 4, 0,
-                10, 0, 0, 0, 1, 0, 0, 0, 9, 0, 0, 0, 59, 0, 4, 0, 10, 0, 0, 0, 11, 0, 0, 0, 1, 0,
-                0, 0, 43, 0, 4, 0, 6, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 32, 0, 4, 0, 13, 0, 0, 0,
-                1, 0, 0, 0, 6, 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0,
-                0, 248, 0, 2, 0, 5, 0, 0, 0, 59, 0, 4, 0, 7, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 65,
-                0, 5, 0, 13, 0, 0, 0, 14, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0, 61, 0, 4, 0, 6, 0, 0,
-                0, 15, 0, 0, 0, 14, 0, 0, 0, 62, 0, 3, 0, 8, 0, 0, 0, 15, 0, 0, 0, 253, 0, 1, 0,
-                56, 0, 1, 0,
-            ];
-            let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
-            module.entry_point("main").unwrap()
+            let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            ComputePipeline::new(
+                device.clone(),
+                Some(cache.clone()),
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
+            )
+            .unwrap()
         };
-
-        let _first_pipeline = ComputePipeline::new(
-            device.clone(),
-            PipelineShaderStageCreateInfo::entry_point(first_shader),
-            Some(cache.clone()),
-            |_| {},
-        )
-        .unwrap();
 
         let cache_data = cache.get_data().unwrap();
 
-        let _second_pipeline = ComputePipeline::new(
-            device,
-            PipelineShaderStageCreateInfo::entry_point(second_shader),
-            Some(cache.clone()),
-            |_| {},
-        )
-        .unwrap();
+        let _second_pipeline = {
+            let cs = unsafe {
+                /*
+                 * #version 450
+                 *
+                 * void main() {
+                 *     uint idx = gl_GlobalInvocationID.x;
+                 * }
+                 */
+                const MODULE: [u8; 432] = [
+                    3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 16, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1,
+                    0, 0, 0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52,
+                    53, 48, 0, 0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 6, 0, 5, 0, 0,
+                    0, 4, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 11, 0, 0, 0, 16, 0, 6, 0, 4, 0,
+                    0, 0, 17, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 3, 0, 2, 0, 0, 0,
+                    194, 1, 0, 0, 5, 0, 4, 0, 4, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 5, 0, 3,
+                    0, 8, 0, 0, 0, 105, 100, 120, 0, 5, 0, 8, 0, 11, 0, 0, 0, 103, 108, 95, 71,
+                    108, 111, 98, 97, 108, 73, 110, 118, 111, 99, 97, 116, 105, 111, 110, 73, 68,
+                    0, 0, 0, 71, 0, 4, 0, 11, 0, 0, 0, 11, 0, 0, 0, 28, 0, 0, 0, 19, 0, 2, 0, 2, 0,
+                    0, 0, 33, 0, 3, 0, 3, 0, 0, 0, 2, 0, 0, 0, 21, 0, 4, 0, 6, 0, 0, 0, 32, 0, 0,
+                    0, 0, 0, 0, 0, 32, 0, 4, 0, 7, 0, 0, 0, 7, 0, 0, 0, 6, 0, 0, 0, 23, 0, 4, 0, 9,
+                    0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 32, 0, 4, 0, 10, 0, 0, 0, 1, 0, 0, 0, 9, 0, 0,
+                    0, 59, 0, 4, 0, 10, 0, 0, 0, 11, 0, 0, 0, 1, 0, 0, 0, 43, 0, 4, 0, 6, 0, 0, 0,
+                    12, 0, 0, 0, 0, 0, 0, 0, 32, 0, 4, 0, 13, 0, 0, 0, 1, 0, 0, 0, 6, 0, 0, 0, 54,
+                    0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0, 5, 0, 0,
+                    0, 59, 0, 4, 0, 7, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 65, 0, 5, 0, 13, 0, 0, 0,
+                    14, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0, 61, 0, 4, 0, 6, 0, 0, 0, 15, 0, 0, 0,
+                    14, 0, 0, 0, 62, 0, 3, 0, 8, 0, 0, 0, 15, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
+                ];
+                let module = ShaderModule::from_bytes(device.clone(), &MODULE).unwrap();
+                module.entry_point("main").unwrap()
+            };
+
+            let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            ComputePipeline::new(
+                device,
+                Some(cache.clone()),
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
+            )
+            .unwrap()
+        };
 
         let second_data = cache.get_data().unwrap();
 
@@ -416,7 +446,7 @@ mod tests {
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
-        let shader = unsafe {
+        let cs = unsafe {
             /*
              * #version 450
              * void main() {
@@ -436,23 +466,41 @@ mod tests {
             module.entry_point("main").unwrap()
         };
 
-        let _pipeline = ComputePipeline::new(
-            device.clone(),
-            PipelineShaderStageCreateInfo::entry_point(shader.clone()),
-            Some(cache.clone()),
-            |_| {},
-        )
-        .unwrap();
+        let _first_pipeline = {
+            let stage = PipelineShaderStageCreateInfo::entry_point(cs.clone());
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            ComputePipeline::new(
+                device.clone(),
+                Some(cache.clone()),
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
+            )
+            .unwrap()
+        };
 
         let cache_data = cache.get_data().unwrap();
 
-        let _second_pipeline = ComputePipeline::new(
-            device,
-            PipelineShaderStageCreateInfo::entry_point(shader),
-            Some(cache.clone()),
-            |_| {},
-        )
-        .unwrap();
+        let _second_pipeline = {
+            let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            ComputePipeline::new(
+                device,
+                Some(cache.clone()),
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
+            )
+            .unwrap()
+        };
 
         let second_data = cache.get_data().unwrap();
 
