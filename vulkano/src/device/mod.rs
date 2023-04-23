@@ -362,9 +362,10 @@ impl Device {
             Create the device
         */
 
-        let has_khr_get_physical_device_properties2 = instance
-            .enabled_extensions()
-            .khr_get_physical_device_properties2;
+        let has_khr_get_physical_device_properties2 = instance.api_version() >= Version::V1_1
+            || instance
+                .enabled_extensions()
+                .khr_get_physical_device_properties2;
 
         let mut create_info = ash::vk::DeviceCreateInfo {
             flags: ash::vk::DeviceCreateFlags::empty(),
