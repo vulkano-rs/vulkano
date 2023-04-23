@@ -2,10 +2,9 @@
 
 use std::{
     cmp,
-    cmp::Ordering,
     collections::{btree_map, BTreeMap},
     fmt::{Debug, Error as FmtError, Formatter},
-    iter::{FromIterator, FusedIterator, Peekable},
+    iter::{FromIterator, FusedIterator},
     ops::{Add, Bound, Range, Sub},
 };
 
@@ -16,9 +15,14 @@ use std::{
 /// are coalesced into a single range.
 #[derive(Clone)]
 pub struct RangeMap<K, V> {
-    // Wrap ranges so that they are `Ord`.
-    // See `range_wrapper.rs` for explanation.
-    btm: BTreeMap<RangeStartWrapper<K>, V>,
+    // Stores the range start in the key and the range end in the corresponding value.
+    btm: BTreeMap<K, Entry<K, V>>,
+}
+
+#[derive(Clone)]
+struct Entry<K, V> {
+    end: K,
+    value: V,
 }
 
 impl<K, V> Default for RangeMap<K, V>
@@ -54,20 +58,18 @@ where
     /// Returns the range-value pair (as a pair of references) corresponding
     /// to the given key, if the key is covered by any range in the map.
     #[inline]
-    pub fn get_key_value(&self, key: &K) -> Option<(&Range<K>, &V)> {
-        // The only stored range that could contain the given key is the
-        // last stored range whose start is less than or equal to this key.
-        let key_as_start = RangeStartWrapper::new(key.clone()..key.clone());
-
+    pub fn get_key_value(&self, key: &K) -> Option<(Range<K>, &V)> {
         self.btm
-            .range((Bound::Unbounded, Bound::Included(key_as_start)))
+            // The only stored range that could contain the given key is the
+            // last stored range whose start is less than or equal to this key.
+            .range((Bound::Unbounded, Bound::Included(key)))
             .next_back()
-            .filter(|(range_start_wrapper, _value)| {
+            .filter(|(_start, Entry { end, value: _ })| {
                 // Does the only candidate range contain
                 // the requested key?
-                range_start_wrapper.range.contains(key)
+                end > key
             })
-            .map(|(range_start_wrapper, value)| (&range_start_wrapper.range, value))
+            .map(|(start, Entry { end, value })| (start.clone()..end.clone(), value))
     }
 
     /// Returns `true` if any range in the map covers the specified key.
@@ -80,12 +82,6 @@ where
     #[inline]
     pub fn contains_any(&self, range: &Range<K>) -> bool {
         self.range(range).next().is_some()
-    }
-
-    /// Returns `true` if all of the provided range is covered by ranges in the map.
-    #[inline]
-    pub fn contains_all(&self, range: &Range<K>) -> bool {
-        self.gaps(range).next().is_none()
     }
 
     /// Gets an iterator over all pairs of key range and value,
@@ -123,7 +119,7 @@ where
     /// # Panics
     ///
     /// Panics if range `start >= end`.
-    pub fn insert(&mut self, range: Range<K>, value: V) {
+    pub fn insert(&mut self, mut range: Range<K>, value: V) {
         // We don't want to have to make empty ranges make sense;
         // they don't represent anything meaningful in this structure.
         assert!(range.start < range.end);
@@ -131,7 +127,6 @@ where
         // Wrap up the given range so that we can "borrow"
         // it as a wrapper reference to either its start or end.
         // See `range_wrapper.rs` for explanation of these hacks.
-        let mut new_range_start_wrapper: RangeStartWrapper<K> = RangeStartWrapper::new(range);
         let new_value = value;
 
         // Is there a stored range either overlapping the start of
@@ -142,17 +137,15 @@ where
         // or the one before that if both of the above cases exist.
         let mut candidates = self
             .btm
-            .range((Bound::Unbounded, Bound::Included(&new_range_start_wrapper)))
+            .range((Bound::Unbounded, Bound::Included(&range.start)))
             .rev()
             .take(2)
-            .filter(|(stored_range_start_wrapper, _stored_value)| {
+            .filter(|(start, Entry { end, value: _ })| {
                 // Does the candidate range either overlap
-                // or immediately precede the range to insert?
+                // or immediately preceed the range to insert?
                 // (Remember that it might actually cover the _whole_
                 // range to insert and then some.)
-                stored_range_start_wrapper
-                    .range
-                    .touches(&new_range_start_wrapper.range)
+                (*start..end).touches(&(&range.start..&range.end))
             });
 
         if let Some(mut candidate) = candidates.next() {
@@ -161,13 +154,12 @@ where
                 candidate = another_candidate;
             }
 
-            let (stored_range_start_wrapper, stored_value) =
-                (candidate.0.clone(), candidate.1.clone());
+            let (stored_start, stored_entry) = (candidate.0.clone(), candidate.1.clone());
 
             self.adjust_touching_ranges_for_insert(
-                stored_range_start_wrapper,
-                stored_value,
-                &mut new_range_start_wrapper.range,
+                stored_start,
+                stored_entry,
+                &mut range,
                 &new_value,
             );
         }
@@ -181,28 +173,16 @@ where
         //
         // This time around, if the latter holds, it also implies
         // the former so we don't need to check here if they touch.
-        //
-        // REVISIT: Possible micro-optimisation: `impl Borrow<T> for RangeStartWrapper<T>`
-        // and use that to search here, to avoid constructing another `RangeStartWrapper`.
-        let new_range_end_as_start = RangeStartWrapper::new(
-            new_range_start_wrapper.range.end.clone()..new_range_start_wrapper.range.end.clone(),
-        );
-
-        while let Some((stored_range_start_wrapper, stored_value)) = self
+        while let Some((start, entry)) = self
             .btm
-            .range((
-                Bound::Included(&new_range_start_wrapper),
-                Bound::Included(&new_range_end_as_start),
-            ))
+            .range((Bound::Included(&range.start), Bound::Included(&range.end)))
             .next()
         {
             // One extra exception: if we have different values,
             // and the stored range starts at the end of the range to insert,
             // then we don't want to keep looping forever trying to find more!
             #[allow(clippy::suspicious_operation_groupings)]
-            if stored_range_start_wrapper.range.start == new_range_start_wrapper.range.end
-                && *stored_value != new_value
-            {
+            if start == &range.end && entry.value != new_value {
                 // We're beyond the last stored range that could be relevant.
                 // Avoid wasting time on irrelevant ranges, or even worse, looping forever.
                 // (`adjust_touching_ranges_for_insert` below assumes that the given range
@@ -211,19 +191,25 @@ where
                 break;
             }
 
-            let stored_range_start_wrapper = stored_range_start_wrapper.clone();
-            let stored_value = stored_value.clone();
+            let stored_start = start.clone();
+            let stored_entry = entry.clone();
 
             self.adjust_touching_ranges_for_insert(
-                stored_range_start_wrapper,
-                stored_value,
-                &mut new_range_start_wrapper.range,
+                stored_start,
+                stored_entry,
+                &mut range,
                 &new_value,
             );
         }
 
         // Insert the (possibly expanded) new range, and we're done!
-        self.btm.insert(new_range_start_wrapper, new_value);
+        self.btm.insert(
+            range.start,
+            Entry {
+                end: range.end,
+                value: new_value,
+            },
+        );
     }
 
     /// Removes a range from the map, if all or any of it was present.
@@ -241,105 +227,77 @@ where
         // they don't represent anything meaningful in this structure.
         assert!(range.start < range.end);
 
-        let range_start_wrapper: RangeStartWrapper<K> = RangeStartWrapper::new(range);
-        let range = &range_start_wrapper.range;
-
         // Is there a stored range overlapping the start of
-        // the range to insert?
+        // the range to remove?
         //
         // If there is any such stored range, it will be the last
-        // whose start is less than or equal to the start of the range to insert.
-        if let Some((stored_range_start_wrapper, stored_value)) = self
+        // whose start is less than or equal to the start of the range to remove.
+        if let Some((stored_start, stored_entry)) = self
             .btm
-            .range((Bound::Unbounded, Bound::Included(&range_start_wrapper)))
+            .range((Bound::Unbounded, Bound::Included(&range.start)))
             .next_back()
-            .filter(|(stored_range_start_wrapper, _stored_value)| {
+            .filter(|(start, Entry { end, value: _ })| {
                 // Does the only candidate range overlap
-                // the range to insert?
-                stored_range_start_wrapper.range.overlaps(range)
+                // the range to remove?
+                (*start..end).overlaps(&(&range.start..&range.end))
             })
-            .map(|(stored_range_start_wrapper, stored_value)| {
-                (stored_range_start_wrapper.clone(), stored_value.clone())
-            })
+            .map(|(stored_start, stored_entry)| (stored_start.clone(), stored_entry.clone()))
         {
-            self.adjust_overlapping_ranges_for_remove(
-                stored_range_start_wrapper,
-                stored_value,
-                range,
-            );
+            self.adjust_overlapping_ranges_for_remove(stored_start, stored_entry, &range);
         }
 
-        // Are there any stored ranges whose heads overlap the range to insert?
+        // Are there any stored ranges whose heads overlap the range to remove?
         //
         // If there are any such stored ranges (that weren't already caught above),
-        // their starts will fall somewhere after the start of the range to insert,
+        // their starts will fall somewhere after the start of the range to remove,
         // and before its end.
-        //
-        // REVISIT: Possible micro-optimisation: `impl Borrow<T> for RangeStartWrapper<T>`
-        // and use that to search here, to avoid constructing another `RangeStartWrapper`.
-        let new_range_end_as_start = RangeStartWrapper::new(range.end.clone()..range.end.clone());
-
-        while let Some((stored_range_start_wrapper, stored_value)) = self
+        while let Some((stored_start, stored_entry)) = self
             .btm
-            .range((
-                Bound::Excluded(&range_start_wrapper),
-                Bound::Excluded(&new_range_end_as_start),
-            ))
+            .range((Bound::Excluded(&range.start), Bound::Excluded(&range.end)))
             .next()
-            .map(|(stored_range_start_wrapper, stored_value)| {
-                (stored_range_start_wrapper.clone(), stored_value.clone())
-            })
+            .map(|(stored_start, stored_entry)| (stored_start.clone(), stored_entry.clone()))
         {
-            self.adjust_overlapping_ranges_for_remove(
-                stored_range_start_wrapper,
-                stored_value,
-                range,
-            );
+            self.adjust_overlapping_ranges_for_remove(stored_start, stored_entry, &range);
         }
     }
 
     fn adjust_touching_ranges_for_insert(
         &mut self,
-        stored_range_start_wrapper: RangeStartWrapper<K>,
-        stored_value: V,
+        stored_start: K,
+        stored_entry: Entry<K, V>,
         new_range: &mut Range<K>,
         new_value: &V,
     ) {
-        if stored_value == *new_value {
+        if stored_entry.value == *new_value {
             // The ranges have the same value, so we can "adopt"
             // the stored range.
             //
             // This means that no matter how big or where the stored range is,
             // we will expand the new range's bounds to subsume it,
             // and then delete the stored range.
-            new_range.start =
-                cmp::min(&new_range.start, &stored_range_start_wrapper.range.start).clone();
-            new_range.end = cmp::max(&new_range.end, &stored_range_start_wrapper.range.end).clone();
-            self.btm.remove(&stored_range_start_wrapper);
+            new_range.start = cmp::min(&new_range.start, &stored_start).clone();
+            new_range.end = cmp::max(&new_range.end, &stored_entry.end).clone();
+            self.btm.remove(&stored_start);
         } else {
             // The ranges have different values.
-            if new_range.overlaps(&stored_range_start_wrapper.range) {
+            if new_range.overlaps(&(stored_start.clone()..stored_entry.end.clone())) {
                 // The ranges overlap. This is a little bit more complicated.
                 // Delete the stored range, and then add back between
                 // 0 and 2 subranges at the ends of the range to insert.
-                self.btm.remove(&stored_range_start_wrapper);
-                if stored_range_start_wrapper.range.start < new_range.start {
+                self.btm.remove(&stored_start);
+                if stored_start < new_range.start {
                     // Insert the piece left of the range to insert.
                     self.btm.insert(
-                        RangeStartWrapper::new(
-                            stored_range_start_wrapper.range.start..new_range.start.clone(),
-                        ),
-                        stored_value.clone(),
+                        stored_start,
+                        Entry {
+                            end: new_range.start.clone(),
+                            value: stored_entry.value.clone(),
+                        },
                     );
                 }
-                if stored_range_start_wrapper.range.end > new_range.end {
+                if stored_entry.end > new_range.end {
                     // Insert the piece right of the range to insert.
-                    self.btm.insert(
-                        RangeStartWrapper::new(
-                            new_range.end.clone()..stored_range_start_wrapper.range.end,
-                        ),
-                        stored_value,
-                    );
+                    self.btm.insert(new_range.end.clone(), stored_entry);
                 }
             } else {
                 // No-op; they're not overlapping,
@@ -350,29 +308,28 @@ where
 
     fn adjust_overlapping_ranges_for_remove(
         &mut self,
-        stored_range_start_wrapper: RangeStartWrapper<K>,
-        stored_value: V,
+        stored_start: K,
+        stored_entry: Entry<K, V>,
         range_to_remove: &Range<K>,
     ) {
         // Delete the stored range, and then add back between
-        // 0 and 2 subranges at the ends of the range to insert.
-        self.btm.remove(&stored_range_start_wrapper);
-        let stored_range = stored_range_start_wrapper.range;
+        // 0 and 2 subranges at the ends of the range to remove.
+        self.btm.remove(&stored_start);
 
-        if stored_range.start < range_to_remove.start {
-            // Insert the piece left of the range to insert.
+        if stored_start < range_to_remove.start {
+            // Insert the piece left of the range to remove.
             self.btm.insert(
-                RangeStartWrapper::new(stored_range.start..range_to_remove.start.clone()),
-                stored_value.clone(),
+                stored_start,
+                Entry {
+                    end: range_to_remove.start.clone(),
+                    value: stored_entry.value.clone(),
+                },
             );
         }
 
-        if stored_range.end > range_to_remove.end {
-            // Insert the piece right of the range to insert.
-            self.btm.insert(
-                RangeStartWrapper::new(range_to_remove.end.clone()..stored_range.end),
-                stored_value,
-            );
+        if stored_entry.end > range_to_remove.end {
+            // Insert the piece right of the range to remove.
+            self.btm.insert(range_to_remove.end.clone(), stored_entry);
         }
     }
 
@@ -381,31 +338,20 @@ where
     /// Does nothing if no range exists at the key, or if the key is at a range boundary.
     pub fn split_at(&mut self, key: &K) {
         // Find a range that contains the key, but doesn't start or end with the key.
-        let bounds = (
-            Bound::Unbounded,
-            Bound::Excluded(RangeStartWrapper::new(key.clone()..key.clone())),
-        );
+        let bounds = (Bound::Unbounded, Bound::Excluded(key.clone()));
 
-        let range_to_remove = match self
+        if let Some((_start, entry)) = self
             .btm
-            .range(bounds)
+            .range_mut(bounds)
             .next_back()
-            .filter(|(range_start_wrapper, _value)| range_start_wrapper.range.contains(key))
+            .filter(|(_start, Entry { end, value: _ })| end > key)
         {
-            Some((k, _v)) => k.clone(),
-            None => return,
-        };
-
-        // Remove the range, and re-insert two new ranges with the same value, separated by the key.
-        let value = self.btm.remove(&range_to_remove).unwrap();
-        self.btm.insert(
-            RangeStartWrapper::new(range_to_remove.range.start..key.clone()),
-            value.clone(),
-        );
-        self.btm.insert(
-            RangeStartWrapper::new(key.clone()..range_to_remove.range.end),
-            value,
-        );
+            let second_half_entry = entry.clone();
+            // Adjust the end of the range.
+            entry.end = key.clone();
+            // Insert the second half of the range.
+            self.btm.insert(key.clone(), second_half_entry);
+        }
     }
 
     /// Gets an iterator over all pairs of key range and value, where the key range overlaps with
@@ -415,14 +361,13 @@ where
     pub fn range(&self, range: &Range<K>) -> RangeIter<'_, K, V> {
         let start = self
             .get_key_value(&range.start)
-            .map_or(&range.start, |(k, _v)| &k.start);
-        let end = &range.end;
+            .map_or(range.start.clone(), |(k, _v)| k.start);
+        let end = range.end.clone();
 
         RangeIter {
-            inner: self.btm.range((
-                Bound::Included(RangeStartWrapper::new(start.clone()..start.clone())),
-                Bound::Excluded(RangeStartWrapper::new(end.clone()..end.clone())),
-            )),
+            inner: self
+                .btm
+                .range((Bound::Included(start), Bound::Excluded(end))),
         }
     }
 
@@ -433,52 +378,13 @@ where
     pub fn range_mut(&mut self, range: &Range<K>) -> RangeMutIter<'_, K, V> {
         let start = self
             .get_key_value(&range.start)
-            .map_or(&range.start, |(k, _v)| &k.start);
-        let end = &range.end;
-        let bounds = (
-            Bound::Included(RangeStartWrapper::new(start.clone()..start.clone())),
-            Bound::Excluded(RangeStartWrapper::new(end.clone()..end.clone())),
-        );
+            .map_or(range.start.clone(), |(k, _v)| k.start);
+        let end = range.end.clone();
 
         RangeMutIter {
-            inner: self.btm.range_mut(bounds),
-        }
-    }
-
-    /// Gets an iterator over all the maximally-sized ranges
-    /// contained in `outer_range` that are not covered by
-    /// any range stored in the map.
-    ///
-    /// The iterator element type is `Range<K>`.
-    ///
-    /// NOTE: Calling `gaps` eagerly finds the first gap,
-    /// even if the iterator is never consumed.
-    pub fn gaps<'a>(&'a self, outer_range: &'a Range<K>) -> Gaps<'a, K, V> {
-        let mut keys = self.btm.keys().peekable();
-        // Find the first potential gap.
-        let mut candidate_start = &outer_range.start;
-
-        while let Some(item) = keys.peek() {
-            if item.range.end <= outer_range.start {
-                // This range sits entirely before the start of
-                // the outer range; just skip it.
-                let _ = keys.next();
-            } else if item.range.start <= outer_range.start {
-                // This range overlaps the start of the
-                // outer range, so the first possible candidate
-                // range begins at its end.
-                candidate_start = &item.range.end;
-                let _ = keys.next();
-            } else {
-                // The rest of the items might contribute to gaps.
-                break;
-            }
-        }
-
-        Gaps {
-            outer_range,
-            keys,
-            candidate_start,
+            inner: self
+                .btm
+                .range_mut((Bound::Included(start), Bound::Excluded(end))),
         }
     }
 }
@@ -492,18 +398,20 @@ where
 ///
 /// [`iter`]: RangeMap::iter
 pub struct Iter<'a, K, V> {
-    inner: btree_map::Iter<'a, RangeStartWrapper<K>, V>,
+    inner: btree_map::Iter<'a, K, Entry<K, V>>,
 }
 
 impl<'a, K, V> Iterator for Iter<'a, K, V>
 where
-    K: 'a,
+    K: 'a + Clone,
     V: 'a,
 {
-    type Item = (&'a Range<K>, &'a V);
+    type Item = (Range<K>, &'a V);
 
-    fn next(&mut self) -> Option<(&'a Range<K>, &'a V)> {
-        self.inner.next().map(|(by_start, v)| (&by_start.range, v))
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner
+            .next()
+            .map(|(start, Entry { end, value })| (start.clone()..end.clone(), value))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -523,18 +431,20 @@ impl<'a, K, V> ExactSizeIterator for Iter<'a, K, V> where K: Ord + Clone {}
 ///
 /// [`iter`]: RangeMap::iter
 pub struct IterMut<'a, K, V> {
-    inner: btree_map::IterMut<'a, RangeStartWrapper<K>, V>,
+    inner: btree_map::IterMut<'a, K, Entry<K, V>>,
 }
 
 impl<'a, K, V> Iterator for IterMut<'a, K, V>
 where
-    K: 'a,
+    K: 'a + Clone,
     V: 'a,
 {
-    type Item = (&'a Range<K>, &'a mut V);
+    type Item = (Range<K>, &'a mut V);
 
-    fn next(&mut self) -> Option<(&'a Range<K>, &'a mut V)> {
-        self.inner.next().map(|(by_start, v)| (&by_start.range, v))
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner
+            .next()
+            .map(|(start, Entry { end, value })| (start.clone()..end.clone(), value))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -554,7 +464,7 @@ impl<'a, K, V> ExactSizeIterator for IterMut<'a, K, V> where K: Ord + Clone {}
 ///
 /// [`into_iter`]: IntoIterator::into_iter
 pub struct IntoIter<K, V> {
-    inner: btree_map::IntoIter<RangeStartWrapper<K>, V>,
+    inner: btree_map::IntoIter<K, Entry<K, V>>,
 }
 
 impl<K, V> IntoIterator for RangeMap<K, V> {
@@ -571,8 +481,10 @@ impl<K, V> IntoIterator for RangeMap<K, V> {
 impl<K, V> Iterator for IntoIter<K, V> {
     type Item = (Range<K>, V);
 
-    fn next(&mut self) -> Option<(Range<K>, V)> {
-        self.inner.next().map(|(by_start, v)| (by_start.range, v))
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner
+            .next()
+            .map(|(start, Entry { end, value })| (start..end, value))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -629,20 +541,22 @@ where
 ///
 /// [`range`]: RangeMap::range
 pub struct RangeIter<'a, K, V> {
-    inner: btree_map::Range<'a, RangeStartWrapper<K>, V>,
+    inner: btree_map::Range<'a, K, Entry<K, V>>,
 }
 
 impl<'a, K, V> FusedIterator for RangeIter<'a, K, V> where K: Ord + Clone {}
 
 impl<'a, K, V> Iterator for RangeIter<'a, K, V>
 where
-    K: 'a,
+    K: 'a + Clone,
     V: 'a,
 {
-    type Item = (&'a Range<K>, &'a V);
+    type Item = (Range<K>, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(by_start, v)| (&by_start.range, v))
+        self.inner
+            .next()
+            .map(|(start, Entry { end, value })| (start.clone()..end.clone(), value))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -659,150 +573,26 @@ where
 ///
 /// [`range_mut`]: RangeMap::range_mut
 pub struct RangeMutIter<'a, K, V> {
-    inner: btree_map::RangeMut<'a, RangeStartWrapper<K>, V>,
+    inner: btree_map::RangeMut<'a, K, Entry<K, V>>,
 }
 
 impl<'a, K, V> FusedIterator for RangeMutIter<'a, K, V> where K: Ord + Clone {}
 
 impl<'a, K, V> Iterator for RangeMutIter<'a, K, V>
 where
-    K: 'a,
+    K: 'a + Clone,
     V: 'a,
 {
-    type Item = (&'a Range<K>, &'a mut V);
+    type Item = (Range<K>, &'a mut V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(by_start, v)| (&by_start.range, v))
+        self.inner
+            .next()
+            .map(|(start, Entry { end, value })| (start.clone()..end.clone(), value))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
-    }
-}
-
-/// An iterator over all ranges not covered by a `RangeMap`.
-///
-/// The iterator element type is `Range<K>`.
-///
-/// This `struct` is created by the [`gaps`] method on [`RangeMap`]. See its
-/// documentation for more.
-///
-/// [`gaps`]: RangeMap::gaps
-pub struct Gaps<'a, K, V> {
-    outer_range: &'a Range<K>,
-    keys: Peekable<btree_map::Keys<'a, RangeStartWrapper<K>, V>>,
-    candidate_start: &'a K,
-}
-
-// `Gaps` is always fused. (See definition of `next` below.)
-impl<'a, K, V> FusedIterator for Gaps<'a, K, V> where K: Ord + Clone {}
-
-impl<'a, K, V> Iterator for Gaps<'a, K, V>
-where
-    K: Ord + Clone,
-{
-    type Item = Range<K>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if *self.candidate_start >= self.outer_range.end {
-            // We've already passed the end of the outer range;
-            // there are no more gaps to find.
-            return None;
-        }
-
-        // Figure out where this gap ends.
-        let (gap_end, mut next_candidate_start) = if let Some(next_item) = self.keys.next() {
-            if next_item.range.start < self.outer_range.end {
-                // The gap goes up until the start of the next item,
-                // and the next candidate starts after it.
-                (&next_item.range.start, &next_item.range.end)
-            } else {
-                // The item sits after the end of the outer range,
-                // so this gap ends at the end of the outer range.
-                // This also means there will be no more gaps.
-                (&self.outer_range.end, &self.outer_range.end)
-            }
-        } else {
-            // There's no next item; the end is at the
-            // end of the outer range.
-            // This also means there will be no more gaps.
-            (&self.outer_range.end, &self.outer_range.end)
-        };
-
-        // Find the start of the next gap.
-        while let Some(next_item) = self.keys.peek() {
-            if next_item.range.start == *next_candidate_start {
-                // There's another item at the start of our candidate range.
-                // Gaps can't have zero width, so skip to the end of this
-                // item and try again.
-                next_candidate_start = &next_item.range.end;
-                self.keys.next().expect("We just checked that this exists");
-            } else {
-                // We found an item that actually has a gap before it.
-                break;
-            }
-        }
-
-        // Move the next candidate gap start past the end
-        // of this gap, and yield the gap we found.
-        let gap = self.candidate_start.clone()..gap_end.clone();
-        self.candidate_start = next_candidate_start;
-        Some(gap)
-    }
-}
-
-// Wrappers to allow storing (and sorting/searching)
-// ranges as the keys of a `BTreeMap`.
-//
-// We can do this because we maintain the invariants
-// that the order of range starts is the same as the order
-// of range ends, and that no two stored ranges have the
-// same start or end as each other.
-//
-// NOTE: Be very careful not to accidentally use these
-// if you really do want to compare equality of the
-// inner range!
-
-//
-// Range start wrapper
-//
-
-#[derive(Eq, Debug, Clone)]
-pub struct RangeStartWrapper<T> {
-    pub range: Range<T>,
-}
-
-impl<T> RangeStartWrapper<T> {
-    #[inline]
-    pub fn new(range: Range<T>) -> RangeStartWrapper<T> {
-        RangeStartWrapper { range }
-    }
-}
-
-impl<T> PartialEq for RangeStartWrapper<T>
-where
-    T: Eq,
-{
-    fn eq(&self, other: &RangeStartWrapper<T>) -> bool {
-        self.range.start == other.range.start
-    }
-}
-
-impl<T> Ord for RangeStartWrapper<T>
-where
-    T: Ord,
-{
-    fn cmp(&self, other: &RangeStartWrapper<T>) -> Ordering {
-        self.range.start.cmp(&other.range.start)
-    }
-}
-
-impl<T> PartialOrd for RangeStartWrapper<T>
-where
-    T: Ord,
-{
-    fn partial_cmp(&self, other: &RangeStartWrapper<T>) -> Option<Ordering> {
-        Some(self.cmp(other))
     }
 }
 
@@ -951,7 +741,7 @@ mod tests {
         V: Eq + Clone,
     {
         fn to_vec(&self) -> Vec<(Range<K>, V)> {
-            self.iter().map(|(kr, v)| (kr.clone(), v.clone())).collect()
+            self.iter().map(|(kr, v)| (kr, v.clone())).collect()
         }
     }
 
@@ -1125,7 +915,7 @@ mod tests {
     fn get_key_value() {
         let mut range_map: RangeMap<u32, bool> = RangeMap::new();
         range_map.insert(0..50, false);
-        assert_eq!(range_map.get_key_value(&49), Some((&(0..50), &false)));
+        assert_eq!(range_map.get_key_value(&49), Some((0..50, &false)));
         assert_eq!(range_map.get_key_value(&50), None);
     }
 
@@ -1194,295 +984,6 @@ mod tests {
         range_map.insert(25..75, false);
         range_map.remove(0..100);
         assert_eq!(range_map.to_vec(), vec![]);
-    }
-
-    // Gaps tests
-
-    #[test]
-    fn whole_range_is_a_gap() {
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ◌ ◌ ◌ ◌ ◌
-        let range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◆-------------◇ ◌
-        let outer_range = 1..8;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield the entire outer range.
-        assert_eq!(gaps.next(), Some(1..8));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn whole_range_is_covered_exactly() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ●---------◌ ◌ ◌ ◌
-        range_map.insert(1..6, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◆---------◇ ◌ ◌ ◌
-        let outer_range = 1..6;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield no gaps.
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn item_before_outer_range() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ●---◌ ◌ ◌ ◌ ◌ ◌ ◌
-        range_map.insert(1..3, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ◆-----◇ ◌
-        let outer_range = 5..8;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield the entire outer range.
-        assert_eq!(gaps.next(), Some(5..8));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn item_touching_start_of_outer_range() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ●-------◌ ◌ ◌ ◌ ◌
-        range_map.insert(1..5, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ◆-----◇ ◌
-        let outer_range = 5..8;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield the entire outer range.
-        assert_eq!(gaps.next(), Some(5..8));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn item_overlapping_start_of_outer_range() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ●---------◌ ◌ ◌ ◌
-        range_map.insert(1..6, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ◆-----◇ ◌
-        let outer_range = 5..8;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield from the end of the stored item
-        // to the end of the outer range.
-        assert_eq!(gaps.next(), Some(6..8));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn item_starting_at_start_of_outer_range() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ●-◌ ◌ ◌ ◌
-        range_map.insert(5..6, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ◆-----◇ ◌
-        let outer_range = 5..8;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield from the item onwards.
-        assert_eq!(gaps.next(), Some(6..8));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn items_floating_inside_outer_range() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ●-◌ ◌ ◌ ◌
-        range_map.insert(5..6, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ●-◌ ◌ ◌ ◌ ◌ ◌
-        range_map.insert(3..4, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◆-------------◇ ◌
-        let outer_range = 1..8;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield gaps at start, between items,
-        // and at end.
-        assert_eq!(gaps.next(), Some(1..3));
-        assert_eq!(gaps.next(), Some(4..5));
-        assert_eq!(gaps.next(), Some(6..8));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn item_ending_at_end_of_outer_range() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ◌ ◌ ●-◌ ◌
-        range_map.insert(7..8, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ◆-----◇ ◌
-        let outer_range = 5..8;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield from the start of the outer range
-        // up to the start of the stored item.
-        assert_eq!(gaps.next(), Some(5..7));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn item_overlapping_end_of_outer_range() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ●---◌ ◌ ◌ ◌
-        range_map.insert(4..6, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◆-----◇ ◌ ◌ ◌ ◌
-        let outer_range = 2..5;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield from the start of the outer range
-        // up to the start of the stored item.
-        assert_eq!(gaps.next(), Some(2..4));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn item_touching_end_of_outer_range() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ●-------◌ ◌
-        range_map.insert(4..8, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◆-----◇ ◌ ◌ ◌ ◌ ◌
-        let outer_range = 1..4;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield the entire outer range.
-        assert_eq!(gaps.next(), Some(1..4));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn item_after_outer_range() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ◌ ●---◌ ◌
-        range_map.insert(6..7, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◆-----◇ ◌ ◌ ◌ ◌ ◌
-        let outer_range = 1..4;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield the entire outer range.
-        assert_eq!(gaps.next(), Some(1..4));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn empty_outer_range_with_items_away_from_both_sides() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◆---◇ ◌ ◌ ◌ ◌ ◌ ◌
-        range_map.insert(1..3, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◌ ◆---◇ ◌ ◌
-        range_map.insert(5..7, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◆ ◌ ◌ ◌ ◌ ◌
-        let outer_range = 4..4;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield no gaps.
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn empty_outer_range_with_items_touching_both_sides() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◆---◇ ◌ ◌ ◌ ◌ ◌ ◌
-        range_map.insert(2..4, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◆---◇ ◌ ◌ ◌
-        range_map.insert(4..6, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◆ ◌ ◌ ◌ ◌ ◌
-        let outer_range = 4..4;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield no gaps.
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn empty_outer_range_with_item_straddling() {
-        let mut range_map: RangeMap<u32, ()> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◆-----◇ ◌ ◌ ◌ ◌ ◌
-        range_map.insert(2..5, ());
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ◆ ◌ ◌ ◌ ◌ ◌
-        let outer_range = 4..4;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield no gaps.
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
-    }
-
-    #[test]
-    fn no_empty_gaps() {
-        // Make two ranges different values so they don't
-        // get coalesced.
-        let mut range_map: RangeMap<u32, bool> = RangeMap::new();
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ◌ ●-◌ ◌ ◌ ◌ ◌
-        range_map.insert(4..5, true);
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◌ ◌ ●-◌ ◌ ◌ ◌ ◌ ◌
-        range_map.insert(3..4, false);
-        // 0 1 2 3 4 5 6 7 8 9
-        // ◌ ◆-------------◇ ◌
-        let outer_range = 1..8;
-        let mut gaps = range_map.gaps(&outer_range);
-        // Should yield gaps at start and end, but not between the
-        // two touching items. (4 is covered, so there should be no gap.)
-        assert_eq!(gaps.next(), Some(1..3));
-        assert_eq!(gaps.next(), Some(5..8));
-        assert_eq!(gaps.next(), None);
-        // Gaps iterator should be fused.
-        assert_eq!(gaps.next(), None);
-        assert_eq!(gaps.next(), None);
     }
 
     ///
