@@ -157,6 +157,7 @@ pub use ash::vk::Handle;
 pub use half;
 pub use library::{LoadingError, VulkanLibrary};
 use std::{
+    borrow::Cow,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     num::NonZeroU64,
@@ -235,6 +236,208 @@ where
     fn handle(&self) -> Self::Handle {
         (**self).handle()
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum ValidatedVulkanError {
+    ValidationError(ValidationError),
+    VulkanError(VulkanError),
+}
+
+impl Display for ValidatedVulkanError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ValidationError(_) => write!(f, "a validation error occurred"),
+            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+        }
+    }
+}
+
+impl Error for ValidatedVulkanError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::ValidationError(err) => Some(err),
+            Self::VulkanError(err) => Some(err),
+        }
+    }
+}
+
+impl From<ValidationError> for ValidatedVulkanError {
+    #[inline]
+    fn from(err: ValidationError) -> Self {
+        Self::ValidationError(err)
+    }
+}
+
+impl From<VulkanError> for ValidatedVulkanError {
+    #[inline]
+    fn from(err: VulkanError) -> Self {
+        Self::VulkanError(err)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ValidationError {
+    pub context: Cow<'static, str>,
+    pub problem: Cow<'static, str>,
+    pub vuids: &'static [&'static str],
+    pub requires_one_of: Option<RequiresOneOf>,
+}
+
+impl ValidationError {
+    fn from_error<E: Error>(err: E) -> Self {
+        Self {
+            context: "".into(),
+            problem: err.to_string().into(),
+            vuids: &[],
+            requires_one_of: None,
+        }
+    }
+
+    fn from_requirement(err: RequirementNotMet) -> Self {
+        ValidationError {
+            context: "".into(),
+            problem: err.required_for.into(),
+            vuids: &[],
+            requires_one_of: Some(err.requires_one_of),
+        }
+    }
+}
+
+impl Display for ValidationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            context,
+            problem,
+            vuids,
+            requires_one_of,
+        } = self;
+
+        write!(f, "{}: {}", context, problem)?;
+
+        if !vuids.is_empty() {
+            write!(f, " (Vulkan VUIDs: {}", vuids[0])?;
+
+            for vuid in &vuids[1..] {
+                write!(f, ", {}", vuid)?;
+            }
+
+            write!(f, ")")?;
+        }
+
+        if let Some(requires_one_of) = requires_one_of {
+            write!(f, " -- Requires one of: {}", requires_one_of)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Error for ValidationError {}
+
+/// Used in errors to indicate a set of alternatives that needs to be available/enabled to allow
+/// a given operation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RequiresOneOf {
+    /// A minimum Vulkan API version that would allow the operation.
+    pub api_version: Option<Version>,
+
+    /// Enabled features that would allow the operation.
+    pub features: &'static [&'static str],
+
+    /// Available/enabled device extensions that would allow the operation.
+    pub device_extensions: &'static [&'static str],
+
+    /// Available/enabled instance extensions that would allow the operation.
+    pub instance_extensions: &'static [&'static str],
+}
+
+impl RequiresOneOf {
+    /// Returns whether there is more than one possible requirement.
+    pub fn len(&self) -> usize {
+        self.api_version.map_or(0, |_| 1)
+            + self.features.len()
+            + self.device_extensions.len()
+            + self.instance_extensions.len()
+    }
+}
+
+impl Display for RequiresOneOf {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        let mut members_written = 0;
+
+        if let Some(version) = self.api_version {
+            write!(f, "Vulkan API version {}.{}", version.major, version.minor)?;
+            members_written += 1;
+        }
+
+        if let Some((last, rest)) = self.features.split_last() {
+            if members_written != 0 {
+                write!(f, ", ")?;
+            }
+
+            members_written += 1;
+
+            if rest.is_empty() {
+                write!(f, "feature {}", last)?;
+            } else {
+                write!(f, "features ")?;
+
+                for feature in rest {
+                    write!(f, "{}, ", feature)?;
+                }
+
+                write!(f, "{}", last)?;
+            }
+        }
+
+        if let Some((last, rest)) = self.device_extensions.split_last() {
+            if members_written != 0 {
+                write!(f, ", ")?;
+            }
+
+            members_written += 1;
+
+            if rest.is_empty() {
+                write!(f, "device extension {}", last)?;
+            } else {
+                write!(f, "device extensions ")?;
+
+                for feature in rest {
+                    write!(f, "{}, ", feature)?;
+                }
+
+                write!(f, "{}", last)?;
+            }
+        }
+
+        if let Some((last, rest)) = self.instance_extensions.split_last() {
+            if members_written != 0 {
+                write!(f, ", ")?;
+            }
+
+            if rest.is_empty() {
+                write!(f, "instance extension {}", last)?;
+            } else {
+                write!(f, "instance extensions ")?;
+
+                for feature in rest {
+                    write!(f, "{}, ", feature)?;
+                }
+
+                write!(f, "{}", last)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RequirementNotMet {
+    pub(crate) required_for: &'static str,
+    pub(crate) requires_one_of: RequiresOneOf,
 }
 
 /// Error type returned by most Vulkan functions.
@@ -369,110 +572,6 @@ impl Display for VulkanError {
             }
         )
     }
-}
-
-/// Used in errors to indicate a set of alternatives that needs to be available/enabled to allow
-/// a given operation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct RequiresOneOf {
-    /// A minimum Vulkan API version that would allow the operation.
-    pub api_version: Option<Version>,
-
-    /// Enabled features that would allow the operation.
-    pub features: &'static [&'static str],
-
-    /// Available/enabled device extensions that would allow the operation.
-    pub device_extensions: &'static [&'static str],
-
-    /// Available/enabled instance extensions that would allow the operation.
-    pub instance_extensions: &'static [&'static str],
-}
-
-impl RequiresOneOf {
-    /// Returns whether there is more than one possible requirement.
-    pub fn len(&self) -> usize {
-        self.api_version.map_or(0, |_| 1)
-            + self.features.len()
-            + self.device_extensions.len()
-            + self.instance_extensions.len()
-    }
-}
-
-impl Display for RequiresOneOf {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        let mut members_written = 0;
-
-        if let Some(version) = self.api_version {
-            write!(f, "Vulkan API version {}.{}", version.major, version.minor)?;
-            members_written += 1;
-        }
-
-        if let Some((last, rest)) = self.features.split_last() {
-            if members_written != 0 {
-                write!(f, ", ")?;
-            }
-
-            members_written += 1;
-
-            if rest.is_empty() {
-                write!(f, "feature {}", last)?;
-            } else {
-                write!(f, "features ")?;
-
-                for feature in rest {
-                    write!(f, "{}, ", feature)?;
-                }
-
-                write!(f, "{}", last)?;
-            }
-        }
-
-        if let Some((last, rest)) = self.device_extensions.split_last() {
-            if members_written != 0 {
-                write!(f, ", ")?;
-            }
-
-            members_written += 1;
-
-            if rest.is_empty() {
-                write!(f, "device extension {}", last)?;
-            } else {
-                write!(f, "device extensions ")?;
-
-                for feature in rest {
-                    write!(f, "{}, ", feature)?;
-                }
-
-                write!(f, "{}", last)?;
-            }
-        }
-
-        if let Some((last, rest)) = self.instance_extensions.split_last() {
-            if members_written != 0 {
-                write!(f, ", ")?;
-            }
-
-            if rest.is_empty() {
-                write!(f, "instance extension {}", last)?;
-            } else {
-                write!(f, "instance extensions ")?;
-
-                for feature in rest {
-                    write!(f, "{}, ", feature)?;
-                }
-
-                write!(f, "{}", last)?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct RequirementNotMet {
-    pub(crate) required_for: &'static str,
-    pub(crate) requires_one_of: RequiresOneOf,
 }
 
 /// A helper type for non-exhaustive structs.

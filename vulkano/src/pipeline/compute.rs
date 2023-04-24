@@ -36,7 +36,7 @@ use crate::{
         DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderExecution, ShaderStage,
         SpecializationConstant,
     },
-    OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
+    OomError, RequiresOneOf, ValidatedVulkanError, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use std::{
@@ -73,7 +73,7 @@ impl ComputePipeline {
         device: Arc<Device>,
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
-    ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError> {
+    ) -> Result<Arc<ComputePipeline>, ValidatedVulkanError> {
         Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
@@ -83,7 +83,7 @@ impl ComputePipeline {
         device: &Device,
         cache: Option<&PipelineCache>,
         create_info: &ComputePipelineCreateInfo,
-    ) -> Result<(), ComputePipelineCreationError> {
+    ) -> Result<(), ValidationError> {
         // VUID-vkCreateComputePipelines-pipelineCache-parent
         if let Some(cache) = &cache {
             assert_eq!(device, cache.device().as_ref());
@@ -104,16 +104,25 @@ impl ComputePipeline {
                 _ne: _,
             } = &stage;
 
-            // VUID-VkPipelineShaderStageCreateInfo-flags-parameter
-            flags.validate_device(device)?;
+            flags
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "create_info.stage.flags".into(),
+                    vuids: &["VUID-VkPipelineShaderStageCreateInfo-flags-parameter"],
+                    ..ValidationError::from_requirement(err)
+                })?;
 
             let entry_point_info = entry_point.info();
 
-            // VUID-VkComputePipelineCreateInfo-stage-00701
-            // VUID-VkPipelineShaderStageCreateInfo-stage-parameter
             if !matches!(entry_point_info.execution, ShaderExecution::Compute) {
-                return Err(ComputePipelineCreationError::ShaderStageInvalid {
-                    stage: ShaderStage::from(&entry_point_info.execution),
+                return Err(ValidationError {
+                    context: "create_info.stage.entry_point".into(),
+                    problem: "is not a compute shader".into(),
+                    vuids: &[
+                        "VUID-VkComputePipelineCreateInfo-stage-00701",
+                        "VUID-VkPipelineShaderStageCreateInfo-stage-parameter",
+                    ],
+                    ..Default::default()
                 });
             }
 
@@ -128,13 +137,15 @@ impl ComputePipeline {
                     // VUID-VkSpecializationMapEntry-constantID-00776
                     // Check for equal types rather than only equal size.
                     if !provided_value.eq_type(default_value) {
-                        return Err(
-                        ComputePipelineCreationError::ShaderSpecializationConstantTypeMismatch {
-                            constant_id,
-                            default_value: *default_value,
-                            provided_value: *provided_value,
-                        },
-                    );
+                        return Err(ValidationError {
+                            context: "create_info.stage.specialization_info".into(),
+                            problem:
+                                "the value provided for a shader specialization constant has a \
+                                different type than the constant's default value"
+                                    .into(),
+                            vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
+                            ..Default::default()
+                        });
                     }
                 }
             }
@@ -144,13 +155,24 @@ impl ComputePipeline {
             // VUID-VkComputePipelineCreateInfo-layout-07990
             // VUID-VkComputePipelineCreateInfo-layout-07991
             // TODO: Make sure that all of these are indeed checked.
-            layout.ensure_compatible_with_shader(
-                entry_point_info
-                    .descriptor_binding_requirements
-                    .iter()
-                    .map(|(k, v)| (*k, v)),
-                entry_point_info.push_constant_requirements.as_ref(),
-            )?;
+            layout
+                .ensure_compatible_with_shader(
+                    entry_point_info
+                        .descriptor_binding_requirements
+                        .iter()
+                        .map(|(k, v)| (*k, v)),
+                    entry_point_info.push_constant_requirements.as_ref(),
+                )
+                .map_err(|err| ValidationError {
+                    context: "create_info.stage.entry_point".into(),
+                    vuids: &[
+                        "VUID-VkComputePipelineCreateInfo-layout-07987",
+                        "VUID-VkComputePipelineCreateInfo-layout-07988",
+                        "VUID-VkComputePipelineCreateInfo-layout-07990",
+                        "VUID-VkComputePipelineCreateInfo-layout-07991",
+                    ],
+                    ..ValidationError::from_error(err)
+                })?;
 
             // VUID-VkComputePipelineCreateInfo-stage-00702
             // VUID-VkComputePipelineCreateInfo-layout-01687
@@ -478,49 +500,6 @@ impl Display for ComputePipelineCreationError {
                 "the provided shader stage ({:?}) is not a compute shader",
                 stage,
             ),
-        }
-    }
-}
-
-impl From<OomError> for ComputePipelineCreationError {
-    fn from(err: OomError) -> ComputePipelineCreationError {
-        Self::OomError(err)
-    }
-}
-
-impl From<RequirementNotMet> for ComputePipelineCreationError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
-impl From<DescriptorSetLayoutCreationError> for ComputePipelineCreationError {
-    fn from(err: DescriptorSetLayoutCreationError) -> Self {
-        Self::DescriptorSetLayoutCreationError(err)
-    }
-}
-
-impl From<PipelineLayoutCreationError> for ComputePipelineCreationError {
-    fn from(err: PipelineLayoutCreationError) -> Self {
-        Self::PipelineLayoutCreationError(err)
-    }
-}
-
-impl From<PipelineLayoutSupersetError> for ComputePipelineCreationError {
-    fn from(err: PipelineLayoutSupersetError) -> Self {
-        Self::IncompatiblePipelineLayout(err)
-    }
-}
-
-impl From<VulkanError> for ComputePipelineCreationError {
-    fn from(err: VulkanError) -> ComputePipelineCreationError {
-        match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
