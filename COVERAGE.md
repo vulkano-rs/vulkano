@@ -78,7 +78,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 ### Partially supported
 
 - [`VK_KHR_buffer_device_address`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_buffer_device_address.html)
-	- Only the deprecated EXT version is supported.
 	- `vkGetBufferOpaqueCaptureAddressKHR` / `VkBufferOpaqueCaptureAddressCreateInfoKHR`
 	- `vkGetDeviceMemoryOpaqueCaptureAddressKHR` / `VkMemoryOpaqueCaptureAddressAllocateInfoKHR`
 - [`VK_EXT_descriptor_indexing`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_descriptor_indexing.html)
