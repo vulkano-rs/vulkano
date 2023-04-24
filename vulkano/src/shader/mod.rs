@@ -203,13 +203,15 @@ impl ShaderModule {
     ///
     /// # Panics
     ///
+    /// - Panics if `bytes` is not aligned to 4.
     /// - Panics if the length of `bytes` is not a multiple of 4.
     #[inline]
     pub unsafe fn from_bytes(
         device: Arc<Device>,
         bytes: &[u8],
     ) -> Result<Arc<ShaderModule>, ShaderModuleCreationError> {
-        assert!((bytes.len() % 4) == 0);
+        assert!(bytes.as_ptr() as usize % mem::align_of::<u32>() == 0);
+        assert!(bytes.len() % mem::size_of::<u32>() == 0);
 
         Self::from_words(
             device,
@@ -309,6 +311,7 @@ impl ShaderModule {
     ///
     /// # Panics
     ///
+    /// - Panics if `bytes` is not aligned to 4.
     /// - Panics if the length of `bytes` is not a multiple of 4.
     pub unsafe fn from_bytes_with_data<'a>(
         device: Arc<Device>,
@@ -318,7 +321,8 @@ impl ShaderModule {
         spirv_extensions: impl IntoIterator<Item = &'a str>,
         entry_points: impl IntoIterator<Item = EntryPointInfo>,
     ) -> Result<Arc<ShaderModule>, ShaderModuleCreationError> {
-        assert!((bytes.len() % 4) == 0);
+        assert!(bytes.as_ptr() as usize % mem::align_of::<u32>() == 0);
+        assert!(bytes.len() % mem::size_of::<u32>() == 0);
 
         Self::from_words_with_data(
             device,
