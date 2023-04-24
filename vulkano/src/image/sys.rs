@@ -36,7 +36,7 @@ use crate::{
     range_map::RangeMap,
     swapchain::Swapchain,
     sync::{future::AccessError, CurrentAccess, Sharing},
-    DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    DeviceSize, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT;
 use parking_lot::{Mutex, MutexGuard};
@@ -871,7 +871,7 @@ impl RawImage {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: ImageCreateInfo,
-    ) -> Result<Self, VulkanError> {
+    ) -> Result<Self, RuntimeError> {
         let &ImageCreateInfo {
             flags,
             dimensions,
@@ -980,7 +980,7 @@ impl RawImage {
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_image)(device.handle(), &info_vk, ptr::null(), output.as_mut_ptr())
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -1537,7 +1537,7 @@ impl RawImage {
     ) -> Result<
         Image,
         (
-            VulkanError,
+            RuntimeError,
             RawImage,
             impl ExactSizeIterator<Item = MemoryAlloc>,
         ),
@@ -1624,7 +1624,7 @@ impl RawImage {
         .result();
 
         if let Err(err) = result {
-            return Err((VulkanError::from(err), self, allocations.into_iter()));
+            return Err((RuntimeError::from(err), self, allocations.into_iter()));
         }
 
         Ok(Image::from_raw(self, ImageMemory::Normal(allocations)))
@@ -2792,7 +2792,7 @@ pub struct SubresourceLayout {
 /// Error that can happen in image functions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageError {
-    VulkanError(VulkanError),
+    RuntimeError(RuntimeError),
 
     /// Allocating memory failed.
     AllocError(AllocationCreationError),
@@ -3013,7 +3013,7 @@ impl Error for ImageError {
 impl Display for ImageError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
             Self::AllocError(_) => write!(f, "allocating memory failed"),
             Self::RequirementNotMet {
                 required_for,
@@ -3263,9 +3263,9 @@ impl Display for ImageError {
     }
 }
 
-impl From<VulkanError> for ImageError {
-    fn from(err: VulkanError) -> Self {
-        Self::VulkanError(err)
+impl From<RuntimeError> for ImageError {
+    fn from(err: RuntimeError) -> Self {
+        Self::RuntimeError(err)
     }
 }
 

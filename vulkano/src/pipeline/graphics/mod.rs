@@ -94,7 +94,7 @@ use crate::{
         PipelineShaderStageCreateInfo, ShaderExecution, ShaderInterfaceMismatchError,
         ShaderScalarType, ShaderStage, ShaderStages, SpecializationConstant,
     },
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -2590,7 +2590,7 @@ impl GraphicsPipeline {
         device: Arc<Device>,
         cache: Option<Arc<PipelineCache>>,
         create_info: GraphicsPipelineCreateInfo,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let &GraphicsPipelineCreateInfo {
             flags,
             ref stages,
@@ -3569,7 +3569,7 @@ impl GraphicsPipeline {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
             output.assume_init()
         };
@@ -4785,11 +4785,11 @@ impl From<PipelineLayoutSupersetError> for GraphicsPipelineCreationError {
     }
 }
 
-impl From<VulkanError> for GraphicsPipelineCreationError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for GraphicsPipelineCreationError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }

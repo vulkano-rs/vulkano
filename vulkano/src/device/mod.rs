@@ -115,7 +115,7 @@ pub use crate::{
 };
 use crate::{
     instance::Instance, macros::impl_id_counter, memory::ExternalMemoryHandleType, OomError,
-    RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::Mutex;
@@ -395,7 +395,7 @@ impl Device {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -557,7 +557,7 @@ impl Device {
                 &mut memory_fd_properties,
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
             Ok(MemoryFdProperties {
                 memory_type_bits: memory_fd_properties.memory_type_bits,
@@ -590,7 +590,7 @@ impl Device {
             let fns = self.instance().fns();
             (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info)
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
         }
 
         Ok(())
@@ -611,7 +611,7 @@ impl Device {
         let fns = self.fns();
         (fns.v1_0.device_wait_idle)(self.handle)
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
         Ok(())
     }
@@ -716,16 +716,16 @@ impl Display for DeviceCreationError {
     }
 }
 
-impl From<VulkanError> for DeviceCreationError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for DeviceCreationError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            VulkanError::InitializationFailed => Self::InitializationFailed,
-            VulkanError::OutOfHostMemory => Self::OutOfHostMemory,
-            VulkanError::OutOfDeviceMemory => Self::OutOfDeviceMemory,
-            VulkanError::DeviceLost => Self::DeviceLost,
-            VulkanError::ExtensionNotPresent => Self::ExtensionNotPresent,
-            VulkanError::FeatureNotPresent => Self::FeatureNotPresent,
-            VulkanError::TooManyObjects => Self::TooManyObjects,
+            RuntimeError::InitializationFailed => Self::InitializationFailed,
+            RuntimeError::OutOfHostMemory => Self::OutOfHostMemory,
+            RuntimeError::OutOfDeviceMemory => Self::OutOfDeviceMemory,
+            RuntimeError::DeviceLost => Self::DeviceLost,
+            RuntimeError::ExtensionNotPresent => Self::ExtensionNotPresent,
+            RuntimeError::FeatureNotPresent => Self::FeatureNotPresent,
+            RuntimeError::TooManyObjects => Self::TooManyObjects,
             _ => panic!("Unexpected error value"),
         }
     }
@@ -891,11 +891,11 @@ impl Display for MemoryFdPropertiesError {
     }
 }
 
-impl From<VulkanError> for MemoryFdPropertiesError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for MemoryFdPropertiesError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            VulkanError::OutOfHostMemory => Self::OutOfHostMemory,
-            VulkanError::InvalidExternalHandle => Self::InvalidExternalHandle,
+            RuntimeError::OutOfHostMemory => Self::OutOfHostMemory,
+            RuntimeError::InvalidExternalHandle => Self::InvalidExternalHandle,
             _ => panic!("Unexpected error value"),
         }
     }

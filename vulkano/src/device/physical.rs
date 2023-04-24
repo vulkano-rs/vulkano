@@ -28,7 +28,7 @@ use crate::{
         fence::{ExternalFenceInfo, ExternalFenceProperties},
         semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
     },
-    ExtensionProperties, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    ExtensionProperties, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use bytemuck::cast_slice;
 use std::{
@@ -95,7 +95,7 @@ impl PhysicalDevice {
     pub unsafe fn from_handle(
         instance: Arc<Instance>,
         handle: ash::vk::PhysicalDevice,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let api_version = Self::get_api_version(handle, &instance);
         let extension_properties = Self::get_extension_properties(handle, &instance)?;
         let supported_extensions: DeviceExtensions = extension_properties
@@ -160,7 +160,7 @@ impl PhysicalDevice {
     unsafe fn get_extension_properties(
         handle: ash::vk::PhysicalDevice,
         instance: &Instance,
-    ) -> Result<Vec<ExtensionProperties>, VulkanError> {
+    ) -> Result<Vec<ExtensionProperties>, RuntimeError> {
         let fns = instance.fns();
 
         loop {
@@ -172,7 +172,7 @@ impl PhysicalDevice {
                 ptr::null_mut(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
             let mut output = Vec::with_capacity(count as usize);
             let result = (fns.v1_0.enumerate_device_extension_properties)(
@@ -188,7 +188,7 @@ impl PhysicalDevice {
                     return Ok(output.into_iter().map(Into::into).collect());
                 }
                 ash::vk::Result::INCOMPLETE => (),
-                err => return Err(VulkanError::from(err)),
+                err => return Err(RuntimeError::from(err)),
             }
         }
     }
@@ -1034,7 +1034,7 @@ impl PhysicalDevice {
     pub unsafe fn image_format_properties_unchecked(
         &self,
         mut image_format_info: ImageFormatInfo,
-    ) -> Result<Option<ImageFormatProperties>, VulkanError> {
+    ) -> Result<Option<ImageFormatProperties>, RuntimeError> {
         {
             let ImageFormatInfo {
                 format,
@@ -1179,7 +1179,7 @@ impl PhysicalDevice {
                         )
                     }
                     .result()
-                    .map_err(VulkanError::from)
+                    .map_err(RuntimeError::from)
                 };
 
                 Ok(match result {
@@ -1197,7 +1197,7 @@ impl PhysicalDevice {
                             }),
                         ..properties2_vk.image_format_properties.into()
                     }),
-                    Err(VulkanError::FormatNotSupported) => None,
+                    Err(RuntimeError::FormatNotSupported) => None,
                     Err(err) => return Err(err),
                 })
             })
@@ -1546,7 +1546,7 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: SurfaceInfo,
-    ) -> Result<SurfaceCapabilities, VulkanError> {
+    ) -> Result<SurfaceCapabilities, RuntimeError> {
         /* Input */
 
         let SurfaceInfo {
@@ -1625,7 +1625,7 @@ impl PhysicalDevice {
                 &mut capabilities_vk,
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
         } else {
             (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
                 self.handle(),
@@ -1633,7 +1633,7 @@ impl PhysicalDevice {
                 &mut capabilities_vk.surface_capabilities,
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
         };
 
         Ok(SurfaceCapabilities {
@@ -1785,7 +1785,7 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: SurfaceInfo,
-    ) -> Result<Vec<(Format, ColorSpace)>, VulkanError> {
+    ) -> Result<Vec<(Format, ColorSpace)>, RuntimeError> {
         surface.surface_formats.get_or_try_insert(
             (self.handle, surface_info),
             |(_, surface_info)| {
@@ -1849,7 +1849,7 @@ impl PhysicalDevice {
                             ptr::null_mut(),
                         )
                         .result()
-                        .map_err(VulkanError::from)?;
+                        .map_err(RuntimeError::from)?;
 
                         let mut surface_format2s =
                             vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
@@ -1868,7 +1868,7 @@ impl PhysicalDevice {
                                 break surface_format2s;
                             }
                             ash::vk::Result::INCOMPLETE => (),
-                            err => return Err(VulkanError::from(err)),
+                            err => return Err(RuntimeError::from(err)),
                         }
                     };
 
@@ -1889,7 +1889,7 @@ impl PhysicalDevice {
                             ptr::null_mut(),
                         )
                         .result()
-                        .map_err(VulkanError::from)?;
+                        .map_err(RuntimeError::from)?;
 
                         let mut surface_formats = Vec::with_capacity(count as usize);
                         let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
@@ -1905,7 +1905,7 @@ impl PhysicalDevice {
                                 break surface_formats;
                             }
                             ash::vk::Result::INCOMPLETE => (),
-                            err => return Err(VulkanError::from(err)),
+                            err => return Err(RuntimeError::from(err)),
                         }
                     };
 
@@ -1967,7 +1967,7 @@ impl PhysicalDevice {
     pub unsafe fn surface_present_modes_unchecked(
         &self,
         surface: &Surface,
-    ) -> Result<impl Iterator<Item = PresentMode>, VulkanError> {
+    ) -> Result<impl Iterator<Item = PresentMode>, RuntimeError> {
         surface
             .surface_present_modes
             .get_or_try_insert(self.handle, |_| {
@@ -1983,7 +1983,7 @@ impl PhysicalDevice {
                         ptr::null_mut(),
                     )
                     .result()
-                    .map_err(VulkanError::from)?;
+                    .map_err(RuntimeError::from)?;
 
                     let mut modes = Vec::with_capacity(count as usize);
                     let result = (fns
@@ -2001,7 +2001,7 @@ impl PhysicalDevice {
                             break modes;
                         }
                         ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err)),
+                        err => return Err(RuntimeError::from(err)),
                     }
                 };
 
@@ -2059,7 +2059,7 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         surface: &Surface,
-    ) -> Result<bool, VulkanError> {
+    ) -> Result<bool, RuntimeError> {
         surface
             .surface_support
             .get_or_try_insert((self.handle, queue_family_index), |_| {
@@ -2073,7 +2073,7 @@ impl PhysicalDevice {
                     output.as_mut_ptr(),
                 )
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
 
                 Ok(output.assume_init() != 0)
             })
@@ -2111,7 +2111,7 @@ impl PhysicalDevice {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub unsafe fn tool_properties_unchecked(&self) -> Result<Vec<ToolProperties>, VulkanError> {
+    pub unsafe fn tool_properties_unchecked(&self) -> Result<Vec<ToolProperties>, RuntimeError> {
         let fns = self.instance.fns();
 
         loop {
@@ -2131,7 +2131,7 @@ impl PhysicalDevice {
                 )
             }
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
             let mut tool_properties = Vec::with_capacity(count as usize);
             let result = if self.api_version() >= Version::V1_3 {
@@ -2180,7 +2180,7 @@ impl PhysicalDevice {
                         })
                         .collect());
                 }
-                err => return Err(VulkanError::from(err)),
+                err => return Err(RuntimeError::from(err)),
             }
         }
     }
@@ -2787,7 +2787,7 @@ vulkan_enum! {
 /// Error that can happen when using a physical device.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PhysicalDeviceError {
-    VulkanError(VulkanError),
+    RuntimeError(RuntimeError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -2811,7 +2811,7 @@ pub enum PhysicalDeviceError {
 impl Error for PhysicalDeviceError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::VulkanError(err) => Some(err),
+            Self::RuntimeError(err) => Some(err),
             _ => None,
         }
     }
@@ -2820,7 +2820,7 @@ impl Error for PhysicalDeviceError {
 impl Display for PhysicalDeviceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -2851,9 +2851,9 @@ impl Display for PhysicalDeviceError {
     }
 }
 
-impl From<VulkanError> for PhysicalDeviceError {
-    fn from(err: VulkanError) -> Self {
-        Self::VulkanError(err)
+impl From<RuntimeError> for PhysicalDeviceError {
+    fn from(err: RuntimeError) -> Self {
+        Self::RuntimeError(err)
     }
 }
 

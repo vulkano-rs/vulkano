@@ -44,7 +44,7 @@
 use super::Instance;
 use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
-    RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
+    RequirementNotMet, RequiresOneOf, RuntimeError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -169,7 +169,7 @@ impl DebugUtilsMessenger {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -270,8 +270,8 @@ impl Display for DebugUtilsMessengerCreationError {
     }
 }
 
-impl From<VulkanError> for DebugUtilsMessengerCreationError {
-    fn from(err: VulkanError) -> DebugUtilsMessengerCreationError {
+impl From<RuntimeError> for DebugUtilsMessengerCreationError {
+    fn from(err: RuntimeError) -> DebugUtilsMessengerCreationError {
         panic!("unexpected error: {:?}", err)
     }
 }

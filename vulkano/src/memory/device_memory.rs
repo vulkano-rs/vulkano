@@ -12,7 +12,7 @@ use crate::{
     device::{Device, DeviceOwned},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     memory::{is_aligned, MemoryPropertyFlags},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use std::{
     error::Error,
@@ -432,7 +432,7 @@ impl DeviceMemory {
         device: Arc<Device>,
         allocate_info: MemoryAllocateInfo<'_>,
         import_info: Option<MemoryImportInfo>,
-    ) -> Result<Self, VulkanError> {
+    ) -> Result<Self, RuntimeError> {
         let MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
@@ -537,7 +537,7 @@ impl DeviceMemory {
             .fetch_update(Ordering::Acquire, Ordering::Relaxed, move |count| {
                 (count < max_allocations).then_some(count + 1)
             })
-            .map_err(|_| VulkanError::TooManyObjects)?;
+            .map_err(|_| RuntimeError::TooManyObjects)?;
 
         let handle = {
             let fns = device.fns();
@@ -551,7 +551,7 @@ impl DeviceMemory {
             .result()
             .map_err(|e| {
                 device.allocation_count.fetch_sub(1, Ordering::Release);
-                VulkanError::from(e)
+                RuntimeError::from(e)
             })?;
 
             output.assume_init()
@@ -710,7 +710,7 @@ impl DeviceMemory {
                     output.as_mut_ptr(),
                 )
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
                 output.assume_init()
             };
 
@@ -1109,13 +1109,13 @@ impl Display for DeviceMemoryError {
     }
 }
 
-impl From<VulkanError> for DeviceMemoryError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for DeviceMemoryError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+            e @ RuntimeError::OutOfHostMemory | e @ RuntimeError::OutOfDeviceMemory => {
                 Self::OomError(e.into())
             }
-            VulkanError::TooManyObjects => Self::TooManyObjects,
+            RuntimeError::TooManyObjects => Self::TooManyObjects,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1267,7 +1267,7 @@ impl MappedDeviceMemory {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -1333,7 +1333,7 @@ impl MappedDeviceMemory {
         let fns = self.memory.device().fns();
         (fns.v1_0.invalidate_mapped_memory_ranges)(self.memory.device().handle(), 1, &range)
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
         Ok(())
     }
@@ -1379,7 +1379,7 @@ impl MappedDeviceMemory {
         let fns = self.device().fns();
         (fns.v1_0.flush_mapped_memory_ranges)(self.memory.device().handle(), 1, &range)
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
         Ok(())
     }
@@ -1561,13 +1561,13 @@ impl Display for MemoryMapError {
     }
 }
 
-impl From<VulkanError> for MemoryMapError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for MemoryMapError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+            e @ RuntimeError::OutOfHostMemory | e @ RuntimeError::OutOfDeviceMemory => {
                 Self::OomError(e.into())
             }
-            VulkanError::MemoryMapFailed => Self::MemoryMapFailed,
+            RuntimeError::MemoryMapFailed => Self::MemoryMapFailed,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

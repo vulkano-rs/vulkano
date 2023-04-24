@@ -23,7 +23,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    OomError, VulkanError, VulkanObject,
+    OomError, RuntimeError, VulkanObject,
 };
 use std::{mem::MaybeUninit, ptr, sync::Arc};
 
@@ -128,7 +128,7 @@ impl PipelineCache {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -170,7 +170,7 @@ impl PipelineCache {
                 pipelines.as_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
             Ok(())
         }
@@ -218,7 +218,7 @@ impl PipelineCache {
                     ptr::null_mut(),
                 )
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
 
                 let mut data: Vec<u8> = Vec::with_capacity(count);
                 let result = (fns.v1_0.get_pipeline_cache_data)(
@@ -234,7 +234,7 @@ impl PipelineCache {
                         break data;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err).into()),
+                    err => return Err(RuntimeError::from(err).into()),
                 }
             }
         };

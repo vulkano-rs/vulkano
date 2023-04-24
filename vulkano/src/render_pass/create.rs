@@ -16,7 +16,7 @@ use crate::{
     format::FormatFeatures,
     image::{ImageAspects, ImageLayout, SampleCount},
     sync::{AccessFlags, DependencyFlags, PipelineStages},
-    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -1242,7 +1242,7 @@ impl RenderPass {
                 )
             }
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
             output.assume_init()
         })
@@ -1491,7 +1491,7 @@ impl RenderPass {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         })
     }
@@ -1955,13 +1955,13 @@ impl From<OomError> for RenderPassCreationError {
     }
 }
 
-impl From<VulkanError> for RenderPassCreationError {
-    fn from(err: VulkanError) -> RenderPassCreationError {
+impl From<RuntimeError> for RenderPassCreationError {
+    fn from(err: RuntimeError) -> RenderPassCreationError {
         match err {
-            err @ VulkanError::OutOfHostMemory => {
+            err @ RuntimeError::OutOfHostMemory => {
                 RenderPassCreationError::OomError(OomError::from(err))
             }
-            err @ VulkanError::OutOfDeviceMemory => {
+            err @ RuntimeError::OutOfDeviceMemory => {
                 RenderPassCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),

@@ -140,7 +140,7 @@ use crate::{
     pipeline::{graphics::input_assembly::PrimitiveTopology, layout::PushConstantRange},
     shader::spirv::{Capability, Spirv, SpirvError},
     sync::PipelineStages,
-    OomError, Version, VulkanError, VulkanObject,
+    OomError, RuntimeError, Version, VulkanObject,
 };
 use ahash::{HashMap, HashSet};
 use std::{
@@ -280,7 +280,7 @@ impl ShaderModule {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -1334,8 +1334,8 @@ impl Display for ShaderModuleCreationError {
     }
 }
 
-impl From<VulkanError> for ShaderModuleCreationError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for ShaderModuleCreationError {
+    fn from(err: RuntimeError) -> Self {
         Self::OomError(err.into())
     }
 }

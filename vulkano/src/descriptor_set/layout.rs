@@ -16,7 +16,7 @@ use crate::{
     macros::{impl_id_counter, vulkan_enum},
     sampler::Sampler,
     shader::{DescriptorBindingRequirements, ShaderStages},
-    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use ahash::HashMap;
 use std::{
@@ -229,7 +229,7 @@ impl DescriptorSetLayout {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: DescriptorSetLayoutCreateInfo,
-    ) -> Result<Arc<DescriptorSetLayout>, VulkanError> {
+    ) -> Result<Arc<DescriptorSetLayout>, RuntimeError> {
         let &DescriptorSetLayoutCreateInfo {
             ref bindings,
             push_descriptor,
@@ -314,7 +314,7 @@ impl DescriptorSetLayout {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -487,8 +487,8 @@ pub enum DescriptorSetLayoutCreationError {
     VariableDescriptorCountDescriptorTypeIncompatible { binding_num: u32 },
 }
 
-impl From<VulkanError> for DescriptorSetLayoutCreationError {
-    fn from(error: VulkanError) -> Self {
+impl From<RuntimeError> for DescriptorSetLayoutCreationError {
+    fn from(error: RuntimeError) -> Self {
         Self::OomError(error.into())
     }
 }

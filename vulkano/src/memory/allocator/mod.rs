@@ -234,7 +234,7 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError,
+    DeviceSize, RequirementNotMet, RequiresOneOf, RuntimeError, Version,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
@@ -524,7 +524,7 @@ pub enum MemoryAllocatePreference {
 /// [memory allocator]: MemoryAllocator
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AllocationCreationError {
-    VulkanError(VulkanError),
+    RuntimeError(RuntimeError),
 
     /// There is not enough memory in the pool.
     ///
@@ -554,7 +554,7 @@ pub enum AllocationCreationError {
 impl Error for AllocationCreationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::VulkanError(err) => Some(err),
+            Self::RuntimeError(err) => Some(err),
             _ => None,
         }
     }
@@ -563,7 +563,7 @@ impl Error for AllocationCreationError {
 impl Display for AllocationCreationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
             Self::OutOfPoolMemory => write!(f, "the pool doesn't have enough free space"),
             Self::DedicatedAllocationRequired => write!(
                 f,
@@ -582,9 +582,9 @@ impl Display for AllocationCreationError {
     }
 }
 
-impl From<VulkanError> for AllocationCreationError {
-    fn from(err: VulkanError) -> Self {
-        AllocationCreationError::VulkanError(err)
+impl From<RuntimeError> for AllocationCreationError {
+    fn from(err: RuntimeError) -> Self {
+        AllocationCreationError::RuntimeError(err)
     }
 }
 
@@ -971,7 +971,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// [`protected_memory`]: crate::device::Features::protected_memory
     /// [`DEVICE_COHERENT`]: MemoryPropertyFlags::DEVICE_COHERENT
     /// [`device_coherent_memory`]: crate::device::Features::device_coherent_memory
-    /// [`TooManyObjects`]: VulkanError::TooManyObjects
+    /// [`TooManyObjects`]: RuntimeError::TooManyObjects
     /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
     /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
     fn allocate_from_type(
@@ -1128,7 +1128,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                         break S::new(MemoryAlloc::new(device_memory)?);
                     }
                     // Retry up to 3 times, halving the allocation size each time.
-                    Err(VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory) if i < 3 => {
+                    Err(RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory)
+                        if i < 3 =>
+                    {
                         i += 1;
                     }
                     Err(err) => return Err(err.into()),
@@ -1144,7 +1146,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             // This can happen if the block ended up smaller than advertised because there wasn't
             // enough memory.
             Err(SuballocationCreationError::OutOfRegionMemory) => Err(
-                AllocationCreationError::VulkanError(VulkanError::OutOfDeviceMemory),
+                AllocationCreationError::RuntimeError(RuntimeError::OutOfDeviceMemory),
             ),
             // This can not happen as the block is fresher than Febreze and we're still holding an
             // exclusive lock.
@@ -1187,7 +1189,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///   `create_info.size` is greater than `BLOCK_SIZE` and a dedicated allocation was not
     ///   created.
     ///
-    /// [`TooManyObjects`]: VulkanError::TooManyObjects
+    /// [`TooManyObjects`]: RuntimeError::TooManyObjects
     /// [`OutOfPoolMemory`]: AllocationCreationError::OutOfPoolMemory
     /// [`DedicatedAllocationRequired`]: AllocationCreationError::DedicatedAllocationRequired
     /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded

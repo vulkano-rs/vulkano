@@ -19,7 +19,7 @@ use crate::{
     command_buffer::CommandBufferLevel,
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
-    OomError, RequiresOneOf, Version, VulkanError, VulkanObject,
+    OomError, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -169,7 +169,7 @@ impl CommandPool {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -195,7 +195,7 @@ impl CommandPool {
         let fns = self.device.fns();
         (fns.v1_0.reset_command_pool)(self.device.handle(), self.handle, flags)
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
         Ok(())
     }
@@ -232,7 +232,7 @@ impl CommandPool {
                     out.as_mut_ptr(),
                 )
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
                 out.set_len(command_buffer_count as usize);
                 out
             }
@@ -390,10 +390,10 @@ impl Display for CommandPoolCreationError {
     }
 }
 
-impl From<VulkanError> for CommandPoolCreationError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for CommandPoolCreationError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -522,8 +522,8 @@ impl Display for CommandPoolTrimError {
     }
 }
 
-impl From<VulkanError> for CommandPoolTrimError {
-    fn from(err: VulkanError) -> CommandPoolTrimError {
+impl From<RuntimeError> for CommandPoolTrimError {
+    fn from(err: RuntimeError) -> CommandPoolTrimError {
         panic!("unexpected error: {:?}", err)
     }
 }

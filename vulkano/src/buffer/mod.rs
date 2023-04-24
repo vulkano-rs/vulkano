@@ -123,7 +123,7 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{future::AccessError, CurrentAccess, Sharing},
-    DeviceSize, NonZeroDeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanError,
+    DeviceSize, NonZeroDeviceSize, RequirementNotMet, RequiresOneOf, RuntimeError, Version,
     VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -781,7 +781,7 @@ struct BufferRangeState {
 /// Error that can happen in buffer functions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BufferError {
-    VulkanError(VulkanError),
+    RuntimeError(RuntimeError),
 
     /// Allocating memory failed.
     AllocError(AllocationCreationError),
@@ -871,7 +871,7 @@ pub enum BufferError {
 impl Error for BufferError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::VulkanError(err) => Some(err),
+            Self::RuntimeError(err) => Some(err),
             Self::AllocError(err) => Some(err),
             _ => None,
         }
@@ -881,7 +881,7 @@ impl Error for BufferError {
 impl Display for BufferError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
             Self::AllocError(_) => write!(f, "allocating memory failed"),
             Self::RequirementNotMet {
                 required_for,
@@ -993,9 +993,9 @@ impl Display for BufferError {
     }
 }
 
-impl From<VulkanError> for BufferError {
-    fn from(err: VulkanError) -> Self {
-        Self::VulkanError(err)
+impl From<RuntimeError> for BufferError {
+    fn from(err: RuntimeError) -> Self {
+        Self::RuntimeError(err)
     }
 }
 

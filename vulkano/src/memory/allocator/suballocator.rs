@@ -22,7 +22,7 @@ use crate::{
     device::{Device, DeviceOwned},
     image::ImageTiling,
     memory::{is_aligned, DeviceMemory, MemoryPropertyFlags},
-    DeviceSize, NonZeroDeviceSize, VulkanError, VulkanObject,
+    DeviceSize, NonZeroDeviceSize, RuntimeError, VulkanObject,
 };
 use crossbeam_queue::ArrayQueue;
 use parking_lot::Mutex;
@@ -125,7 +125,7 @@ impl MemoryAlloc {
                     output.as_mut_ptr(),
                 )
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
 
                 Some(NonNull::new(output.assume_init()).unwrap())
             }
@@ -230,7 +230,7 @@ impl MemoryAlloc {
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
+    pub unsafe fn invalidate_range(&self, range: Range<DeviceSize>) -> Result<(), RuntimeError> {
         // VUID-VkMappedMemoryRange-memory-00684
         if let Some(atom_size) = self.atom_size {
             let range = self.create_memory_range(range, atom_size);
@@ -238,7 +238,7 @@ impl MemoryAlloc {
             let fns = device.fns();
             (fns.v1_0.invalidate_mapped_memory_ranges)(device.handle(), 1, &range)
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
         } else {
             self.debug_validate_memory_range(&range);
         }
@@ -270,7 +270,7 @@ impl MemoryAlloc {
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     #[inline]
-    pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), VulkanError> {
+    pub unsafe fn flush_range(&self, range: Range<DeviceSize>) -> Result<(), RuntimeError> {
         // VUID-VkMappedMemoryRange-memory-00684
         if let Some(atom_size) = self.atom_size {
             let range = self.create_memory_range(range, atom_size);
@@ -278,7 +278,7 @@ impl MemoryAlloc {
             let fns = device.fns();
             (fns.v1_0.flush_mapped_memory_ranges)(device.handle(), 1, &range)
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
         } else {
             self.debug_validate_memory_range(&range);
         }

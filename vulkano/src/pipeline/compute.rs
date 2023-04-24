@@ -36,7 +36,7 @@ use crate::{
         DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderExecution, ShaderStage,
         SpecializationConstant,
     },
-    OomError, RequiresOneOf, ValidatedVulkanError, ValidationError, VulkanError, VulkanObject,
+    OomError, RequiresOneOf, RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use std::{
@@ -73,7 +73,7 @@ impl ComputePipeline {
         device: Arc<Device>,
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
-    ) -> Result<Arc<ComputePipeline>, ValidatedVulkanError> {
+    ) -> Result<Arc<ComputePipeline>, VulkanError> {
         Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
@@ -185,7 +185,7 @@ impl ComputePipeline {
         device: Arc<Device>,
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
-    ) -> Result<Arc<ComputePipeline>, VulkanError> {
+    ) -> Result<Arc<ComputePipeline>, RuntimeError> {
         let &ComputePipelineCreateInfo {
             flags,
             ref stage,
@@ -268,7 +268,7 @@ impl ComputePipeline {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 

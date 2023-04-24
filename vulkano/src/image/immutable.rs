@@ -31,7 +31,7 @@ use crate::{
     },
     sampler::Filter,
     sync::Sharing,
-    DeviceSize, VulkanError,
+    DeviceSize, RuntimeError,
 };
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -476,8 +476,8 @@ impl From<AllocationCreationError> for ImmutableImageCreationError {
     }
 }
 
-impl From<VulkanError> for ImmutableImageCreationError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for ImmutableImageCreationError {
+    fn from(err: RuntimeError) -> Self {
         Self::AllocError(err.into())
     }
 }

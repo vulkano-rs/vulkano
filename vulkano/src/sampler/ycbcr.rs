@@ -94,7 +94,7 @@ use crate::{
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     macros::{impl_id_counter, vulkan_enum},
     sampler::{ComponentMapping, ComponentSwizzle, Filter},
-    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use std::{
     error::Error,
@@ -350,7 +350,7 @@ impl SamplerYcbcrConversion {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -620,13 +620,13 @@ impl From<OomError> for SamplerYcbcrConversionCreationError {
     }
 }
 
-impl From<VulkanError> for SamplerYcbcrConversionCreationError {
-    fn from(err: VulkanError) -> SamplerYcbcrConversionCreationError {
+impl From<RuntimeError> for SamplerYcbcrConversionCreationError {
+    fn from(err: RuntimeError) -> SamplerYcbcrConversionCreationError {
         match err {
-            err @ VulkanError::OutOfHostMemory => {
+            err @ RuntimeError::OutOfHostMemory => {
                 SamplerYcbcrConversionCreationError::OomError(OomError::from(err))
             }
-            err @ VulkanError::OutOfDeviceMemory => {
+            err @ RuntimeError::OutOfDeviceMemory => {
                 SamplerYcbcrConversionCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),

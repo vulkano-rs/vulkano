@@ -71,7 +71,7 @@ use crate::{
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
     shader::{DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderStages},
-    OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -420,7 +420,7 @@ impl PipelineLayout {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: PipelineLayoutCreateInfo,
-    ) -> Result<Arc<PipelineLayout>, VulkanError> {
+    ) -> Result<Arc<PipelineLayout>, RuntimeError> {
         let &PipelineLayoutCreateInfo {
             ref set_layouts,
             ref push_constant_ranges,
@@ -456,7 +456,7 @@ impl PipelineLayout {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -991,13 +991,13 @@ impl From<OomError> for PipelineLayoutCreationError {
     }
 }
 
-impl From<VulkanError> for PipelineLayoutCreationError {
-    fn from(err: VulkanError) -> PipelineLayoutCreationError {
+impl From<RuntimeError> for PipelineLayoutCreationError {
+    fn from(err: RuntimeError) -> PipelineLayoutCreationError {
         match err {
-            err @ VulkanError::OutOfHostMemory => {
+            err @ RuntimeError::OutOfHostMemory => {
                 PipelineLayoutCreationError::OomError(OomError::from(err))
             }
-            err @ VulkanError::OutOfDeviceMemory => {
+            err @ RuntimeError::OutOfDeviceMemory => {
                 PipelineLayoutCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),

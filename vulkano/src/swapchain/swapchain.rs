@@ -27,7 +27,7 @@ use crate::{
         semaphore::{Semaphore, SemaphoreError},
         Sharing,
     },
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, RuntimeError, VulkanObject,
 };
 use parking_lot::Mutex;
 use smallvec::{smallvec, SmallVec};
@@ -654,7 +654,7 @@ impl Swapchain {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -667,7 +667,7 @@ impl Swapchain {
                 ptr::null_mut(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
             let mut images = Vec::with_capacity(count as usize);
             let result = (fns.khr_swapchain.get_swapchain_images_khr)(
@@ -683,7 +683,7 @@ impl Swapchain {
                     break images;
                 }
                 ash::vk::Result::INCOMPLETE => (),
-                err => return Err(VulkanError::from(err).into()),
+                err => return Err(RuntimeError::from(err).into()),
             }
         };
 
@@ -832,7 +832,7 @@ impl Swapchain {
                 self.device.handle(), self.handle
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
         }
 
         Ok(())
@@ -862,7 +862,7 @@ impl Swapchain {
                 self.device.handle(), self.handle
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
         }
 
         Ok(())
@@ -1314,14 +1314,14 @@ impl Display for SwapchainCreationError {
     }
 }
 
-impl From<VulkanError> for SwapchainCreationError {
-    fn from(err: VulkanError) -> SwapchainCreationError {
+impl From<RuntimeError> for SwapchainCreationError {
+    fn from(err: RuntimeError) -> SwapchainCreationError {
         match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            VulkanError::DeviceLost => Self::DeviceLost,
-            VulkanError::SurfaceLost => Self::SurfaceLost,
-            VulkanError::NativeWindowInUse => Self::NativeWindowInUse,
+            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            RuntimeError::DeviceLost => Self::DeviceLost,
+            RuntimeError::SurfaceLost => Self::SurfaceLost,
+            RuntimeError::NativeWindowInUse => Self::NativeWindowInUse,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1444,17 +1444,17 @@ impl Display for FullScreenExclusiveError {
     }
 }
 
-impl From<VulkanError> for FullScreenExclusiveError {
-    fn from(err: VulkanError) -> FullScreenExclusiveError {
+impl From<RuntimeError> for FullScreenExclusiveError {
+    fn from(err: RuntimeError) -> FullScreenExclusiveError {
         match err {
-            err @ VulkanError::OutOfHostMemory => {
+            err @ RuntimeError::OutOfHostMemory => {
                 FullScreenExclusiveError::OomError(OomError::from(err))
             }
-            err @ VulkanError::OutOfDeviceMemory => {
+            err @ RuntimeError::OutOfDeviceMemory => {
                 FullScreenExclusiveError::OomError(OomError::from(err))
             }
-            VulkanError::SurfaceLost => FullScreenExclusiveError::SurfaceLost,
-            VulkanError::InitializationFailed => FullScreenExclusiveError::InitializationFailed,
+            RuntimeError::SurfaceLost => FullScreenExclusiveError::SurfaceLost,
+            RuntimeError::InitializationFailed => FullScreenExclusiveError::InitializationFailed,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1600,7 +1600,7 @@ pub fn wait_for_present(
         ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
         ash::vk::Result::TIMEOUT => Err(PresentWaitError::Timeout),
         err => {
-            let err = VulkanError::from(err).into();
+            let err = RuntimeError::from(err).into();
 
             if let PresentWaitError::FullScreenExclusiveModeLost = &err {
                 swapchain
@@ -1843,15 +1843,15 @@ impl From<OomError> for AcquireError {
     }
 }
 
-impl From<VulkanError> for AcquireError {
-    fn from(err: VulkanError) -> AcquireError {
+impl From<RuntimeError> for AcquireError {
+    fn from(err: RuntimeError) -> AcquireError {
         match err {
-            err @ VulkanError::OutOfHostMemory => AcquireError::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => AcquireError::OomError(OomError::from(err)),
-            VulkanError::DeviceLost => AcquireError::DeviceLost,
-            VulkanError::SurfaceLost => AcquireError::SurfaceLost,
-            VulkanError::OutOfDate => AcquireError::OutOfDate,
-            VulkanError::FullScreenExclusiveModeLost => AcquireError::FullScreenExclusiveModeLost,
+            err @ RuntimeError::OutOfHostMemory => AcquireError::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfDeviceMemory => AcquireError::OomError(OomError::from(err)),
+            RuntimeError::DeviceLost => AcquireError::DeviceLost,
+            RuntimeError::SurfaceLost => AcquireError::SurfaceLost,
+            RuntimeError::OutOfDate => AcquireError::OutOfDate,
+            RuntimeError::FullScreenExclusiveModeLost => AcquireError::FullScreenExclusiveModeLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1938,15 +1938,15 @@ impl From<RequirementNotMet> for PresentWaitError {
     }
 }
 
-impl From<VulkanError> for PresentWaitError {
-    fn from(err: VulkanError) -> PresentWaitError {
+impl From<RuntimeError> for PresentWaitError {
+    fn from(err: RuntimeError) -> PresentWaitError {
         match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            VulkanError::DeviceLost => Self::DeviceLost,
-            VulkanError::SurfaceLost => Self::SurfaceLost,
-            VulkanError::OutOfDate => Self::OutOfDate,
-            VulkanError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
+            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            RuntimeError::DeviceLost => Self::DeviceLost,
+            RuntimeError::SurfaceLost => Self::SurfaceLost,
+            RuntimeError::OutOfDate => Self::OutOfDate,
+            RuntimeError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -2255,7 +2255,7 @@ pub unsafe fn acquire_next_image_raw(
         ash::vk::Result::SUBOPTIMAL_KHR => true,
         ash::vk::Result::NOT_READY => return Err(AcquireError::Timeout),
         ash::vk::Result::TIMEOUT => return Err(AcquireError::Timeout),
-        err => return Err(VulkanError::from(err).into()),
+        err => return Err(RuntimeError::from(err).into()),
     };
 
     if let Some(semaphore) = semaphore {
