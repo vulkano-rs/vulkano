@@ -1067,7 +1067,7 @@ impl PhysicalDevice {
                     _ne: _,
                 } = image_format_info;
 
-                let has_separate_stencil_usage = stencil_usage == usage;
+                let has_separate_stencil_usage = stencil_usage != usage;
 
                 let mut info2_vk = ash::vk::PhysicalDeviceImageFormatInfo2 {
                     format: format.unwrap().into(),
