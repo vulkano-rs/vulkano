@@ -137,11 +137,14 @@ impl ComputePipeline {
                     // Check for equal types rather than only equal size.
                     if !provided_value.eq_type(default_value) {
                         return Err(ValidationError {
-                            context: "create_info.stage.specialization_info".into(),
-                            problem:
-                                "the value provided for a shader specialization constant has a \
-                                different type than the constant's default value"
-                                    .into(),
+                            context: format!(
+                                "create_info.stage.specialization_info[{}]",
+                                constant_id
+                            )
+                            .into(),
+                            problem: "the provided value has a different type than the constant's \
+                                default value"
+                                .into(),
                             vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
                             ..Default::default()
                         });
