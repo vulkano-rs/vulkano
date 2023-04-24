@@ -37,15 +37,20 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
+            multisample::MultisampleState,
             rasterization::{PolygonMode, RasterizationState},
             tessellation::TessellationState,
-            vertex_input::Vertex,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, PipelineLayout,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -315,11 +320,6 @@ fn main() {
     )
     .unwrap();
 
-    let vs = vs::load(device.clone()).unwrap();
-    let tcs = tcs::load(device.clone()).unwrap();
-    let tes = tes::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
@@ -337,30 +337,68 @@ fn main() {
     )
     .unwrap();
 
-    let pipeline = GraphicsPipeline::start()
-        .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        // Actually use the tessellation shaders.
-        .tessellation_shaders(
-            tcs.entry_point("main").unwrap(),
-            (),
-            tes.entry_point("main").unwrap(),
-            (),
+    let pipeline = {
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let tcs = tcs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let tes = tes::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let vertex_input_state = Vertex::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
+        let stages = [
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(tcs),
+            PipelineShaderStageCreateInfo::entry_point(tes),
+            PipelineShaderStageCreateInfo::entry_point(fs),
+        ];
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
         )
-        .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PatchList))
-        .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::Line))
-        .tessellation_state(
-            TessellationState::new()
-                // Use a patch_control_points of 3, because we want to convert one triangle into
-                // lots of little ones. A value of 4 would convert a rectangle into lots of little
-                // triangles.
-                .patch_control_points(3),
-        )
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-        .build(device.clone())
         .unwrap();
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(
+                    InputAssemblyState::new().topology(PrimitiveTopology::PatchList),
+                ),
+                tessellation_state: Some(
+                    TessellationState::new()
+                        // Use a patch_control_points of 3, because we want to convert one *triangle*
+                        // into lots of little ones.
+                        // A value of 4 would convert a *rectangle* into lots of little triangles.
+                        .patch_control_points(3),
+                ),
+                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                rasterization_state: Some(
+                    RasterizationState::new().polygon_mode(PolygonMode::Line),
+                ),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    };
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());

@@ -31,7 +31,11 @@ use vulkano::{
     image::{view::ImageView, ImageDimensions, StorageImage},
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+    },
+    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
 };
@@ -149,8 +153,6 @@ fn main() {
         }
     }
 
-    let shader = cs::load(device.clone()).unwrap();
-
     // Fetching subgroup size from the physical device properties to determine an appropriate
     // compute shader local size.
     //
@@ -175,22 +177,37 @@ fn main() {
 
     println!("Local size will be set to: ({local_size_x}, {local_size_y}, 1)");
 
-    let spec_consts = cs::SpecializationConstants {
-        red: 0.2,
-        green: 0.5,
-        blue: 1.0,
-        // Specify the local size constants.
-        constant_1: local_size_x,
-        constant_2: local_size_y,
+    let pipeline = {
+        let cs = cs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo {
+            specialization_info: [
+                (0, 0.2f32.into()),
+                (1, local_size_x.into()),
+                (2, local_size_y.into()),
+                (3, 0.5f32.into()),
+                (4, 1.0f32.into()),
+            ]
+            .into_iter()
+            .collect(),
+            ..PipelineShaderStageCreateInfo::entry_point(cs)
+        };
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
+        .unwrap();
+        ComputePipeline::new(
+            device.clone(),
+            None,
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
+        )
+        .unwrap()
     };
-    let pipeline = ComputePipeline::new(
-        device.clone(),
-        shader.entry_point("main").unwrap(),
-        &spec_consts,
-        None,
-        |_| {},
-    )
-    .unwrap();
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());

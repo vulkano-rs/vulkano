@@ -258,11 +258,8 @@ pub(super) fn reflect(
         quote! { &::vulkano::shader::spirv::Capability::#name }
     });
     let spirv_extensions = reflect::spirv_extensions(&shader.spirv);
-    let entry_points = reflect::entry_points(&shader.spirv)
-        .map(|(name, model, info)| entry_point::write_entry_point(&name, model, &info));
-
-    let specialization_constants =
-        structs::write_specialization_constants(input, &shader, type_registry)?;
+    let entry_points =
+        reflect::entry_points(&shader.spirv).map(|info| entry_point::write_entry_point(&info));
 
     let load_name = if shader.name.is_empty() {
         format_ident!("load")
@@ -278,7 +275,7 @@ pub(super) fn reflect(
             device: ::std::sync::Arc<::vulkano::device::Device>,
         ) -> ::std::result::Result<
             ::std::sync::Arc<::vulkano::shader::ShaderModule>,
-            ::vulkano::shader::ShaderCreationError,
+            ::vulkano::shader::ShaderModuleCreationError,
         > {
             let _bytes = ( #( #include_bytes ),* );
 
@@ -295,8 +292,6 @@ pub(super) fn reflect(
                 )
             }
         }
-
-        #specialization_constants
     };
 
     let structs = structs::write_structs(input, &shader, type_registry)?;
@@ -589,7 +584,7 @@ mod tests {
         let spirv = Spirv::new(&instructions).unwrap();
 
         let mut descriptors = Vec::new();
-        for (_, _, info) in reflect::entry_points(&spirv) {
+        for info in reflect::entry_points(&spirv) {
             descriptors.push(info.descriptor_binding_requirements);
         }
 
@@ -657,7 +652,7 @@ mod tests {
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
 
-        if let Some((_, _, info)) = reflect::entry_points(&spirv).next() {
+        if let Some(info) = reflect::entry_points(&spirv).next() {
             let mut bindings = Vec::new();
             for (loc, _reqs) in info.descriptor_binding_requirements {
                 bindings.push(loc);

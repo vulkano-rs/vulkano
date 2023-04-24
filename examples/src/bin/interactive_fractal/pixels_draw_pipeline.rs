@@ -22,14 +22,20 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::InputAssemblyState,
-            vertex_input::Vertex,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::Subpass,
     sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
+    shader::PipelineShaderStageCreateInfo,
 };
 
 /// Vertex for textured quads.
@@ -114,17 +120,45 @@ impl PixelsDrawPipeline {
         .unwrap();
 
         let pipeline = {
-            let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
-            let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
-            GraphicsPipeline::start()
-                .vertex_input_state(TexturedVertex::per_vertex())
-                .vertex_shader(vs.entry_point("main").unwrap(), ())
-                .input_assembly_state(InputAssemblyState::new())
-                .fragment_shader(fs.entry_point("main").unwrap(), ())
-                .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                .render_pass(subpass.clone())
-                .build(gfx_queue.device().clone())
-                .unwrap()
+            let device = gfx_queue.device();
+            let vs = vs::load(device.clone())
+                .expect("failed to create shader module")
+                .entry_point("main")
+                .expect("shader entry point not found");
+            let fs = fs::load(device.clone())
+                .expect("failed to create shader module")
+                .entry_point("main")
+                .expect("shader entry point not found");
+            let vertex_input_state = TexturedVertex::per_vertex()
+                .definition(&vs.info().input_interface)
+                .unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::entry_point(vs),
+                PipelineShaderStageCreateInfo::entry_point(fs),
+            ];
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            GraphicsPipeline::new(
+                device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    input_assembly_state: Some(InputAssemblyState::default()),
+                    viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                    rasterization_state: Some(RasterizationState::default()),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                    subpass: Some(subpass.clone().into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+            .unwrap()
         };
 
         PixelsDrawPipeline {

@@ -38,13 +38,18 @@ mod linux {
             graphics::{
                 color_blend::ColorBlendState,
                 input_assembly::{InputAssemblyState, PrimitiveTopology},
-                vertex_input::Vertex,
+                multisample::MultisampleState,
+                rasterization::RasterizationState,
+                vertex_input::{Vertex, VertexDefinition},
                 viewport::{Scissor, Viewport, ViewportState},
+                GraphicsPipelineCreateInfo,
             },
-            GraphicsPipeline, Pipeline, PipelineBindPoint,
+            layout::PipelineDescriptorSetLayoutCreateInfo,
+            GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         },
         render_pass::{Framebuffer, RenderPass, Subpass},
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+        shader::PipelineShaderStageCreateInfo,
         swapchain::{
             AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
             SwapchainPresentInfo,
@@ -582,9 +587,6 @@ mod linux {
         )
         .unwrap();
 
-        let vs = vs::load(device.clone()).unwrap();
-        let fs = fs::load(device.clone()).unwrap();
-
         let render_pass = vulkano::single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
@@ -612,23 +614,54 @@ mod linux {
         )
         .unwrap();
 
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-
-        let pipeline = GraphicsPipeline::start()
-            .vertex_input_state(MyVertex::per_vertex())
-            .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .input_assembly_state(
-                InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
+        let pipeline = {
+            let vs = vs::load(device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = fs::load(device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let vertex_input_state = MyVertex::per_vertex()
+                .definition(&vs.info().input_interface)
+                .unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::entry_point(vs),
+                PipelineShaderStageCreateInfo::entry_point(fs),
+            ];
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
             )
-            .viewport_state(ViewportState::FixedScissor {
-                scissors: (0..1).map(|_| Scissor::irrelevant()).collect(),
-                viewport_count_dynamic: false,
-            })
-            .fragment_shader(fs.entry_point("main").unwrap(), ())
-            .color_blend_state(ColorBlendState::new(1).blend_alpha())
-            .render_pass(subpass)
-            .build(device.clone())
             .unwrap();
+            let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+            GraphicsPipeline::new(
+                device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    input_assembly_state: Some(
+                        InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
+                    ),
+                    viewport_state: Some(ViewportState::FixedScissor {
+                        scissors: (0..1).map(|_| Scissor::irrelevant()).collect(),
+                        viewport_count_dynamic: false,
+                    }),
+                    rasterization_state: Some(RasterizationState::default()),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(
+                        ColorBlendState::new(subpass.num_color_attachments()).blend_alpha(),
+                    ),
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+            .unwrap()
+        };
 
         let mut viewport = Viewport {
             origin: [0.0, 0.0],

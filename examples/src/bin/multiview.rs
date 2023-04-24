@@ -32,16 +32,22 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             input_assembly::InputAssemblyState,
-            vertex_input::Vertex,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, PipelineLayout,
     },
     render_pass::{
         AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
         RenderPass, RenderPassCreateInfo, StoreOp, Subpass, SubpassDescription,
     },
+    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
 };
@@ -214,9 +220,6 @@ fn main() {
         }
     }
 
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let render_pass_description = RenderPassCreateInfo {
         attachments: vec![AttachmentDescription {
             format: Some(image.format()),
@@ -257,24 +260,56 @@ fn main() {
     )
     .unwrap();
 
-    let pipeline = GraphicsPipeline::start()
-        .vertex_input_state(Vertex::per_vertex())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
-        .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
-            Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [
-                    image.dimensions().width() as f32,
-                    image.dimensions().height() as f32,
-                ],
-                depth_range: 0.0..1.0,
-            },
-        ]))
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass, 0).unwrap())
-        .build(device.clone())
+    let pipeline = {
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let vertex_input_state = Vertex::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
+        let stages = [
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
+        ];
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
         .unwrap();
+        let subpass = Subpass::from(render_pass, 0).unwrap();
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState::default()),
+                viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([
+                    Viewport {
+                        origin: [0.0, 0.0],
+                        dimensions: [
+                            image.dimensions().width() as f32,
+                            image.dimensions().height() as f32,
+                        ],
+                        depth_range: 0.0..1.0,
+                    },
+                ])),
+                rasterization_state: Some(RasterizationState::default()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    };
 
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());

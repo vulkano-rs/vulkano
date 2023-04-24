@@ -32,15 +32,20 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
+            color_blend::ColorBlendState,
             depth_stencil::DepthStencilState,
             input_assembly::InputAssemblyState,
-            vertex_input::Vertex,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::ShaderModule,
+    shader::{EntryPoint, PipelineShaderStageCreateInfo},
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
         SwapchainPresentInfo,
@@ -208,9 +213,6 @@ fn main() {
         },
     );
 
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
@@ -234,8 +236,22 @@ fn main() {
     )
     .unwrap();
 
-    let (mut pipeline, mut framebuffers) =
-        window_size_dependent_setup(&memory_allocator, &vs, &fs, &images, render_pass.clone());
+    let vs = vs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+    let fs = fs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+
+    let (mut pipeline, mut framebuffers) = window_size_dependent_setup(
+        &memory_allocator,
+        vs.clone(),
+        fs.clone(),
+        &images,
+        render_pass.clone(),
+    );
     let mut recreate_swapchain = false;
 
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -282,8 +298,8 @@ fn main() {
                     swapchain = new_swapchain;
                     let (new_pipeline, new_framebuffers) = window_size_dependent_setup(
                         &memory_allocator,
-                        &vs,
-                        &fs,
+                        vs.clone(),
+                        fs.clone(),
                         &new_images,
                         render_pass.clone(),
                     );
@@ -418,8 +434,8 @@ fn main() {
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     memory_allocator: &StandardMemoryAllocator,
-    vs: &ShaderModule,
-    fs: &ShaderModule,
+    vs: EntryPoint,
+    fs: EntryPoint,
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
@@ -449,22 +465,47 @@ fn window_size_dependent_setup(
     // teapot example, we recreate the pipelines with a hardcoded viewport instead. This allows the
     // driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
-    let pipeline = GraphicsPipeline::start()
-        .vertex_input_state([Position::per_vertex(), Normal::per_vertex()])
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
-        .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
-            Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                depth_range: 0.0..1.0,
-            },
-        ]))
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .depth_stencil_state(DepthStencilState::simple_depth_test())
-        .render_pass(Subpass::from(render_pass, 0).unwrap())
-        .build(memory_allocator.device().clone())
+    let pipeline = {
+        let device = memory_allocator.device();
+        let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
+            .definition(&vs.info().input_interface)
+            .unwrap();
+        let stages = [
+            PipelineShaderStageCreateInfo::entry_point(vs),
+            PipelineShaderStageCreateInfo::entry_point(fs),
+        ];
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
         .unwrap();
+        let subpass = Subpass::from(render_pass, 0).unwrap();
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState::default()),
+                viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([
+                    Viewport {
+                        origin: [0.0, 0.0],
+                        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                        depth_range: 0.0..1.0,
+                    },
+                ])),
+                rasterization_state: Some(RasterizationState::default()),
+                depth_stencil_state: Some(DepthStencilState::simple_depth_test()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    };
 
     (pipeline, framebuffers)
 }

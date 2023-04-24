@@ -26,7 +26,11 @@ use vulkano::{
     },
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+    },
+    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
 };
@@ -115,15 +119,26 @@ fn main() {
         }
     }
 
-    let shader = cs::load(device.clone()).unwrap();
-    let pipeline = ComputePipeline::new(
-        device.clone(),
-        shader.entry_point("main").unwrap(),
-        &(),
-        None,
-        |_| {},
-    )
-    .unwrap();
+    let pipeline = {
+        let cs = cs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
+        .unwrap();
+        ComputePipeline::new(
+            device.clone(),
+            None,
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
+        )
+        .unwrap()
+    };
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());

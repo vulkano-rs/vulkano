@@ -34,7 +34,11 @@ use vulkano::{
         QueueFlags,
     },
     instance::{Instance, InstanceCreateInfo},
-    pipeline::{cache::PipelineCache, ComputePipeline},
+    pipeline::{
+        cache::PipelineCache, compute::ComputePipelineCreateInfo,
+        layout::PipelineDescriptorSetLayoutCreateInfo, ComputePipeline, PipelineLayout,
+    },
+    shader::PipelineShaderStageCreateInfo,
     VulkanLibrary,
 };
 
@@ -127,13 +131,22 @@ fn main() {
                 ",
             }
         }
-        let shader = cs::load(device.clone()).unwrap();
+        let cs = cs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
+        .unwrap();
         ComputePipeline::new(
             device.clone(),
-            shader.entry_point("main").unwrap(),
-            &(),
             Some(pipeline_cache.clone()),
-            |_| {},
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
         )
         .unwrap()
     };
