@@ -238,9 +238,14 @@ where
     }
 }
 
+/// An error that can happen when calling a safe (validated) function that makes a call to the
+/// Vulkan API.
 #[derive(Clone, Debug)]
 pub enum ValidatedVulkanError {
+    /// The function call was invalid in some way.
     ValidationError(ValidationError),
+
+    /// The Vulkan driver returned an error and was unable to complete the operation.
     VulkanError(VulkanError),
 }
 
@@ -277,11 +282,19 @@ impl From<VulkanError> for ValidatedVulkanError {
     }
 }
 
+/// The arguments or other context of a call to a Vulkan function were not valid.
 #[derive(Clone, Debug, Default)]
 pub struct ValidationError {
+    /// The context in which the problem exists (e.g. a specific parameter).
     pub context: Cow<'static, str>,
+
+    /// A description of the problem.
     pub problem: Cow<'static, str>,
+
+    /// *Valid Usage IDs* (VUIDs) in the Vulkan specification that relate to the problem.
     pub vuids: &'static [&'static str],
+
+    /// If applicable, settings that the user could enable to avoid the problem in the future.
     pub requires_one_of: Option<RequiresOneOf>,
 }
 

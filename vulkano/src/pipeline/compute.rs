@@ -134,7 +134,6 @@ impl ComputePipeline {
                 if let Some(default_value) =
                     entry_point_info.specialization_constants.get(&constant_id)
                 {
-                    // VUID-VkSpecializationMapEntry-constantID-00776
                     // Check for equal types rather than only equal size.
                     if !provided_value.eq_type(default_value) {
                         return Err(ValidationError {
@@ -150,11 +149,7 @@ impl ComputePipeline {
                 }
             }
 
-            // VUID-VkComputePipelineCreateInfo-layout-07987
-            // VUID-VkComputePipelineCreateInfo-layout-07988
-            // VUID-VkComputePipelineCreateInfo-layout-07990
-            // VUID-VkComputePipelineCreateInfo-layout-07991
-            // TODO: Make sure that all of these are indeed checked.
+            // TODO: Make sure that all VUIDs are indeed checked.
             layout
                 .ensure_compatible_with_shader(
                     entry_point_info
