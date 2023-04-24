@@ -210,8 +210,8 @@ impl ShaderModule {
         device: Arc<Device>,
         bytes: &[u8],
     ) -> Result<Arc<ShaderModule>, ShaderModuleCreationError> {
-        assert!(bytes.as_ptr() as usize % 4 == 0);
-        assert!(bytes.len() % 4 == 0);
+        assert!(bytes.as_ptr() as usize % mem::align_of::<u32>() == 0);
+        assert!(bytes.len() % mem::size_of::<u32>() == 0);
 
         Self::from_words(
             device,
@@ -321,8 +321,8 @@ impl ShaderModule {
         spirv_extensions: impl IntoIterator<Item = &'a str>,
         entry_points: impl IntoIterator<Item = EntryPointInfo>,
     ) -> Result<Arc<ShaderModule>, ShaderModuleCreationError> {
-        assert!(bytes.as_ptr() as usize % 4 == 0);
-        assert!(bytes.len() % 4 == 0);
+        assert!(bytes.as_ptr() as usize % mem::align_of::<u32>() == 0);
+        assert!(bytes.len() % mem::size_of::<u32>() == 0);
 
         Self::from_words_with_data(
             device,
