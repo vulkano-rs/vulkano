@@ -153,7 +153,7 @@ impl<T: ?Sized> Subbuffer<T> {
     ///
     /// [`into_bytes`]: Self::into_bytes
     pub fn as_bytes(&self) -> &Subbuffer<[u8]> {
-        unsafe { self.reinterpret_ref_unchecked_inner() }
+        unsafe { self.reinterpret_unchecked_ref_inner() }
     }
 
     #[inline(always)]
@@ -163,7 +163,7 @@ impl<T: ?Sized> Subbuffer<T> {
     }
 
     #[inline(always)]
-    unsafe fn reinterpret_ref_unchecked_inner<U: ?Sized>(&self) -> &Subbuffer<U> {
+    unsafe fn reinterpret_unchecked_ref_inner<U: ?Sized>(&self) -> &Subbuffer<U> {
         assert!(size_of::<Subbuffer<T>>() == size_of::<Subbuffer<U>>());
         assert!(align_of::<Subbuffer<T>>() == align_of::<Subbuffer<U>>());
 
@@ -211,7 +211,7 @@ where
     ///
     /// [`reinterpret_unchecked`]: Self::reinterpret_unchecked
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn reinterpret_ref_unchecked<U>(&self) -> &Subbuffer<U>
+    pub unsafe fn reinterpret_unchecked_ref<U>(&self) -> &Subbuffer<U>
     where
         U: BufferContents + ?Sized,
     {
@@ -220,7 +220,7 @@ where
         debug_assert!(self.size >= U::LAYOUT.head_size());
         debug_assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
 
-        self.reinterpret_ref_unchecked_inner()
+        self.reinterpret_unchecked_ref_inner()
     }
 
     /// Locks the subbuffer in order to read its content from the host.
@@ -368,7 +368,7 @@ impl<T> Subbuffer<T> {
     ///
     /// [`into_slice`]: Self::into_slice
     pub fn as_slice(&self) -> &Subbuffer<[T]> {
-        unsafe { self.reinterpret_ref_unchecked_inner() }
+        unsafe { self.reinterpret_unchecked_ref_inner() }
     }
 }
 
