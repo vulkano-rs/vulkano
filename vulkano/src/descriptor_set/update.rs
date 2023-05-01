@@ -11,7 +11,9 @@ use super::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorT
 use crate::{
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     device::DeviceOwned,
-    image::{view::ImageViewType, ImageAspects, ImageType, ImageUsage, ImageViewAbstract},
+    image::{
+        view::ImageViewType, ImageAspects, ImageLayout, ImageType, ImageUsage, ImageViewAbstract,
+    },
     sampler::{Sampler, SamplerImageViewIncompatibleError},
     DeviceSize, RequiresOneOf, VulkanObject,
 };
@@ -33,10 +35,11 @@ use std::{
 ///   non-arrayed bindings, where `descriptor_count` in the descriptor set layout is 1.
 /// - The `_array` variant writes several elements and allows specifying the target array index.
 ///   At least one element must be provided; a panic results if the provided iterator is empty.
+#[derive(Clone, Debug)]
 pub struct WriteDescriptorSet {
     binding: u32,
     first_array_element: u32,
-    elements: WriteDescriptorSetElements,
+    pub(crate) elements: WriteDescriptorSetElements, // public so that the image layouts can be changed
 }
 
 impl WriteDescriptorSet {
@@ -126,7 +129,10 @@ impl WriteDescriptorSet {
     ) -> Self {
         let elements: SmallVec<_> = elements
             .into_iter()
-            .map(|(buffer, range)| (buffer.into_bytes(), range))
+            .map(|(buffer, range)| DescriptorBufferInfo {
+                buffer: buffer.into_bytes(),
+                range,
+            })
             .collect();
         assert!(!elements.is_empty());
 
@@ -170,7 +176,13 @@ impl WriteDescriptorSet {
         first_array_element: u32,
         elements: impl IntoIterator<Item = Arc<dyn ImageViewAbstract>>,
     ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
+        let elements: SmallVec<_> = elements
+            .into_iter()
+            .map(|image_view| DescriptorImageViewInfo {
+                image_view,
+                image_layout: ImageLayout::Undefined,
+            })
+            .collect();
         assert!(!elements.is_empty());
         Self {
             binding,
@@ -195,7 +207,14 @@ impl WriteDescriptorSet {
         first_array_element: u32,
         elements: impl IntoIterator<Item = (Arc<dyn ImageViewAbstract>, Arc<Sampler>)>,
     ) -> Self {
-        let elements: SmallVec<_> = elements.into_iter().collect();
+        let elements: SmallVec<_> = elements
+            .into_iter()
+            .map(|(image_view, sampler)| DescriptorImageViewSamplerInfo {
+                image_view,
+                image_layout: ImageLayout::Undefined,
+                sampler,
+            })
+            .collect();
         assert!(!elements.is_empty());
         Self {
             binding,
@@ -268,7 +287,9 @@ impl WriteDescriptorSet {
                 DescriptorWriteInfo::Buffer(
                     elements
                         .iter()
-                        .map(|(buffer, range)| {
+                        .map(|info| {
+                            let DescriptorBufferInfo { buffer, range } = info;
+
                             debug_assert!(!range.is_empty());
                             debug_assert!(range.end <= buffer.buffer().size());
 
@@ -305,14 +326,16 @@ impl WriteDescriptorSet {
                 DescriptorWriteInfo::Image(
                     elements
                         .iter()
-                        .map(|image_view| {
-                            let layouts = image_view.image().descriptor_layouts().expect(
-                                "descriptor_layouts must return Some when used in an image view",
-                            );
+                        .map(|info| {
+                            let &DescriptorImageViewInfo {
+                                ref image_view,
+                                image_layout,
+                            } = info;
+
                             ash::vk::DescriptorImageInfo {
                                 sampler: ash::vk::Sampler::null(),
                                 image_view: image_view.handle(),
-                                image_layout: layouts.layout_for(descriptor_type).into(),
+                                image_layout: image_layout.into(),
                             }
                         })
                         .collect(),
@@ -326,14 +349,17 @@ impl WriteDescriptorSet {
                 DescriptorWriteInfo::Image(
                     elements
                         .iter()
-                        .map(|(image_view, sampler)| {
-                            let layouts = image_view.image().descriptor_layouts().expect(
-                                "descriptor_layouts must return Some when used in an image view",
-                            );
+                        .map(|info| {
+                            let &DescriptorImageViewSamplerInfo {
+                                ref image_view,
+                                image_layout,
+                                ref sampler,
+                            } = info;
+
                             ash::vk::DescriptorImageInfo {
                                 sampler: sampler.handle(),
                                 image_view: image_view.handle(),
-                                image_layout: layouts.layout_for(descriptor_type).into(),
+                                image_layout: image_layout.into(),
                             }
                         })
                         .collect(),
@@ -375,12 +401,13 @@ impl WriteDescriptorSet {
 }
 
 /// The elements held by a `WriteDescriptorSet`.
+#[derive(Clone, Debug)]
 pub enum WriteDescriptorSetElements {
     None(u32),
-    Buffer(SmallVec<[(Subbuffer<[u8]>, Range<DeviceSize>); 1]>),
+    Buffer(SmallVec<[DescriptorBufferInfo; 1]>),
     BufferView(SmallVec<[Arc<BufferView>; 1]>),
-    ImageView(SmallVec<[Arc<dyn ImageViewAbstract>; 1]>),
-    ImageViewSampler(SmallVec<[(Arc<dyn ImageViewAbstract>, Arc<Sampler>); 1]>),
+    ImageView(SmallVec<[DescriptorImageViewInfo; 1]>),
+    ImageViewSampler(SmallVec<[DescriptorImageViewSamplerInfo; 1]>),
     Sampler(SmallVec<[Arc<Sampler>; 1]>),
 }
 
@@ -400,13 +427,76 @@ impl WriteDescriptorSetElements {
 }
 
 #[derive(Clone, Debug)]
+pub struct DescriptorBufferInfo {
+    pub buffer: Subbuffer<[u8]>,
+    pub range: Range<DeviceSize>,
+}
+
+#[derive(Clone, Debug)]
+pub struct DescriptorImageViewInfo {
+    pub image_view: Arc<dyn ImageViewAbstract>,
+    pub image_layout: ImageLayout,
+}
+
+#[derive(Clone, Debug)]
+pub struct DescriptorImageViewSamplerInfo {
+    pub image_view: Arc<dyn ImageViewAbstract>,
+    pub image_layout: ImageLayout,
+    pub sampler: Arc<Sampler>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) enum DescriptorWriteInfo {
     Image(SmallVec<[ash::vk::DescriptorImageInfo; 1]>),
     Buffer(SmallVec<[ash::vk::DescriptorBufferInfo; 1]>),
     BufferView(SmallVec<[ash::vk::BufferView; 1]>),
 }
 
-pub(crate) fn check_descriptor_write<'a>(
+pub(crate) fn set_descriptor_write_image_layouts(
+    write: &mut WriteDescriptorSet,
+    layout: &DescriptorSetLayout,
+) {
+    if let Some(layout_binding) = layout.bindings().get(&write.binding()) {
+        match &mut write.elements {
+            WriteDescriptorSetElements::ImageView(elements) => {
+                for info in elements {
+                    let DescriptorImageViewInfo {
+                        image_view,
+                        image_layout,
+                    } = info;
+
+                    if *image_layout == ImageLayout::Undefined {
+                        *image_layout = image_view
+                            .image()
+                            .descriptor_layouts()
+                            .unwrap()
+                            .layout_for(layout_binding.descriptor_type);
+                    }
+                }
+            }
+            WriteDescriptorSetElements::ImageViewSampler(elements) => {
+                for info in elements {
+                    let DescriptorImageViewSamplerInfo {
+                        image_view,
+                        image_layout,
+                        sampler: _,
+                    } = info;
+
+                    if *image_layout == ImageLayout::Undefined {
+                        *image_layout = image_view
+                            .image()
+                            .descriptor_layouts()
+                            .unwrap()
+                            .layout_for(layout_binding.descriptor_type);
+                    }
+                }
+            }
+            _ => (),
+        }
+    }
+}
+
+pub(crate) fn validate_descriptor_write<'a>(
     write: &WriteDescriptorSet,
     layout: &'a DescriptorSetLayout,
     variable_descriptor_count: u32,
@@ -512,7 +602,13 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     };
 
-                for (index, (image_view, sampler)) in elements.iter().enumerate() {
+                for (index, info) in elements.iter().enumerate() {
+                    let &DescriptorImageViewSamplerInfo {
+                        ref image_view,
+                        image_layout,
+                        ref sampler,
+                    } = info;
+
                     assert_eq!(device, image_view.device());
                     assert_eq!(device, sampler.device());
 
@@ -545,6 +641,21 @@ pub(crate) fn check_descriptor_write<'a>(
                         .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkWriteDescriptorSet-descriptorType-04150
+                    if !matches!(
+                        image_layout,
+                        ImageLayout::DepthStencilReadOnlyOptimal
+                            | ImageLayout::ShaderReadOnlyOptimal
+                            | ImageLayout::General
+                            | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                    ) {
+                        return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
                         });
@@ -605,9 +716,13 @@ pub(crate) fn check_descriptor_write<'a>(
                 let immutable_samplers = &layout_binding.immutable_samplers
                     [descriptor_range_start as usize..descriptor_range_end as usize];
 
-                for (index, (image_view, sampler)) in
-                    elements.iter().zip(immutable_samplers).enumerate()
+                for (index, (info, sampler)) in elements.iter().zip(immutable_samplers).enumerate()
                 {
+                    let &DescriptorImageViewInfo {
+                        ref image_view,
+                        image_layout,
+                    } = info;
+
                     assert_eq!(device, image_view.device());
 
                     // VUID-VkWriteDescriptorSet-descriptorType-00337
@@ -644,6 +759,21 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     }
 
+                    // VUID-VkWriteDescriptorSet-descriptorType-04150
+                    if !matches!(
+                        image_layout,
+                        ImageLayout::DepthStencilReadOnlyOptimal
+                            | ImageLayout::ShaderReadOnlyOptimal
+                            | ImageLayout::General
+                            | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                    ) {
+                        return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
                     if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
                         return Err(DescriptorSetUpdateError::ImageViewIncompatibleSampler {
                             binding: write.binding(),
@@ -666,7 +796,12 @@ pub(crate) fn check_descriptor_write<'a>(
                 });
             };
 
-            for (index, image_view) in elements.iter().enumerate() {
+            for (index, info) in elements.iter().enumerate() {
+                let &DescriptorImageViewInfo {
+                    ref image_view,
+                    image_layout,
+                } = info;
+
                 assert_eq!(device, image_view.device());
 
                 // VUID-VkWriteDescriptorSet-descriptorType-00337
@@ -703,6 +838,21 @@ pub(crate) fn check_descriptor_write<'a>(
                     });
                 }
 
+                // VUID-VkWriteDescriptorSet-descriptorType-04149
+                if !matches!(
+                    image_layout,
+                    ImageLayout::DepthStencilReadOnlyOptimal
+                        | ImageLayout::ShaderReadOnlyOptimal
+                        | ImageLayout::General
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                ) {
+                    return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
+                        binding: write.binding(),
+                        index: descriptor_range_start + index as u32,
+                    });
+                }
+
                 // VUID-VkWriteDescriptorSet-descriptorType-01946
                 if image_view.sampler_ycbcr_conversion().is_some() {
                     return Err(
@@ -726,7 +876,12 @@ pub(crate) fn check_descriptor_write<'a>(
                 });
             };
 
-            for (index, image_view) in elements.iter().enumerate() {
+            for (index, info) in elements.iter().enumerate() {
+                let &DescriptorImageViewInfo {
+                    ref image_view,
+                    image_layout,
+                } = info;
+
                 assert_eq!(device, image_view.device());
 
                 // VUID-VkWriteDescriptorSet-descriptorType-00339
@@ -758,6 +913,14 @@ pub(crate) fn check_descriptor_write<'a>(
                     .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
                 {
                     return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
+                        binding: write.binding(),
+                        index: descriptor_range_start + index as u32,
+                    });
+                }
+
+                // VUID-VkWriteDescriptorSet-descriptorType-04152
+                if !matches!(image_layout, ImageLayout::General) {
+                    return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
                         binding: write.binding(),
                         index: descriptor_range_start + index as u32,
                     });
@@ -853,7 +1016,9 @@ pub(crate) fn check_descriptor_write<'a>(
                 });
             };
 
-            for (index, (buffer, range)) in elements.iter().enumerate() {
+            for (index, info) in elements.iter().enumerate() {
+                let DescriptorBufferInfo { buffer, range } = info;
+
                 assert_eq!(device, buffer.device());
 
                 if !buffer
@@ -892,7 +1057,9 @@ pub(crate) fn check_descriptor_write<'a>(
                 });
             };
 
-            for (index, (buffer, range)) in elements.iter().enumerate() {
+            for (index, info) in elements.iter().enumerate() {
+                let DescriptorBufferInfo { buffer, range } = info;
+
                 assert_eq!(device, buffer.device());
 
                 if !buffer
@@ -931,7 +1098,12 @@ pub(crate) fn check_descriptor_write<'a>(
                 });
             };
 
-            for (index, image_view) in elements.iter().enumerate() {
+            for (index, info) in elements.iter().enumerate() {
+                let &DescriptorImageViewInfo {
+                    ref image_view,
+                    image_layout,
+                } = info;
+
                 assert_eq!(device, image_view.device());
 
                 // VUID-VkWriteDescriptorSet-descriptorType-00338
@@ -963,6 +1135,21 @@ pub(crate) fn check_descriptor_write<'a>(
                     .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
                 {
                     return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
+                        binding: write.binding(),
+                        index: descriptor_range_start + index as u32,
+                    });
+                }
+
+                // VUID-VkWriteDescriptorSet-descriptorType-04151
+                if !matches!(
+                    image_layout,
+                    ImageLayout::DepthStencilReadOnlyOptimal
+                        | ImageLayout::ShaderReadOnlyOptimal
+                        | ImageLayout::General
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                ) {
+                    return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
                         binding: write.binding(),
                         index: descriptor_range_start + index as u32,
                     });
@@ -1019,19 +1206,36 @@ pub enum DescriptorSetUpdateError {
         written_count: u32,
     },
 
+    ImageLayoutInvalid {
+        binding: u32,
+        index: u32,
+    },
+
     /// Tried to write an image view with a 2D type and a 3D underlying image.
-    ImageView2dFrom3d { binding: u32, index: u32 },
+    ImageView2dFrom3d {
+        binding: u32,
+        index: u32,
+    },
 
     /// Tried to write an image view that has both the `depth` and `stencil` aspects.
-    ImageViewDepthAndStencil { binding: u32, index: u32 },
+    ImageViewDepthAndStencil {
+        binding: u32,
+        index: u32,
+    },
 
     /// Tried to write an image view with an attached sampler YCbCr conversion to a binding that
     /// does not support it.
-    ImageViewHasSamplerYcbcrConversion { binding: u32, index: u32 },
+    ImageViewHasSamplerYcbcrConversion {
+        binding: u32,
+        index: u32,
+    },
 
     /// Tried to write an image view of an arrayed type to a descriptor type that does not support
     /// it.
-    ImageViewIsArrayed { binding: u32, index: u32 },
+    ImageViewIsArrayed {
+        binding: u32,
+        index: u32,
+    },
 
     /// Tried to write an image view that was not compatible with the sampler that was provided as
     /// part of the update or immutably in the layout.
@@ -1043,7 +1247,10 @@ pub enum DescriptorSetUpdateError {
 
     /// Tried to write an image view to a descriptor type that requires it to be identity swizzled,
     /// but it was not.
-    ImageViewNotIdentitySwizzled { binding: u32, index: u32 },
+    ImageViewNotIdentitySwizzled {
+        binding: u32,
+        index: u32,
+    },
 
     /// Tried to write an element type that was not compatible with the descriptor type in the
     /// layout.
@@ -1054,7 +1261,9 @@ pub enum DescriptorSetUpdateError {
     },
 
     /// Tried to write to a nonexistent binding.
-    InvalidBinding { binding: u32 },
+    InvalidBinding {
+        binding: u32,
+    },
 
     /// A resource was missing a usage flag that was required.
     MissingUsage {
@@ -1072,7 +1281,10 @@ pub enum DescriptorSetUpdateError {
     },
 
     /// Tried to write a sampler that has an attached sampler YCbCr conversion.
-    SamplerHasSamplerYcbcrConversion { binding: u32, index: u32 },
+    SamplerHasSamplerYcbcrConversion {
+        binding: u32,
+        index: u32,
+    },
 }
 
 impl Error for DescriptorSetUpdateError {
@@ -1107,6 +1319,12 @@ impl Display for DescriptorSetUpdateError {
                 "tried to write up to element {} to binding {}, but only {} descriptors are \
                 available",
                 written_count, binding, available_count,
+            ),
+            Self::ImageLayoutInvalid { binding, index } => write!(
+                f,
+                "tried to write an image view to binding {} index {} with an image layout that is \
+                not valid for that descriptor type",
+                binding, index,
             ),
             Self::ImageView2dFrom3d { binding, index } => write!(
                 f,

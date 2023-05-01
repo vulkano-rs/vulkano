@@ -12,9 +12,10 @@ use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{allocator::CommandBufferAllocator, commands::bind_push::BindPushError},
     descriptor_set::{
-        check_descriptor_write, layout::DescriptorType, DescriptorBindingResources,
-        DescriptorSetResources, DescriptorSetWithOffsets, DescriptorSetsCollection,
-        DescriptorWriteInfo, WriteDescriptorSet,
+        layout::DescriptorType, set_descriptor_write_image_layouts, validate_descriptor_write,
+        DescriptorBindingResources, DescriptorBufferInfo, DescriptorSetResources,
+        DescriptorSetWithOffsets, DescriptorSetsCollection, DescriptorWriteInfo,
+        WriteDescriptorSet,
     },
     device::{DeviceOwned, QueueFlags},
     memory::is_aligned,
@@ -172,7 +173,9 @@ where
                             });
                         }
 
-                        if let Some((buffer, range)) = element {
+                        if let Some(info) = element {
+                            let DescriptorBufferInfo { buffer, range } = info;
+
                             // VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979
                             if offset as DeviceSize + range.end > buffer.size() {
                                 return Err(BindPushError::DynamicOffsetOutOfBufferBounds {
@@ -761,7 +764,15 @@ where
         set_num: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> &mut Self {
-        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
+        let mut descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
+
+        // Set the image layouts
+        if let Some(set_layout) = pipeline_layout.set_layouts().get(set_num as usize) {
+            for write in &mut descriptor_writes {
+                set_descriptor_write_image_layouts(write, set_layout);
+            }
+        }
+
         self.validate_push_descriptor_set(
             pipeline_bind_point,
             &pipeline_layout,
@@ -842,7 +853,7 @@ where
         }
 
         for write in descriptor_writes {
-            check_descriptor_write(write, descriptor_set_layout, 0)?;
+            validate_descriptor_write(write, descriptor_set_layout, 0)?;
         }
 
         Ok(())
@@ -856,16 +867,17 @@ where
         set_num: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> &mut Self {
-        let descriptor_writes: SmallVec<[WriteDescriptorSet; 8]> =
+        let mut descriptor_writes: SmallVec<[WriteDescriptorSet; 8]> =
             descriptor_writes.into_iter().collect();
 
         debug_assert!(self.device().enabled_extensions().khr_push_descriptor);
+        let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 
-        let (infos, mut writes): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = descriptor_writes
-            .iter()
+        let (infos_vk, mut writes_vk): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = descriptor_writes
+            .iter_mut()
             .map(|write| {
-                let binding =
-                    &pipeline_layout.set_layouts()[set_num as usize].bindings()[&write.binding()];
+                set_descriptor_write_image_layouts(write, set_layout);
+                let binding = &set_layout.bindings()[&write.binding()];
 
                 (
                     write.to_vulkan_info(binding.descriptor_type),
@@ -874,28 +886,28 @@ where
             })
             .unzip();
 
-        if writes.is_empty() {
+        if writes_vk.is_empty() {
             return self;
         }
 
         // Set the info pointers separately.
-        for (info, write) in infos.iter().zip(writes.iter_mut()) {
-            match info {
+        for (info_vk, write_vk) in infos_vk.iter().zip(writes_vk.iter_mut()) {
+            match info_vk {
                 DescriptorWriteInfo::Image(info) => {
-                    write.descriptor_count = info.len() as u32;
-                    write.p_image_info = info.as_ptr();
+                    write_vk.descriptor_count = info.len() as u32;
+                    write_vk.p_image_info = info.as_ptr();
                 }
                 DescriptorWriteInfo::Buffer(info) => {
-                    write.descriptor_count = info.len() as u32;
-                    write.p_buffer_info = info.as_ptr();
+                    write_vk.descriptor_count = info.len() as u32;
+                    write_vk.p_buffer_info = info.as_ptr();
                 }
                 DescriptorWriteInfo::BufferView(info) => {
-                    write.descriptor_count = info.len() as u32;
-                    write.p_texel_buffer_view = info.as_ptr();
+                    write_vk.descriptor_count = info.len() as u32;
+                    write_vk.p_texel_buffer_view = info.as_ptr();
                 }
             }
 
-            debug_assert!(write.descriptor_count != 0);
+            debug_assert!(write_vk.descriptor_count != 0);
         }
 
         let fns = self.device().fns();
@@ -904,8 +916,8 @@ where
             pipeline_bind_point.into(),
             pipeline_layout.handle(),
             set_num,
-            writes.len() as u32,
-            writes.as_ptr(),
+            writes_vk.len() as u32,
+            writes_vk.as_ptr(),
         );
 
         let state = self.builder_state.invalidate_descriptor_sets(

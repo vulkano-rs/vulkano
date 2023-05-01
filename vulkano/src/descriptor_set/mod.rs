@@ -78,20 +78,21 @@
 //! [`DescriptorSetAllocator`]: allocator::DescriptorSetAllocator
 //! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 
-pub(crate) use self::update::{check_descriptor_write, DescriptorWriteInfo};
+pub(crate) use self::update::{
+    set_descriptor_write_image_layouts, validate_descriptor_write, DescriptorWriteInfo,
+};
 pub use self::{
     collection::DescriptorSetsCollection,
     persistent::PersistentDescriptorSet,
-    update::{DescriptorSetUpdateError, WriteDescriptorSet, WriteDescriptorSetElements},
+    update::{
+        DescriptorBufferInfo, DescriptorImageViewInfo, DescriptorImageViewSamplerInfo,
+        DescriptorSetUpdateError, WriteDescriptorSet, WriteDescriptorSetElements,
+    },
 };
 use self::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
 use crate::{
-    buffer::{view::BufferView, Subbuffer},
-    descriptor_set::layout::DescriptorType,
-    device::DeviceOwned,
-    image::view::ImageViewAbstract,
-    sampler::Sampler,
-    DeviceSize, OomError, VulkanObject,
+    buffer::view::BufferView, descriptor_set::layout::DescriptorType, device::DeviceOwned,
+    sampler::Sampler, OomError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::{smallvec, SmallVec};
@@ -99,7 +100,6 @@ use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
-    ops::Range,
     ptr,
     sync::Arc,
 };
@@ -188,22 +188,24 @@ impl DescriptorSetInner {
 
         let descriptor_writes = descriptor_writes.into_iter();
         let (lower_size_bound, _) = descriptor_writes.size_hint();
-        let mut descriptor_write_info: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
-        let mut write_descriptor_set: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut descriptor_write_infos_vk: SmallVec<[_; 8]> =
+            SmallVec::with_capacity(lower_size_bound);
+        let mut descriptor_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
 
-        for write in descriptor_writes {
+        for mut write in descriptor_writes {
+            set_descriptor_write_image_layouts(&mut write, &layout);
             let layout_binding =
-                check_descriptor_write(&write, &layout, variable_descriptor_count)?;
+                validate_descriptor_write(&write, &layout, variable_descriptor_count)?;
 
             resources.update(&write);
-            descriptor_write_info.push(write.to_vulkan_info(layout_binding.descriptor_type));
-            write_descriptor_set.push(write.to_vulkan(handle, layout_binding.descriptor_type));
+            descriptor_write_infos_vk.push(write.to_vulkan_info(layout_binding.descriptor_type));
+            descriptor_writes_vk.push(write.to_vulkan(handle, layout_binding.descriptor_type));
         }
 
-        if !write_descriptor_set.is_empty() {
-            for (info, write) in descriptor_write_info
+        if !descriptor_writes_vk.is_empty() {
+            for (info, write) in descriptor_write_infos_vk
                 .iter()
-                .zip(write_descriptor_set.iter_mut())
+                .zip(descriptor_writes_vk.iter_mut())
             {
                 match info {
                     DescriptorWriteInfo::Image(info) => {
@@ -227,8 +229,8 @@ impl DescriptorSetInner {
 
             (fns.v1_0.update_descriptor_sets)(
                 layout.device().handle(),
-                write_descriptor_set.len() as u32,
-                write_descriptor_set.as_ptr(),
+                descriptor_writes_vk.len() as u32,
+                descriptor_writes_vk.as_ptr(),
                 0,
                 ptr::null(),
             );
@@ -342,10 +344,10 @@ impl DescriptorSetResources {
 #[derive(Clone)]
 pub enum DescriptorBindingResources {
     None(Elements<()>),
-    Buffer(Elements<(Subbuffer<[u8]>, Range<DeviceSize>)>),
+    Buffer(Elements<DescriptorBufferInfo>),
     BufferView(Elements<Arc<BufferView>>),
-    ImageView(Elements<Arc<dyn ImageViewAbstract>>),
-    ImageViewSampler(Elements<(Arc<dyn ImageViewAbstract>, Arc<Sampler>)>),
+    ImageView(Elements<DescriptorImageViewInfo>),
+    ImageViewSampler(Elements<DescriptorImageViewSamplerInfo>),
     Sampler(Elements<Arc<Sampler>>),
 }
 
