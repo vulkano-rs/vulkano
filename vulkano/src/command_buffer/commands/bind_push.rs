@@ -194,8 +194,8 @@ where
                             });
                         }
 
-                        if let Some(info) = element {
-                            let DescriptorBufferInfo { buffer, range } = info;
+                        if let Some(buffer_info) = element {
+                            let DescriptorBufferInfo { buffer, range } = buffer_info;
 
                             // VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979
                             if offset as DeviceSize + range.end > buffer.size() {

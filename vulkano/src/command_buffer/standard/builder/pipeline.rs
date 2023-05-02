@@ -2085,8 +2085,8 @@ fn record_descriptor_sets_access(
                     let dynamic_offsets = descriptor_set_state.dynamic_offsets();
 
                     for (index, element) in elements.iter().enumerate() {
-                        if let Some(info) = element {
-                            let DescriptorBufferInfo { buffer, range } = info;
+                        if let Some(buffer_info) = element {
+                            let DescriptorBufferInfo { buffer, range } = buffer_info;
 
                             let dynamic_offset = dynamic_offsets[index] as DeviceSize;
                             let (use_ref, stage_access_iter) = use_iter(index as u32);
@@ -2107,8 +2107,8 @@ fn record_descriptor_sets_access(
                     }
                 } else {
                     for (index, element) in elements.iter().enumerate() {
-                        if let Some(info) = element {
-                            let DescriptorBufferInfo { buffer, range } = info;
+                        if let Some(buffer_info) = element {
+                            let DescriptorBufferInfo { buffer, range } = buffer_info;
 
                             let (use_ref, stage_access_iter) = use_iter(index as u32);
 
@@ -2151,11 +2151,11 @@ fn record_descriptor_sets_access(
             }
             DescriptorBindingResources::ImageView(elements) => {
                 for (index, element) in elements.iter().enumerate() {
-                    if let Some(info) = element {
+                    if let Some(image_view_info) = element {
                         let &DescriptorImageViewInfo {
                             ref image_view,
                             image_layout,
-                        } = info;
+                        } = image_view_info;
 
                         let image = image_view.image();
                         let image_inner = image.inner();

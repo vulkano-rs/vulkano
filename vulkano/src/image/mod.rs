@@ -50,7 +50,7 @@ pub use self::{
     aspect::{ImageAspect, ImageAspects},
     attachment::AttachmentImage,
     immutable::ImmutableImage,
-    layout::{ImageDescriptorLayouts, ImageLayout},
+    layout::ImageLayout,
     storage::StorageImage,
     swapchain::SwapchainImage,
     sys::ImageError,
