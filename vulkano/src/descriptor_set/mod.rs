@@ -85,8 +85,8 @@ pub use self::{
     collection::DescriptorSetsCollection,
     persistent::PersistentDescriptorSet,
     update::{
-        DescriptorBufferInfo, DescriptorImageViewInfo, DescriptorImageViewSamplerInfo,
-        DescriptorSetUpdateError, WriteDescriptorSet, WriteDescriptorSetElements,
+        DescriptorBufferInfo, DescriptorImageViewInfo, DescriptorSetUpdateError,
+        WriteDescriptorSet, WriteDescriptorSetElements,
     },
 };
 use self::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
@@ -347,7 +347,7 @@ pub enum DescriptorBindingResources {
     Buffer(Elements<DescriptorBufferInfo>),
     BufferView(Elements<Arc<BufferView>>),
     ImageView(Elements<DescriptorImageViewInfo>),
-    ImageViewSampler(Elements<DescriptorImageViewSamplerInfo>),
+    ImageViewSampler(Elements<(DescriptorImageViewInfo, Arc<Sampler>)>),
     Sampler(Elements<Arc<Sampler>>),
 }
 

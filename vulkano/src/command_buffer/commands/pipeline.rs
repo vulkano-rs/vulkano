@@ -19,7 +19,7 @@ use crate::{
     },
     descriptor_set::{
         layout::DescriptorType, DescriptorBindingResources, DescriptorBufferInfo,
-        DescriptorImageViewInfo, DescriptorImageViewSamplerInfo,
+        DescriptorImageViewInfo,
     },
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
@@ -645,7 +645,7 @@ where
             let layout_binding =
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
-            let check_buffer = |_index: u32, _info: &DescriptorBufferInfo| Ok(());
+            let check_buffer = |_index: u32, _buffer_info: &DescriptorBufferInfo| Ok(());
 
             let check_buffer_view = |index: u32, buffer_view: &Arc<BufferView>| {
                 for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
@@ -842,11 +842,11 @@ where
                 Ok(())
             };
 
-            let check_image_view = |index: u32, info: &DescriptorImageViewInfo| {
+            let check_image_view = |index: u32, image_view_info: &DescriptorImageViewInfo| {
                 let DescriptorImageViewInfo {
                     image_view,
                     image_layout: _,
-                } = info;
+                } = image_view_info;
 
                 check_image_view_common(index, image_view)?;
 
@@ -857,12 +857,15 @@ where
                 Ok(())
             };
 
-            let check_image_view_sampler = |index: u32, info: &DescriptorImageViewSamplerInfo| {
-                let DescriptorImageViewSamplerInfo {
+            let check_image_view_sampler = |index: u32,
+                                            (image_view_info, sampler): &(
+                DescriptorImageViewInfo,
+                Arc<Sampler>,
+            )| {
+                let DescriptorImageViewInfo {
                     image_view,
                     image_layout: _,
-                    sampler,
-                } = info;
+                } = image_view_info;
 
                 check_image_view_common(index, image_view)?;
                 check_sampler_common(index, sampler)?;
@@ -893,11 +896,11 @@ where
                             })
                     });
 
-                    for (id, info) in iter {
+                    for (id, image_view_info) in iter {
                         let DescriptorImageViewInfo {
                             image_view,
                             image_layout: _,
-                        } = info;
+                        } = image_view_info;
 
                         if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
                             return Err(
@@ -2160,8 +2163,8 @@ impl SyncCommandBufferBuilder {
                         resources.extend(
                             (elements.iter().enumerate())
                                 .filter_map(|(index, element)| {
-                                    element.as_ref().map(|info| {
-                                        let DescriptorBufferInfo { buffer, range } = info;
+                                    element.as_ref().map(|buffer_info| {
+                                        let DescriptorBufferInfo { buffer, range } = buffer_info;
 
                                         let dynamic_offset = dynamic_offsets[index] as DeviceSize;
 
@@ -2179,8 +2182,8 @@ impl SyncCommandBufferBuilder {
                         resources.extend(
                             (elements.iter().enumerate())
                                 .filter_map(|(index, element)| {
-                                    element.as_ref().map(|info| {
-                                        let DescriptorBufferInfo { buffer, range } = info;
+                                    element.as_ref().map(|buffer_info| {
+                                        let DescriptorBufferInfo { buffer, range } = buffer_info;
                                         (index as u32, buffer.clone(), range.clone())
                                     })
                                 })
@@ -2207,11 +2210,11 @@ impl SyncCommandBufferBuilder {
                     resources.extend(
                         (elements.iter().enumerate())
                             .filter_map(|(index, element)| {
-                                element.as_ref().map(|info| {
+                                element.as_ref().map(|image_view_info| {
                                     let &DescriptorImageViewInfo {
                                         ref image_view,
                                         image_layout,
-                                    } = info;
+                                    } = image_view_info;
 
                                     (
                                         index as u32,
@@ -2228,12 +2231,11 @@ impl SyncCommandBufferBuilder {
                     resources.extend(
                         (elements.iter().enumerate())
                             .filter_map(|(index, element)| {
-                                element.as_ref().map(|info| {
-                                    let &DescriptorImageViewSamplerInfo {
+                                element.as_ref().map(|(image_view_info, _sampler)| {
+                                    let &DescriptorImageViewInfo {
                                         ref image_view,
                                         image_layout,
-                                        sampler: _,
-                                    } = info;
+                                    } = image_view_info;
 
                                     (
                                         index as u32,

@@ -20,7 +20,7 @@ use crate::{
     },
     descriptor_set::{
         layout::DescriptorType, DescriptorBindingResources, DescriptorBufferInfo,
-        DescriptorImageViewInfo, DescriptorImageViewSamplerInfo,
+        DescriptorImageViewInfo,
     },
     device::{DeviceOwned, QueueFlags},
     format::FormatFeatures,
@@ -1191,11 +1191,11 @@ where
                 Ok(())
             };
 
-            let check_image_view = |index: u32, info: &DescriptorImageViewInfo| {
+            let check_image_view = |index: u32, image_view_info: &DescriptorImageViewInfo| {
                 let DescriptorImageViewInfo {
                     image_view,
                     image_layout: _,
-                } = info;
+                } = image_view_info;
 
                 check_image_view_common(index, image_view)?;
 
@@ -1206,12 +1206,15 @@ where
                 Ok(())
             };
 
-            let check_image_view_sampler = |index: u32, info: &DescriptorImageViewSamplerInfo| {
-                let DescriptorImageViewSamplerInfo {
+            let check_image_view_sampler = |index: u32,
+                                            (image_view_info, sampler): &(
+                DescriptorImageViewInfo,
+                Arc<Sampler>,
+            )| {
+                let DescriptorImageViewInfo {
                     image_view,
                     image_layout: _,
-                    sampler,
-                } = info;
+                } = image_view_info;
 
                 check_image_view_common(index, image_view)?;
                 check_sampler_common(index, sampler)?;
@@ -1243,11 +1246,11 @@ where
                             })
                     });
 
-                    for (id, info) in iter {
+                    for (id, image_view_info) in iter {
                         let DescriptorImageViewInfo {
                             image_view,
                             image_layout: _,
-                        } = info;
+                        } = image_view_info;
 
                         if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
                             return Err(
@@ -2178,12 +2181,11 @@ fn record_descriptor_sets_access(
             }
             DescriptorBindingResources::ImageViewSampler(elements) => {
                 for (index, element) in elements.iter().enumerate() {
-                    if let Some(info) = element {
-                        let &DescriptorImageViewSamplerInfo {
+                    if let Some((image_view_info, _sampler)) = element {
+                        let &DescriptorImageViewInfo {
                             ref image_view,
                             image_layout,
-                            sampler: _,
-                        } = info;
+                        } = image_view_info;
 
                         let image = image_view.image();
                         let image_inner = image.inner();
