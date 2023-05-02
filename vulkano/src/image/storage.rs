@@ -10,8 +10,8 @@
 use super::{
     sys::{Image, ImageMemory, RawImage},
     traits::ImageContent,
-    ImageAccess, ImageAspects, ImageCreateFlags, ImageDescriptorLayouts, ImageDimensions,
-    ImageError, ImageInner, ImageLayout, ImageUsage,
+    ImageAccess, ImageAspects, ImageCreateFlags, ImageDimensions, ImageError, ImageInner,
+    ImageLayout, ImageUsage,
 };
 use crate::{
     device::{Device, DeviceOwned, Queue},
@@ -496,16 +496,6 @@ unsafe impl ImageAccess for StorageImage {
     #[inline]
     fn is_layout_initialized(&self) -> bool {
         self.layout_initialized.load(Ordering::Relaxed)
-    }
-
-    #[inline]
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        Some(ImageDescriptorLayouts {
-            storage_image: ImageLayout::General,
-            combined_image_sampler: ImageLayout::General,
-            sampled_image: ImageLayout::General,
-            input_attachment: ImageLayout::General,
-        })
     }
 }
 

@@ -110,15 +110,6 @@ impl WriteDescriptorSet {
     }
 
     /// Write a single buffer to array element 0, specifying the range of the buffer to be bound.
-    ///
-    /// `range` is the slice of bytes in `buffer` that will be made available to the shader.
-    /// `range` must not be outside the range `buffer`.
-    ///
-    /// For dynamic buffer bindings, `range` specifies the slice that is to be bound if the
-    /// dynamic offset were zero. When binding the descriptor set, the effective value of `range`
-    /// shifts forward by the offset that was provided. For example, if `range` is specified as
-    /// `0..8` when writing the descriptor set, and then when binding the descriptor set the
-    /// offset `16` is used, then the range of `buffer` that will actually be bound is `16..24`.
     #[inline]
     pub fn buffer_with_range(binding: u32, buffer_info: DescriptorBufferInfo) -> Self {
         Self::buffer_with_range_array(binding, 0, [buffer_info])
@@ -179,6 +170,7 @@ impl WriteDescriptorSet {
     }
 
     /// Write a number of consecutive image view elements, using an automatic image layout.
+    #[inline]
     pub fn image_view_array(
         binding: u32,
         first_array_element: u32,
@@ -241,6 +233,7 @@ impl WriteDescriptorSet {
 
     /// Write a number of consecutive image view and sampler elements, using an automatic image
     /// layout.
+    #[inline]
     pub fn image_view_sampler_array(
         binding: u32,
         first_array_element: u32,
@@ -492,15 +485,46 @@ impl WriteDescriptorSetElements {
     }
 }
 
+/// Parameters to write a buffer reference to a descriptor.
 #[derive(Clone, Debug)]
 pub struct DescriptorBufferInfo {
+    /// The buffer to write to the descriptor.
     pub buffer: Subbuffer<[u8]>,
+
+    /// The slice of bytes in `buffer` that will be made available to the shader.
+    /// `range` must not be outside the range `buffer`.
+    ///
+    /// For dynamic buffer bindings, `range` specifies the slice that is to be bound if the
+    /// dynamic offset were zero. When binding the descriptor set, the effective value of `range`
+    /// shifts forward by the offset that was provided. For example, if `range` is specified as
+    /// `0..8` when writing the descriptor set, and then when binding the descriptor set the
+    /// offset `16` is used, then the range of `buffer` that will actually be bound is `16..24`.
     pub range: Range<DeviceSize>,
 }
 
+/// Parameters to write an image view reference to a descriptor.
 #[derive(Clone, Debug)]
 pub struct DescriptorImageViewInfo {
+    /// The image view to write to the descriptor.
     pub image_view: Arc<dyn ImageViewAbstract>,
+
+    /// The layout that the image is expected to be in when it's accessed in the shader.
+    ///
+    /// Only certain layouts are allowed, depending on the type of descriptor.
+    ///
+    /// For `SampledImage`, `CombinedImageSampler` and `InputAttachment`:
+    /// - `General`
+    /// - `ShaderReadOnlyOptimal`
+    /// - `DepthStencilReadOnlyOptimal`
+    /// - `DepthReadOnlyStencilAttachmentOptimal`
+    /// - `DepthAttachmentStencilReadOnlyOptimal`
+    ///
+    /// For `StorageImage`:
+    /// - `General`
+    ///
+    /// If the `Undefined` layout is provided, then it will be automatically replaced with
+    /// `General` for `StorageImage` descriptors, and with `ShaderReadOnlyOptimal` for any other
+    /// descriptor type.
     pub image_layout: ImageLayout,
 }
 
@@ -516,36 +540,36 @@ pub(crate) fn set_descriptor_write_image_layouts(
     layout: &DescriptorSetLayout,
 ) {
     if let Some(layout_binding) = layout.bindings().get(&write.binding()) {
+        let default_layout = match layout_binding.descriptor_type {
+            DescriptorType::CombinedImageSampler
+            | DescriptorType::SampledImage
+            | DescriptorType::InputAttachment => ImageLayout::ShaderReadOnlyOptimal,
+            DescriptorType::StorageImage => ImageLayout::General,
+            _ => return,
+        };
+
         match &mut write.elements {
             WriteDescriptorSetElements::ImageView(elements) => {
                 for image_view_info in elements {
                     let DescriptorImageViewInfo {
-                        image_view,
+                        image_view: _,
                         image_layout,
                     } = image_view_info;
 
                     if *image_layout == ImageLayout::Undefined {
-                        *image_layout = image_view
-                            .image()
-                            .descriptor_layouts()
-                            .unwrap()
-                            .layout_for(layout_binding.descriptor_type);
+                        *image_layout = default_layout;
                     }
                 }
             }
             WriteDescriptorSetElements::ImageViewSampler(elements) => {
                 for (image_view_info, _sampler) in elements {
                     let DescriptorImageViewInfo {
-                        image_view,
+                        image_view: _,
                         image_layout,
                     } = image_view_info;
 
                     if *image_layout == ImageLayout::Undefined {
-                        *image_layout = image_view
-                            .image()
-                            .descriptor_layouts()
-                            .unwrap()
-                            .layout_for(layout_binding.descriptor_type);
+                        *image_layout = default_layout;
                     }
                 }
             }

@@ -8,8 +8,8 @@
 // according to those terms.
 
 use super::{
-    sys::Image, ImageAspects, ImageDescriptorLayouts, ImageDimensions, ImageLayout,
-    ImageSubresourceLayers, ImageSubresourceRange, ImageUsage, SampleCount,
+    sys::Image, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers,
+    ImageSubresourceRange, ImageUsage, SampleCount,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -183,12 +183,6 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
             preinitialized,
         })
     }
-
-    /// Returns an [`ImageDescriptorLayouts`] structure specifying the image layout to use
-    /// in descriptors of various kinds.
-    ///
-    /// This must return `Some` if the image is to be used to create an image view.
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts>;
 }
 
 /// Inner information about an image.
@@ -269,10 +263,6 @@ where
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.final_layout_requirement()
     }
-
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        self.image.descriptor_layouts()
-    }
 }
 
 impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
@@ -315,10 +305,6 @@ where
 
     fn final_layout_requirement(&self) -> ImageLayout {
         (**self).final_layout_requirement()
-    }
-
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        (**self).descriptor_layouts()
     }
 
     unsafe fn layout_initialized(&self) {
