@@ -156,7 +156,8 @@ impl WriteDescriptorSet {
         }
     }
 
-    /// Write a single image view to array element 0, using an automatic image layout.
+    /// Write a single image view to array element 0, using the `Undefined` image layout,
+    /// which will be automatically replaced with an appropriate default layout.
     #[inline]
     pub fn image_view(binding: u32, image_view: Arc<dyn ImageViewAbstract>) -> Self {
         Self::image_view_with_layout_array(
@@ -169,7 +170,8 @@ impl WriteDescriptorSet {
         )
     }
 
-    /// Write a number of consecutive image view elements, using an automatic image layout.
+    /// Write a number of consecutive image view elements, using the `Undefined` image layout,
+    /// which will be automatically replaced with an appropriate default layout.
     #[inline]
     pub fn image_view_array(
         binding: u32,
@@ -211,7 +213,9 @@ impl WriteDescriptorSet {
         }
     }
 
-    /// Write a single image view and sampler to array element 0, using an automatic image layout.
+    /// Write a single image view and sampler to array element 0,
+    /// using the `Undefined` image layout, which will be automatically replaced with
+    /// an appropriate default layout.
     #[inline]
     pub fn image_view_sampler(
         binding: u32,
@@ -231,8 +235,9 @@ impl WriteDescriptorSet {
         )
     }
 
-    /// Write a number of consecutive image view and sampler elements, using an automatic image
-    /// layout.
+    /// Write a number of consecutive image view and sampler elements,
+    /// using the `Undefined` image layout, which will be automatically replaced with
+    /// an appropriate default layout.
     #[inline]
     pub fn image_view_sampler_array(
         binding: u32,
@@ -539,42 +544,44 @@ pub(crate) fn set_descriptor_write_image_layouts(
     write: &mut WriteDescriptorSet,
     layout: &DescriptorSetLayout,
 ) {
-    if let Some(layout_binding) = layout.bindings().get(&write.binding()) {
-        let default_layout = match layout_binding.descriptor_type {
+    let default_layout = if let Some(layout_binding) = layout.bindings().get(&write.binding()) {
+        match layout_binding.descriptor_type {
             DescriptorType::CombinedImageSampler
             | DescriptorType::SampledImage
             | DescriptorType::InputAttachment => ImageLayout::ShaderReadOnlyOptimal,
             DescriptorType::StorageImage => ImageLayout::General,
             _ => return,
-        };
-
-        match &mut write.elements {
-            WriteDescriptorSetElements::ImageView(elements) => {
-                for image_view_info in elements {
-                    let DescriptorImageViewInfo {
-                        image_view: _,
-                        image_layout,
-                    } = image_view_info;
-
-                    if *image_layout == ImageLayout::Undefined {
-                        *image_layout = default_layout;
-                    }
-                }
-            }
-            WriteDescriptorSetElements::ImageViewSampler(elements) => {
-                for (image_view_info, _sampler) in elements {
-                    let DescriptorImageViewInfo {
-                        image_view: _,
-                        image_layout,
-                    } = image_view_info;
-
-                    if *image_layout == ImageLayout::Undefined {
-                        *image_layout = default_layout;
-                    }
-                }
-            }
-            _ => (),
         }
+    } else {
+        return;
+    };
+
+    match &mut write.elements {
+        WriteDescriptorSetElements::ImageView(elements) => {
+            for image_view_info in elements {
+                let DescriptorImageViewInfo {
+                    image_view: _,
+                    image_layout,
+                } = image_view_info;
+
+                if *image_layout == ImageLayout::Undefined {
+                    *image_layout = default_layout;
+                }
+            }
+        }
+        WriteDescriptorSetElements::ImageViewSampler(elements) => {
+            for (image_view_info, _sampler) in elements {
+                let DescriptorImageViewInfo {
+                    image_view: _,
+                    image_layout,
+                } = image_view_info;
+
+                if *image_layout == ImageLayout::Undefined {
+                    *image_layout = default_layout;
+                }
+            }
+        }
+        _ => (),
     }
 }
 
