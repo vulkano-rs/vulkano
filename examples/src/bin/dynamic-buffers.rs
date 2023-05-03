@@ -20,8 +20,8 @@ use vulkano::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, layout::DescriptorType, DescriptorSet,
-        PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, layout::DescriptorType, DescriptorBufferInfo,
+        DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -226,8 +226,10 @@ fn main() {
             // this range.
             WriteDescriptorSet::buffer_with_range(
                 0,
-                input_buffer,
-                0..size_of::<cs::InData>() as DeviceSize,
+                DescriptorBufferInfo {
+                    buffer: input_buffer,
+                    range: 0..size_of::<cs::InData>() as DeviceSize,
+                },
             ),
             WriteDescriptorSet::buffer(1, output_buffer.clone()),
         ],

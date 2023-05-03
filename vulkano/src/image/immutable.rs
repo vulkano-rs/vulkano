@@ -10,8 +10,8 @@
 use super::{
     sys::{Image, RawImage},
     traits::ImageContent,
-    ImageAccess, ImageCreateFlags, ImageDescriptorLayouts, ImageDimensions, ImageError,
-    ImageLayout, ImageSubresourceLayers, ImageUsage, MipmapsCount,
+    ImageAccess, ImageCreateFlags, ImageDimensions, ImageError, ImageLayout,
+    ImageSubresourceLayers, ImageUsage, MipmapsCount,
 };
 use crate::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferError, BufferUsage, Subbuffer},
@@ -331,16 +331,6 @@ unsafe impl ImageAccess for ImmutableImage {
     fn final_layout_requirement(&self) -> ImageLayout {
         self.layout
     }
-
-    #[inline]
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        Some(ImageDescriptorLayouts {
-            storage_image: ImageLayout::General,
-            combined_image_sampler: self.layout,
-            sampled_image: self.layout,
-            input_attachment: self.layout,
-        })
-    }
 }
 
 unsafe impl<P> ImageContent<P> for ImmutableImage {
@@ -390,11 +380,6 @@ unsafe impl ImageAccess for ImmutableImageInitialization {
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.layout
-    }
-
-    #[inline]
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        None
     }
 }
 

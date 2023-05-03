@@ -10,7 +10,7 @@
 use super::{
     sys::{Image, ImageMemory},
     traits::ImageContent,
-    ImageAccess, ImageDescriptorLayouts, ImageLayout,
+    ImageAccess, ImageLayout,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -80,15 +80,6 @@ unsafe impl ImageAccess for SwapchainImage {
 
     fn final_layout_requirement(&self) -> ImageLayout {
         ImageLayout::PresentSrc
-    }
-
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        Some(ImageDescriptorLayouts {
-            storage_image: ImageLayout::General,
-            combined_image_sampler: ImageLayout::ShaderReadOnlyOptimal,
-            sampled_image: ImageLayout::ShaderReadOnlyOptimal,
-            input_attachment: ImageLayout::ShaderReadOnlyOptimal,
-        })
     }
 
     unsafe fn layout_initialized(&self) {

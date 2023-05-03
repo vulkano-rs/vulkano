@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{descriptor_set::layout::DescriptorType, macros::vulkan_enum};
+use crate::macros::vulkan_enum;
 
 vulkan_enum! {
     #[non_exhaustive]
@@ -203,33 +203,5 @@ impl Default for ImageLayout {
     #[inline]
     fn default() -> Self {
         ImageLayout::Undefined
-    }
-}
-
-/// The set of layouts to use for an image when used in descriptor of various kinds.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ImageDescriptorLayouts {
-    /// The image layout to use in a descriptor as a storage image.
-    pub storage_image: ImageLayout,
-    /// The image layout to use in a descriptor as a combined image sampler.
-    pub combined_image_sampler: ImageLayout,
-    /// The image layout to use in a descriptor as a sampled image.
-    pub sampled_image: ImageLayout,
-    /// The image layout to use in a descriptor as an input attachment.
-    pub input_attachment: ImageLayout,
-}
-
-impl ImageDescriptorLayouts {
-    /// Returns the layout for the given descriptor type. Panics if `descriptor_type` is not an
-    /// image descriptor type.
-    #[inline]
-    pub fn layout_for(&self, descriptor_type: DescriptorType) -> ImageLayout {
-        match descriptor_type {
-            DescriptorType::CombinedImageSampler => self.combined_image_sampler,
-            DescriptorType::SampledImage => self.sampled_image,
-            DescriptorType::StorageImage => self.storage_image,
-            DescriptorType::InputAttachment => self.input_attachment,
-            _ => panic!("{:?} is not an image descriptor type", descriptor_type),
-        }
     }
 }
