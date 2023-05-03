@@ -10,7 +10,7 @@
 use super::{
     sys::{Image, RawImage},
     traits::ImageContent,
-    ImageAccess, ImageCreateFlags, ImageDescriptorLayouts, ImageDimensions, ImageError, ImageInner,
+    ImageAccess, ImageCreateFlags, ImageDescriptorLayouts, ImageDimensions, ImageError,
     ImageLayout, ImageSubresourceLayers, ImageUsage, MipmapsCount,
 };
 use crate::{
@@ -313,14 +313,8 @@ unsafe impl DeviceOwned for ImmutableImage {
 
 unsafe impl ImageAccess for ImmutableImage {
     #[inline]
-    fn inner(&self) -> ImageInner<'_> {
-        ImageInner {
-            image: &self.inner,
-            first_layer: 0,
-            num_layers: self.inner.dimensions().array_layers(),
-            first_mipmap_level: 0,
-            num_mipmap_levels: self.inner.mip_levels(),
-        }
+    fn inner(&self) -> &Arc<Image> {
+        &self.inner
     }
 
     #[inline]
@@ -384,7 +378,7 @@ unsafe impl DeviceOwned for ImmutableImageInitialization {
 
 unsafe impl ImageAccess for ImmutableImageInitialization {
     #[inline]
-    fn inner(&self) -> ImageInner<'_> {
+    fn inner(&self) -> &Arc<Image> {
         self.image.inner()
     }
 

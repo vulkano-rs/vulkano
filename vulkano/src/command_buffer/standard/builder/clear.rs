@@ -202,7 +202,7 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_color_image)(
             self.handle(),
-            image_inner.image.handle(),
+            image_inner.handle(),
             image_layout.into(),
             &clear_value,
             ranges.len() as u32,
@@ -218,15 +218,10 @@ where
             secondary_use_ref: None,
         };
 
-        for mut subresource_range in regions {
-            subresource_range.array_layers.start += image_inner.first_layer;
-            subresource_range.array_layers.end += image_inner.first_layer;
-            subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-            subresource_range.mip_levels.end += image_inner.first_mipmap_level;
-
+        for subresource_range in regions {
             self.resources_usage_state.record_image_access(
                 &use_ref,
-                image_inner.image,
+                image_inner,
                 subresource_range,
                 PipelineStageAccess::Clear_TransferWrite,
                 image_layout,
@@ -435,7 +430,7 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_depth_stencil_image)(
             self.handle(),
-            image_inner.image.handle(),
+            image_inner.handle(),
             image_layout.into(),
             &clear_value,
             ranges.len() as u32,
@@ -451,15 +446,10 @@ where
             secondary_use_ref: None,
         };
 
-        for mut subresource_range in regions {
-            subresource_range.array_layers.start += image_inner.first_layer;
-            subresource_range.array_layers.end += image_inner.first_layer;
-            subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-            subresource_range.mip_levels.end += image_inner.first_mipmap_level;
-
+        for subresource_range in regions {
             self.resources_usage_state.record_image_access(
                 &use_ref,
-                image_inner.image,
+                image_inner,
                 subresource_range,
                 PipelineStageAccess::Clear_TransferWrite,
                 image_layout,

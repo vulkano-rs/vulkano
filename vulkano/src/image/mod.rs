@@ -54,7 +54,7 @@ pub use self::{
     storage::StorageImage,
     swapchain::SwapchainImage,
     sys::ImageError,
-    traits::{ImageAccess, ImageInner},
+    traits::ImageAccess,
     usage::ImageUsage,
     view::{ImageViewAbstract, ImageViewType},
 };
@@ -626,6 +626,18 @@ impl ImageSubresourceLayers {
 impl From<ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
     #[inline]
     fn from(val: ImageSubresourceLayers) -> Self {
+        Self {
+            aspect_mask: val.aspects.into(),
+            mip_level: val.mip_level,
+            base_array_layer: val.array_layers.start,
+            layer_count: val.array_layers.end - val.array_layers.start,
+        }
+    }
+}
+
+impl From<&ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
+    #[inline]
+    fn from(val: &ImageSubresourceLayers) -> Self {
         Self {
             aspect_mask: val.aspects.into(),
             mip_level: val.mip_level,

@@ -20,7 +20,7 @@ use crate::{
     },
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, NumericType},
-    image::{ImageAspects, ImageLayout, ImageUsage, SampleCount},
+    image::{ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage, SampleCount},
     pipeline::graphics::subpass::PipelineRenderingCreateInfo,
     render_pass::{AttachmentDescription, LoadOp, ResolveMode, SubpassDescription},
     sync::PipelineStageAccess,
@@ -1906,25 +1906,6 @@ fn record_subpass_attachments_resolve(
             ..
         } = attachment_info;
 
-        let image = image_view.image();
-        let image_inner = image.inner();
-        let mut subresource_range = image_view.subresource_range().clone();
-        subresource_range.array_layers.start += image_inner.first_layer;
-        subresource_range.array_layers.end += image_inner.first_layer;
-        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
-
-        if let Some(aspects) = aspects_override {
-            subresource_range.aspects = aspects;
-        }
-
-        let use_ref = ResourceUseRef {
-            command_index,
-            command_name,
-            resource_in_command,
-            secondary_use_ref: None,
-        };
-
         if let Some(resolve_info) = resolve_info {
             let &RenderPassStateAttachmentResolveInfo {
                 image_view: ref resolve_image_view,
@@ -1932,17 +1913,35 @@ fn record_subpass_attachments_resolve(
                 ..
             } = resolve_info;
 
+            let image = image_view.image();
+            let image_inner = image.inner();
+
+            let use_ref = ResourceUseRef {
+                command_index,
+                command_name,
+                resource_in_command,
+                secondary_use_ref: None,
+            };
+
+            // The resolve operation uses the stages/access for color attachments,
+            // even for depth/stencil attachments.
+            resources_usage_state.record_image_access(
+                &use_ref,
+                image_inner,
+                if let Some(aspects) = aspects_override {
+                    ImageSubresourceRange {
+                        aspects,
+                        ..image_view.subresource_range().clone()
+                    }
+                } else {
+                    image_view.subresource_range().clone()
+                },
+                PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentRead,
+                image_layout,
+            );
+
             let resolve_image = resolve_image_view.image();
             let resolve_image_inner = resolve_image.inner();
-            let mut resolve_subresource_range = resolve_image_view.subresource_range().clone();
-            resolve_subresource_range.array_layers.start += resolve_image_inner.first_layer;
-            resolve_subresource_range.array_layers.end += resolve_image_inner.first_layer;
-            resolve_subresource_range.mip_levels.start += resolve_image_inner.first_mipmap_level;
-            resolve_subresource_range.mip_levels.end += resolve_image_inner.first_mipmap_level;
-
-            if let Some(aspects) = aspects_override {
-                resolve_subresource_range.aspects = aspects;
-            }
 
             let resolve_use_ref = ResourceUseRef {
                 command_index,
@@ -1951,19 +1950,17 @@ fn record_subpass_attachments_resolve(
                 secondary_use_ref: None,
             };
 
-            // The resolve operation uses the stages/access for color attachments,
-            // even for depth/stencil attachments.
-            resources_usage_state.record_image_access(
-                &use_ref,
-                image_inner.image,
-                subresource_range,
-                PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentRead,
-                image_layout,
-            );
             resources_usage_state.record_image_access(
                 &resolve_use_ref,
-                resolve_image_inner.image,
-                resolve_subresource_range,
+                resolve_image_inner,
+                if let Some(aspects) = aspects_override {
+                    ImageSubresourceRange {
+                        aspects,
+                        ..resolve_image_view.subresource_range().clone()
+                    }
+                } else {
+                    resolve_image_view.subresource_range().clone()
+                },
                 PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite,
                 resolve_image_layout,
             );
@@ -2028,10 +2025,6 @@ fn record_subpass_attachments_store(
             let image = image_view.image();
             let image_inner = image.inner();
             let mut subresource_range = image_view.subresource_range().clone();
-            subresource_range.array_layers.start += image_inner.first_layer;
-            subresource_range.array_layers.end += image_inner.first_layer;
-            subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-            subresource_range.mip_levels.end += image_inner.first_mipmap_level;
 
             if let Some(aspects) = aspects_override {
                 subresource_range.aspects = aspects;
@@ -2046,7 +2039,7 @@ fn record_subpass_attachments_store(
 
             resources_usage_state.record_image_access(
                 &use_ref,
-                image_inner.image,
+                image_inner,
                 subresource_range,
                 access,
                 image_layout,
@@ -2064,15 +2057,6 @@ fn record_subpass_attachments_store(
             if let Some(access) = store_access {
                 let image = image_view.image();
                 let image_inner = image.inner();
-                let mut subresource_range = image_view.subresource_range().clone();
-                subresource_range.array_layers.start += image_inner.first_layer;
-                subresource_range.array_layers.end += image_inner.first_layer;
-                subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-                subresource_range.mip_levels.end += image_inner.first_mipmap_level;
-
-                if let Some(aspects) = aspects_override {
-                    subresource_range.aspects = aspects;
-                }
 
                 let use_ref = ResourceUseRef {
                     command_index,
@@ -2083,8 +2067,15 @@ fn record_subpass_attachments_store(
 
                 resources_usage_state.record_image_access(
                     &use_ref,
-                    image_inner.image,
-                    subresource_range,
+                    image_inner,
+                    if let Some(aspects) = aspects_override {
+                        ImageSubresourceRange {
+                            aspects,
+                            ..image_view.subresource_range().clone()
+                        }
+                    } else {
+                        image_view.subresource_range().clone()
+                    },
                     access,
                     image_layout,
                 );
@@ -2150,10 +2141,6 @@ fn record_subpass_attachments_load(
             let image = image_view.image();
             let image_inner = image.inner();
             let mut subresource_range = image_view.subresource_range().clone();
-            subresource_range.array_layers.start += image_inner.first_layer;
-            subresource_range.array_layers.end += image_inner.first_layer;
-            subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-            subresource_range.mip_levels.end += image_inner.first_mipmap_level;
 
             if let Some(aspects) = aspects_override {
                 subresource_range.aspects = aspects;
@@ -2168,7 +2155,7 @@ fn record_subpass_attachments_load(
 
             resources_usage_state.record_image_access(
                 &use_ref,
-                image_inner.image,
+                image_inner,
                 subresource_range,
                 access,
                 image_layout,
@@ -2186,15 +2173,6 @@ fn record_subpass_attachments_load(
             if let Some(access) = load_access {
                 let image = image_view.image();
                 let image_inner = image.inner();
-                let mut subresource_range = image_view.subresource_range().clone();
-                subresource_range.array_layers.start += image_inner.first_layer;
-                subresource_range.array_layers.end += image_inner.first_layer;
-                subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-                subresource_range.mip_levels.end += image_inner.first_mipmap_level;
-
-                if let Some(aspects) = aspects_override {
-                    subresource_range.aspects = aspects;
-                }
 
                 let use_ref = ResourceUseRef {
                     command_index,
@@ -2205,8 +2183,15 @@ fn record_subpass_attachments_load(
 
                 resources_usage_state.record_image_access(
                     &use_ref,
-                    image_inner.image,
-                    subresource_range,
+                    image_inner,
+                    if let Some(aspects) = aspects_override {
+                        ImageSubresourceRange {
+                            aspects,
+                            ..image_view.subresource_range().clone()
+                        }
+                    } else {
+                        image_view.subresource_range().clone()
+                    },
                     access,
                     image_layout,
                 );
