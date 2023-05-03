@@ -10,8 +10,8 @@
 use super::{
     sys::{Image, ImageMemory, RawImage},
     traits::ImageContent,
-    ImageAccess, ImageAspects, ImageDescriptorLayouts, ImageError, ImageInner, ImageLayout,
-    ImageUsage, SampleCount,
+    ImageAccess, ImageAspects, ImageDescriptorLayouts, ImageError, ImageLayout, ImageUsage,
+    SampleCount,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -589,14 +589,8 @@ impl AttachmentImage {
 
 unsafe impl ImageAccess for AttachmentImage {
     #[inline]
-    fn inner(&self) -> ImageInner<'_> {
-        ImageInner {
-            image: &self.inner,
-            first_layer: 0,
-            num_layers: self.inner.dimensions().array_layers(),
-            first_mipmap_level: 0,
-            num_mipmap_levels: 1,
-        }
+    fn inner(&self) -> &Arc<Image> {
+        &self.inner
     }
 
     #[inline]

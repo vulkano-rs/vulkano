@@ -10,7 +10,7 @@
 use super::{
     sys::{Image, ImageMemory},
     traits::ImageContent,
-    ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout,
+    ImageAccess, ImageDescriptorLayouts, ImageLayout,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -70,14 +70,8 @@ unsafe impl DeviceOwned for SwapchainImage {
 }
 
 unsafe impl ImageAccess for SwapchainImage {
-    fn inner(&self) -> ImageInner<'_> {
-        ImageInner {
-            image: &self.inner,
-            first_layer: 0,
-            num_layers: self.inner.dimensions().array_layers(),
-            first_mipmap_level: 0,
-            num_mipmap_levels: 1,
-        }
+    fn inner(&self) -> &Arc<Image> {
+        &self.inner
     }
 
     fn initial_layout_requirement(&self) -> ImageLayout {

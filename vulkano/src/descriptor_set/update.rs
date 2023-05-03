@@ -529,8 +529,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     if matches!(
                         image_view.view_type(),
                         ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                    ) && image_view.image().inner().image.dimensions().image_type()
-                        == ImageType::Dim3d
+                    ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
                     {
                         return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
                             binding: write.binding(),
@@ -623,8 +622,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     if matches!(
                         image_view.view_type(),
                         ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                    ) && image_view.image().inner().image.dimensions().image_type()
-                        == ImageType::Dim3d
+                    ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
                     {
                         return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
                             binding: write.binding(),
@@ -682,8 +680,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 if matches!(
                     image_view.view_type(),
                     ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                ) && image_view.image().inner().image.dimensions().image_type()
-                    == ImageType::Dim3d
+                ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
                 {
                     return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
                         binding: write.binding(),
@@ -742,8 +739,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 if matches!(
                     image_view.view_type(),
                     ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                ) && image_view.image().inner().image.dimensions().image_type()
-                    == ImageType::Dim3d
+                ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
                 {
                     return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
                         binding: write.binding(),
@@ -947,8 +943,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 if matches!(
                     image_view.view_type(),
                     ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                ) && image_view.image().inner().image.dimensions().image_type()
-                    == ImageType::Dim3d
+                ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
                 {
                     return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
                         binding: write.binding(),
