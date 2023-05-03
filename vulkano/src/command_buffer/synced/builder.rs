@@ -277,7 +277,7 @@ impl SyncCommandBufferBuilder {
     fn find_image_conflict(
         &self,
         image: &dyn ImageAccess,
-        mut subresource_range: ImageSubresourceRange,
+        subresource_range: ImageSubresourceRange,
         memory: &PipelineMemoryAccess,
         start_layout: ImageLayout,
         _end_layout: ImageLayout,
@@ -288,14 +288,9 @@ impl SyncCommandBufferBuilder {
             self.latest_render_pass_enter.unwrap_or(self.commands.len());
 
         let inner = image.inner();
-        subresource_range.array_layers.start += inner.first_layer;
-        subresource_range.array_layers.end += inner.first_layer;
-        subresource_range.mip_levels.start += inner.first_mipmap_level;
-        subresource_range.mip_levels.end += inner.first_mipmap_level;
+        let range_map = self.images2.get(inner)?;
 
-        let range_map = self.images2.get(inner.image)?;
-
-        for range in inner.image.iter_ranges(subresource_range) {
+        for range in inner.iter_ranges(subresource_range) {
             for (_range, state) in range_map
                 .range(&range)
                 .filter(|(_range, state)| !state.resource_uses.is_empty())
@@ -532,10 +527,6 @@ impl SyncCommandBufferBuilder {
             .unwrap_or(self.commands.len() - 1);
 
         let inner = image.inner();
-        subresource_range.array_layers.start += inner.first_layer;
-        subresource_range.array_layers.end += inner.first_layer;
-        subresource_range.mip_levels.start += inner.first_mipmap_level;
-        subresource_range.mip_levels.end += inner.first_mipmap_level;
 
         // VUID-VkImageMemoryBarrier2-image-03320
         if !self
@@ -550,9 +541,9 @@ impl SyncCommandBufferBuilder {
             subresource_range.aspects = ImageAspects::DEPTH | ImageAspects::STENCIL;
         }
 
-        let range_map = self.images2.entry(inner.image.clone()).or_insert_with(|| {
+        let range_map = self.images2.entry(inner.clone()).or_insert_with(|| {
             [(
-                0..inner.image.range_size(),
+                0..inner.range_size(),
                 match self.level {
                     CommandBufferLevel::Primary => {
                         // In a primary command buffer, the initial layout is determined
@@ -594,7 +585,7 @@ impl SyncCommandBufferBuilder {
             .collect()
         });
 
-        for range in inner.image.iter_ranges(subresource_range) {
+        for range in inner.iter_ranges(subresource_range) {
             range_map.split_at(&range.start);
             range_map.split_at(&range.end);
 
@@ -628,8 +619,8 @@ impl SyncCommandBufferBuilder {
                                 dst_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
                                 old_layout: state.initial_layout,
                                 new_layout: start_layout,
-                                subresource_range: inner.image.range_to_subresources(range.clone()),
-                                ..ImageMemoryBarrier::image(inner.image.clone())
+                                subresource_range: inner.range_to_subresources(range.clone()),
+                                ..ImageMemoryBarrier::image(inner.clone())
                             };
 
                             // If the `new_layout` is Undefined or Preinitialized, this requires
@@ -746,8 +737,8 @@ impl SyncCommandBufferBuilder {
                                 dst_access: memory.access,
                                 old_layout: state.current_layout,
                                 new_layout: start_layout,
-                                subresource_range: inner.image.range_to_subresources(range.clone()),
-                                ..ImageMemoryBarrier::image(inner.image.clone())
+                                subresource_range: inner.range_to_subresources(range.clone()),
+                                ..ImageMemoryBarrier::image(inner.clone())
                             });
 
                         // Update state.

@@ -506,7 +506,7 @@ where
 
         let mut src_image_aspects_used = ImageAspects::empty();
         let mut dst_image_aspects_used = ImageAspects::empty();
-        let same_image = src_image_inner.image == dst_image_inner.image;
+        let is_same_image = src_image_inner == dst_image_inner;
         let mut overlap_subresource_indices = None;
         let mut overlap_extent_indices = None;
 
@@ -803,13 +803,11 @@ where
                 )?;
 
                 // VUID-VkCopyImageInfo2-pRegions-00124
-                if same_image {
+                if is_same_image {
                     let src_region_index = region_index;
                     let src_subresource_axes = [
-                        src_image_inner.first_mipmap_level + src_subresource.mip_level
-                            ..src_image_inner.first_mipmap_level + src_subresource.mip_level + 1,
-                        src_image_inner.first_layer + src_subresource.array_layers.start
-                            ..src_image_inner.first_layer + src_subresource.array_layers.end,
+                        src_subresource.mip_level..src_subresource.mip_level + 1,
+                        src_subresource.array_layers.start..src_subresource.array_layers.end,
                     ];
                     let src_extent_axes = [
                         src_offset[0]..src_offset[0] + extent[0],
@@ -832,12 +830,8 @@ where
                         }
 
                         let dst_subresource_axes = [
-                            dst_image_inner.first_mipmap_level + dst_subresource.mip_level
-                                ..dst_image_inner.first_mipmap_level
-                                    + dst_subresource.mip_level
-                                    + 1,
-                            dst_image_inner.first_layer + src_subresource.array_layers.start
-                                ..dst_image_inner.first_layer + src_subresource.array_layers.end,
+                            dst_subresource.mip_level..dst_subresource.mip_level + 1,
+                            src_subresource.array_layers.start..src_subresource.array_layers.end,
                         ];
 
                         if src_subresource_axes.iter().zip(dst_subresource_axes).any(
@@ -923,13 +917,11 @@ where
 
                 // VUID-VkCopyImageInfo2-pRegions-00124
                 // A simpler version that assumes the region covers the full extent.
-                if same_image {
+                if is_same_image {
                     let src_region_index = region_index;
                     let src_axes = [
-                        src_image_inner.first_mipmap_level + src_subresource.mip_level
-                            ..src_image_inner.first_mipmap_level + src_subresource.mip_level + 1,
-                        src_image_inner.first_layer + src_subresource.array_layers.start
-                            ..src_image_inner.first_layer + src_subresource.array_layers.end,
+                        src_subresource.mip_level..src_subresource.mip_level + 1,
+                        src_subresource.array_layers.start..src_subresource.array_layers.end,
                     ];
 
                     for (dst_region_index, dst_region) in regions.iter().enumerate() {
@@ -946,12 +938,8 @@ where
                         }
 
                         let dst_axes = [
-                            dst_image_inner.first_mipmap_level + dst_subresource.mip_level
-                                ..dst_image_inner.first_mipmap_level
-                                    + dst_subresource.mip_level
-                                    + 1,
-                            dst_image_inner.first_layer + src_subresource.array_layers.start
-                                ..dst_image_inner.first_layer + src_subresource.array_layers.end,
+                            dst_subresource.mip_level..dst_subresource.mip_level + 1,
+                            src_subresource.array_layers.start..src_subresource.array_layers.end,
                         ];
 
                         // There is only overlap if all of the axes overlap.
@@ -1072,16 +1060,6 @@ where
                         _ne: _,
                     } = region;
 
-                    let mut src_subresource = src_subresource.clone();
-                    src_subresource.array_layers.start += src_image_inner.first_layer;
-                    src_subresource.array_layers.end += src_image_inner.first_layer;
-                    src_subresource.mip_level += src_image_inner.first_mipmap_level;
-
-                    let mut dst_subresource = dst_subresource.clone();
-                    dst_subresource.array_layers.start += dst_image_inner.first_layer;
-                    dst_subresource.array_layers.end += dst_image_inner.first_layer;
-                    dst_subresource.mip_level += dst_image_inner.first_mipmap_level;
-
                     ash::vk::ImageCopy2 {
                         src_subresource: src_subresource.into(),
                         src_offset: ash::vk::Offset3D {
@@ -1106,9 +1084,9 @@ where
                 .collect();
 
             let copy_image_info = ash::vk::CopyImageInfo2 {
-                src_image: src_image_inner.image.handle(),
+                src_image: src_image_inner.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_image: dst_image_inner.image.handle(),
+                dst_image: dst_image_inner.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -1132,16 +1110,6 @@ where
                         extent,
                         _ne: _,
                     } = region;
-
-                    let mut src_subresource = src_subresource.clone();
-                    src_subresource.array_layers.start += src_image_inner.first_layer;
-                    src_subresource.array_layers.end += src_image_inner.first_layer;
-                    src_subresource.mip_level += src_image_inner.first_mipmap_level;
-
-                    let mut dst_subresource = dst_subresource.clone();
-                    dst_subresource.array_layers.start += dst_image_inner.first_layer;
-                    dst_subresource.array_layers.end += dst_image_inner.first_layer;
-                    dst_subresource.mip_level += dst_image_inner.first_mipmap_level;
 
                     ash::vk::ImageCopy {
                         src_subresource: src_subresource.into(),
@@ -1167,9 +1135,9 @@ where
 
             (fns.v1_0.cmd_copy_image)(
                 self.handle(),
-                src_image_inner.image.handle(),
+                src_image_inner.handle(),
                 src_image_layout.into(),
-                dst_image_inner.image.handle(),
+                dst_image_inner.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -1201,28 +1169,18 @@ where
                 _ne: _,
             } = region;
 
-            let mut src_subresource_range = ImageSubresourceRange::from(src_subresource);
-            src_subresource_range.array_layers.start += src_image_inner.first_layer;
-            src_subresource_range.array_layers.end += src_image_inner.first_layer;
-            src_subresource_range.mip_levels.start += src_image_inner.first_mipmap_level;
-            src_subresource_range.mip_levels.end += src_image_inner.first_mipmap_level;
             self.resources_usage_state.record_image_access(
                 &src_use_ref,
-                src_image_inner.image,
-                src_subresource_range,
+                src_image_inner,
+                ImageSubresourceRange::from(src_subresource),
                 PipelineStageAccess::Copy_TransferRead,
                 src_image_layout,
             );
 
-            let mut dst_subresource_range = ImageSubresourceRange::from(dst_subresource);
-            dst_subresource_range.array_layers.start += dst_image_inner.first_layer;
-            dst_subresource_range.array_layers.end += dst_image_inner.first_layer;
-            dst_subresource_range.mip_levels.start += dst_image_inner.first_mipmap_level;
-            dst_subresource_range.mip_levels.end += dst_image_inner.first_mipmap_level;
             self.resources_usage_state.record_image_access(
                 &dst_use_ref,
-                dst_image_inner.image,
-                dst_subresource_range,
+                dst_image_inner,
+                ImageSubresourceRange::from(dst_subresource),
                 PipelineStageAccess::Copy_TransferWrite,
                 dst_image_layout,
             );
@@ -1717,11 +1675,6 @@ where
                         _ne: _,
                     } = region;
 
-                    let mut image_subresource = image_subresource.clone();
-                    image_subresource.array_layers.start += dst_image_inner.first_layer;
-                    image_subresource.array_layers.end += dst_image_inner.first_layer;
-                    image_subresource.mip_level += dst_image_inner.first_mipmap_level;
-
                     ash::vk::BufferImageCopy2 {
                         buffer_offset: buffer_offset + src_buffer.offset(),
                         buffer_row_length,
@@ -1744,7 +1697,7 @@ where
 
             let copy_buffer_to_image_info = ash::vk::CopyBufferToImageInfo2 {
                 src_buffer: src_buffer.buffer().handle(),
-                dst_image: dst_image_inner.image.handle(),
+                dst_image: dst_image_inner.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -1773,11 +1726,6 @@ where
                         _ne: _,
                     } = region;
 
-                    let mut image_subresource = image_subresource.clone();
-                    image_subresource.array_layers.start += dst_image_inner.first_layer;
-                    image_subresource.array_layers.end += dst_image_inner.first_layer;
-                    image_subresource.mip_level += dst_image_inner.first_mipmap_level;
-
                     ash::vk::BufferImageCopy {
                         buffer_offset: buffer_offset + src_buffer.offset(),
                         buffer_row_length,
@@ -1800,7 +1748,7 @@ where
             (fns.v1_0.cmd_copy_buffer_to_image)(
                 self.handle(),
                 src_buffer.buffer().handle(),
-                dst_image_inner.image.handle(),
+                dst_image_inner.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -1845,15 +1793,10 @@ where
                 PipelineStageAccess::Copy_TransferRead,
             );
 
-            let mut dst_subresource_range = ImageSubresourceRange::from(image_subresource);
-            dst_subresource_range.array_layers.start += dst_image_inner.first_layer;
-            dst_subresource_range.array_layers.end += dst_image_inner.first_layer;
-            dst_subresource_range.mip_levels.start += dst_image_inner.first_mipmap_level;
-            dst_subresource_range.mip_levels.end += dst_image_inner.first_mipmap_level;
             self.resources_usage_state.record_image_access(
                 &dst_use_ref,
-                dst_image_inner.image,
-                dst_subresource_range,
+                dst_image_inner,
+                ImageSubresourceRange::from(image_subresource),
                 PipelineStageAccess::Copy_TransferWrite,
                 dst_image_layout,
             );
@@ -2339,11 +2282,6 @@ where
                         _ne: _,
                     } = region;
 
-                    let mut image_subresource = image_subresource.clone();
-                    image_subresource.array_layers.start += src_image_inner.first_layer;
-                    image_subresource.array_layers.end += src_image_inner.first_layer;
-                    image_subresource.mip_level += src_image_inner.first_mipmap_level;
-
                     ash::vk::BufferImageCopy2 {
                         buffer_offset: buffer_offset + dst_buffer.offset(),
                         buffer_row_length,
@@ -2365,7 +2303,7 @@ where
                 .collect();
 
             let copy_image_to_buffer_info = ash::vk::CopyImageToBufferInfo2 {
-                src_image: src_image_inner.image.handle(),
+                src_image: src_image_inner.handle(),
                 src_image_layout: src_image_layout.into(),
                 dst_buffer: dst_buffer.buffer().handle(),
                 region_count: regions.len() as u32,
@@ -2394,10 +2332,6 @@ where
                         image_extent,
                         _ne: _,
                     } = region;
-                    let mut image_subresource = image_subresource.clone();
-                    image_subresource.array_layers.start += src_image_inner.first_layer;
-                    image_subresource.array_layers.end += src_image_inner.first_layer;
-                    image_subresource.mip_level += src_image_inner.first_mipmap_level;
 
                     ash::vk::BufferImageCopy {
                         buffer_offset: buffer_offset + dst_buffer.offset(),
@@ -2420,7 +2354,7 @@ where
 
             (fns.v1_0.cmd_copy_image_to_buffer)(
                 self.handle(),
-                src_image_inner.image.handle(),
+                src_image_inner.handle(),
                 src_image_layout.into(),
                 dst_buffer.buffer().handle(),
                 regions.len() as u32,
@@ -2456,15 +2390,10 @@ where
                 _ne: _,
             } = region;
 
-            let mut src_subresource_range = ImageSubresourceRange::from(image_subresource);
-            src_subresource_range.array_layers.start += src_image_inner.first_layer;
-            src_subresource_range.array_layers.end += src_image_inner.first_layer;
-            src_subresource_range.mip_levels.start += src_image_inner.first_mipmap_level;
-            src_subresource_range.mip_levels.end += src_image_inner.first_mipmap_level;
             self.resources_usage_state.record_image_access(
                 &src_use_ref,
-                src_image_inner.image,
-                src_subresource_range,
+                src_image_inner,
+                ImageSubresourceRange::from(image_subresource),
                 PipelineStageAccess::Copy_TransferRead,
                 src_image_layout,
             );
@@ -2751,7 +2680,7 @@ where
             }
         }
 
-        let same_image = src_image_inner.image == dst_image_inner.image;
+        let is_same_image = src_image_inner == dst_image_inner;
         let mut overlap_subresource_indices = None;
         let mut overlap_extent_indices = None;
 
@@ -2937,13 +2866,11 @@ where
             )?;
 
             // VUID-VkBlitImageInfo2-pRegions-00217
-            if same_image {
+            if is_same_image {
                 let src_region_index = region_index;
                 let src_subresource_axes = [
-                    src_image_inner.first_mipmap_level + src_subresource.mip_level
-                        ..src_image_inner.first_mipmap_level + src_subresource.mip_level + 1,
-                    src_image_inner.first_layer + src_subresource.array_layers.start
-                        ..src_image_inner.first_layer + src_subresource.array_layers.end,
+                    src_subresource.mip_level..src_subresource.mip_level + 1,
+                    src_subresource.array_layers.start..src_subresource.array_layers.end,
                 ];
                 let src_extent_axes = [
                     min(src_offsets[0][0], src_offsets[1][0])
@@ -2962,10 +2889,8 @@ where
                     } = dst_region;
 
                     let dst_subresource_axes = [
-                        dst_image_inner.first_mipmap_level + dst_subresource.mip_level
-                            ..dst_image_inner.first_mipmap_level + dst_subresource.mip_level + 1,
-                        dst_image_inner.first_layer + src_subresource.array_layers.start
-                            ..dst_image_inner.first_layer + src_subresource.array_layers.end,
+                        dst_subresource.mip_level..dst_subresource.mip_level + 1,
+                        src_subresource.array_layers.start..src_subresource.array_layers.end,
                     ];
 
                     if src_subresource_axes.iter().zip(dst_subresource_axes).any(
@@ -3066,16 +2991,6 @@ where
                         _ne: _,
                     } = region;
 
-                    let mut src_subresource = src_subresource.clone();
-                    src_subresource.array_layers.start += src_image_inner.first_layer;
-                    src_subresource.array_layers.end += src_image_inner.first_layer;
-                    src_subresource.mip_level += src_image_inner.first_mipmap_level;
-
-                    let mut dst_subresource = dst_subresource.clone();
-                    dst_subresource.array_layers.start += dst_image_inner.first_layer;
-                    dst_subresource.array_layers.end += dst_image_inner.first_layer;
-                    dst_subresource.mip_level += dst_image_inner.first_mipmap_level;
-
                     ash::vk::ImageBlit2 {
                         src_subresource: src_subresource.into(),
                         src_offsets: [
@@ -3109,9 +3024,9 @@ where
                 .collect();
 
             let blit_image_info = ash::vk::BlitImageInfo2 {
-                src_image: src_image_inner.image.handle(),
+                src_image: src_image_inner.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_image: dst_image_inner.image.handle(),
+                dst_image: dst_image_inner.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -3135,16 +3050,6 @@ where
                         dst_offsets,
                         _ne: _,
                     } = region;
-
-                    let mut src_subresource = src_subresource.clone();
-                    src_subresource.array_layers.start += src_image_inner.first_layer;
-                    src_subresource.array_layers.end += src_image_inner.first_layer;
-                    src_subresource.mip_level += src_image_inner.first_mipmap_level;
-
-                    let mut dst_subresource = dst_subresource.clone();
-                    dst_subresource.array_layers.start += dst_image_inner.first_layer;
-                    dst_subresource.array_layers.end += dst_image_inner.first_layer;
-                    dst_subresource.mip_level += dst_image_inner.first_mipmap_level;
 
                     ash::vk::ImageBlit {
                         src_subresource: src_subresource.into(),
@@ -3179,9 +3084,9 @@ where
 
             (fns.v1_0.cmd_blit_image)(
                 self.handle(),
-                src_image_inner.image.handle(),
+                src_image_inner.handle(),
                 src_image_layout.into(),
-                dst_image_inner.image.handle(),
+                dst_image_inner.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -3213,28 +3118,18 @@ where
                 _ne: _,
             } = region;
 
-            let mut src_subresource_range = ImageSubresourceRange::from(src_subresource);
-            src_subresource_range.array_layers.start += src_image_inner.first_layer;
-            src_subresource_range.array_layers.end += src_image_inner.first_layer;
-            src_subresource_range.mip_levels.start += src_image_inner.first_mipmap_level;
-            src_subresource_range.mip_levels.end += src_image_inner.first_mipmap_level;
             self.resources_usage_state.record_image_access(
                 &src_use_ref,
-                src_image_inner.image,
-                src_subresource_range,
+                src_image_inner,
+                ImageSubresourceRange::from(src_subresource),
                 PipelineStageAccess::Blit_TransferRead,
                 src_image_layout,
             );
 
-            let mut dst_subresource_range = ImageSubresourceRange::from(dst_subresource);
-            dst_subresource_range.array_layers.start += dst_image_inner.first_layer;
-            dst_subresource_range.array_layers.end += dst_image_inner.first_layer;
-            dst_subresource_range.mip_levels.start += dst_image_inner.first_mipmap_level;
-            dst_subresource_range.mip_levels.end += dst_image_inner.first_mipmap_level;
             self.resources_usage_state.record_image_access(
                 &dst_use_ref,
-                dst_image_inner.image,
-                dst_subresource_range,
+                dst_image_inner,
+                ImageSubresourceRange::from(dst_subresource),
                 PipelineStageAccess::Blit_TransferWrite,
                 dst_image_layout,
             );
@@ -3564,16 +3459,6 @@ where
                         _ne: _,
                     } = region;
 
-                    let mut src_subresource = src_subresource.clone();
-                    src_subresource.array_layers.start += src_image_inner.first_layer;
-                    src_subresource.array_layers.end += src_image_inner.first_layer;
-                    src_subresource.mip_level += src_image_inner.first_mipmap_level;
-
-                    let mut dst_subresource = dst_subresource.clone();
-                    dst_subresource.array_layers.start += dst_image_inner.first_layer;
-                    dst_subresource.array_layers.end += dst_image_inner.first_layer;
-                    dst_subresource.mip_level += dst_image_inner.first_mipmap_level;
-
                     ash::vk::ImageResolve2 {
                         src_subresource: src_subresource.into(),
                         src_offset: ash::vk::Offset3D {
@@ -3598,9 +3483,9 @@ where
                 .collect();
 
             let resolve_image_info = ash::vk::ResolveImageInfo2 {
-                src_image: src_image_inner.image.handle(),
+                src_image: src_image_inner.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_image: dst_image_inner.image.handle(),
+                dst_image: dst_image_inner.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -3624,16 +3509,6 @@ where
                         extent,
                         _ne: _,
                     } = region;
-
-                    let mut src_subresource = src_subresource.clone();
-                    src_subresource.array_layers.start += src_image_inner.first_layer;
-                    src_subresource.array_layers.end += src_image_inner.first_layer;
-                    src_subresource.mip_level += src_image_inner.first_mipmap_level;
-
-                    let mut dst_subresource = dst_subresource.clone();
-                    dst_subresource.array_layers.start += dst_image_inner.first_layer;
-                    dst_subresource.array_layers.end += dst_image_inner.first_layer;
-                    dst_subresource.mip_level += dst_image_inner.first_mipmap_level;
 
                     ash::vk::ImageResolve {
                         src_subresource: src_subresource.into(),
@@ -3659,9 +3534,9 @@ where
 
             (fns.v1_0.cmd_resolve_image)(
                 self.handle(),
-                src_image_inner.image.handle(),
+                src_image_inner.handle(),
                 src_image_layout.into(),
-                dst_image_inner.image.handle(),
+                dst_image_inner.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -3693,28 +3568,18 @@ where
                 _ne: _,
             } = region;
 
-            let mut src_subresource_range = ImageSubresourceRange::from(src_subresource);
-            src_subresource_range.array_layers.start += src_image_inner.first_layer;
-            src_subresource_range.array_layers.end += src_image_inner.first_layer;
-            src_subresource_range.mip_levels.start += src_image_inner.first_mipmap_level;
-            src_subresource_range.mip_levels.end += src_image_inner.first_mipmap_level;
             self.resources_usage_state.record_image_access(
                 &src_use_ref,
-                src_image_inner.image,
-                src_subresource_range,
+                src_image_inner,
+                ImageSubresourceRange::from(src_subresource),
                 PipelineStageAccess::Resolve_TransferRead,
                 src_image_layout,
             );
 
-            let mut dst_subresource_range = ImageSubresourceRange::from(dst_subresource);
-            dst_subresource_range.array_layers.start += dst_image_inner.first_layer;
-            dst_subresource_range.array_layers.end += dst_image_inner.first_layer;
-            dst_subresource_range.mip_levels.start += dst_image_inner.first_mipmap_level;
-            dst_subresource_range.mip_levels.end += dst_image_inner.first_mipmap_level;
             self.resources_usage_state.record_image_access(
                 &dst_use_ref,
-                dst_image_inner.image,
-                dst_subresource_range,
+                dst_image_inner,
+                ImageSubresourceRange::from(dst_subresource),
                 PipelineStageAccess::Resolve_TransferWrite,
                 dst_image_layout,
             );

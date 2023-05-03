@@ -821,7 +821,7 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
         (fns.v1_0.cmd_clear_color_image)(
             self.handle,
-            image.inner().image.handle(),
+            image.inner().handle(),
             image_layout.into(),
             &clear_value,
             ranges.len() as u32,
@@ -857,7 +857,7 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
         (fns.v1_0.cmd_clear_depth_stencil_image)(
             self.handle,
-            image.inner().image.handle(),
+            image.inner().handle(),
             image_layout.into(),
             &clear_value,
             ranges.len() as u32,

@@ -267,7 +267,7 @@ impl<'a> QueueGuard<'a> {
                     .map(|(image, memory_binds)| {
                         (
                             ash::vk::SparseImageOpaqueMemoryBindInfo {
-                                image: image.inner().image.handle(),
+                                image: image.inner().handle(),
                                 bind_count: 0,
                                 p_binds: ptr::null(),
                             },
@@ -309,7 +309,7 @@ impl<'a> QueueGuard<'a> {
                         .map(|(image, memory_binds)| {
                             (
                                 ash::vk::SparseImageMemoryBindInfo {
-                                    image: image.inner().image.handle(),
+                                    image: image.inner().handle(),
                                     bind_count: 0,
                                     p_binds: ptr::null(),
                                 },
@@ -1452,14 +1452,14 @@ impl<'a> States<'a> {
             }
 
             for (image, _) in image_opaque_binds {
-                let image = &image.inner().image;
+                let image = image.inner();
                 images
                     .entry(image.handle())
                     .or_insert_with(|| image.state());
             }
 
             for (image, _) in image_binds {
-                let image = &image.inner().image;
+                let image = image.inner();
                 images
                     .entry(image.handle())
                     .or_insert_with(|| image.state());

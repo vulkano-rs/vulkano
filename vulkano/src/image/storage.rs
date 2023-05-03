@@ -10,8 +10,8 @@
 use super::{
     sys::{Image, ImageMemory, RawImage},
     traits::ImageContent,
-    ImageAccess, ImageAspects, ImageCreateFlags, ImageDimensions, ImageError, ImageInner,
-    ImageLayout, ImageUsage,
+    ImageAccess, ImageAspects, ImageCreateFlags, ImageDimensions, ImageError, ImageLayout,
+    ImageUsage,
 };
 use crate::{
     device::{Device, DeviceOwned, Queue},
@@ -468,14 +468,8 @@ unsafe impl DeviceOwned for StorageImage {
 
 unsafe impl ImageAccess for StorageImage {
     #[inline]
-    fn inner(&self) -> ImageInner<'_> {
-        ImageInner {
-            image: &self.inner,
-            first_layer: 0,
-            num_layers: self.inner.dimensions().array_layers(),
-            first_mipmap_level: 0,
-            num_mipmap_levels: 1,
-        }
+    fn inner(&self) -> &Arc<Image> {
+        &self.inner
     }
 
     #[inline]

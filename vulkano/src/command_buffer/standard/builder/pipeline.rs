@@ -2161,17 +2161,11 @@ fn record_descriptor_sets_access(
                         let image_inner = image.inner();
                         let (use_ref, stage_access_iter) = use_iter(index as u32);
 
-                        let mut subresource_range = image_view.subresource_range().clone();
-                        subresource_range.array_layers.start += image_inner.first_layer;
-                        subresource_range.array_layers.end += image_inner.first_layer;
-                        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-                        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
-
                         for stage_access in stage_access_iter {
                             resources_usage_state.record_image_access(
                                 &use_ref,
-                                image_inner.image,
-                                subresource_range.clone(),
+                                image_inner,
+                                image_view.subresource_range().clone(),
                                 stage_access,
                                 image_layout,
                             );
@@ -2191,17 +2185,11 @@ fn record_descriptor_sets_access(
                         let image_inner = image.inner();
                         let (use_ref, stage_access_iter) = use_iter(index as u32);
 
-                        let mut subresource_range = image_view.subresource_range().clone();
-                        subresource_range.array_layers.start += image_inner.first_layer;
-                        subresource_range.array_layers.end += image_inner.first_layer;
-                        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-                        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
-
                         for stage_access in stage_access_iter {
                             resources_usage_state.record_image_access(
                                 &use_ref,
-                                image_inner.image,
-                                subresource_range.clone(),
+                                image_inner,
+                                image_view.subresource_range().clone(),
                                 stage_access,
                                 image_layout,
                             );
@@ -2336,14 +2324,6 @@ fn record_subpass_attachments_access(
 
         let image = image_view.image();
         let image_inner = image.inner();
-        let mut subresource_range = ImageSubresourceRange {
-            aspects: ImageAspects::DEPTH,
-            ..image_view.subresource_range().clone()
-        };
-        subresource_range.array_layers.start += image_inner.first_layer;
-        subresource_range.array_layers.end += image_inner.first_layer;
-        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
 
         let use_ref = ResourceUseRef {
             command_index,
@@ -2355,8 +2335,11 @@ fn record_subpass_attachments_access(
         for &access in accesses {
             resources_usage_state.record_image_access(
                 &use_ref,
-                image_inner.image,
-                subresource_range.clone(),
+                image_inner,
+                ImageSubresourceRange {
+                    aspects: ImageAspects::DEPTH,
+                    ..image_view.subresource_range().clone()
+                },
                 access,
                 image_layout,
             );
@@ -2388,14 +2371,6 @@ fn record_subpass_attachments_access(
 
         let image = image_view.image();
         let image_inner = image.inner();
-        let mut subresource_range = ImageSubresourceRange {
-            aspects: ImageAspects::STENCIL,
-            ..image_view.subresource_range().clone()
-        };
-        subresource_range.array_layers.start += image_inner.first_layer;
-        subresource_range.array_layers.end += image_inner.first_layer;
-        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
 
         let use_ref = ResourceUseRef {
             command_index,
@@ -2407,8 +2382,11 @@ fn record_subpass_attachments_access(
         for &access in accesses {
             resources_usage_state.record_image_access(
                 &use_ref,
-                image_inner.image,
-                subresource_range.clone(),
+                image_inner,
+                ImageSubresourceRange {
+                    aspects: ImageAspects::STENCIL,
+                    ..image_view.subresource_range().clone()
+                },
                 access,
                 image_layout,
             );
@@ -2426,11 +2404,6 @@ fn record_subpass_attachments_access(
 
         let image = image_view.image();
         let image_inner = image.inner();
-        let mut subresource_range = image_view.subresource_range().clone();
-        subresource_range.array_layers.start += image_inner.first_layer;
-        subresource_range.array_layers.end += image_inner.first_layer;
-        subresource_range.mip_levels.start += image_inner.first_mipmap_level;
-        subresource_range.mip_levels.end += image_inner.first_mipmap_level;
 
         let use_ref = ResourceUseRef {
             command_index,
@@ -2444,8 +2417,8 @@ fn record_subpass_attachments_access(
         // TODO: is it possible to only read a color attachment but not write it?
         resources_usage_state.record_image_access(
             &use_ref,
-            image_inner.image,
-            subresource_range,
+            image_inner,
+            image_view.subresource_range().clone(),
             PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite,
             image_layout,
         );
