@@ -20,7 +20,7 @@ use crate::{
     },
     DeviceSize, NonZeroDeviceSize,
 };
-use bytemuck::{AnyBitPattern, PodCastError};
+use bytemuck::AnyBitPattern;
 use std::{
     alloc::Layout,
     cmp,
@@ -406,38 +406,6 @@ impl<T> Subbuffer<T> {
     }
 }
 
-impl<T> Subbuffer<T>
-where
-    T: BufferContents,
-{
-    /// Tries to cast a subbuffer of raw bytes to a `Subbuffer<T>`.
-    pub fn try_from_bytes(subbuffer: Subbuffer<[u8]>) -> Result<Self, PodCastError> {
-        if subbuffer.size() != size_of::<T>() as DeviceSize {
-            Err(PodCastError::SizeMismatch)
-        } else if !is_aligned(subbuffer.memory_offset(), DeviceAlignment::of::<T>()) {
-            Err(PodCastError::TargetAlignmentGreaterAndInputNotAligned)
-        } else {
-            Ok(unsafe { subbuffer.reinterpret_unchecked() })
-        }
-    }
-
-    /// Tries to cast the subbuffer to a different type.
-    pub fn try_cast<U>(self) -> Result<Subbuffer<U>, PodCastError>
-    where
-        U: BufferContents,
-    {
-        if size_of::<U>() != size_of::<T>() {
-            Err(PodCastError::SizeMismatch)
-        } else if align_of::<U>() > align_of::<T>()
-            && !is_aligned(self.memory_offset(), DeviceAlignment::of::<U>())
-        {
-            Err(PodCastError::TargetAlignmentGreaterAndInputNotAligned)
-        } else {
-            Ok(unsafe { self.reinterpret_unchecked() })
-        }
-    }
-}
-
 impl<T> Subbuffer<[T]> {
     /// Returns the number of elements in the slice.
     pub fn len(&self) -> DeviceSize {
@@ -565,27 +533,6 @@ impl Subbuffer<[u8]> {
         self.size -= self.size % layout.size();
 
         self
-    }
-}
-
-impl<T> Subbuffer<[T]>
-where
-    T: BufferContents,
-{
-    /// Tries to cast the slice to a different element type.
-    pub fn try_cast_slice<U>(self) -> Result<Subbuffer<[U]>, PodCastError>
-    where
-        U: BufferContents,
-    {
-        if size_of::<U>() != size_of::<T>() && self.size() % size_of::<U>() as DeviceSize != 0 {
-            Err(PodCastError::OutputSliceWouldHaveSlop)
-        } else if align_of::<U>() > align_of::<T>()
-            && !is_aligned(self.memory_offset(), DeviceAlignment::of::<U>())
-        {
-            Err(PodCastError::TargetAlignmentGreaterAndInputNotAligned)
-        } else {
-            Ok(unsafe { self.reinterpret_unchecked() })
-        }
     }
 }
 
