@@ -176,6 +176,40 @@ impl<T> Subbuffer<T>
 where
     T: BufferContents + ?Sized,
 {
+    /// Changes the `T` generic parameter of the subbffer to the desired type.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the memory offset of `self` is not aligned to the alignment of `U`.
+    /// - Panics if the size of `self` is smaller than the head size of `U`.
+    /// - Panics if `self` would have slop when reinterpreted as `U`.
+    pub fn reinterpret<U>(self) -> Subbuffer<U>
+    where
+        U: BufferContents + ?Sized,
+    {
+        let element_size = U::LAYOUT.element_size().unwrap_or(1);
+        assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
+        assert!(self.size >= U::LAYOUT.head_size());
+        assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
+
+        unsafe { self.reinterpret_unchecked_inner() }
+    }
+
+    /// Same as [`reinterpret`], except it works with a reference to the subbuffer.
+    ///
+    /// [`reinterpret`]: Self::reinterpret
+    pub fn reinterpret_ref<U>(&self) -> &Subbuffer<U>
+    where
+        U: BufferContents + ?Sized,
+    {
+        let element_size = U::LAYOUT.element_size().unwrap_or(1);
+        assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
+        assert!(self.size >= U::LAYOUT.head_size());
+        assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
+
+        unsafe { self.reinterpret_unchecked_ref_inner() }
+    }
+
     /// Changes the `T` generic parameter of the subbffer to the desired type without checking if
     /// the contents are correctly aligned and sized.
     ///
