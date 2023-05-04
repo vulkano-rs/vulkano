@@ -176,23 +176,49 @@ impl<T> Subbuffer<T>
 where
     T: BufferContents + ?Sized,
 {
-    /// Changes the `T` generic parameter of the subbffer to the desired type.
+    /// Changes the `T` generic parameter of the subbuffer to the desired type.
     ///
     /// # Panics
     ///
-    /// - Panics if the memory offset of `self` is not aligned to the alignment of `U`.
-    /// - Panics if the size of `self` is smaller than the head size of `U`.
-    /// - Panics if `self` would have slop when reinterpreted as `U`.
+    /// - Panics if the memory offset of the subbuffer is not aligned to the alignment of `U`.
+    /// - If `U` is sized, then panics if the subbuffer size doesn't match the size of `U` exactly.
+    /// - If `U` is unsized, then panics if:
+    ///   - the subbuffer size isn't greater than the size of the head (sized part) of `U`, or
+    ///   - the subbuffer would have slop when reinterpreted as `U`, meaning that the subbuffer
+    ///     size minus the the size of the head of `U` isn't divisible by the element size of `U`.
     pub fn reinterpret<U>(self) -> Subbuffer<U>
     where
         U: BufferContents + ?Sized,
     {
-        let element_size = U::LAYOUT.element_size().unwrap_or(1);
-        assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
-        assert!(self.size >= U::LAYOUT.head_size());
-        assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
+        self.validate_reinterpret(U::LAYOUT);
 
         unsafe { self.reinterpret_unchecked_inner() }
+    }
+
+    /// Changes the `T` generic parameter of the subbuffer to the desired type without checking if
+    /// the contents are correctly aligned and sized.
+    ///
+    /// **NEVER use this function** unless you absolutely have to, and even then, open an issue on
+    /// GitHub instead. **An unaligned / incorrectly sized subbuffer is undefined behavior _both on
+    /// the Rust and the Vulkan side!_**
+    ///
+    /// # Safety
+    ///
+    /// - The memory offset of the subbuffer must be aligned to the alignment of `U`.
+    /// - If `U` is sized, then the subbuffer size must match the size of `U` exactly.
+    /// - If `U` is unsized, then
+    ///   - the subbuffer size must be greater than the size of the head (sized part) of `U`, and
+    ///   - the subbuffer must not have slop when reinterpreted as `U`, meaning that the subbuffer
+    ///     size minus the the size of the head of `U` is divisible by the element size of `U`.
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reinterpret_unchecked<U>(self) -> Subbuffer<U>
+    where
+        U: BufferContents + ?Sized,
+    {
+        #[cfg(debug_assertions)]
+        self.validate_reinterpret(U::LAYOUT);
+
+        self.reinterpret_unchecked_inner()
     }
 
     /// Same as [`reinterpret`], except it works with a reference to the subbuffer.
@@ -202,39 +228,9 @@ where
     where
         U: BufferContents + ?Sized,
     {
-        let element_size = U::LAYOUT.element_size().unwrap_or(1);
-        assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
-        assert!(self.size >= U::LAYOUT.head_size());
-        assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
+        self.validate_reinterpret(U::LAYOUT);
 
         unsafe { self.reinterpret_unchecked_ref_inner() }
-    }
-
-    /// Changes the `T` generic parameter of the subbffer to the desired type without checking if
-    /// the contents are correctly aligned and sized.
-    ///
-    /// **NEVER use this function** unless you absolutely have to, and even then, open an issue on
-    /// GitHub instead. **An unaligned / incorrectly sized subbuffer is undefined behavior _both on
-    /// the Rust and the Vulkan side!_**
-    ///
-    /// # Safety
-    ///
-    /// - `self.memory_offset()` must be properly aligned for `U`.
-    /// - `self.size()` must be valid for `U`, which means:
-    ///   - If `U` is sized, the size must match exactly.
-    ///   - If `U` is unsized, then the subbuffer size minus the size of the head (sized part) of
-    ///     the DST must be evenly divisible by the size of the element type.
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn reinterpret_unchecked<U>(self) -> Subbuffer<U>
-    where
-        U: BufferContents + ?Sized,
-    {
-        let element_size = U::LAYOUT.element_size().unwrap_or(1);
-        debug_assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
-        debug_assert!(self.size >= U::LAYOUT.head_size());
-        debug_assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
-
-        self.reinterpret_unchecked_inner()
     }
 
     /// Same as [`reinterpret_unchecked`], except it works with a reference to the subbuffer.
@@ -249,12 +245,21 @@ where
     where
         U: BufferContents + ?Sized,
     {
-        let element_size = U::LAYOUT.element_size().unwrap_or(1);
-        debug_assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
-        debug_assert!(self.size >= U::LAYOUT.head_size());
-        debug_assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
+        #[cfg(debug_assertions)]
+        self.validate_reinterpret(U::LAYOUT);
 
         self.reinterpret_unchecked_ref_inner()
+    }
+
+    fn validate_reinterpret(&self, new_layout: BufferContentsLayout) {
+        assert!(is_aligned(self.memory_offset(), new_layout.alignment()));
+
+        if new_layout.is_sized() {
+            assert!(self.size == new_layout.unwrap_sized().size());
+        } else {
+            assert!(self.size > new_layout.head_size());
+            assert!((self.size - new_layout.head_size()) % new_layout.element_size().unwrap() == 0);
+        }
     }
 
     /// Locks the subbuffer in order to read its content from the host.
@@ -1102,6 +1107,13 @@ impl BufferContentsLayout {
                 }
             }
         }
+    }
+
+    fn is_sized(&self) -> bool {
+        matches!(
+            self,
+            BufferContentsLayout(BufferContentsLayoutInner::Sized(..)),
+        )
     }
 
     pub(super) const fn unwrap_sized(self) -> DeviceLayout {
