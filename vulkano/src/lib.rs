@@ -259,7 +259,6 @@ impl Display for VulkanError {
 }
 
 impl Error for VulkanError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::ValidationError(err) => Some(err),
@@ -269,7 +268,6 @@ impl Error for VulkanError {
 }
 
 impl From<ValidationError> for VulkanError {
-    #[inline]
     fn from(err: ValidationError) -> Self {
         Self::ValidationError(err)
     }
@@ -282,7 +280,6 @@ impl From<ValidationErrorInfo> for VulkanError {
 }
 
 impl From<RuntimeError> for VulkanError {
-    #[inline]
     fn from(err: RuntimeError) -> Self {
         Self::RuntimeError(err)
     }
