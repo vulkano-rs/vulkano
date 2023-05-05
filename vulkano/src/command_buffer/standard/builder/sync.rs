@@ -1032,7 +1032,7 @@ where
                 // The image is not known until you execute it in a primary command buffer.
                 if let Some(framebuffer) = &begin_render_pass_state.framebuffer {
                     let attachment_index = (framebuffer.attachments().iter())
-                        .position(|attachment| attachment.image().inner().image == &barrier.image)
+                        .position(|attachment| attachment.image().inner() == &barrier.image)
                         .ok_or(SynchronizationError::ImageMemoryBarrierNotInputAttachment {
                             barrier_index,
                         })? as u32;

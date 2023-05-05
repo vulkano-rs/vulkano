@@ -134,7 +134,6 @@ use std::{
     hash::{Hash, Hasher},
     mem::size_of_val,
     ops::Range,
-    ptr,
     sync::Arc,
 };
 
@@ -280,7 +279,7 @@ impl Buffer {
     {
         let buffer = Buffer::new_sized(allocator, buffer_info, allocation_info)?;
 
-        unsafe { ptr::write(&mut *buffer.write()?, data) };
+        *buffer.write()? = data;
 
         Ok(buffer)
     }
@@ -317,7 +316,7 @@ impl Buffer {
         )?;
 
         for (o, i) in buffer.write()?.iter_mut().zip(iter) {
-            unsafe { ptr::write(o, i) };
+            *o = i;
         }
 
         Ok(buffer)

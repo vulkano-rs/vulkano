@@ -10,8 +10,8 @@
 use super::{
     sys::{Image, RawImage},
     traits::ImageContent,
-    ImageAccess, ImageCreateFlags, ImageDescriptorLayouts, ImageDimensions, ImageError, ImageInner,
-    ImageLayout, ImageSubresourceLayers, ImageUsage, MipmapsCount,
+    ImageAccess, ImageCreateFlags, ImageDimensions, ImageError, ImageLayout,
+    ImageSubresourceLayers, ImageUsage, MipmapsCount,
 };
 use crate::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferError, BufferUsage, Subbuffer},
@@ -313,14 +313,8 @@ unsafe impl DeviceOwned for ImmutableImage {
 
 unsafe impl ImageAccess for ImmutableImage {
     #[inline]
-    fn inner(&self) -> ImageInner<'_> {
-        ImageInner {
-            image: &self.inner,
-            first_layer: 0,
-            num_layers: self.inner.dimensions().array_layers(),
-            first_mipmap_level: 0,
-            num_mipmap_levels: self.inner.mip_levels(),
-        }
+    fn inner(&self) -> &Arc<Image> {
+        &self.inner
     }
 
     #[inline]
@@ -336,16 +330,6 @@ unsafe impl ImageAccess for ImmutableImage {
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.layout
-    }
-
-    #[inline]
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        Some(ImageDescriptorLayouts {
-            storage_image: ImageLayout::General,
-            combined_image_sampler: self.layout,
-            sampled_image: self.layout,
-            input_attachment: self.layout,
-        })
     }
 }
 
@@ -384,7 +368,7 @@ unsafe impl DeviceOwned for ImmutableImageInitialization {
 
 unsafe impl ImageAccess for ImmutableImageInitialization {
     #[inline]
-    fn inner(&self) -> ImageInner<'_> {
+    fn inner(&self) -> &Arc<Image> {
         self.image.inner()
     }
 
@@ -396,11 +380,6 @@ unsafe impl ImageAccess for ImmutableImageInitialization {
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.layout
-    }
-
-    #[inline]
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        None
     }
 }
 

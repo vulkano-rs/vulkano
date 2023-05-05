@@ -99,7 +99,7 @@ where
             _ne: _,
         } = create_info;
 
-        let image_inner = image.inner().image;
+        let image_inner = image.inner();
         let device = image_inner.device();
         let format = format.unwrap();
 
@@ -526,8 +526,7 @@ where
         image: Arc<I>,
         create_info: ImageViewCreateInfo,
     ) -> Result<Arc<Self>, RuntimeError> {
-        let format_features =
-            Self::get_format_features(create_info.format.unwrap(), image.inner().image);
+        let format_features = Self::get_format_features(create_info.format.unwrap(), image.inner());
         Self::new_unchecked_with_format_features(image, create_info, format_features)
     }
 
@@ -546,7 +545,7 @@ where
             _ne: _,
         } = &create_info;
 
-        let image_inner = image.inner().image;
+        let image_inner = image.inner();
         let device = image_inner.device();
 
         let default_usage = Self::get_default_usage(subresource_range.aspects, image_inner);
@@ -626,8 +625,7 @@ where
         handle: ash::vk::ImageView,
         create_info: ImageViewCreateInfo,
     ) -> Result<Arc<Self>, RuntimeError> {
-        let format_features =
-            Self::get_format_features(create_info.format.unwrap(), image.inner().image);
+        let format_features = Self::get_format_features(create_info.format.unwrap(), image.inner());
         Self::from_handle_with_format_features(image, handle, create_info, format_features)
     }
 
@@ -647,7 +645,7 @@ where
             _ne: _,
         } = create_info;
 
-        let image_inner = image.inner().image;
+        let image_inner = image.inner();
         let device = image_inner.device();
 
         if usage.is_empty() {
@@ -794,7 +792,7 @@ where
     I: ImageAccess + ?Sized,
 {
     fn device(&self) -> &Arc<Device> {
-        self.image.inner().image.device()
+        self.image.inner().device()
     }
 }
 

@@ -10,8 +10,7 @@
 use super::{
     sys::{Image, ImageMemory, RawImage},
     traits::ImageContent,
-    ImageAccess, ImageAspects, ImageDescriptorLayouts, ImageError, ImageInner, ImageLayout,
-    ImageUsage, SampleCount,
+    ImageAccess, ImageAspects, ImageError, ImageLayout, ImageUsage, SampleCount,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -589,14 +588,8 @@ impl AttachmentImage {
 
 unsafe impl ImageAccess for AttachmentImage {
     #[inline]
-    fn inner(&self) -> ImageInner<'_> {
-        ImageInner {
-            image: &self.inner,
-            first_layer: 0,
-            num_layers: self.inner.dimensions().array_layers(),
-            first_mipmap_level: 0,
-            num_mipmap_levels: 1,
-        }
+    fn inner(&self) -> &Arc<Image> {
+        &self.inner
     }
 
     #[inline]
@@ -607,16 +600,6 @@ unsafe impl ImageAccess for AttachmentImage {
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.attachment_layout
-    }
-
-    #[inline]
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        Some(ImageDescriptorLayouts {
-            storage_image: ImageLayout::General,
-            combined_image_sampler: ImageLayout::ShaderReadOnlyOptimal,
-            sampled_image: ImageLayout::ShaderReadOnlyOptimal,
-            input_attachment: ImageLayout::ShaderReadOnlyOptimal,
-        })
     }
 
     #[inline]

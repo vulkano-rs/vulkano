@@ -8,8 +8,8 @@
 // according to those terms.
 
 use super::{
-    sys::Image, ImageAspects, ImageDescriptorLayouts, ImageDimensions, ImageLayout,
-    ImageSubresourceLayers, ImageSubresourceRange, ImageUsage, SampleCount,
+    sys::Image, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers,
+    ImageSubresourceRange, ImageUsage, SampleCount,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -25,82 +25,48 @@ use std::{
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// Returns the inner unsafe image object used by this image.
-    fn inner(&self) -> ImageInner<'_>;
+    fn inner(&self) -> &Arc<Image>;
 
     /// Returns the dimensions of the image.
     #[inline]
     fn dimensions(&self) -> ImageDimensions {
-        let inner = self.inner();
-
-        match self
-            .inner()
-            .image
-            .dimensions()
-            .mip_level_dimensions(inner.first_mipmap_level)
-            .unwrap()
-        {
-            ImageDimensions::Dim1d {
-                width,
-                array_layers: _,
-            } => ImageDimensions::Dim1d {
-                width,
-                array_layers: inner.num_layers,
-            },
-            ImageDimensions::Dim2d {
-                width,
-                height,
-                array_layers: _,
-            } => ImageDimensions::Dim2d {
-                width,
-                height,
-                array_layers: inner.num_layers,
-            },
-            ImageDimensions::Dim3d {
-                width,
-                height,
-                depth,
-            } => ImageDimensions::Dim3d {
-                width,
-                height,
-                depth,
-            },
-        }
+        self.inner().dimensions()
     }
 
     /// Returns the format of this image.
     #[inline]
     fn format(&self) -> Format {
-        self.inner().image.format().unwrap()
+        self.inner().format().unwrap()
     }
 
     /// Returns the features supported by the image's format.
     #[inline]
     fn format_features(&self) -> FormatFeatures {
-        self.inner().image.format_features()
+        self.inner().format_features()
     }
 
     /// Returns the number of mipmap levels of this image.
     #[inline]
     fn mip_levels(&self) -> u32 {
-        self.inner().num_mipmap_levels
+        self.inner().mip_levels()
     }
 
     /// Returns the number of samples of this image.
     #[inline]
     fn samples(&self) -> SampleCount {
-        self.inner().image.samples()
+        self.inner().samples()
     }
 
     /// Returns the usage the image was created with.
     #[inline]
     fn usage(&self) -> ImageUsage {
-        self.inner().image.usage()
+        self.inner().usage()
     }
 
     /// Returns the stencil usage the image was created with.
     #[inline]
     fn stencil_usage(&self) -> ImageUsage {
-        self.inner().image.stencil_usage()
+        self.inner().stencil_usage()
     }
 
     /// Returns an `ImageSubresourceLayers` covering the first mip level of the image. All aspects
@@ -145,7 +111,7 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
 
     #[inline]
     fn initial_layout(&self) -> ImageLayout {
-        self.inner().image.initial_layout()
+        self.inner().initial_layout()
     }
 
     /// Returns the layout that the image has when it is first used in a primary command buffer.
@@ -183,31 +149,6 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
             preinitialized,
         })
     }
-
-    /// Returns an [`ImageDescriptorLayouts`] structure specifying the image layout to use
-    /// in descriptors of various kinds.
-    ///
-    /// This must return `Some` if the image is to be used to create an image view.
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts>;
-}
-
-/// Inner information about an image.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ImageInner<'a> {
-    /// The underlying image object.
-    pub image: &'a Arc<Image>,
-
-    /// The first layer of `image` to consider.
-    pub first_layer: u32,
-
-    /// The number of layers of `image` to consider.
-    pub num_layers: u32,
-
-    /// The first mipmap level of `image` to consider.
-    pub first_mipmap_level: u32,
-
-    /// The number of mipmap levels of `image` to consider.
-    pub num_mipmap_levels: u32,
 }
 
 impl Debug for dyn ImageAccess {
@@ -254,7 +195,7 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
 where
     I: ImageAccess,
 {
-    fn inner(&self) -> ImageInner<'_> {
+    fn inner(&self) -> &Arc<Image> {
         self.image.inner()
     }
 
@@ -268,10 +209,6 @@ where
 
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.final_layout_requirement()
-    }
-
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        self.image.descriptor_layouts()
     }
 }
 
@@ -305,7 +242,7 @@ where
     T: SafeDeref + Send + Sync,
     T::Target: ImageAccess,
 {
-    fn inner(&self) -> ImageInner<'_> {
+    fn inner(&self) -> &Arc<Image> {
         (**self).inner()
     }
 
@@ -315,10 +252,6 @@ where
 
     fn final_layout_requirement(&self) -> ImageLayout {
         (**self).final_layout_requirement()
-    }
-
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        (**self).descriptor_layouts()
     }
 
     unsafe fn layout_initialized(&self) {
