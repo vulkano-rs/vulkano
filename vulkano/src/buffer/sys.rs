@@ -23,7 +23,7 @@ use crate::{
         MemoryPropertyFlags, MemoryRequirements,
     },
     sync::Sharing,
-    DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
+    DeviceSize, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -200,7 +200,7 @@ impl RawBuffer {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: BufferCreateInfo,
-    ) -> Result<Self, VulkanError> {
+    ) -> Result<Self, RuntimeError> {
         let &BufferCreateInfo {
             flags,
             ref sharing,
@@ -252,7 +252,7 @@ impl RawBuffer {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -521,7 +521,7 @@ impl RawBuffer {
     pub unsafe fn bind_memory_unchecked(
         self,
         allocation: MemoryAlloc,
-    ) -> Result<Buffer, (VulkanError, RawBuffer, MemoryAlloc)> {
+    ) -> Result<Buffer, (RuntimeError, RawBuffer, MemoryAlloc)> {
         let memory = allocation.device_memory();
         let memory_offset = allocation.offset();
 
@@ -561,7 +561,7 @@ impl RawBuffer {
         .result();
 
         if let Err(err) = result {
-            return Err((VulkanError::from(err), self, allocation));
+            return Err((RuntimeError::from(err), self, allocation));
         }
 
         Ok(Buffer::from_raw(self, BufferMemory::Normal(allocation)))

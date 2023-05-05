@@ -42,13 +42,13 @@ fn errors_output(members: &[ErrorsMember]) -> TokenStream {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         #[repr(i32)]
         #[non_exhaustive]
-        pub enum VulkanError {
+        pub enum RuntimeError {
             #(#enum_items)*
             Unnamed(ash::vk::Result),
         }
 
-        impl From<ash::vk::Result> for VulkanError {
-            fn from(val: ash::vk::Result) -> VulkanError {
+        impl From<ash::vk::Result> for RuntimeError {
+            fn from(val: ash::vk::Result) -> RuntimeError {
                 match val {
                     #(#try_from_items)*
                     x => Self::Unnamed(x),

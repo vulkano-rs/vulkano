@@ -21,7 +21,7 @@
 pub use crate::fns::EntryFunctions;
 use crate::{
     instance::{InstanceExtensions, LayerProperties},
-    ExtensionProperties, OomError, SafeDeref, Version, VulkanError,
+    ExtensionProperties, OomError, RuntimeError, SafeDeref, Version,
 };
 use libloading::{Error as LibloadingError, Library};
 use std::{
@@ -108,7 +108,7 @@ impl VulkanLibrary {
         }))
     }
 
-    unsafe fn get_api_version(loader: &impl Loader) -> Result<Version, VulkanError> {
+    unsafe fn get_api_version(loader: &impl Loader) -> Result<Version, RuntimeError> {
         // Per the Vulkan spec:
         // If the vkGetInstanceProcAddr returns NULL for vkEnumerateInstanceVersion, it is a
         // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
@@ -120,7 +120,9 @@ impl VulkanLibrary {
         let version = if let Some(func) = func {
             let func: ash::vk::PFN_vkEnumerateInstanceVersion = transmute(func);
             let mut api_version = 0;
-            func(&mut api_version).result().map_err(VulkanError::from)?;
+            func(&mut api_version)
+                .result()
+                .map_err(RuntimeError::from)?;
             Version::from(api_version)
         } else {
             Version {
@@ -136,7 +138,7 @@ impl VulkanLibrary {
     unsafe fn get_extension_properties(
         fns: &EntryFunctions,
         layer: Option<&str>,
-    ) -> Result<Vec<ExtensionProperties>, VulkanError> {
+    ) -> Result<Vec<ExtensionProperties>, RuntimeError> {
         let layer_vk = layer.map(|layer| CString::new(layer).unwrap());
 
         loop {
@@ -149,7 +151,7 @@ impl VulkanLibrary {
                 ptr::null_mut(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
             let mut output = Vec::with_capacity(count as usize);
             let result = (fns.v1_0.enumerate_instance_extension_properties)(
@@ -166,7 +168,7 @@ impl VulkanLibrary {
                     return Ok(output.into_iter().map(Into::into).collect());
                 }
                 ash::vk::Result::INCOMPLETE => (),
-                err => return Err(VulkanError::from(err)),
+                err => return Err(RuntimeError::from(err)),
             }
         }
     }
@@ -228,7 +230,7 @@ impl VulkanLibrary {
                 let mut count = 0;
                 (fns.v1_0.enumerate_instance_layer_properties)(&mut count, ptr::null_mut())
                     .result()
-                    .map_err(VulkanError::from)?;
+                    .map_err(RuntimeError::from)?;
 
                 let mut properties = Vec::with_capacity(count as usize);
                 let result = (fns.v1_0.enumerate_instance_layer_properties)(
@@ -242,7 +244,7 @@ impl VulkanLibrary {
                         break properties;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err).into()),
+                    err => return Err(RuntimeError::from(err).into()),
                 }
             }
         };
@@ -257,7 +259,7 @@ impl VulkanLibrary {
     pub fn layer_extension_properties(
         &self,
         layer: &str,
-    ) -> Result<Vec<ExtensionProperties>, VulkanError> {
+    ) -> Result<Vec<ExtensionProperties>, RuntimeError> {
         unsafe { Self::get_extension_properties(&self.fns, Some(layer)) }
     }
 
@@ -266,7 +268,7 @@ impl VulkanLibrary {
     pub fn supported_layer_extensions(
         &self,
         layer: &str,
-    ) -> Result<InstanceExtensions, VulkanError> {
+    ) -> Result<InstanceExtensions, RuntimeError> {
         Ok(self
             .layer_extension_properties(layer)?
             .iter()
@@ -280,7 +282,7 @@ impl VulkanLibrary {
     pub fn supported_extensions_with_layers<'a>(
         &self,
         layers: impl IntoIterator<Item = &'a str>,
-    ) -> Result<InstanceExtensions, VulkanError> {
+    ) -> Result<InstanceExtensions, RuntimeError> {
         layers
             .into_iter()
             .try_fold(self.supported_extensions, |extensions, layer| {
@@ -438,11 +440,11 @@ impl Display for LoadingError {
     }
 }
 
-impl From<VulkanError> for LoadingError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for LoadingError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }

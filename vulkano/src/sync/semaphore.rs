@@ -13,7 +13,7 @@
 use crate::{
     device::{Device, DeviceOwned, Queue},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
-    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 #[cfg(unix)]
@@ -112,7 +112,7 @@ impl Semaphore {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: SemaphoreCreateInfo,
-    ) -> Result<Semaphore, VulkanError> {
+    ) -> Result<Semaphore, RuntimeError> {
         let SemaphoreCreateInfo {
             export_handle_types,
             _ne: _,
@@ -146,7 +146,7 @@ impl Semaphore {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -310,7 +310,7 @@ impl Semaphore {
     pub unsafe fn export_fd_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<File, VulkanError> {
+    ) -> Result<File, RuntimeError> {
         let mut state = self.state.lock();
         self.export_fd_unchecked_locked(handle_type, &mut state)
     }
@@ -320,7 +320,7 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
         state: &mut SemaphoreState,
-    ) -> Result<File, VulkanError> {
+    ) -> Result<File, RuntimeError> {
         use std::os::unix::io::FromRawFd;
 
         let info = ash::vk::SemaphoreGetFdInfoKHR {
@@ -337,7 +337,7 @@ impl Semaphore {
             output.as_mut_ptr(),
         )
         .result()
-        .map_err(VulkanError::from)?;
+        .map_err(RuntimeError::from)?;
 
         state.export(handle_type);
 
@@ -455,7 +455,7 @@ impl Semaphore {
     pub unsafe fn export_win32_handle_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<*mut std::ffi::c_void, VulkanError> {
+    ) -> Result<*mut std::ffi::c_void, RuntimeError> {
         let mut state = self.state.lock();
         self.export_win32_handle_unchecked_locked(handle_type, &mut state)
     }
@@ -465,7 +465,7 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
         state: &mut SemaphoreState,
-    ) -> Result<*mut std::ffi::c_void, VulkanError> {
+    ) -> Result<*mut std::ffi::c_void, RuntimeError> {
         let info_vk = ash::vk::SemaphoreGetWin32HandleInfoKHR {
             semaphore: self.handle,
             handle_type: handle_type.into(),
@@ -479,7 +479,7 @@ impl Semaphore {
             self.device.handle(), &info_vk, output.as_mut_ptr()
         )
         .result()
-        .map_err(VulkanError::from)?;
+        .map_err(RuntimeError::from)?;
 
         state.export(handle_type);
 
@@ -576,7 +576,7 @@ impl Semaphore {
     pub unsafe fn export_zircon_handle_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<ash::vk::zx_handle_t, VulkanError> {
+    ) -> Result<ash::vk::zx_handle_t, RuntimeError> {
         let mut state = self.state.lock();
         self.export_zircon_handle_unchecked_locked(handle_type, &mut state)
     }
@@ -586,7 +586,7 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
         state: &mut SemaphoreState,
-    ) -> Result<ash::vk::zx_handle_t, VulkanError> {
+    ) -> Result<ash::vk::zx_handle_t, RuntimeError> {
         let info = ash::vk::SemaphoreGetZirconHandleInfoFUCHSIA {
             semaphore: self.handle,
             handle_type: handle_type.into(),
@@ -600,7 +600,7 @@ impl Semaphore {
             self.device.handle(), &info, output.as_mut_ptr()
         )
         .result()
-        .map_err(VulkanError::from)?;
+        .map_err(RuntimeError::from)?;
 
         state.export(handle_type);
 
@@ -691,7 +691,7 @@ impl Semaphore {
     pub unsafe fn import_fd_unchecked(
         &self,
         import_semaphore_fd_info: ImportSemaphoreFdInfo,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         let mut state = self.state.lock();
         self.import_fd_unchecked_locked(import_semaphore_fd_info, &mut state)
     }
@@ -701,7 +701,7 @@ impl Semaphore {
         &self,
         import_semaphore_fd_info: ImportSemaphoreFdInfo,
         state: &mut SemaphoreState,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         use std::os::unix::io::IntoRawFd;
 
         let ImportSemaphoreFdInfo {
@@ -722,7 +722,7 @@ impl Semaphore {
         let fns = self.device.fns();
         (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
         state.import(
             handle_type,
@@ -821,7 +821,7 @@ impl Semaphore {
     pub unsafe fn import_win32_handle_unchecked(
         &self,
         import_semaphore_win32_handle_info: ImportSemaphoreWin32HandleInfo,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         let mut state = self.state.lock();
         self.import_win32_handle_unchecked_locked(import_semaphore_win32_handle_info, &mut state)
     }
@@ -831,7 +831,7 @@ impl Semaphore {
         &self,
         import_semaphore_win32_handle_info: ImportSemaphoreWin32HandleInfo,
         state: &mut SemaphoreState,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         let ImportSemaphoreWin32HandleInfo {
             flags,
             handle_type,
@@ -852,7 +852,7 @@ impl Semaphore {
         (fns.khr_external_semaphore_win32
             .import_semaphore_win32_handle_khr)(self.device.handle(), &info_vk)
         .result()
-        .map_err(VulkanError::from)?;
+        .map_err(RuntimeError::from)?;
 
         state.import(
             handle_type,
@@ -943,7 +943,7 @@ impl Semaphore {
     pub unsafe fn import_zircon_handle_unchecked(
         &self,
         import_semaphore_zircon_handle_info: ImportSemaphoreZirconHandleInfo,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         let mut state = self.state.lock();
         self.import_zircon_handle_unchecked_locked(import_semaphore_zircon_handle_info, &mut state)
     }
@@ -953,7 +953,7 @@ impl Semaphore {
         &self,
         import_semaphore_zircon_handle_info: ImportSemaphoreZirconHandleInfo,
         state: &mut SemaphoreState,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         let ImportSemaphoreZirconHandleInfo {
             flags,
             handle_type,
@@ -973,7 +973,7 @@ impl Semaphore {
         (fns.fuchsia_external_semaphore
             .import_semaphore_zircon_handle_fuchsia)(self.device.handle(), &info_vk)
         .result()
-        .map_err(VulkanError::from)?;
+        .map_err(RuntimeError::from)?;
 
         state.import(
             handle_type,
@@ -1543,10 +1543,10 @@ impl Display for SemaphoreError {
     }
 }
 
-impl From<VulkanError> for SemaphoreError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for SemaphoreError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+            e @ RuntimeError::OutOfHostMemory | e @ RuntimeError::OutOfDeviceMemory => {
                 Self::OomError(e.into())
             }
             _ => panic!("unexpected error: {:?}", err),

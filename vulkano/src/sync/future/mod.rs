@@ -110,7 +110,7 @@ use crate::{
     image::{sys::Image, ImageLayout},
     memory::BindSparseInfo,
     swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
-    DeviceSize, OomError, VulkanError,
+    DeviceSize, OomError, RuntimeError,
 };
 use smallvec::SmallVec;
 use std::{
@@ -666,16 +666,16 @@ impl From<AccessError> for FlushError {
     }
 }
 
-impl From<VulkanError> for FlushError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for FlushError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
+            RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory => {
                 Self::OomError(err.into())
             }
-            VulkanError::DeviceLost => Self::DeviceLost,
-            VulkanError::SurfaceLost => Self::SurfaceLost,
-            VulkanError::OutOfDate => Self::OutOfDate,
-            VulkanError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
+            RuntimeError::DeviceLost => Self::DeviceLost,
+            RuntimeError::SurfaceLost => Self::SurfaceLost,
+            RuntimeError::OutOfDate => Self::OutOfDate,
+            RuntimeError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

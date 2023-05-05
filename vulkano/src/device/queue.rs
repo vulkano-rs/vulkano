@@ -26,7 +26,7 @@ use crate::{
         future::{AccessCheckError, FlushError, GpuFuture},
         semaphore::SemaphoreState,
     },
-    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use ahash::HashMap;
 use parking_lot::{Mutex, MutexGuard};
@@ -172,7 +172,7 @@ impl<'a> QueueGuard<'a> {
         &mut self,
         bind_infos: impl IntoIterator<Item = BindSparseInfo>,
         fence: Option<Arc<Fence>>,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
         let mut states = States::from_bind_infos(&bind_infos);
 
@@ -191,7 +191,7 @@ impl<'a> QueueGuard<'a> {
         bind_infos: &SmallVec<[BindSparseInfo; 4]>,
         fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
         states: &mut States<'_>,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         struct PerBindSparseInfo {
             wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
             buffer_bind_infos_vk: SmallVec<[ash::vk::SparseBufferMemoryBindInfo; 4]>,
@@ -448,7 +448,7 @@ impl<'a> QueueGuard<'a> {
                 .map_or_else(Default::default, |(fence, _)| fence.handle()),
         )
         .result()
-        .map_err(VulkanError::from)?;
+        .map_err(RuntimeError::from)?;
 
         for bind_info in bind_infos {
             let BindSparseInfo {
@@ -488,7 +488,7 @@ impl<'a> QueueGuard<'a> {
     pub unsafe fn present_unchecked(
         &mut self,
         present_info: PresentInfo,
-    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = Result<bool, RuntimeError>>, RuntimeError> {
         let mut states = States::from_present_info(&present_info);
         self.present_unchecked_locked(&present_info, &mut states)
     }
@@ -497,7 +497,7 @@ impl<'a> QueueGuard<'a> {
         &mut self,
         present_info: &PresentInfo,
         states: &mut States<'_>,
-    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = Result<bool, RuntimeError>>, RuntimeError> {
         let PresentInfo {
             ref wait_semaphores,
             ref swapchain_infos,
@@ -607,7 +607,7 @@ impl<'a> QueueGuard<'a> {
                 | ash::vk::Result::ERROR_SURFACE_LOST_KHR
                 | ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
         ) {
-            return Err(VulkanError::from(result));
+            return Err(RuntimeError::from(result));
         }
 
         for semaphore in wait_semaphores {
@@ -633,7 +633,7 @@ impl<'a> QueueGuard<'a> {
         Ok(results.into_iter().map(|result| match result {
             ash::vk::Result::SUCCESS => Ok(false),
             ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
-            err => Err(VulkanError::from(err)),
+            err => Err(RuntimeError::from(err)),
         }))
     }
 
@@ -767,7 +767,7 @@ impl<'a> QueueGuard<'a> {
         &mut self,
         submit_infos: impl IntoIterator<Item = SubmitInfo>,
         fence: Option<Arc<Fence>>,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         let submit_infos: SmallVec<[_; 4]> = submit_infos.into_iter().collect();
         let mut states = States::from_submit_infos(&submit_infos);
 
@@ -786,7 +786,7 @@ impl<'a> QueueGuard<'a> {
         submit_infos: &SmallVec<[SubmitInfo; 4]>,
         fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
         states: &mut States<'_>,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), RuntimeError> {
         if self.queue.device.enabled_features().synchronization2 {
             struct PerSubmitInfo {
                 wait_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
@@ -915,7 +915,7 @@ impl<'a> QueueGuard<'a> {
                 )
             }
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
         } else {
             struct PerSubmitInfo {
                 wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
@@ -1017,7 +1017,7 @@ impl<'a> QueueGuard<'a> {
                     .map_or_else(Default::default, |(fence, _)| fence.handle()),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
         }
 
         for submit_info in submit_infos {
@@ -1276,7 +1276,7 @@ impl QueueState {
             let fns = device.fns();
             (fns.v1_0.queue_wait_idle)(handle)
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
 
             // Since we now know that the queue is finished with all work,
             // we can safely release all resources.
@@ -1649,7 +1649,7 @@ vulkan_bitflags! {
 /// Error that can happen when submitting work to a queue.
 #[derive(Clone, Debug)]
 pub enum QueueError {
-    VulkanError(VulkanError),
+    RuntimeError(RuntimeError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -1660,7 +1660,7 @@ pub enum QueueError {
 impl Error for QueueError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            QueueError::VulkanError(err) => Some(err),
+            QueueError::RuntimeError(err) => Some(err),
             _ => None,
         }
     }
@@ -1669,7 +1669,7 @@ impl Error for QueueError {
 impl Display for QueueError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -1682,9 +1682,9 @@ impl Display for QueueError {
     }
 }
 
-impl From<VulkanError> for QueueError {
-    fn from(err: VulkanError) -> Self {
-        Self::VulkanError(err)
+impl From<RuntimeError> for QueueError {
+    fn from(err: RuntimeError) -> Self {
+        Self::RuntimeError(err)
     }
 }
 

@@ -13,7 +13,7 @@ use crate::{
     format::Format,
     image::{view::ImageViewType, ImageDimensions, ImageUsage, ImageViewAbstract, SampleCount},
     macros::impl_id_counter,
-    OomError, VulkanError, VulkanObject,
+    OomError, RuntimeError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -321,7 +321,7 @@ impl Framebuffer {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -700,8 +700,8 @@ impl Display for FramebufferCreationError {
     }
 }
 
-impl From<VulkanError> for FramebufferCreationError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for FramebufferCreationError {
+    fn from(err: RuntimeError) -> Self {
         Self::from(OomError::from(err))
     }
 }

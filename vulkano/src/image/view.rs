@@ -22,7 +22,7 @@ use crate::{
     image::{ImageAspects, ImageCreateFlags, ImageTiling, ImageType, SampleCount},
     macros::{impl_id_counter, vulkan_enum},
     sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
-    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use std::{
     error::Error,
@@ -525,7 +525,7 @@ where
     pub unsafe fn new_unchecked(
         image: Arc<I>,
         create_info: ImageViewCreateInfo,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let format_features = Self::get_format_features(create_info.format.unwrap(), image.inner());
         Self::new_unchecked_with_format_features(image, create_info, format_features)
     }
@@ -534,7 +534,7 @@ where
         image: Arc<I>,
         create_info: ImageViewCreateInfo,
         format_features: FormatFeatures,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let &ImageViewCreateInfo {
             view_type,
             format,
@@ -600,7 +600,7 @@ where
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -624,7 +624,7 @@ where
         image: Arc<I>,
         handle: ash::vk::ImageView,
         create_info: ImageViewCreateInfo,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let format_features = Self::get_format_features(create_info.format.unwrap(), image.inner());
         Self::from_handle_with_format_features(image, handle, create_info, format_features)
     }
@@ -634,7 +634,7 @@ where
         handle: ash::vk::ImageView,
         create_info: ImageViewCreateInfo,
         format_features: FormatFeatures,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let ImageViewCreateInfo {
             view_type,
             format,
@@ -1139,11 +1139,11 @@ impl From<OomError> for ImageViewCreationError {
     }
 }
 
-impl From<VulkanError> for ImageViewCreationError {
-    fn from(err: VulkanError) -> ImageViewCreationError {
+impl From<RuntimeError> for ImageViewCreationError {
+    fn from(err: RuntimeError) -> ImageViewCreationError {
         match err {
-            err @ VulkanError::OutOfHostMemory => OomError::from(err).into(),
-            err @ VulkanError::OutOfDeviceMemory => OomError::from(err).into(),
+            err @ RuntimeError::OutOfHostMemory => OomError::from(err).into(),
+            err @ RuntimeError::OutOfDeviceMemory => OomError::from(err).into(),
             _ => panic!("unexpected error: {:?}", err),
         }
     }

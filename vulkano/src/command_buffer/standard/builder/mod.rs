@@ -55,7 +55,7 @@ use crate::{
         BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier, PipelineStage,
         PipelineStageAccess, PipelineStageAccessSet, PipelineStages,
     },
-    DeviceSize, OomError, RequiresOneOf, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequiresOneOf, RuntimeError, VulkanObject,
 };
 use ahash::HashMap;
 use parking_lot::Mutex;
@@ -548,7 +548,7 @@ where
 
             (fns.v1_0.begin_command_buffer)(builder_alloc.inner().handle(), &begin_info_vk)
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
         }
 
         let mut builder_state: CommandBufferBuilderState = Default::default();
@@ -608,7 +608,7 @@ where
         let fns = self.device().fns();
         (fns.v1_0.end_command_buffer)(self.builder_alloc.inner().handle())
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
         Ok(PrimaryCommandBuffer {
             alloc: self.builder_alloc.into_alloc(),
@@ -638,7 +638,7 @@ where
         let fns = self.device().fns();
         (fns.v1_0.end_command_buffer)(self.builder_alloc.inner().handle())
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
 
         let submit_state = match self.usage {
             CommandBufferUsage::MultipleSubmit => SubmitState::ExclusiveUse {

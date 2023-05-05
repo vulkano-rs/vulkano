@@ -85,7 +85,7 @@ use self::debug::{
 pub use self::{extensions::InstanceExtensions, layers::LayerProperties};
 use crate::{
     device::physical::PhysicalDevice, instance::debug::trampoline, macros::impl_id_counter,
-    OomError, RequiresOneOf, VulkanError, VulkanLibrary, VulkanObject,
+    OomError, RequiresOneOf, RuntimeError, VulkanLibrary, VulkanObject,
 };
 pub use crate::{
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
@@ -517,7 +517,7 @@ impl Instance {
             let fns = library.fns();
             (fns.v1_0.create_instance)(&create_info_vk, ptr::null(), output.as_mut_ptr())
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -601,7 +601,7 @@ impl Instance {
     /// ```
     pub fn enumerate_physical_devices(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>>, RuntimeError> {
         let fns = self.fns();
 
         unsafe {
@@ -609,7 +609,7 @@ impl Instance {
                 let mut count = 0;
                 (fns.v1_0.enumerate_physical_devices)(self.handle, &mut count, ptr::null_mut())
                     .result()
-                    .map_err(VulkanError::from)?;
+                    .map_err(RuntimeError::from)?;
 
                 let mut handles = Vec::with_capacity(count as usize);
                 let result = (fns.v1_0.enumerate_physical_devices)(
@@ -624,7 +624,7 @@ impl Instance {
                         break handles;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err)),
+                    err => return Err(RuntimeError::from(err)),
                 }
             };
 
@@ -872,15 +872,15 @@ impl From<ExtensionRestrictionError> for InstanceCreationError {
     }
 }
 
-impl From<VulkanError> for InstanceCreationError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for InstanceCreationError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            VulkanError::InitializationFailed => Self::InitializationFailed,
-            VulkanError::LayerNotPresent => Self::LayerNotPresent,
-            VulkanError::ExtensionNotPresent => Self::ExtensionNotPresent,
-            VulkanError::IncompatibleDriver => Self::IncompatibleDriver,
+            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            RuntimeError::InitializationFailed => Self::InitializationFailed,
+            RuntimeError::LayerNotPresent => Self::LayerNotPresent,
+            RuntimeError::ExtensionNotPresent => Self::ExtensionNotPresent,
+            RuntimeError::IncompatibleDriver => Self::IncompatibleDriver,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

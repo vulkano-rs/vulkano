@@ -54,7 +54,7 @@ use crate::{
     macros::{impl_id_counter, vulkan_enum},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
-    OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -434,7 +434,7 @@ impl Sampler {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -967,12 +967,12 @@ impl From<OomError> for SamplerCreationError {
     }
 }
 
-impl From<VulkanError> for SamplerCreationError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for SamplerCreationError {
+    fn from(err: RuntimeError) -> Self {
         match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            VulkanError::TooManyObjects => Self::TooManyObjects,
+            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ RuntimeError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            RuntimeError::TooManyObjects => Self::TooManyObjects,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

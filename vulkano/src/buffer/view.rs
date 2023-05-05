@@ -53,7 +53,7 @@ use crate::{
     format::{Format, FormatFeatures},
     macros::impl_id_counter,
     memory::{is_aligned, DeviceAlignment},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use std::{
     error::Error,
@@ -235,7 +235,7 @@ impl BufferView {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -411,8 +411,8 @@ impl From<OomError> for BufferViewCreationError {
     }
 }
 
-impl From<VulkanError> for BufferViewCreationError {
-    fn from(err: VulkanError) -> Self {
+impl From<RuntimeError> for BufferViewCreationError {
+    fn from(err: RuntimeError) -> Self {
         OomError::from(err).into()
     }
 }

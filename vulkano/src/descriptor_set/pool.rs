@@ -14,7 +14,7 @@ use crate::{
     },
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
-    OomError, Version, VulkanError, VulkanObject,
+    OomError, RuntimeError, Version, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -109,7 +109,7 @@ impl DescriptorPool {
                     output.as_mut_ptr(),
                 )
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
                 output.assume_init()
             }
         };
@@ -297,7 +297,7 @@ impl DescriptorPool {
                 sets.as_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
         }
 
         Ok(())
@@ -315,7 +315,7 @@ impl DescriptorPool {
             ash::vk::DescriptorPoolResetFlags::empty(),
         )
         .result()
-        .map_err(VulkanError::from)?;
+        .map_err(RuntimeError::from)?;
 
         Ok(())
     }

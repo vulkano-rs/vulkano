@@ -21,7 +21,7 @@ use crate::{
     },
     device::{Device, DeviceOwned},
     query::QueryControlFlags,
-    OomError, VulkanError, VulkanObject,
+    OomError, RuntimeError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{ptr, sync::Arc};
@@ -179,7 +179,7 @@ impl UnsafeCommandBufferBuilder {
 
             (fns.v1_0.begin_command_buffer)(pool_alloc.handle(), &begin_info_vk)
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
         }
 
         Ok(UnsafeCommandBufferBuilder {
@@ -196,7 +196,7 @@ impl UnsafeCommandBufferBuilder {
             let fns = self.device.fns();
             (fns.v1_0.end_command_buffer)(self.handle)
                 .result()
-                .map_err(VulkanError::from)?;
+                .map_err(RuntimeError::from)?;
 
             Ok(UnsafeCommandBuffer {
                 command_buffer: self.handle,

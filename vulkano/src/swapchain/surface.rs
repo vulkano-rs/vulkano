@@ -18,7 +18,7 @@ use crate::{
         display::{DisplayMode, DisplayPlane},
         SurfaceSwapchainLock,
     },
-    OomError, RequiresOneOf, VulkanError, VulkanObject,
+    OomError, RequiresOneOf, RuntimeError, VulkanObject,
 };
 
 #[cfg(target_os = "ios")]
@@ -119,7 +119,7 @@ impl Surface {
     pub unsafe fn headless_unchecked(
         instance: Arc<Instance>,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::HeadlessSurfaceCreateInfoEXT {
             flags: ash::vk::HeadlessSurfaceCreateFlagsEXT::empty(),
             ..Default::default()
@@ -135,7 +135,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -195,7 +195,7 @@ impl Surface {
     pub unsafe fn from_display_plane_unchecked(
         display_mode: &DisplayMode,
         plane: &DisplayPlane,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let instance = display_mode.display().physical_device().instance();
 
         let create_info = ash::vk::DisplaySurfaceCreateInfoKHR {
@@ -224,7 +224,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -278,7 +278,7 @@ impl Surface {
         instance: Arc<Instance>,
         window: *const W,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::AndroidSurfaceCreateInfoKHR {
             flags: ash::vk::AndroidSurfaceCreateFlagsKHR::empty(),
             window: window as *mut _,
@@ -295,7 +295,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -358,7 +358,7 @@ impl Surface {
         dfb: *const D,
         surface: *const S,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::DirectFBSurfaceCreateInfoEXT {
             flags: ash::vk::DirectFBSurfaceCreateFlagsEXT::empty(),
             dfb: dfb as *mut _,
@@ -376,7 +376,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -434,7 +434,7 @@ impl Surface {
         instance: Arc<Instance>,
         image_pipe_handle: ash::vk::zx_handle_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::ImagePipeSurfaceCreateInfoFUCHSIA {
             flags: ash::vk::ImagePipeSurfaceCreateFlagsFUCHSIA::empty(),
             image_pipe_handle,
@@ -452,7 +452,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -510,7 +510,7 @@ impl Surface {
         instance: Arc<Instance>,
         stream_descriptor: ash::vk::GgpStreamDescriptor,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::StreamDescriptorSurfaceCreateInfoGGP {
             flags: ash::vk::StreamDescriptorSurfaceCreateFlagsGGP::empty(),
             stream_descriptor,
@@ -528,7 +528,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -589,7 +589,7 @@ impl Surface {
         instance: Arc<Instance>,
         metal_layer: IOSMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::IOSSurfaceCreateInfoMVK {
             flags: ash::vk::IOSSurfaceCreateFlagsMVK::empty(),
             p_view: metal_layer.render_layer.0 as *const _,
@@ -606,7 +606,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -667,7 +667,7 @@ impl Surface {
         instance: Arc<Instance>,
         view: *const V,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::MacOSSurfaceCreateInfoMVK {
             flags: ash::vk::MacOSSurfaceCreateFlagsMVK::empty(),
             p_view: view as *const _,
@@ -684,7 +684,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -735,7 +735,7 @@ impl Surface {
         instance: Arc<Instance>,
         layer: *const L,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::MetalSurfaceCreateInfoEXT {
             flags: ash::vk::MetalSurfaceCreateFlagsEXT::empty(),
             p_layer: layer as *const _,
@@ -752,7 +752,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -815,7 +815,7 @@ impl Surface {
         context: *const C,
         window: *const W,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::ScreenSurfaceCreateInfoQNX {
             flags: ash::vk::ScreenSurfaceCreateFlagsQNX::empty(),
             context: context as *mut _,
@@ -833,7 +833,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -887,7 +887,7 @@ impl Surface {
         instance: Arc<Instance>,
         window: *const W,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::ViSurfaceCreateInfoNN {
             flags: ash::vk::ViSurfaceCreateFlagsNN::empty(),
             window: window as *mut _,
@@ -904,7 +904,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -969,7 +969,7 @@ impl Surface {
         display: *const D,
         surface: *const S,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::WaylandSurfaceCreateInfoKHR {
             flags: ash::vk::WaylandSurfaceCreateFlagsKHR::empty(),
             display: display as *mut _,
@@ -987,7 +987,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -1052,7 +1052,7 @@ impl Surface {
         hinstance: *const I,
         hwnd: *const W,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::Win32SurfaceCreateInfoKHR {
             flags: ash::vk::Win32SurfaceCreateFlagsKHR::empty(),
             hinstance: hinstance as *mut _,
@@ -1070,7 +1070,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -1135,7 +1135,7 @@ impl Surface {
         connection: *const C,
         window: ash::vk::xcb_window_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::XcbSurfaceCreateInfoKHR {
             flags: ash::vk::XcbSurfaceCreateFlagsKHR::empty(),
             connection: connection as *mut _,
@@ -1153,7 +1153,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -1218,7 +1218,7 @@ impl Surface {
         display: *const D,
         window: ash::vk::Window,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         let create_info = ash::vk::XlibSurfaceCreateInfoKHR {
             flags: ash::vk::XlibSurfaceCreateFlagsKHR::empty(),
             dpy: display as *mut _,
@@ -1236,7 +1236,7 @@ impl Surface {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(RuntimeError::from)?;
             output.assume_init()
         };
 
@@ -1378,13 +1378,13 @@ impl From<OomError> for SurfaceCreationError {
     }
 }
 
-impl From<VulkanError> for SurfaceCreationError {
-    fn from(err: VulkanError) -> SurfaceCreationError {
+impl From<RuntimeError> for SurfaceCreationError {
+    fn from(err: RuntimeError) -> SurfaceCreationError {
         match err {
-            err @ VulkanError::OutOfHostMemory => {
+            err @ RuntimeError::OutOfHostMemory => {
                 SurfaceCreationError::OomError(OomError::from(err))
             }
-            err @ VulkanError::OutOfDeviceMemory => {
+            err @ RuntimeError::OutOfDeviceMemory => {
                 SurfaceCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
