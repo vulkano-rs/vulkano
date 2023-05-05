@@ -285,49 +285,43 @@ impl From<RuntimeError> for VulkanError {
 /// The arguments or other context of a call to a Vulkan function were not valid.
 #[derive(Clone, Debug, Default)]
 pub struct ValidationError {
-    /// The context in which the problem exists (e.g. a specific parameter).
-    pub context: Cow<'static, str>,
-
     /// A description of the problem.
-    pub problem: Cow<'static, str>,
+    pub message: Cow<'static, str>,
 
     /// *Valid Usage IDs* (VUIDs) in the Vulkan specification that relate to the problem.
     pub vuids: &'static [&'static str],
-
-    /// If applicable, settings that the user could enable to avoid the problem in the future.
-    pub requires_one_of: Option<RequiresOneOf>,
 }
 
-impl ValidationError {
-    fn from_error<E: Error>(err: E) -> Self {
-        Self {
-            context: "".into(),
-            problem: err.to_string().into(),
-            vuids: &[],
-            requires_one_of: None,
-        }
-    }
+impl From<ValidationErrorInfo> for ValidationError {
+    fn from(params: ValidationErrorInfo) -> Self {
+        let ValidationErrorInfo {
+            context,
+            problem,
+            requires_one_of,
+            vuids,
+        } = params;
 
-    fn from_requirement(err: RequirementNotMet) -> Self {
+        let message = if let Some(requires_one_of) = requires_one_of {
+            format!(
+                "{}: {} -- Requires one of: {}",
+                context, problem, requires_one_of
+            )
+        } else {
+            format!("{}: {}", context, problem)
+        };
+
         ValidationError {
-            context: "".into(),
-            problem: err.required_for.into(),
-            vuids: &[],
-            requires_one_of: Some(err.requires_one_of),
+            message: message.into(),
+            vuids,
         }
     }
 }
 
 impl Display for ValidationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let Self {
-            context,
-            problem,
-            vuids,
-            requires_one_of,
-        } = self;
+        let Self { message, vuids } = self;
 
-        write!(f, "{}: {}", context, problem)?;
+        write!(f, "{}", message)?;
 
         if !vuids.is_empty() {
             write!(f, " (Vulkan VUIDs: {}", vuids[0])?;
@@ -339,15 +333,41 @@ impl Display for ValidationError {
             write!(f, ")")?;
         }
 
-        if let Some(requires_one_of) = requires_one_of {
-            write!(f, " -- Requires one of: {}", requires_one_of)?;
-        }
-
         Ok(())
     }
 }
 
 impl Error for ValidationError {}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ValidationErrorInfo {
+    pub(crate) context: Cow<'static, str>,
+    pub(crate) problem: Cow<'static, str>,
+    pub(crate) requires_one_of: Option<RequiresOneOf>,
+    pub(crate) vuids: &'static [&'static str],
+}
+
+impl From<RequirementNotMet> for ValidationErrorInfo {
+    fn from(err: RequirementNotMet) -> Self {
+        ValidationErrorInfo {
+            context: "".into(),
+            problem: err.required_for.into(),
+            vuids: &[],
+            requires_one_of: Some(err.requires_one_of),
+        }
+    }
+}
+
+impl ValidationErrorInfo {
+    fn from_error<E: Error>(err: E) -> Self {
+        Self {
+            context: "".into(),
+            problem: err.to_string().into(),
+            requires_one_of: None,
+            vuids: &[],
+        }
+    }
+}
 
 /// Used in errors to indicate a set of alternatives that needs to be available/enabled to allow
 /// a given operation.
