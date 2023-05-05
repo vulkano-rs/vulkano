@@ -275,6 +275,12 @@ impl From<ValidationError> for VulkanError {
     }
 }
 
+impl From<ValidationErrorInfo> for VulkanError {
+    fn from(err: ValidationErrorInfo) -> Self {
+        Self::ValidationError(err.into())
+    }
+}
+
 impl From<RuntimeError> for VulkanError {
     #[inline]
     fn from(err: RuntimeError) -> Self {

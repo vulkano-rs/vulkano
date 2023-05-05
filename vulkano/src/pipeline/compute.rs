@@ -36,8 +36,7 @@ use crate::{
         DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderExecution, ShaderStage,
         SpecializationConstant,
     },
-    OomError, RequiresOneOf, RuntimeError, ValidationError, ValidationErrorInfo, VulkanError,
-    VulkanObject,
+    OomError, RequiresOneOf, RuntimeError, ValidationErrorInfo, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use std::{
@@ -84,7 +83,7 @@ impl ComputePipeline {
         device: &Device,
         cache: Option<&PipelineCache>,
         create_info: &ComputePipelineCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), ValidationErrorInfo> {
         // VUID-vkCreateComputePipelines-pipelineCache-parent
         if let Some(cache) = &cache {
             assert_eq!(device, cache.device().as_ref());
@@ -124,8 +123,7 @@ impl ComputePipeline {
                         "VUID-VkPipelineShaderStageCreateInfo-stage-parameter",
                     ],
                     ..Default::default()
-                }
-                .into());
+                });
             }
 
             for (&constant_id, provided_value) in specialization_info {
@@ -149,8 +147,7 @@ impl ComputePipeline {
                                 .into(),
                             vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
                             ..Default::default()
-                        }
-                        .into());
+                        });
                     }
                 }
             }
