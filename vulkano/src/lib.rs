@@ -275,7 +275,6 @@ impl From<ValidationError> for VulkanError {
 }
 
 impl From<RuntimeError> for VulkanError {
-    #[inline]
     fn from(err: RuntimeError) -> Self {
         Self::RuntimeError(err)
     }
