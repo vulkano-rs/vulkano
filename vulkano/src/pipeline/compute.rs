@@ -36,7 +36,7 @@ use crate::{
         DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderExecution, ShaderStage,
         SpecializationConstant,
     },
-    OomError, RequiresOneOf, RuntimeError, ValidationErrorInfo, VulkanError, VulkanObject,
+    OomError, RequiresOneOf, RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use std::{
@@ -83,7 +83,7 @@ impl ComputePipeline {
         device: &Device,
         cache: Option<&PipelineCache>,
         create_info: &ComputePipelineCreateInfo,
-    ) -> Result<(), ValidationErrorInfo> {
+    ) -> Result<(), ValidationError> {
         // VUID-vkCreateComputePipelines-pipelineCache-parent
         if let Some(cache) = &cache {
             assert_eq!(device, cache.device().as_ref());
@@ -106,16 +106,16 @@ impl ComputePipeline {
 
             flags
                 .validate_device(device)
-                .map_err(|err| ValidationErrorInfo {
+                .map_err(|err| ValidationError {
                     context: "create_info.stage.flags".into(),
                     vuids: &["VUID-VkPipelineShaderStageCreateInfo-flags-parameter"],
-                    ..ValidationErrorInfo::from(err)
+                    ..ValidationError::from_requirement(err)
                 })?;
 
             let entry_point_info = entry_point.info();
 
             if !matches!(entry_point_info.execution, ShaderExecution::Compute) {
-                return Err(ValidationErrorInfo {
+                return Err(ValidationError {
                     context: "create_info.stage.entry_point".into(),
                     problem: "is not a compute shader".into(),
                     vuids: &[
@@ -136,7 +136,7 @@ impl ComputePipeline {
                 {
                     // Check for equal types rather than only equal size.
                     if !provided_value.eq_type(default_value) {
-                        return Err(ValidationErrorInfo {
+                        return Err(ValidationError {
                             context: format!(
                                 "create_info.stage.specialization_info[{}]",
                                 constant_id
@@ -161,7 +161,7 @@ impl ComputePipeline {
                         .map(|(k, v)| (*k, v)),
                     entry_point_info.push_constant_requirements.as_ref(),
                 )
-                .map_err(|err| ValidationErrorInfo {
+                .map_err(|err| ValidationError {
                     context: "create_info.stage.entry_point".into(),
                     vuids: &[
                         "VUID-VkComputePipelineCreateInfo-layout-07987",
@@ -169,7 +169,7 @@ impl ComputePipeline {
                         "VUID-VkComputePipelineCreateInfo-layout-07990",
                         "VUID-VkComputePipelineCreateInfo-layout-07991",
                     ],
-                    ..ValidationErrorInfo::from_error(err)
+                    ..ValidationError::from_error(err)
                 })?;
 
             // VUID-VkComputePipelineCreateInfo-stage-00702
