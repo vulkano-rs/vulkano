@@ -269,7 +269,6 @@ impl Error for VulkanError {
 }
 
 impl From<ValidationError> for VulkanError {
-    #[inline]
     fn from(err: ValidationError) -> Self {
         Self::ValidationError(err)
     }
