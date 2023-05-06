@@ -20,7 +20,7 @@ use crate::{
     },
     DeviceSize, NonZeroDeviceSize,
 };
-use bytemuck::{AnyBitPattern, PodCastError};
+use bytemuck::AnyBitPattern;
 use std::{
     alloc::Layout,
     cmp,
@@ -153,7 +153,7 @@ impl<T: ?Sized> Subbuffer<T> {
     ///
     /// [`into_bytes`]: Self::into_bytes
     pub fn as_bytes(&self) -> &Subbuffer<[u8]> {
-        unsafe { self.reinterpret_ref_unchecked_inner() }
+        unsafe { self.reinterpret_unchecked_ref_inner() }
     }
 
     #[inline(always)]
@@ -163,7 +163,7 @@ impl<T: ?Sized> Subbuffer<T> {
     }
 
     #[inline(always)]
-    unsafe fn reinterpret_ref_unchecked_inner<U: ?Sized>(&self) -> &Subbuffer<U> {
+    unsafe fn reinterpret_unchecked_ref_inner<U: ?Sized>(&self) -> &Subbuffer<U> {
         assert!(size_of::<Subbuffer<T>>() == size_of::<Subbuffer<U>>());
         assert!(align_of::<Subbuffer<T>>() == align_of::<Subbuffer<U>>());
 
@@ -176,7 +176,26 @@ impl<T> Subbuffer<T>
 where
     T: BufferContents + ?Sized,
 {
-    /// Changes the `T` generic parameter of the subbffer to the desired type without checking if
+    /// Changes the `T` generic parameter of the subbuffer to the desired type.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the memory offset of the subbuffer is not aligned to the alignment of `U`.
+    /// - If `U` is sized, then panics if the subbuffer size doesn't match the size of `U` exactly.
+    /// - If `U` is unsized, then panics if:
+    ///   - the subbuffer size isn't greater than the size of the head (sized part) of `U`, or
+    ///   - the subbuffer would have slop when reinterpreted as `U`, meaning that the subbuffer
+    ///     size minus the the size of the head of `U` isn't divisible by the element size of `U`.
+    pub fn reinterpret<U>(self) -> Subbuffer<U>
+    where
+        U: BufferContents + ?Sized,
+    {
+        self.validate_reinterpret(U::LAYOUT);
+
+        unsafe { self.reinterpret_unchecked_inner() }
+    }
+
+    /// Changes the `T` generic parameter of the subbuffer to the desired type without checking if
     /// the contents are correctly aligned and sized.
     ///
     /// **NEVER use this function** unless you absolutely have to, and even then, open an issue on
@@ -185,22 +204,33 @@ where
     ///
     /// # Safety
     ///
-    /// - `self.memory_offset()` must be properly aligned for `U`.
-    /// - `self.size()` must be valid for `U`, which means:
-    ///   - If `U` is sized, the size must match exactly.
-    ///   - If `U` is unsized, then the subbuffer size minus the size of the head (sized part) of
-    ///     the DST must be evenly divisible by the size of the element type.
+    /// - The memory offset of the subbuffer must be aligned to the alignment of `U`.
+    /// - If `U` is sized, then the subbuffer size must match the size of `U` exactly.
+    /// - If `U` is unsized, then
+    ///   - the subbuffer size must be greater than the size of the head (sized part) of `U`, and
+    ///   - the subbuffer must not have slop when reinterpreted as `U`, meaning that the subbuffer
+    ///     size minus the the size of the head of `U` is divisible by the element size of `U`.
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn reinterpret_unchecked<U>(self) -> Subbuffer<U>
     where
         U: BufferContents + ?Sized,
     {
-        let element_size = U::LAYOUT.element_size().unwrap_or(1);
-        debug_assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
-        debug_assert!(self.size >= U::LAYOUT.head_size());
-        debug_assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
+        #[cfg(debug_assertions)]
+        self.validate_reinterpret(U::LAYOUT);
 
         self.reinterpret_unchecked_inner()
+    }
+
+    /// Same as [`reinterpret`], except it works with a reference to the subbuffer.
+    ///
+    /// [`reinterpret`]: Self::reinterpret
+    pub fn reinterpret_ref<U>(&self) -> &Subbuffer<U>
+    where
+        U: BufferContents + ?Sized,
+    {
+        self.validate_reinterpret(U::LAYOUT);
+
+        unsafe { self.reinterpret_unchecked_ref_inner() }
     }
 
     /// Same as [`reinterpret_unchecked`], except it works with a reference to the subbuffer.
@@ -211,16 +241,25 @@ where
     ///
     /// [`reinterpret_unchecked`]: Self::reinterpret_unchecked
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn reinterpret_ref_unchecked<U>(&self) -> &Subbuffer<U>
+    pub unsafe fn reinterpret_unchecked_ref<U>(&self) -> &Subbuffer<U>
     where
         U: BufferContents + ?Sized,
     {
-        let element_size = U::LAYOUT.element_size().unwrap_or(1);
-        debug_assert!(is_aligned(self.memory_offset(), U::LAYOUT.alignment()));
-        debug_assert!(self.size >= U::LAYOUT.head_size());
-        debug_assert!((self.size - U::LAYOUT.head_size()) % element_size == 0);
+        #[cfg(debug_assertions)]
+        self.validate_reinterpret(U::LAYOUT);
 
-        self.reinterpret_ref_unchecked_inner()
+        self.reinterpret_unchecked_ref_inner()
+    }
+
+    fn validate_reinterpret(&self, new_layout: BufferContentsLayout) {
+        assert!(is_aligned(self.memory_offset(), new_layout.alignment()));
+
+        if new_layout.is_sized() {
+            assert!(self.size == new_layout.unwrap_sized().size());
+        } else {
+            assert!(self.size > new_layout.head_size());
+            assert!((self.size - new_layout.head_size()) % new_layout.element_size().unwrap() == 0);
+        }
     }
 
     /// Locks the subbuffer in order to read its content from the host.
@@ -368,39 +407,7 @@ impl<T> Subbuffer<T> {
     ///
     /// [`into_slice`]: Self::into_slice
     pub fn as_slice(&self) -> &Subbuffer<[T]> {
-        unsafe { self.reinterpret_ref_unchecked_inner() }
-    }
-}
-
-impl<T> Subbuffer<T>
-where
-    T: BufferContents,
-{
-    /// Tries to cast a subbuffer of raw bytes to a `Subbuffer<T>`.
-    pub fn try_from_bytes(subbuffer: Subbuffer<[u8]>) -> Result<Self, PodCastError> {
-        if subbuffer.size() != size_of::<T>() as DeviceSize {
-            Err(PodCastError::SizeMismatch)
-        } else if !is_aligned(subbuffer.memory_offset(), DeviceAlignment::of::<T>()) {
-            Err(PodCastError::TargetAlignmentGreaterAndInputNotAligned)
-        } else {
-            Ok(unsafe { subbuffer.reinterpret_unchecked() })
-        }
-    }
-
-    /// Tries to cast the subbuffer to a different type.
-    pub fn try_cast<U>(self) -> Result<Subbuffer<U>, PodCastError>
-    where
-        U: BufferContents,
-    {
-        if size_of::<U>() != size_of::<T>() {
-            Err(PodCastError::SizeMismatch)
-        } else if align_of::<U>() > align_of::<T>()
-            && !is_aligned(self.memory_offset(), DeviceAlignment::of::<U>())
-        {
-            Err(PodCastError::TargetAlignmentGreaterAndInputNotAligned)
-        } else {
-            Ok(unsafe { self.reinterpret_unchecked() })
-        }
+        unsafe { self.reinterpret_unchecked_ref_inner() }
     }
 }
 
@@ -531,27 +538,6 @@ impl Subbuffer<[u8]> {
         self.size -= self.size % layout.size();
 
         self
-    }
-}
-
-impl<T> Subbuffer<[T]>
-where
-    T: BufferContents,
-{
-    /// Tries to cast the slice to a different element type.
-    pub fn try_cast_slice<U>(self) -> Result<Subbuffer<[U]>, PodCastError>
-    where
-        U: BufferContents,
-    {
-        if size_of::<U>() != size_of::<T>() && self.size() % size_of::<U>() as DeviceSize != 0 {
-            Err(PodCastError::OutputSliceWouldHaveSlop)
-        } else if align_of::<U>() > align_of::<T>()
-            && !is_aligned(self.memory_offset(), DeviceAlignment::of::<U>())
-        {
-            Err(PodCastError::TargetAlignmentGreaterAndInputNotAligned)
-        } else {
-            Ok(unsafe { self.reinterpret_unchecked() })
-        }
     }
 }
 
@@ -1121,6 +1107,13 @@ impl BufferContentsLayout {
                 }
             }
         }
+    }
+
+    fn is_sized(&self) -> bool {
+        matches!(
+            self,
+            BufferContentsLayout(BufferContentsLayoutInner::Sized(..)),
+        )
     }
 
     pub(super) const fn unwrap_sized(self) -> DeviceLayout {
