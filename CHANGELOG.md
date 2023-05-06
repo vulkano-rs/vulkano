@@ -18,9 +18,14 @@ Changes to pipeline construction:
 - `GraphicsPipelineCreateInfo` now requires you to provide `input_assembly_state`, `rasterization_state`, `multisample_state` and `color_blend_state` instead of them having default values. You can still call `default()` to generate default values for each of them.
 - Instead of an entry point and specialization constants, pipeline construction now takes a `PipelineShaderStageCreateInfo` structure. `GraphicsPipelineCreateInfo` has a `stages` member that takes all shader stages at once, instead of separate members for each shader type. `EntryPoint` now owns instead of borrows a reference to the `ShaderModule`, so this is easier.
 - Specialization constants are now provided with a `HashMap` containing `SpecializationConstant` enum values. The `SpecializationConstants` trait is removed, and `vulkano_shaders` no longer generates structs for specialization constants.
+
+Changes to images:
 - Removed the `ImageInner` type. The `inner` method of the `ImageAccess` trait now returns a reference to the inner image directly.
-- The `buffer_with_range(_array)` constructor of `WriteDescriptorSet` now takes `DescriptorBufferInfo` structs.
 - Removed the `descriptor_layouts` method on the `ImageAccess` trait. All images by default now use the `General` layout for storage image descriptors, and `ShaderReadOnlyOptimal` for all other image descriptors.
+
+Changes to buffers:
+- The `Subbuffer::{try_cast, try_cast_slice, try_from_bytes}` functions were replaced by `Subbuffer::reinterpret[_ref]`.
+- The `buffer_with_range(_array)` constructor of `WriteDescriptorSet` now takes `DescriptorBufferInfo` structs.
 
 Changes to error reporting:
 - `VulkanError` is renamed to `RuntimeError`.
