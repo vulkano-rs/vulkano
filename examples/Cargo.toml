@@ -2,7 +2,10 @@
 name = "examples"
 version = "0.1.0"
 edition = "2021"
-authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
+authors = [
+    "Pierre Krieger <pierre.krieger1708@gmail.com>",
+    "The vulkano contributors",
+]
 publish = false
 
 [dependencies]
@@ -26,4 +29,4 @@ ron = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 
 # Glium has still not been updated to the latest winit version
-winit_glium = { package = "winit", version = "0.27.1"}
+winit_glium = { package = "winit", version = "0.27.1" }
