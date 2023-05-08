@@ -39,8 +39,9 @@
 use cgmath::{Matrix4, Rad};
 use rand::Rng;
 use std::{
+    hint,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc, Arc,
     },
     thread,
@@ -331,6 +332,9 @@ fn main() {
     // every finished write, which is always done to the, at that point in time, unused texture.
     let current_texture_index = Arc::new(AtomicBool::new(false));
 
+    // Current generation, used to notify the worker thread of when a texture is no longer read.
+    let current_generation = Arc::new(AtomicU64::new(0));
+
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
         device.clone(),
         Default::default(),
@@ -362,6 +366,8 @@ fn main() {
         transfer_queue,
         textures.clone(),
         current_texture_index.clone(),
+        current_generation.clone(),
+        swapchain.image_count(),
         memory_allocator,
         command_buffer_allocator.clone(),
     );
@@ -616,12 +622,12 @@ fn main() {
                     .unwrap();
                 let command_buffer = builder.build().unwrap();
 
-                // We have to wait on the acquire future and clean up, otherwise the below write
-                // will fail since the buffer is still going to be marked as in use by the device.
                 acquire_future.wait(None).unwrap();
                 previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-                // Write to the uniform buffer designated for this frame.
+                // Write to the uniform buffer designated for this frame. This must happen after
+                // waiting for the acquire future and cleaning up, otherwise the buffer is still
+                // going to be marked as in use by the device.
                 *uniform_buffers[image_index as usize].write().unwrap() = vs::Data {
                     transform: {
                         const DURATION: f64 = 5.0;
@@ -637,6 +643,11 @@ fn main() {
                         Matrix4::from_angle_z(Rad(angle)).into()
                     },
                 };
+
+                // Increment the generation, signalling that the previous frame has finished. This
+                // must be done after waiting on the acquire future, otherwise the oldest frame
+                // would still be in flight.
+                current_generation.fetch_add(1, Ordering::Release);
 
                 let future = previous_frame_end
                     .take()
@@ -669,11 +680,14 @@ fn main() {
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_worker(
     channel: mpsc::Receiver<()>,
     transfer_queue: Arc<Queue>,
     textures: [Arc<StorageImage>; 2],
     current_texture_index: Arc<AtomicBool>,
+    current_generation: Arc<AtomicU64>,
+    swapchain_image_count: u32,
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
 ) {
@@ -712,15 +726,13 @@ fn run_worker(
 
         let mut current_corner = 0;
         let mut rng = rand::thread_rng();
+        let mut last_generation = 0;
 
         // The worker thread is awakened by sending a signal through the channel. In a real program
         // you would likely send some actual data over the channel, instructing the worker what to
         // do, but our work is hard-coded.
         while let Ok(()) = channel.recv() {
             let current_index = current_texture_index.load(Ordering::Acquire);
-
-            // Write to the texture that's currently not in use for rendering.
-            let texture = textures[!current_index as usize].clone();
 
             // We simulate some work for the worker to indulge in. In a real program this would
             // likely be some kind of I/O, for example reading from disk (think loading the next
@@ -734,6 +746,9 @@ fn run_worker(
             for texel in &mut *staging_buffers[!current_index as usize].write().unwrap() {
                 *texel = color;
             }
+
+            // Write to the texture that's currently not in use for rendering.
+            let texture = textures[!current_index as usize].clone();
 
             let mut builder = AutoCommandBufferBuilder::primary(
                 &command_buffer_allocator,
@@ -772,7 +787,39 @@ fn run_worker(
                 .unwrap();
             let command_buffer = builder.build().unwrap();
 
+            // We swap the texture index to use after a write, but there is no guarantee that other
+            // tasks have actually moved on to using the new texture. What could happen then, if
+            // the writes being done are quicker than rendering a frame (or any other task reading
+            // the same resource), is the following:
+            //
+            // 1. Task A starts reading texture 0
+            // 2. Task B writes texture 1, swapping the index
+            // 3. Task B writes texture 0, swapping the index
+            // 4. Task A stops reading texture 0
+            //
+            // This is known as the A/B/A problem. In this case it results in a race condition,
+            // since task A (rendering, in our case) is still reading texture 0 while task B (our
+            // worker) has already started writing the very same texture.
+            //
+            // The most common way to solve this issue is using *generations*, also known as
+            // *epochs*. A generation is simply a monotonically increasing integer. What exactly
+            // one generation represents depends on the application. In our case, one generation
+            // passed represents one frame that finished rendering. Knowing this, we can keep track
+            // of the generation at the time of swapping the texture index, and ensure that any
+            // further write only happens after a generation was reached which makes it impossible
+            // for any readers to be stuck on the old index. Here we are simply spinning.
+            //
+            // NOTE: You could also use the thread for other things in the meantime. Since frames
+            // are typically very short though, it would make no sense to do that in this case.
+            while current_generation.load(Ordering::Acquire) - last_generation
+                < swapchain_image_count as u64
+            {
+                hint::spin_loop();
+            }
+
             // Execute the transfer, blocking the thread until it finishes.
+            //
+            // NOTE: You could also use the thread for other things in the meantime.
             command_buffer
                 .execute(transfer_queue.clone())
                 .unwrap()
@@ -780,6 +827,9 @@ fn run_worker(
                 .unwrap()
                 .wait(None)
                 .unwrap();
+
+            // Remember the latest generation.
+            last_generation = current_generation.load(Ordering::Acquire);
 
             // Swap the texture used for rendering to the newly updated one.
             //
