@@ -647,6 +647,8 @@ fn main() {
                 // Increment the generation, signalling that the previous frame has finished. This
                 // must be done after waiting on the acquire future, otherwise the oldest frame
                 // would still be in flight.
+                //
+                // NOTE: We are relying on the fact that this thread is the only one doing stores.
                 current_generation.fetch_add(1, Ordering::Release);
 
                 let future = previous_frame_end
