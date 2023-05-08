@@ -221,8 +221,6 @@ fn main() {
         {transfer_family_index} for transfers",
     );
 
-    println!("\nPress space to update part of the texture");
-
     let (mut swapchain, images) = {
         let surface_capabilities = device
             .physical_device()
@@ -513,6 +511,8 @@ fn main() {
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
+
+    println!("\nPress space to update part of the texture");
 
     event_loop.run(move |event, _, control_flow| {
         match event {
