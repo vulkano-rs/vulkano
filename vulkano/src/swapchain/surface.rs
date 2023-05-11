@@ -1439,7 +1439,7 @@ unsafe fn get_metal_layer_macos(ns_view: *mut std::ffi::c_void) -> *mut Object {
     use objc::runtime::YES;
     use objc::runtime::{BOOL, NO};
 
-    let view: *mut Object = std::mem::transmute(view);
+    let view: *mut Object = ns_view.cast();
     let main_layer: *mut Object = msg_send![view, layer];
     let class = class!(CAMetalLayer);
     let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
