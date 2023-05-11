@@ -23,7 +23,6 @@ use vulkano::{
     },
     sync::{self, FlushError, GpuFuture},
 };
-use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
 /// Swapchain Image View. Your final render target typically.
@@ -42,7 +41,7 @@ pub const DEFAULT_IMAGE_FORMAT: Format = Format::R8G8B8A8_UNORM;
 ///
 /// The intended usage of this struct is through [`crate::window::VulkanoWindows`].
 pub struct VulkanoWindowRenderer {
-    surface: Arc<Surface>,
+    window: Arc<Window>,
     graphics_queue: Arc<Queue>,
     compute_queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
@@ -67,15 +66,12 @@ impl VulkanoWindowRenderer {
         descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
     ) -> VulkanoWindowRenderer {
-        // Create rendering surface from window
-        let surface =
-            create_surface_from_winit(Arc::new(window), vulkano_context.instance().clone())
-                .unwrap();
+        let window = Arc::new(window);
 
         // Create swap chain & frame(s) to which we'll render
         let (swap_chain, final_views) = Self::create_swapchain(
             vulkano_context.device().clone(),
-            surface.clone(),
+            &window,
             descriptor,
             swapchain_create_info_modify,
         );
@@ -83,7 +79,7 @@ impl VulkanoWindowRenderer {
         let previous_frame_end = Some(sync::now(vulkano_context.device().clone()).boxed());
 
         VulkanoWindowRenderer {
-            surface,
+            window,
             graphics_queue: vulkano_context.graphics_queue().clone(),
             compute_queue: vulkano_context.compute_queue().clone(),
             swapchain: swap_chain,
@@ -101,10 +97,11 @@ impl VulkanoWindowRenderer {
     /// can be modified with the `swapchain_create_info_modify` function passed as an input.
     fn create_swapchain(
         device: Arc<Device>,
-        surface: Arc<Surface>,
+        window: &Arc<Window>,
         window_descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
     ) -> (Arc<Swapchain>, Vec<SwapchainImageView>) {
+        let surface = Surface::from_window(device.instance().clone(), window.clone()).unwrap();
         let surface_capabilities = device
             .physical_device()
             .surface_capabilities(&surface, Default::default())
@@ -116,13 +113,11 @@ impl VulkanoWindowRenderer {
                 .unwrap()[0]
                 .0,
         );
-        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
-        let image_extent = window.inner_size().into();
         let (swapchain, images) = Swapchain::new(device, surface, {
             let mut create_info = SwapchainCreateInfo {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
-                image_extent,
+                image_extent: window.inner_size().into(),
                 image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
@@ -141,6 +136,7 @@ impl VulkanoWindowRenderer {
             .into_iter()
             .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
+
         (swapchain, images)
     }
 
@@ -182,13 +178,13 @@ impl VulkanoWindowRenderer {
     /// Render target surface.
     #[inline]
     pub fn surface(&self) -> Arc<Surface> {
-        self.surface.clone()
+        self.swapchain.surface().clone()
     }
 
-    /// Winit window (you can manipulate window through this).
+    /// Winit window (you can manipulate the window through this).
     #[inline]
     pub fn window(&self) -> &Window {
-        self.surface.object().unwrap().downcast_ref().unwrap()
+        &self.window
     }
 
     /// Size of the physical window.
@@ -282,7 +278,7 @@ impl VulkanoWindowRenderer {
                     self.recreate_swapchain = true;
                     return Err(AcquireError::OutOfDate);
                 }
-                Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                Err(e) => panic!("failed to acquire next image: {e}"),
             };
         if suboptimal {
             self.recreate_swapchain = true;
@@ -317,7 +313,7 @@ impl VulkanoWindowRenderer {
                 if wait_future {
                     match future.wait(None) {
                         Ok(x) => x,
-                        Err(err) => println!("{:?}", err),
+                        Err(e) => println!("{e}"),
                     }
                     // wait allows you to organize resource waiting yourself.
                 } else {
@@ -332,7 +328,7 @@ impl VulkanoWindowRenderer {
                     Some(sync::now(self.graphics_queue.device().clone()).boxed());
             }
             Err(e) => {
-                println!("Failed to flush future: {:?}", e);
+                println!("failed to flush future: {e}");
                 self.previous_frame_end =
                     Some(sync::now(self.graphics_queue.device().clone()).boxed());
             }
@@ -350,7 +346,7 @@ impl VulkanoWindowRenderer {
         }) {
             Ok(r) => r,
             Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+            Err(e) => panic!("failed to recreate swapchain: {e}"),
         };
 
         self.swapchain = new_swapchain;

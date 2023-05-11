@@ -46,20 +46,21 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::PipelineShaderStageCreateInfo,
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
-        SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
 };
-use vulkano_win::VkSurfaceBuild;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::WindowBuilder,
 };
 
 fn main() {
+    let event_loop = EventLoop::new();
+
     let library = VulkanLibrary::new().unwrap();
 
     // The first step of any Vulkan program is to create an instance.
@@ -67,9 +68,9 @@ fn main() {
     // When we create an instance, we have to pass a list of extensions that we want to enable.
     //
     // All the window-drawing functionalities are part of non-core extensions that we need to
-    // enable manually. To do so, we ask the `vulkano_win` crate for the list of extensions
-    // required to draw to a window.
-    let required_extensions = vulkano_win::required_extensions(&library);
+    // enable manually. To do so, we ask `Surface` for the list of extensions required to draw to
+    // a window.
+    let required_extensions = Surface::required_extensions(&event_loop);
 
     // Now creating the instance.
     let instance = Instance::new(
@@ -85,19 +86,13 @@ fn main() {
     .unwrap();
 
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
-    // create the window.
+    // create the window. We use the `WindowBuilder` from the `winit` crate to do that here.
     //
-    // This is done by creating a `WindowBuilder` from the `winit` crate, then calling the
-    // `build_vk_surface` method provided by the `VkSurfaceBuild` trait from `vulkano_win`. If you
-    // ever get an error about `build_vk_surface` being undefined in one of your projects, this
-    // probably means that you forgot to import this trait.
-    //
-    // This returns a `vulkano::swapchain::Surface` object that contains both a cross-platform
-    // winit window and a cross-platform Vulkan surface that represents the surface of the window.
-    let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new()
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
+    // Before we can render to a window, we must first create a `vulkano::swapchain::Surface`
+    // object from it, which represents the drawable surface of a window. For that we must wrap the
+    // `winit::window::Window` in an `Arc`.
+    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     // Choose device extensions that we're going to use. In order to present images to a surface,
     // we need a `Swapchain`, which is provided by the `khr_swapchain` extension.
@@ -221,7 +216,6 @@ fn main() {
                 .unwrap()[0]
                 .0,
         );
-        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(
@@ -528,7 +522,6 @@ fn main() {
             Event::RedrawEventsCleared => {
                 // Do not draw the frame when the screen dimensions are zero. On Windows, this can
                 // occur when minimizing the application.
-                let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
                 let dimensions = window.inner_size();
                 if dimensions.width == 0 || dimensions.height == 0 {
                     return;

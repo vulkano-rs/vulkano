@@ -122,16 +122,17 @@ impl VulkanoContext {
     /// # Panics
     ///
     /// - Panics where the underlying Vulkano struct creations fail
+    // FIXME:
+    #[allow(deprecated)]
     pub fn new(mut config: VulkanoConfig) -> Self {
         let library = match VulkanLibrary::new() {
             Ok(x) => x,
             #[cfg(target_os = "macos")]
-            Err(vulkano::library::LoadingError::LibraryLoadFailure(err)) => {
-                panic!("Failed to load Vulkan library: {}. Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?", err);
-            }
-            Err(err) => {
-                panic!("Failed to load Vulkan library: {}.", err);
-            }
+            Err(vulkano::library::LoadingError::LibraryLoadFailure(err)) => panic!(
+                "failed to load Vulkan library: {err}; did you install VulkanSDK from \
+                https://vulkan.lunarg.com/sdk/home?",
+            ),
+            Err(err) => panic!("failed to load Vulkan library: {err}"),
         };
 
         // Append required extensions
@@ -140,7 +141,7 @@ impl VulkanoContext {
 
         // Create instance
         let instance =
-            Instance::new(library, config.instance_create_info).expect("Failed to create instance");
+            Instance::new(library, config.instance_create_info).expect("failed to create instance");
 
         // Create debug callback
         let _debug_utils_messenger =
@@ -149,16 +150,16 @@ impl VulkanoContext {
                 .take()
                 .map(|dbg_create_info| unsafe {
                     DebugUtilsMessenger::new(instance.clone(), dbg_create_info)
-                        .expect("Failed to create debug callback")
+                        .expect("failed to create debug callback")
                 });
 
         // Get prioritized device
         let physical_device = instance
             .enumerate_physical_devices()
-            .expect("Failed to enumerate physical devices")
+            .expect("failed to enumerate physical devices")
             .filter(|p| (config.device_filter_fn)(p))
             .min_by_key(|p| (config.device_priority_fn)(p))
-            .expect("Failed to create physical device");
+            .expect("failed to create physical device");
         // Print used device
         if config.print_device_name {
             println!(
@@ -201,7 +202,7 @@ impl VulkanoContext {
             .map(|(i, q)| (i as u32, q))
             .find(|(_i, q)| q.queue_flags.intersects(QueueFlags::GRAPHICS))
             .map(|(i, _)| i)
-            .expect("Could not find a queue that supports graphics");
+            .expect("could not find a queue that supports graphics");
         // Try finding a separate queue for compute
         let queue_family_compute = physical_device
             .queue_family_properties()
@@ -242,7 +243,7 @@ impl VulkanoContext {
                     ..Default::default()
                 },
             )
-            .expect("Failed to create device")
+            .expect("failed to create device")
         };
         let gfx_queue = queues.next().unwrap();
         let compute_queue = if is_separate_compute_queue {

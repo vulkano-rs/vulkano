@@ -52,7 +52,6 @@ use vulkano::{
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
 };
-use vulkano_win::VkSurfaceBuild;
 use winit::{
     event::{ElementState, Event, KeyboardInput, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -61,7 +60,7 @@ use winit::{
 
 /// A struct to contain resources related to a window.
 struct WindowSurface {
-    surface: Arc<Surface>,
+    window: Arc<Window>,
     swapchain: Arc<Swapchain>,
     framebuffers: Vec<Arc<Framebuffer>>,
     recreate_swapchain: bool,
@@ -69,8 +68,10 @@ struct WindowSurface {
 }
 
 fn main() {
+    let event_loop = EventLoop::new();
+
     let library = VulkanLibrary::new().unwrap();
-    let required_extensions = vulkano_win::required_extensions(&library);
+    let required_extensions = Surface::required_extensions(&event_loop);
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
@@ -80,17 +81,14 @@ fn main() {
         },
     )
     .unwrap();
-    let event_loop = EventLoop::new();
+
+    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     // A hashmap that contains all of our created windows and their resources.
     let mut window_surfaces = HashMap::new();
 
-    let surface = WindowBuilder::new()
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
-
     // Use the window's id as a means to access it from the hashmap.
-    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
     let window_id = window.id();
 
     // Find the device and a queue.
@@ -318,7 +316,7 @@ fn main() {
     window_surfaces.insert(
         window_id,
         WindowSurface {
-            surface,
+            window,
             swapchain,
             recreate_swapchain: false,
             framebuffers: window_size_dependent_setup(&images, render_pass.clone(), &mut viewport),
@@ -355,10 +353,8 @@ fn main() {
                 },
             ..
         } => {
-            let surface = WindowBuilder::new()
-                .build_vk_surface(event_loop, instance.clone())
-                .unwrap();
-            let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
+            let window = Arc::new(WindowBuilder::new().build(event_loop).unwrap());
+            let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
             let window_id = window.id();
             let (swapchain, images) = {
                 let composite_alpha = surface_caps
@@ -392,7 +388,7 @@ fn main() {
             window_surfaces.insert(
                 window_id,
                 WindowSurface {
-                    surface,
+                    window,
                     swapchain,
                     recreate_swapchain: false,
                     framebuffers: window_size_dependent_setup(
@@ -405,26 +401,19 @@ fn main() {
             );
         }
         Event::RedrawEventsCleared => {
-            window_surfaces.values().for_each(|s| {
-                let window = s
-                    .surface
-                    .object()
-                    .unwrap()
-                    .downcast_ref::<Window>()
-                    .unwrap();
-                window.request_redraw()
-            });
+            window_surfaces
+                .values()
+                .for_each(|s| s.window.request_redraw());
         }
         Event::RedrawRequested(window_id) => {
             let WindowSurface {
-                surface,
+                window,
                 swapchain,
                 recreate_swapchain,
                 framebuffers,
                 previous_frame_end,
             } = window_surfaces.get_mut(&window_id).unwrap();
 
-            let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
             let dimensions = window.inner_size();
             if dimensions.width == 0 || dimensions.height == 0 {
                 return;

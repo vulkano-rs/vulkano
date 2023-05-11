@@ -99,11 +99,9 @@ use vulkano::{
 fn main() {
     // The usual Vulkan initialization.
     let library = VulkanLibrary::new().unwrap();
-    let required_extensions = vulkano_win::required_extensions(&library);
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
-            enabled_extensions: required_extensions,
             enumerate_portability: true,
             ..Default::default()
         },
@@ -111,7 +109,6 @@ fn main() {
     .unwrap();
 
     let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
         ..DeviceExtensions::empty()
     };
     let (physical_device, queue_family_index) = instance
