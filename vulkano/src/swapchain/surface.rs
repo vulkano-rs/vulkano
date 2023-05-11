@@ -12,7 +12,7 @@ use crate::{
     cache::OnceCache,
     format::Format,
     image::ImageUsage,
-    instance::Instance,
+    instance::{Instance, InstanceExtensions},
     macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
     swapchain::{
         display::{DisplayMode, DisplayPlane},
@@ -61,6 +61,28 @@ pub struct Surface {
 }
 
 impl Surface {
+    /// Returns the instance extensions required to create a surface from a window of the given
+    /// event loop.
+    pub fn required_extensions(event_loop: &impl HasRawDisplayHandle) -> InstanceExtensions {
+        let mut extensions = InstanceExtensions {
+            khr_surface: true,
+            ..InstanceExtensions::empty()
+        };
+        match event_loop.raw_display_handle() {
+            RawDisplayHandle::Android(_) => extensions.khr_android_surface = true,
+            // FIXME: `mvk_macos_surface` and `mvk_ios_surface` are deprecated.
+            RawDisplayHandle::AppKit(_) => extensions.mvk_macos_surface = true,
+            RawDisplayHandle::UiKit(_) => extensions.mvk_ios_surface = true,
+            RawDisplayHandle::Windows(_) => extensions.khr_win32_surface = true,
+            RawDisplayHandle::Wayland(_) => extensions.khr_wayland_surface = true,
+            RawDisplayHandle::Xcb(_) => extensions.khr_xcb_surface = true,
+            RawDisplayHandle::Xlib(_) => extensions.khr_xlib_surface = true,
+            _ => unimplemented!(),
+        }
+
+        extensions
+    }
+
     /// Creates a new `Surface` from the given `window`.
     pub fn from_window(
         instance: Arc<Instance>,
