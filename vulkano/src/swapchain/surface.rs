@@ -1416,10 +1416,10 @@ unsafe impl SurfaceSwapchainLock for Surface {
 
 /// Get sublayer from iOS main view (ui_view). The sublayer is created as `CAMetalLayer`.
 #[cfg(target_os = "ios")]
-unsafe fn get_metal_layer_ios(view: *mut std::ffi::c_void) -> IOSMetalLayer {
+unsafe fn get_metal_layer_ios(ui_view: *mut std::ffi::c_void) -> IOSMetalLayer {
     use core_graphics_types::{base::CGFloat, geometry::CGRect};
 
-    let view: *mut Object = std::mem::transmute(view);
+    let view: *mut Object = ui_view.cast();
     let main_layer: *mut Object = msg_send![view, layer];
     let class = class!(CAMetalLayer);
     let new_layer: *mut Object = msg_send![class, new];
