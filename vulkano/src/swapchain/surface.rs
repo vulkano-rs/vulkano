@@ -20,10 +20,11 @@ use crate::{
     },
     OomError, RequiresOneOf, RuntimeError, VulkanObject,
 };
-
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
-
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
 use std::{
     any::Any,
     error::Error,
@@ -46,6 +47,7 @@ pub struct Surface {
     // If true, a swapchain has been associated to this surface, and that any new swapchain
     // creation should be forbidden.
     has_swapchain: AtomicBool,
+    // FIXME: This field is never set.
     #[cfg(target_os = "ios")]
     metal_layer: IOSMetalLayer,
 
@@ -59,6 +61,61 @@ pub struct Surface {
 }
 
 impl Surface {
+    /// Creates a new `Surface` from the given `window`.
+    pub fn from_window(
+        instance: Arc<Instance>,
+        window: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Any + Send + Sync>,
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        let mut surface = unsafe { Self::from_window_ref(instance, &*window) }?;
+        Arc::get_mut(&mut surface).unwrap().object = Some(window);
+
+        Ok(surface)
+    }
+
+    /// Creates a new `Surface` from the given `window` without ensuring that the window outlives
+    /// the surface.
+    ///
+    /// # Safety
+    ///
+    /// - The given `window` must outlive the created surface.
+    pub unsafe fn from_window_ref(
+        instance: Arc<Instance>,
+        window: &(impl HasRawWindowHandle + HasRawDisplayHandle),
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        match (window.raw_window_handle(), window.raw_display_handle()) {
+            (RawWindowHandle::AndroidNdk(window), RawDisplayHandle::Android(_display)) => {
+                Self::from_android(instance, window.a_native_window, None)
+            }
+            #[cfg(target_os = "macos")]
+            (RawWindowHandle::AppKit(window), RawDisplayHandle::AppKit(_display)) => {
+                // Ensure the layer is `CAMetalLayer`.
+                let layer = get_metal_layer_macos(window.ns_view);
+
+                Self::from_mac_os(instance, layer as *const (), None)
+            }
+            #[cfg(target_os = "ios")]
+            (RawWindowHandle::UiKit(window), RawDisplayHandle::UiKit(_display)) => {
+                // Ensure the layer is `CAMetalLayer`.
+                let layer = get_metal_layer_ios(window.ui_view);
+
+                Self::from_ios(instance, layer, None)
+            }
+            (RawWindowHandle::Wayland(window), RawDisplayHandle::Wayland(display)) => {
+                Self::from_wayland(instance, display.display, window.surface, None)
+            }
+            (RawWindowHandle::Win32(window), RawDisplayHandle::Windows(_display)) => {
+                Self::from_win32(instance, window.hinstance, window.hwnd, None)
+            }
+            (RawWindowHandle::Xcb(window), RawDisplayHandle::Xcb(display)) => {
+                Self::from_xcb(instance, display.connection, window.window, None)
+            }
+            (RawWindowHandle::Xlib(window), RawDisplayHandle::Xlib(display)) => {
+                Self::from_xlib(instance, display.display, window.window, None)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
     /// Creates a `Surface` from a raw handle.
     ///
     /// # Safety
@@ -1335,7 +1392,54 @@ unsafe impl SurfaceSwapchainLock for Surface {
     }
 }
 
-/// Error that can happen when creating a debug callback.
+/// Get sublayer from iOS main view (ui_view). The sublayer is created as `CAMetalLayer`.
+#[cfg(target_os = "ios")]
+unsafe fn get_metal_layer_ios(view: *mut std::ffi::c_void) -> IOSMetalLayer {
+    use core_graphics_types::{base::CGFloat, geometry::CGRect};
+
+    let view: *mut Object = std::mem::transmute(view);
+    let main_layer: *mut Object = msg_send![view, layer];
+    let class = class!(CAMetalLayer);
+    let new_layer: *mut Object = msg_send![class, new];
+    let frame: CGRect = msg_send![main_layer, bounds];
+    let () = msg_send![new_layer, setFrame: frame];
+    let () = msg_send![main_layer, addSublayer: new_layer];
+    let screen: *mut Object = msg_send![class!(UIScreen), mainScreen];
+    let scale_factor: CGFloat = msg_send![screen, nativeScale];
+    let () = msg_send![view, setContentScaleFactor: scale_factor];
+    IOSMetalLayer::new(view, new_layer)
+}
+
+/// Get (and set) `CAMetalLayer` to `ns_view`. This is necessary to be able to render on Mac.
+#[cfg(target_os = "macos")]
+unsafe fn get_metal_layer_macos(ns_view: *mut std::ffi::c_void) -> *mut Object {
+    use core_graphics_types::base::CGFloat;
+    use objc::runtime::YES;
+    use objc::runtime::{BOOL, NO};
+
+    let view: *mut Object = std::mem::transmute(view);
+    let main_layer: *mut Object = msg_send![view, layer];
+    let class = class!(CAMetalLayer);
+    let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
+    if is_valid_layer == NO {
+        let new_layer: *mut Object = msg_send![class, new];
+        let () = msg_send![new_layer, setEdgeAntialiasingMask: 0];
+        let () = msg_send![new_layer, setPresentsWithTransaction: false];
+        let () = msg_send![new_layer, removeAllAnimations];
+        let () = msg_send![view, setLayer: new_layer];
+        let () = msg_send![view, setWantsLayer: YES];
+        let window: *mut Object = msg_send![view, window];
+        if !window.is_null() {
+            let scale_factor: CGFloat = msg_send![window, backingScaleFactor];
+            let () = msg_send![new_layer, setContentsScale: scale_factor];
+        }
+        new_layer
+    } else {
+        main_layer
+    }
+}
+
+/// Error that can happen when creating a surface.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SurfaceCreationError {
     /// Not enough memory.
