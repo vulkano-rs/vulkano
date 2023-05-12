@@ -159,7 +159,7 @@ pub use library::{LoadingError, VulkanLibrary};
 use std::{
     borrow::Cow,
     error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     num::NonZeroU64,
     ops::Deref,
     sync::Arc,
@@ -240,7 +240,7 @@ where
 
 /// An error that can happen when calling a safe (validated) function that makes a call to the
 /// Vulkan API.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum VulkanError {
     /// The function call was invalid in some way.
     ValidationError(ValidationError),
@@ -249,8 +249,19 @@ pub enum VulkanError {
     RuntimeError(RuntimeError),
 }
 
+impl Debug for VulkanError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::ValidationError(err) => {
+                write!(f, "a validation error occurred\n\nCaused by:\n    {err:?}")
+            }
+            Self::RuntimeError(err) => write!(f, "a runtime error occurred: {err}"),
+        }
+    }
+}
+
 impl Display for VulkanError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::ValidationError(_) => write!(f, "a validation error occurred"),
             Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
@@ -280,7 +291,7 @@ impl From<RuntimeError> for VulkanError {
 }
 
 /// The arguments or other context of a call to a Vulkan function were not valid.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct ValidationError {
     /// The context in which the problem exists (e.g. a specific parameter).
     pub context: Cow<'static, str>,
@@ -315,8 +326,28 @@ impl ValidationError {
     }
 }
 
+impl Debug for ValidationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "{}: {}", self.context, self.problem)?;
+
+        if let Some(requires_one_of) = self.requires_one_of {
+            write!(f, "\n\n{:?}", requires_one_of)?;
+        }
+
+        if !self.vuids.is_empty() {
+            write!(f, "\n\nVulkan VUIDs:")?;
+
+            for vuid in self.vuids {
+                write!(f, "\n    {}", vuid)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl Display for ValidationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             context,
             problem,
@@ -348,7 +379,7 @@ impl Error for ValidationError {}
 
 /// Used in errors to indicate a set of alternatives that needs to be available/enabled to allow
 /// a given operation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct RequiresOneOf {
     /// A minimum Vulkan API version that would allow the operation.
     pub api_version: Option<Version>,
@@ -370,6 +401,30 @@ impl RequiresOneOf {
             + self.features.len()
             + self.device_extensions.len()
             + self.instance_extensions.len()
+    }
+}
+
+impl Debug for RequiresOneOf {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "Requires one of:")?;
+
+        if let Some(Version { major, minor, .. }) = self.api_version {
+            write!(f, "\n    Vulkan API version {}.{}", major, minor)?;
+        }
+
+        for feature in self.features {
+            write!(f, "\n    The `{}` feature", feature)?;
+        }
+
+        for extension in self.device_extensions {
+            write!(f, "\n    The `{}` device extension", extension)?;
+        }
+
+        for extension in self.instance_extensions {
+            write!(f, "\n    The `{}` instance extension", extension)?;
+        }
+
+        Ok(())
     }
 }
 
