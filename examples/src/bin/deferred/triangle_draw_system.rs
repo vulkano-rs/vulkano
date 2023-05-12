@@ -128,7 +128,7 @@ impl TriangleDrawSystem {
     }
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
-    pub fn draw(&self, viewport_dimensions: [u32; 2]) -> SecondaryAutoCommandBuffer {
+    pub fn draw(&self, viewport_dimensions: [u32; 2]) -> Arc<SecondaryAutoCommandBuffer> {
         let mut builder = AutoCommandBufferBuilder::secondary(
             &self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),

@@ -248,14 +248,13 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut function. The actual implementation is in the
     /// > `CommandBuffer` trait.
-    fn then_execute<Cb>(
+    fn then_execute(
         self,
         queue: Arc<Queue>,
-        command_buffer: Cb,
+        command_buffer: Arc<impl PrimaryCommandBufferAbstract + 'static>,
     ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
-        Cb: PrimaryCommandBufferAbstract + 'static,
     {
         command_buffer.execute_after(self, queue)
     }
@@ -264,13 +263,12 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut function. The actual implementation is in the
     /// > `CommandBuffer` trait.
-    fn then_execute_same_queue<Cb>(
+    fn then_execute_same_queue(
         self,
-        command_buffer: Cb,
+        command_buffer: Arc<impl PrimaryCommandBufferAbstract + 'static>,
     ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
-        Cb: PrimaryCommandBufferAbstract + 'static,
     {
         let queue = self.queue().unwrap();
         command_buffer.execute_after(self, queue)

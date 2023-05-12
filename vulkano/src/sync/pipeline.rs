@@ -2245,14 +2245,6 @@ impl DependencyInfo {
             && self.buffer_memory_barriers.is_empty()
             && self.image_memory_barriers.is_empty()
     }
-
-    /// Clears all barriers.
-    #[inline]
-    pub fn clear(&mut self) {
-        self.memory_barriers.clear();
-        self.buffer_memory_barriers.clear();
-        self.image_memory_barriers.clear();
-    }
 }
 
 impl Default for DependencyInfo {

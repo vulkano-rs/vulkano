@@ -164,7 +164,7 @@ impl AmbientLightingSystem {
         viewport_dimensions: [u32; 2],
         color_input: Arc<dyn ImageViewAbstract + 'static>,
         ambient_color: [f32; 3],
-    ) -> SecondaryAutoCommandBuffer {
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let push_constants = fs::PushConstants {
             color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],
         };

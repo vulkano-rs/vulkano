@@ -185,7 +185,7 @@ impl PointLightingSystem {
         screen_to_world: Matrix4<f32>,
         position: Vector3<f32>,
         color: [f32; 3],
-    ) -> SecondaryAutoCommandBuffer {
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let push_constants = fs::PushConstants {
             screen_to_world: screen_to_world.into(),
             color: [color[0], color[1], color[2], 1.0],

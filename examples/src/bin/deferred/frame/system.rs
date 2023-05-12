@@ -453,10 +453,7 @@ pub struct DrawPass<'f, 's: 'f> {
 
 impl<'f, 's: 'f> DrawPass<'f, 's> {
     /// Appends a command that executes a secondary command buffer that performs drawing.
-    pub fn execute<C>(&mut self, command_buffer: C)
-    where
-        C: SecondaryCommandBufferAbstract + 'static,
-    {
+    pub fn execute(&mut self, command_buffer: Arc<dyn SecondaryCommandBufferAbstract>) {
         self.frame
             .command_buffer_builder
             .as_mut()

@@ -11,16 +11,16 @@ use crate::{
     command_buffer::{
         allocator::CommandBufferAllocator,
         auto::{
-            BeginRenderPassState, BeginRenderingAttachments, BeginRenderingState, RenderPassState,
-            RenderPassStateType,
+            BeginRenderPassState, BeginRenderingState, RenderPassState, RenderPassStateAttachments,
+            RenderPassStateType, Resource,
         },
-        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, ResourceInCommand, ResourceUseRef, SubpassContents,
+        AutoCommandBufferBuilder, ResourceInCommand, SubpassContents,
     },
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, Format, NumericType},
     image::{ImageAspects, ImageLayout, ImageUsage, ImageViewAbstract, SampleCount},
+    pipeline::graphics::subpass::PipelineRenderingCreateInfo,
     render_pass::{
         AttachmentDescription, Framebuffer, LoadOp, RenderPass, ResolveMode, StoreOp,
         SubpassDescription,
@@ -52,47 +52,21 @@ where
     /// draw commands or executions of secondary command buffers.
     pub fn begin_render_pass(
         &mut self,
-        mut render_pass_begin_info: RenderPassBeginInfo,
+        render_pass_begin_info: RenderPassBeginInfo,
         contents: SubpassContents,
     ) -> Result<&mut Self, RenderPassError> {
-        self.validate_begin_render_pass(&mut render_pass_begin_info, contents)?;
+        self.validate_begin_render_pass(&render_pass_begin_info, contents)?;
 
         unsafe {
-            let RenderPassBeginInfo {
-                ref render_pass,
-                ref framebuffer,
-                render_area_offset,
-                render_area_extent,
-                clear_values: _,
-                _ne: _,
-            } = render_pass_begin_info;
-
-            let subpass = render_pass.clone().first_subpass();
-            let view_mask = subpass.subpass_desc().view_mask;
-
-            let render_pass_state = RenderPassState {
-                contents,
-                render_area_offset,
-                render_area_extent,
-                render_pass: BeginRenderPassState {
-                    subpass,
-                    framebuffer: Some(framebuffer.clone()),
-                }
-                .into(),
-                view_mask,
-            };
-
-            self.inner
-                .begin_render_pass(render_pass_begin_info, contents)?;
-            self.render_pass_state = Some(render_pass_state);
-
-            Ok(self)
+            self.begin_render_pass_unchecked(render_pass_begin_info, contents);
         }
+
+        Ok(self)
     }
 
     fn validate_begin_render_pass(
         &self,
-        render_pass_begin_info: &mut RenderPassBeginInfo,
+        render_pass_begin_info: &RenderPassBeginInfo,
         contents: SubpassContents,
     ) -> Result<(), RenderPassError> {
         let device = self.device();
@@ -111,7 +85,7 @@ where
         }
 
         // VUID-vkCmdBeginRenderPass2-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(RenderPassError::ForbiddenInsideRenderPass);
         }
 
@@ -302,7 +276,7 @@ where
         }
 
         // VUID-VkRenderPassBeginInfo-clearValueCount-04962
-        for (attachment_index, (attachment_desc, &mut clear_value)) in render_pass
+        for (attachment_index, (attachment_desc, &clear_value)) in render_pass
             .attachments()
             .iter()
             .zip(clear_values)
@@ -409,6 +383,78 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn begin_render_pass_unchecked(
+        &mut self,
+        render_pass_begin_info: RenderPassBeginInfo,
+        contents: SubpassContents,
+    ) -> &mut Self {
+        let &RenderPassBeginInfo {
+            ref render_pass,
+            ref framebuffer,
+            render_area_offset,
+            render_area_extent,
+            clear_values: _,
+            _ne: _,
+        } = &render_pass_begin_info;
+
+        let subpass = render_pass.clone().first_subpass();
+        self.builder_state.render_pass = Some(RenderPassState {
+            contents,
+            render_area_offset,
+            render_area_extent,
+
+            rendering_info: PipelineRenderingCreateInfo::from_subpass(&subpass),
+            attachments: Some(RenderPassStateAttachments::from_subpass(
+                &subpass,
+                framebuffer,
+            )),
+
+            render_pass: BeginRenderPassState {
+                subpass,
+                framebuffer: Some(framebuffer.clone()),
+            }
+            .into(),
+        });
+
+        self.add_render_pass_begin(
+            "begin_render_pass",
+            render_pass
+                .attachments()
+                .iter()
+                .enumerate()
+                .map(|(index, desc)| {
+                    let image_view = &framebuffer.attachments()[index];
+                    let index = index as u32;
+
+                    (
+                        ResourceInCommand::FramebufferAttachment { index }.into(),
+                        Resource::Image {
+                            image: image_view.image(),
+                            subresource_range: image_view.subresource_range().clone(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                access: AccessFlags::INPUT_ATTACHMENT_READ
+                                    | AccessFlags::COLOR_ATTACHMENT_READ
+                                    | AccessFlags::COLOR_ATTACHMENT_WRITE
+                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
+                                exclusive: true, // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
+                            },
+                            start_layout: desc.initial_layout,
+                            end_layout: desc.final_layout,
+                        },
+                    )
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.begin_render_pass(render_pass_begin_info, contents);
+            },
+        );
+
+        self
+    }
+
     /// Advances to the next subpass of the render pass previously begun with `begin_render_pass`.
     pub fn next_subpass(
         &mut self,
@@ -417,23 +463,7 @@ where
         self.validate_next_subpass(contents)?;
 
         unsafe {
-            let render_pass_state = self.render_pass_state.as_mut().unwrap();
-            let begin_render_pass_state = match &mut render_pass_state.render_pass {
-                RenderPassStateType::BeginRenderPass(x) => x,
-                _ => unreachable!(),
-            };
-
-            begin_render_pass_state.subpass.next_subpass();
-            render_pass_state.contents = contents;
-            render_pass_state.view_mask = begin_render_pass_state.subpass.subpass_desc().view_mask;
-
-            if render_pass_state.view_mask != 0 {
-                // When multiview is enabled, at the beginning of each subpass, all
-                // non-render pass state is undefined.
-                self.inner.reset_state();
-            }
-
-            self.inner.next_subpass(contents);
+            self.next_subpass_unchecked(contents);
         }
 
         Ok(self)
@@ -447,7 +477,8 @@ where
 
         // VUID-vkCmdNextSubpass2-renderpass
         let render_pass_state = self
-            .render_pass_state
+            .builder_state
+            .render_pass
             .as_ref()
             .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
 
@@ -466,7 +497,12 @@ where
         }
 
         // VUID?
-        if self.query_state.values().any(|state| state.in_subpass) {
+        if self
+            .builder_state
+            .queries
+            .values()
+            .any(|state| state.in_subpass)
+        {
             return Err(RenderPassError::QueryIsActive);
         }
 
@@ -482,6 +518,40 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn next_subpass_unchecked(&mut self, contents: SubpassContents) -> &mut Self {
+        let render_pass_state = self.builder_state.render_pass.as_mut().unwrap();
+        let begin_render_pass_state = match &mut render_pass_state.render_pass {
+            RenderPassStateType::BeginRenderPass(x) => x,
+            _ => unreachable!(),
+        };
+
+        begin_render_pass_state.subpass.next_subpass();
+        render_pass_state.contents = contents;
+        render_pass_state.rendering_info =
+            PipelineRenderingCreateInfo::from_subpass(&begin_render_pass_state.subpass);
+        render_pass_state.attachments = Some(RenderPassStateAttachments::from_subpass(
+            &begin_render_pass_state.subpass,
+            begin_render_pass_state.framebuffer.as_ref().unwrap(),
+        ));
+
+        if render_pass_state.rendering_info.view_mask != 0 {
+            // When multiview is enabled, at the beginning of each subpass, all
+            // non-render pass state is undefined.
+            self.builder_state.reset_non_render_pass_states();
+        }
+
+        self.add_command(
+            "next_subpass",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.next_subpass(contents);
+            },
+        );
+
+        self
+    }
+
     /// Ends the render pass previously begun with `begin_render_pass`.
     ///
     /// This must be called after you went through all the subpasses.
@@ -489,8 +559,7 @@ where
         self.validate_end_render_pass()?;
 
         unsafe {
-            self.inner.end_render_pass();
-            self.render_pass_state = None;
+            self.end_render_pass_unchecked();
         }
 
         Ok(self)
@@ -499,7 +568,8 @@ where
     fn validate_end_render_pass(&self) -> Result<(), RenderPassError> {
         // VUID-vkCmdEndRenderPass2-renderpass
         let render_pass_state = self
-            .render_pass_state
+            .builder_state
+            .render_pass
             .as_ref()
             .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
 
@@ -524,7 +594,12 @@ where
         }
 
         // VUID?
-        if self.query_state.values().any(|state| state.in_subpass) {
+        if self
+            .builder_state
+            .queries
+            .values()
+            .any(|state| state.in_subpass)
+        {
             return Err(RenderPassError::QueryIsActive);
         }
 
@@ -538,6 +613,21 @@ where
         // Ensured by the type of the impl block
 
         Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn end_render_pass_unchecked(&mut self) -> &mut Self {
+        self.builder_state.render_pass = None;
+
+        self.add_render_pass_end(
+            "end_render_pass",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.end_render_pass();
+            },
+        );
+
+        self
     }
 }
 
@@ -553,50 +643,10 @@ where
         mut rendering_info: RenderingInfo,
     ) -> Result<&mut Self, RenderPassError> {
         rendering_info.set_extent_layers()?;
-        self.validate_begin_rendering(&mut rendering_info)?;
+        self.validate_begin_rendering(&rendering_info)?;
 
         unsafe {
-            let RenderingInfo {
-                render_area_offset,
-                render_area_extent,
-                layer_count: _,
-                view_mask,
-                ref color_attachments,
-                ref depth_attachment,
-                ref stencil_attachment,
-                contents,
-                _ne: _,
-            } = rendering_info;
-
-            let render_pass_state = RenderPassState {
-                contents,
-                render_area_offset,
-                render_area_extent,
-                render_pass: BeginRenderingState {
-                    attachments: Some(BeginRenderingAttachments {
-                        color_attachments: color_attachments.clone(),
-                        depth_attachment: depth_attachment.clone(),
-                        stencil_attachment: stencil_attachment.clone(),
-                    }),
-                    color_attachment_formats: color_attachments
-                        .iter()
-                        .map(|a| a.as_ref().map(|a| a.image_view.format().unwrap()))
-                        .collect(),
-                    depth_attachment_format: depth_attachment
-                        .as_ref()
-                        .map(|a| a.image_view.format().unwrap()),
-                    stencil_attachment_format: stencil_attachment
-                        .as_ref()
-                        .map(|a| a.image_view.format().unwrap()),
-                    pipeline_used: false,
-                }
-                .into(),
-                view_mask,
-            };
-
-            self.inner.begin_rendering(rendering_info)?;
-
-            self.render_pass_state = Some(render_pass_state);
+            self.begin_rendering_unchecked(rendering_info);
         }
 
         Ok(self)
@@ -604,7 +654,7 @@ where
 
     fn validate_begin_rendering(
         &self,
-        rendering_info: &mut RenderingInfo,
+        rendering_info: &RenderingInfo,
     ) -> Result<(), RenderPassError> {
         let device = self.device();
         let properties = device.physical_device().properties();
@@ -631,11 +681,11 @@ where
         }
 
         // VUID-vkCmdBeginRendering-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(RenderPassError::ForbiddenInsideRenderPass);
         }
 
-        let &mut RenderingInfo {
+        let &RenderingInfo {
             render_area_offset,
             render_area_extent,
             layer_count,
@@ -651,7 +701,9 @@ where
         contents.validate_device(device)?;
 
         // VUID-vkCmdBeginRendering-commandBuffer-06068
-        if self.inheritance_info.is_some() && contents == SubpassContents::SecondaryCommandBuffers {
+        if self.inner.inheritance_info().is_some()
+            && contents == SubpassContents::SecondaryCommandBuffers
+        {
             return Err(RenderPassError::ContentsForbiddenInSecondaryCommandBuffer);
         }
 
@@ -1160,13 +1212,223 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn begin_rendering_unchecked(&mut self, rendering_info: RenderingInfo) -> &mut Self {
+        let &RenderingInfo {
+            render_area_offset,
+            render_area_extent,
+            layer_count: _,
+            view_mask: _,
+            ref color_attachments,
+            ref depth_attachment,
+            ref stencil_attachment,
+            contents,
+            _ne,
+        } = &rendering_info;
+
+        self.builder_state.render_pass = Some(RenderPassState {
+            contents,
+            render_area_offset,
+            render_area_extent,
+
+            rendering_info: PipelineRenderingCreateInfo::from_rendering_info(&rendering_info),
+            attachments: Some(RenderPassStateAttachments::from_rendering_info(
+                &rendering_info,
+            )),
+
+            render_pass: BeginRenderingState {
+                pipeline_used: false,
+            }
+            .into(),
+        });
+
+        self.add_render_pass_begin(
+            "begin_rendering",
+            (color_attachments
+                .iter()
+                .enumerate()
+                .filter_map(|(index, attachment_info)| {
+                    attachment_info
+                        .as_ref()
+                        .map(|attachment_info| (index as u32, attachment_info))
+                })
+                .flat_map(|(index, attachment_info)| {
+                    let &RenderingAttachmentInfo {
+                        ref image_view,
+                        image_layout,
+                        ref resolve_info,
+                        load_op: _,
+                        store_op: _,
+                        clear_value: _,
+                        _ne: _,
+                    } = attachment_info;
+
+                    [
+                        Some((
+                            ResourceInCommand::ColorAttachment { index }.into(),
+                            Resource::Image {
+                                image: image_view.image(),
+                                subresource_range: image_view.subresource_range().clone(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                    access: AccessFlags::COLOR_ATTACHMENT_READ
+                                        | AccessFlags::COLOR_ATTACHMENT_WRITE, // TODO: suboptimal
+                                    exclusive: true,                      // TODO: suboptimal
+                                },
+                                start_layout: image_layout,
+                                end_layout: image_layout,
+                            },
+                        )),
+                        resolve_info.as_ref().map(|resolve_info| {
+                            let &RenderingAttachmentResolveInfo {
+                                mode: _,
+                                ref image_view,
+                                image_layout,
+                            } = resolve_info;
+
+                            (
+                                ResourceInCommand::ColorResolveAttachment { index }.into(),
+                                Resource::Image {
+                                    image: image_view.image(),
+                                    subresource_range: image_view.subresource_range().clone(),
+                                    memory: PipelineMemoryAccess {
+                                        stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                        access: AccessFlags::COLOR_ATTACHMENT_READ
+                                            | AccessFlags::COLOR_ATTACHMENT_WRITE, // TODO: suboptimal
+                                        exclusive: true, // TODO: suboptimal
+                                    },
+                                    start_layout: image_layout,
+                                    end_layout: image_layout,
+                                },
+                            )
+                        }),
+                    ]
+                    .into_iter()
+                    .flatten()
+                }))
+            .chain(depth_attachment.iter().flat_map(|attachment_info| {
+                let &RenderingAttachmentInfo {
+                    ref image_view,
+                    image_layout,
+                    ref resolve_info,
+                    load_op: _,
+                    store_op: _,
+                    clear_value: _,
+                    _ne: _,
+                } = attachment_info;
+
+                [
+                    Some((
+                        ResourceInCommand::DepthStencilAttachment.into(),
+                        Resource::Image {
+                            image: image_view.image(),
+                            subresource_range: image_view.subresource_range().clone(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
+                                exclusive: true, // TODO: suboptimal
+                            },
+                            start_layout: image_layout,
+                            end_layout: image_layout,
+                        },
+                    )),
+                    resolve_info.as_ref().map(|resolve_info| {
+                        let &RenderingAttachmentResolveInfo {
+                            mode: _,
+                            ref image_view,
+                            image_layout,
+                        } = resolve_info;
+
+                        (
+                            ResourceInCommand::DepthStencilResolveAttachment.into(),
+                            Resource::Image {
+                                image: image_view.image(),
+                                subresource_range: image_view.subresource_range().clone(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                    access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                        | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
+                                    exclusive: true, // TODO: suboptimal
+                                },
+                                start_layout: image_layout,
+                                end_layout: image_layout,
+                            },
+                        )
+                    }),
+                ]
+                .into_iter()
+                .flatten()
+            }))
+            .chain(stencil_attachment.iter().flat_map(|attachment_info| {
+                let &RenderingAttachmentInfo {
+                    ref image_view,
+                    image_layout,
+                    ref resolve_info,
+                    load_op: _,
+                    store_op: _,
+                    clear_value: _,
+                    _ne: _,
+                } = attachment_info;
+
+                [
+                    Some((
+                        ResourceInCommand::DepthStencilAttachment.into(),
+                        Resource::Image {
+                            image: image_view.image(),
+                            subresource_range: image_view.subresource_range().clone(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
+                                exclusive: true, // TODO: suboptimal
+                            },
+                            start_layout: image_layout,
+                            end_layout: image_layout,
+                        },
+                    )),
+                    resolve_info.as_ref().map(|resolve_info| {
+                        let &RenderingAttachmentResolveInfo {
+                            mode: _,
+                            ref image_view,
+                            image_layout,
+                        } = resolve_info;
+
+                        (
+                            ResourceInCommand::DepthStencilResolveAttachment.into(),
+                            Resource::Image {
+                                image: image_view.image(),
+                                subresource_range: image_view.subresource_range().clone(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
+                                    access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                                        | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
+                                    exclusive: true, // TODO: suboptimal
+                                },
+                                start_layout: image_layout,
+                                end_layout: image_layout,
+                            },
+                        )
+                    }),
+                ]
+                .into_iter()
+                .flatten()
+            }))
+            .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.begin_rendering(rendering_info);
+            },
+        );
+
+        self
+    }
+
     /// Ends the render pass previously begun with `begin_rendering`.
     pub fn end_rendering(&mut self) -> Result<&mut Self, RenderPassError> {
         self.validate_end_rendering()?;
 
         unsafe {
-            self.inner.end_rendering();
-            self.render_pass_state = None;
+            self.end_rendering_unchecked();
         }
 
         Ok(self)
@@ -1175,12 +1437,13 @@ where
     fn validate_end_rendering(&self) -> Result<(), RenderPassError> {
         // VUID-vkCmdEndRendering-renderpass
         let render_pass_state = self
-            .render_pass_state
+            .builder_state
+            .render_pass
             .as_ref()
             .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
 
         // VUID?
-        if self.inheritance_info.is_some() {
+        if self.inner.inheritance_info().is_some() {
             return Err(RenderPassError::ForbiddenWithInheritedRenderPass);
         }
 
@@ -1200,6 +1463,21 @@ where
             .intersects(QueueFlags::GRAPHICS));
 
         Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn end_rendering_unchecked(&mut self) -> &mut Self {
+        self.builder_state.render_pass = None;
+
+        self.add_render_pass_end(
+            "end_rendering",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.end_rendering();
+            },
+        );
+
+        self
     }
 
     /// Clears specific regions of specific attachments of the framebuffer.
@@ -1225,7 +1503,7 @@ where
         self.validate_clear_attachments(&attachments, &rects)?;
 
         unsafe {
-            self.inner.clear_attachments(attachments, rects);
+            self.clear_attachments_unchecked(attachments, rects);
         }
 
         Ok(self)
@@ -1238,7 +1516,8 @@ where
     ) -> Result<(), RenderPassError> {
         // VUID-vkCmdClearAttachments-renderpass
         let render_pass_state = self
-            .render_pass_state
+            .builder_state
+            .render_pass
             .as_ref()
             .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
 
@@ -1250,7 +1529,7 @@ where
 
         //let subpass_desc = begin_render_pass_state.subpass.subpass_desc();
         //let render_pass = begin_render_pass_state.subpass.render_pass();
-        let is_multiview = render_pass_state.view_mask != 0;
+        let is_multiview = render_pass_state.rendering_info.view_mask != 0;
         let mut layer_count = u32::MAX;
 
         for &clear_attachment in attachments {
@@ -1259,31 +1538,17 @@ where
                     color_attachment,
                     clear_value,
                 } => {
-                    let attachment_format = match &render_pass_state.render_pass {
-                        RenderPassStateType::BeginRenderPass(state) => {
-                            let color_attachments = &state.subpass.subpass_desc().color_attachments;
-                            let atch_ref = color_attachments.get(color_attachment as usize).ok_or(
-                                RenderPassError::ColorAttachmentIndexOutOfRange {
-                                    color_attachment_index: color_attachment,
-                                    num_color_attachments: color_attachments.len() as u32,
-                                },
-                            )?;
-
-                            atch_ref.as_ref().map(|atch_ref| {
-                                state.subpass.render_pass().attachments()
-                                    [atch_ref.attachment as usize]
-                                    .format
-                                    .unwrap()
-                            })
-                        }
-                        RenderPassStateType::BeginRendering(state) => *state
-                            .color_attachment_formats
-                            .get(color_attachment as usize)
-                            .ok_or(RenderPassError::ColorAttachmentIndexOutOfRange {
-                                color_attachment_index: color_attachment,
-                                num_color_attachments: state.color_attachment_formats.len() as u32,
-                            })?,
-                    };
+                    let attachment_format = *render_pass_state
+                        .rendering_info
+                        .color_attachment_formats
+                        .get(color_attachment as usize)
+                        .ok_or(RenderPassError::ColorAttachmentIndexOutOfRange {
+                            color_attachment_index: color_attachment,
+                            num_color_attachments: render_pass_state
+                                .rendering_info
+                                .color_attachment_formats
+                                .len() as u32,
+                        })?;
 
                     // VUID-vkCmdClearAttachments-aspectMask-02501
                     if !attachment_format.map_or(false, |format| {
@@ -1308,24 +1573,11 @@ where
                         });
                     }
 
-                    let image_view = match &render_pass_state.render_pass {
-                        RenderPassStateType::BeginRenderPass(state) => (state.framebuffer.as_ref())
-                            .zip(
-                                state.subpass.subpass_desc().color_attachments
-                                    [color_attachment as usize]
-                                    .as_ref(),
-                            )
-                            .map(|(framebuffer, atch_ref)| {
-                                &framebuffer.attachments()[atch_ref.attachment as usize]
-                            }),
-                        RenderPassStateType::BeginRendering(state) => state
-                            .attachments
-                            .as_ref()
-                            .and_then(|attachments| {
-                                attachments.color_attachments[color_attachment as usize].as_ref()
-                            })
-                            .map(|attachment_info| &attachment_info.image_view),
-                    };
+                    let image_view = render_pass_state
+                        .attachments
+                        .as_ref()
+                        .and_then(|attachments| attachments.depth_attachment.as_ref())
+                        .map(|attachment_info| &attachment_info.image_view);
 
                     // We only know the layer count if we have a known attachment image.
                     if let Some(image_view) = image_view {
@@ -1336,24 +1588,8 @@ where
                 ClearAttachment::Depth(_)
                 | ClearAttachment::Stencil(_)
                 | ClearAttachment::DepthStencil(_) => {
-                    let (depth_format, stencil_format) = match &render_pass_state.render_pass {
-                        RenderPassStateType::BeginRenderPass(state) => state
-                            .subpass
-                            .subpass_desc()
-                            .depth_stencil_attachment
-                            .as_ref()
-                            .map_or((None, None), |atch_ref| {
-                                let format = state.subpass.render_pass().attachments()
-                                    [atch_ref.attachment as usize]
-                                    .format
-                                    .unwrap();
-                                (Some(format), Some(format))
-                            }),
-                        RenderPassStateType::BeginRendering(state) => (
-                            state.depth_attachment_format,
-                            state.stencil_attachment_format,
-                        ),
-                    };
+                    let depth_format = render_pass_state.rendering_info.depth_attachment_format;
+                    let stencil_format = render_pass_state.rendering_info.stencil_attachment_format;
 
                     // VUID-vkCmdClearAttachments-aspectMask-02502
                     if matches!(
@@ -1381,24 +1617,11 @@ where
                         });
                     }
 
-                    let image_view = match &render_pass_state.render_pass {
-                        RenderPassStateType::BeginRenderPass(state) => (state.framebuffer.as_ref())
-                            .zip(
-                                state
-                                    .subpass
-                                    .subpass_desc()
-                                    .depth_stencil_attachment
-                                    .as_ref(),
-                            )
-                            .map(|(framebuffer, atch_ref)| {
-                                &framebuffer.attachments()[atch_ref.attachment as usize]
-                            }),
-                        RenderPassStateType::BeginRendering(state) => state
-                            .attachments
-                            .as_ref()
-                            .and_then(|attachments| attachments.depth_attachment.as_ref())
-                            .map(|attachment_info| &attachment_info.image_view),
-                    };
+                    let image_view = render_pass_state
+                        .attachments
+                        .as_ref()
+                        .and_then(|attachments| attachments.depth_attachment.as_ref())
+                        .map(|attachment_info| &attachment_info.image_view);
 
                     // We only know the layer count if we have a known attachment image.
                     if let Some(image_view) = image_view {
@@ -1454,454 +1677,44 @@ where
 
         Ok(())
     }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn clear_attachments_unchecked(
+        &mut self,
+        attachments: impl IntoIterator<Item = ClearAttachment>,
+        rects: impl IntoIterator<Item = ClearRect>,
+    ) -> &mut Self {
+        let attachments: SmallVec<[_; 3]> = attachments.into_iter().collect();
+        let rects: SmallVec<[_; 4]> = rects.into_iter().collect();
+        self.add_command(
+            "clear_attachments",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.clear_attachments(attachments.iter().copied(), rects.iter().cloned());
+            },
+        );
+
+        self
+    }
 }
 
-impl SyncCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Calls `vkCmdBeginRenderPass` on the builder.
-    // TODO: it shouldn't be possible to get an error if the framebuffer checked conflicts already
-    // TODO: after begin_render_pass has been called, flushing should be forbidden and an error
-    //       returned if conflict
     #[inline]
     pub unsafe fn begin_render_pass(
         &mut self,
         render_pass_begin_info: RenderPassBeginInfo,
         contents: SubpassContents,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            render_pass_begin_info: RenderPassBeginInfo,
-            contents: SubpassContents,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "begin_render_pass"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.begin_render_pass(&self.render_pass_begin_info, self.contents);
-            }
-        }
-
+    ) -> &mut Self {
         let RenderPassBeginInfo {
             render_pass,
             framebuffer,
-            render_area_offset: _,
-            render_area_extent: _,
-            clear_values: _,
-            _ne: _,
-        } = &render_pass_begin_info;
-
-        let command_index = self.commands.len();
-        let command_name = "begin_render_pass";
-        let resources = render_pass
-            .attachments()
-            .iter()
-            .enumerate()
-            .map(|(index, desc)| {
-                let image_view = &framebuffer.attachments()[index];
-                let index = index as u32;
-
-                (
-                    ResourceUseRef {
-                        command_index,
-                        command_name,
-                        resource_in_command: ResourceInCommand::FramebufferAttachment { index },
-                        secondary_use_ref: None,
-                    },
-                    Resource::Image {
-                        image: image_view.image(),
-                        subresource_range: image_view.subresource_range().clone(),
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                            access: AccessFlags::INPUT_ATTACHMENT_READ
-                                | AccessFlags::COLOR_ATTACHMENT_READ
-                                | AccessFlags::COLOR_ATTACHMENT_WRITE
-                                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                            exclusive: true, // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
-                        },
-                        start_layout: desc.initial_layout,
-                        end_layout: desc.final_layout,
-                    },
-                )
-            })
-            .collect::<Vec<_>>();
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            render_pass_begin_info,
-            contents,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        self.latest_render_pass_enter = Some(self.commands.len() - 1);
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdNextSubpass` on the builder.
-    #[inline]
-    pub unsafe fn next_subpass(&mut self, contents: SubpassContents) {
-        struct Cmd {
-            contents: SubpassContents,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "next_subpass"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.next_subpass(self.contents);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { contents }));
-    }
-
-    /// Calls `vkCmdEndRenderPass` on the builder.
-    #[inline]
-    pub unsafe fn end_render_pass(&mut self) {
-        struct Cmd;
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "end_render_pass"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.end_render_pass();
-            }
-        }
-
-        self.commands.push(Box::new(Cmd));
-        debug_assert!(self.latest_render_pass_enter.is_some());
-        self.latest_render_pass_enter = None;
-    }
-
-    /// Calls `vkCmdBeginRendering` on the builder.
-    #[inline]
-    pub unsafe fn begin_rendering(
-        &mut self,
-        rendering_info: RenderingInfo,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            rendering_info: RenderingInfo,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "begin_rendering"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.begin_rendering(&self.rendering_info);
-            }
-        }
-
-        let RenderingInfo {
-            render_area_offset: _,
-            render_area_extent: _,
-            layer_count: _,
-            view_mask: _,
-            color_attachments,
-            depth_attachment,
-            stencil_attachment,
-            contents: _,
-            _ne,
-        } = &rendering_info;
-
-        let command_index = self.commands.len();
-        let command_name = "begin_rendering";
-        let resources = (color_attachments
-            .iter()
-            .enumerate()
-            .filter_map(|(index, attachment_info)| {
-                attachment_info
-                    .as_ref()
-                    .map(|attachment_info| (index as u32, attachment_info))
-            })
-            .flat_map(|(index, attachment_info)| {
-                let &RenderingAttachmentInfo {
-                    ref image_view,
-                    image_layout,
-                    ref resolve_info,
-                    load_op: _,
-                    store_op: _,
-                    clear_value: _,
-                    _ne: _,
-                } = attachment_info;
-
-                [
-                    Some((
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::ColorAttachment { index },
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: image_view.image(),
-                            subresource_range: image_view.subresource_range().clone(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                access: AccessFlags::COLOR_ATTACHMENT_READ
-                                    | AccessFlags::COLOR_ATTACHMENT_WRITE, // TODO: suboptimal
-                                exclusive: true,                      // TODO: suboptimal
-                            },
-                            start_layout: image_layout,
-                            end_layout: image_layout,
-                        },
-                    )),
-                    resolve_info.as_ref().map(|resolve_info| {
-                        let &RenderingAttachmentResolveInfo {
-                            mode: _,
-                            ref image_view,
-                            image_layout,
-                        } = resolve_info;
-
-                        (
-                            ResourceUseRef {
-                                command_index,
-                                command_name,
-                                resource_in_command: ResourceInCommand::ColorResolveAttachment {
-                                    index,
-                                },
-                                secondary_use_ref: None,
-                            },
-                            Resource::Image {
-                                image: image_view.image(),
-                                subresource_range: image_view.subresource_range().clone(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                    access: AccessFlags::COLOR_ATTACHMENT_READ
-                                        | AccessFlags::COLOR_ATTACHMENT_WRITE, // TODO: suboptimal
-                                    exclusive: true,                      // TODO: suboptimal
-                                },
-                                start_layout: image_layout,
-                                end_layout: image_layout,
-                            },
-                        )
-                    }),
-                ]
-                .into_iter()
-                .flatten()
-            }))
-        .chain(depth_attachment.iter().flat_map(|attachment_info| {
-            let &RenderingAttachmentInfo {
-                ref image_view,
-                image_layout,
-                ref resolve_info,
-                load_op: _,
-                store_op: _,
-                clear_value: _,
-                _ne: _,
-            } = attachment_info;
-
-            [
-                Some((
-                    ResourceUseRef {
-                        command_index,
-                        command_name,
-                        resource_in_command: ResourceInCommand::DepthStencilAttachment,
-                        secondary_use_ref: None,
-                    },
-                    Resource::Image {
-                        image: image_view.image(),
-                        subresource_range: image_view.subresource_range().clone(),
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                            access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                            exclusive: true,                      // TODO: suboptimal
-                        },
-                        start_layout: image_layout,
-                        end_layout: image_layout,
-                    },
-                )),
-                resolve_info.as_ref().map(|resolve_info| {
-                    let &RenderingAttachmentResolveInfo {
-                        mode: _,
-                        ref image_view,
-                        image_layout,
-                    } = resolve_info;
-
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::DepthStencilResolveAttachment,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: image_view.image(),
-                            subresource_range: image_view.subresource_range().clone(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                                exclusive: true, // TODO: suboptimal
-                            },
-                            start_layout: image_layout,
-                            end_layout: image_layout,
-                        },
-                    )
-                }),
-            ]
-            .into_iter()
-            .flatten()
-        }))
-        .chain(stencil_attachment.iter().flat_map(|attachment_info| {
-            let &RenderingAttachmentInfo {
-                ref image_view,
-                image_layout,
-                ref resolve_info,
-                load_op: _,
-                store_op: _,
-                clear_value: _,
-                _ne: _,
-            } = attachment_info;
-
-            [
-                Some((
-                    ResourceUseRef {
-                        command_index,
-                        command_name,
-                        resource_in_command: ResourceInCommand::DepthStencilAttachment,
-                        secondary_use_ref: None,
-                    },
-                    Resource::Image {
-                        image: image_view.image(),
-                        subresource_range: image_view.subresource_range().clone(),
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                            access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                            exclusive: true,                      // TODO: suboptimal
-                        },
-                        start_layout: image_layout,
-                        end_layout: image_layout,
-                    },
-                )),
-                resolve_info.as_ref().map(|resolve_info| {
-                    let &RenderingAttachmentResolveInfo {
-                        mode: _,
-                        ref image_view,
-                        image_layout,
-                    } = resolve_info;
-
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::DepthStencilResolveAttachment,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: image_view.image(),
-                            subresource_range: image_view.subresource_range().clone(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                                exclusive: true, // TODO: suboptimal
-                            },
-                            start_layout: image_layout,
-                            end_layout: image_layout,
-                        },
-                    )
-                }),
-            ]
-            .into_iter()
-            .flatten()
-        }))
-        .collect::<Vec<_>>();
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { rendering_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        self.latest_render_pass_enter = Some(self.commands.len() - 1);
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdEndRendering` on the builder.
-    #[inline]
-    pub unsafe fn end_rendering(&mut self) {
-        struct Cmd;
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "end_rendering"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.end_rendering();
-            }
-        }
-
-        self.commands.push(Box::new(Cmd));
-        debug_assert!(self.latest_render_pass_enter.is_some());
-        self.latest_render_pass_enter = None;
-    }
-
-    /// Calls `vkCmdClearAttachments` on the builder.
-    ///
-    /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
-    /// no-op and isn't a valid usage of the command anyway.
-    pub unsafe fn clear_attachments(
-        &mut self,
-        attachments: impl IntoIterator<Item = ClearAttachment>,
-        rects: impl IntoIterator<Item = ClearRect>,
-    ) {
-        struct Cmd {
-            attachments: SmallVec<[ClearAttachment; 3]>,
-            rects: SmallVec<[ClearRect; 4]>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "clear_attachments"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.clear_attachments(self.attachments.iter().copied(), self.rects.iter().cloned());
-            }
-        }
-        let attachments: SmallVec<[_; 3]> = attachments.into_iter().collect();
-        let rects: SmallVec<[_; 4]> = rects.into_iter().collect();
-
-        self.commands.push(Box::new(Cmd { attachments, rects }));
-    }
-}
-
-impl UnsafeCommandBufferBuilder {
-    /// Calls `vkCmdBeginRenderPass` on the builder.
-    #[inline]
-    pub unsafe fn begin_render_pass(
-        &mut self,
-        render_pass_begin_info: &RenderPassBeginInfo,
-        contents: SubpassContents,
-    ) {
-        let &RenderPassBeginInfo {
-            ref render_pass,
-            ref framebuffer,
             render_area_offset,
             render_area_extent,
-            ref clear_values,
+            clear_values,
             _ne: _,
         } = render_pass_begin_info;
 
@@ -1934,20 +1747,20 @@ impl UnsafeCommandBufferBuilder {
             ..Default::default()
         };
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_2
-            || self.device.enabled_extensions().khr_create_renderpass2
+        if self.device().api_version() >= Version::V1_2
+            || self.device().enabled_extensions().khr_create_renderpass2
         {
-            if self.device.api_version() >= Version::V1_2 {
+            if self.device().api_version() >= Version::V1_2 {
                 (fns.v1_2.cmd_begin_render_pass2)(
-                    self.handle,
+                    self.handle(),
                     &render_pass_begin_info,
                     &subpass_begin_info,
                 );
             } else {
                 (fns.khr_create_renderpass2.cmd_begin_render_pass2_khr)(
-                    self.handle,
+                    self.handle(),
                     &render_pass_begin_info,
                     &subpass_begin_info,
                 );
@@ -1956,17 +1769,22 @@ impl UnsafeCommandBufferBuilder {
             debug_assert!(subpass_begin_info.p_next.is_null());
 
             (fns.v1_0.cmd_begin_render_pass)(
-                self.handle,
+                self.handle(),
                 &render_pass_begin_info,
                 subpass_begin_info.contents,
             );
         }
+
+        self.keep_alive_objects.push(Box::new(render_pass));
+        self.keep_alive_objects.push(Box::new(framebuffer));
+
+        self
     }
 
     /// Calls `vkCmdNextSubpass` on the builder.
     #[inline]
-    pub unsafe fn next_subpass(&mut self, contents: SubpassContents) {
-        let fns = self.device.fns();
+    pub unsafe fn next_subpass(&mut self, contents: SubpassContents) -> &mut Self {
+        let fns = self.device().fns();
 
         let subpass_begin_info = ash::vk::SubpassBeginInfo {
             contents: contents.into(),
@@ -1975,14 +1793,14 @@ impl UnsafeCommandBufferBuilder {
 
         let subpass_end_info = ash::vk::SubpassEndInfo::default();
 
-        if self.device.api_version() >= Version::V1_2
-            || self.device.enabled_extensions().khr_create_renderpass2
+        if self.device().api_version() >= Version::V1_2
+            || self.device().enabled_extensions().khr_create_renderpass2
         {
-            if self.device.api_version() >= Version::V1_2 {
-                (fns.v1_2.cmd_next_subpass2)(self.handle, &subpass_begin_info, &subpass_end_info);
+            if self.device().api_version() >= Version::V1_2 {
+                (fns.v1_2.cmd_next_subpass2)(self.handle(), &subpass_begin_info, &subpass_end_info);
             } else {
                 (fns.khr_create_renderpass2.cmd_next_subpass2_khr)(
-                    self.handle,
+                    self.handle(),
                     &subpass_begin_info,
                     &subpass_end_info,
                 );
@@ -1991,46 +1809,50 @@ impl UnsafeCommandBufferBuilder {
             debug_assert!(subpass_begin_info.p_next.is_null());
             debug_assert!(subpass_end_info.p_next.is_null());
 
-            (fns.v1_0.cmd_next_subpass)(self.handle, subpass_begin_info.contents);
+            (fns.v1_0.cmd_next_subpass)(self.handle(), subpass_begin_info.contents);
         }
+
+        self
     }
 
     /// Calls `vkCmdEndRenderPass` on the builder.
     #[inline]
-    pub unsafe fn end_render_pass(&mut self) {
-        let fns = self.device.fns();
+    pub unsafe fn end_render_pass(&mut self) -> &mut Self {
+        let fns = self.device().fns();
 
         let subpass_end_info = ash::vk::SubpassEndInfo::default();
 
-        if self.device.api_version() >= Version::V1_2
-            || self.device.enabled_extensions().khr_create_renderpass2
+        if self.device().api_version() >= Version::V1_2
+            || self.device().enabled_extensions().khr_create_renderpass2
         {
-            if self.device.api_version() >= Version::V1_2 {
-                (fns.v1_2.cmd_end_render_pass2)(self.handle, &subpass_end_info);
+            if self.device().api_version() >= Version::V1_2 {
+                (fns.v1_2.cmd_end_render_pass2)(self.handle(), &subpass_end_info);
             } else {
                 (fns.khr_create_renderpass2.cmd_end_render_pass2_khr)(
-                    self.handle,
+                    self.handle(),
                     &subpass_end_info,
                 );
             }
         } else {
             debug_assert!(subpass_end_info.p_next.is_null());
 
-            (fns.v1_0.cmd_end_render_pass)(self.handle);
+            (fns.v1_0.cmd_end_render_pass)(self.handle());
         }
+
+        self
     }
 
     /// Calls `vkCmdBeginRendering` on the builder.
     #[inline]
-    pub unsafe fn begin_rendering(&mut self, rendering_info: &RenderingInfo) {
-        let &RenderingInfo {
+    pub unsafe fn begin_rendering(&mut self, rendering_info: RenderingInfo) -> &mut Self {
+        let RenderingInfo {
             render_area_offset,
             render_area_extent,
             layer_count,
             view_mask,
-            ref color_attachments,
-            ref depth_attachment,
-            ref stencil_attachment,
+            color_attachments,
+            depth_attachment,
+            stencil_attachment,
             contents,
             _ne: _,
         } = rendering_info;
@@ -2083,10 +1905,10 @@ impl UnsafeCommandBufferBuilder {
             }
         };
 
-        let color_attachments: SmallVec<[_; 2]> =
+        let color_attachments_vk: SmallVec<[_; 2]> =
             color_attachments.iter().map(map_attachment_info).collect();
-        let depth_attachment = map_attachment_info(depth_attachment);
-        let stencil_attachment = map_attachment_info(stencil_attachment);
+        let depth_attachment_vk = map_attachment_info(&depth_attachment);
+        let stencil_attachment_vk = map_attachment_info(&stencil_attachment);
 
         let rendering_info = ash::vk::RenderingInfo {
             flags: contents.into(),
@@ -2102,34 +1924,93 @@ impl UnsafeCommandBufferBuilder {
             },
             layer_count,
             view_mask,
-            color_attachment_count: color_attachments.len() as u32,
-            p_color_attachments: color_attachments.as_ptr(),
-            p_depth_attachment: &depth_attachment,
-            p_stencil_attachment: &stencil_attachment,
+            color_attachment_count: color_attachments_vk.len() as u32,
+            p_color_attachments: color_attachments_vk.as_ptr(),
+            p_depth_attachment: &depth_attachment_vk,
+            p_stencil_attachment: &stencil_attachment_vk,
             ..Default::default()
         };
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_begin_rendering)(self.handle, &rendering_info);
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_begin_rendering)(self.handle(), &rendering_info);
         } else {
-            debug_assert!(self.device.enabled_extensions().khr_dynamic_rendering);
-            (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(self.handle, &rendering_info);
+            (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(self.handle(), &rendering_info);
         }
+
+        self.keep_alive_objects.extend(
+            (color_attachments
+                .into_iter()
+                .flatten()
+                .flat_map(|attachment_info| {
+                    let RenderingAttachmentInfo {
+                        image_view,
+                        resolve_info,
+                        ..
+                    } = attachment_info;
+
+                    [
+                        Some(Box::new(image_view.image().inner().clone()) as _),
+                        resolve_info.map(|resolve_info| {
+                            let RenderingAttachmentResolveInfo { image_view, .. } = resolve_info;
+                            Box::new(image_view.image().inner().clone()) as _
+                        }),
+                    ]
+                    .into_iter()
+                    .flatten()
+                }))
+            .chain(depth_attachment.into_iter().flat_map(|attachment_info| {
+                let RenderingAttachmentInfo {
+                    image_view,
+                    resolve_info,
+                    ..
+                } = attachment_info;
+
+                [
+                    Some(Box::new(image_view.image().inner().clone()) as _),
+                    resolve_info.map(|resolve_info| {
+                        let RenderingAttachmentResolveInfo { image_view, .. } = resolve_info;
+                        Box::new(image_view.image().inner().clone()) as _
+                    }),
+                ]
+                .into_iter()
+                .flatten()
+            }))
+            .chain(stencil_attachment.into_iter().flat_map(|attachment_info| {
+                let RenderingAttachmentInfo {
+                    image_view,
+                    resolve_info,
+                    ..
+                } = attachment_info;
+
+                [
+                    Some(Box::new(image_view.image().inner().clone()) as _),
+                    resolve_info.map(|resolve_info| {
+                        let RenderingAttachmentResolveInfo { image_view, .. } = resolve_info;
+                        Box::new(image_view.image().inner().clone()) as _
+                    }),
+                ]
+                .into_iter()
+                .flatten()
+            })),
+        );
+
+        self
     }
 
     /// Calls `vkCmdEndRendering` on the builder.
     #[inline]
-    pub unsafe fn end_rendering(&mut self) {
-        let fns = self.device.fns();
+    pub unsafe fn end_rendering(&mut self) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_end_rendering)(self.handle);
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_end_rendering)(self.handle());
         } else {
-            debug_assert!(self.device.enabled_extensions().khr_dynamic_rendering);
-            (fns.khr_dynamic_rendering.cmd_end_rendering_khr)(self.handle);
+            (fns.khr_dynamic_rendering.cmd_end_rendering_khr)(self.handle());
         }
+
+        self
     }
 
     /// Calls `vkCmdClearAttachments` on the builder.
@@ -2140,9 +2021,9 @@ impl UnsafeCommandBufferBuilder {
         &mut self,
         attachments: impl IntoIterator<Item = ClearAttachment>,
         rects: impl IntoIterator<Item = ClearRect>,
-    ) {
-        let attachments: SmallVec<[_; 3]> = attachments.into_iter().map(|v| v.into()).collect();
-        let rects: SmallVec<[_; 4]> = rects
+    ) -> &mut Self {
+        let attachments_vk: SmallVec<[_; 3]> = attachments.into_iter().map(|v| v.into()).collect();
+        let rects_vk: SmallVec<[_; 4]> = rects
             .into_iter()
             .map(|rect| ash::vk::ClearRect {
                 rect: ash::vk::Rect2D {
@@ -2160,18 +2041,20 @@ impl UnsafeCommandBufferBuilder {
             })
             .collect();
 
-        if attachments.is_empty() || rects.is_empty() {
-            return;
+        if attachments_vk.is_empty() || rects_vk.is_empty() {
+            return self;
         }
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
         (fns.v1_0.cmd_clear_attachments)(
-            self.handle,
-            attachments.len() as u32,
-            attachments.as_ptr(),
-            rects.len() as u32,
-            rects.as_ptr(),
+            self.handle(),
+            attachments_vk.len() as u32,
+            attachments_vk.as_ptr(),
+            rects_vk.len() as u32,
+            rects_vk.as_ptr(),
         );
+
+        self
     }
 }
 
@@ -2599,8 +2482,6 @@ pub struct ClearRect {
 /// Error that can happen when recording a render pass command.
 #[derive(Clone, Debug)]
 pub enum RenderPassError {
-    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
-
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
@@ -2627,9 +2508,7 @@ pub enum RenderPassError {
     },
 
     /// A clear value for a render pass attachment is missing.
-    ClearValueMissing {
-        attachment_index: u32,
-    },
+    ClearValueMissing { attachment_index: u32 },
 
     /// A clear value provided for a render pass attachment is not compatible with the attachment's
     /// format.
@@ -2647,47 +2526,31 @@ pub enum RenderPassError {
     },
 
     /// A color attachment has a layout that is not supported.
-    ColorAttachmentLayoutInvalid {
-        attachment_index: u32,
-    },
+    ColorAttachmentLayoutInvalid { attachment_index: u32 },
 
     /// A color attachment is missing the `color_attachment` usage.
-    ColorAttachmentMissingUsage {
-        attachment_index: u32,
-    },
+    ColorAttachmentMissingUsage { attachment_index: u32 },
 
     /// A color resolve attachment has a `format` value different from the corresponding color
     /// attachment.
-    ColorAttachmentResolveFormatMismatch {
-        attachment_index: u32,
-    },
+    ColorAttachmentResolveFormatMismatch { attachment_index: u32 },
 
     /// A color resolve attachment has a layout that is not supported.
-    ColorAttachmentResolveLayoutInvalid {
-        attachment_index: u32,
-    },
+    ColorAttachmentResolveLayoutInvalid { attachment_index: u32 },
 
     /// A color resolve attachment has a resolve mode that is not supported.
-    ColorAttachmentResolveModeNotSupported {
-        attachment_index: u32,
-    },
+    ColorAttachmentResolveModeNotSupported { attachment_index: u32 },
 
     /// A color resolve attachment has a `samples` value other than [`SampleCount::Sample1`].
-    ColorAttachmentResolveMultisampled {
-        attachment_index: u32,
-    },
+    ColorAttachmentResolveMultisampled { attachment_index: u32 },
 
     /// A color attachment has a `samples` value that is different from the first
     /// color attachment.
-    ColorAttachmentSamplesMismatch {
-        attachment_index: u32,
-    },
+    ColorAttachmentSamplesMismatch { attachment_index: u32 },
 
     /// A color attachment with a resolve attachment has a `samples` value of
     /// [`SampleCount::Sample1`].
-    ColorAttachmentWithResolveNotMultisampled {
-        attachment_index: u32,
-    },
+    ColorAttachmentWithResolveNotMultisampled { attachment_index: u32 },
 
     /// The contents `SubpassContents::SecondaryCommandBuffers` is not allowed inside a secondary
     /// command buffer.
@@ -2749,9 +2612,7 @@ pub enum RenderPassError {
     ForbiddenWithInheritedRenderPass,
 
     /// Operation forbidden inside a render subpass with the specified contents.
-    ForbiddenWithSubpassContents {
-        contents: SubpassContents,
-    },
+    ForbiddenWithSubpassContents { contents: SubpassContents },
 
     /// The framebuffer is not compatible with the render pass.
     FramebufferNotCompatible,
@@ -2763,24 +2624,17 @@ pub enum RenderPassError {
     },
 
     /// The `max_multiview_view_count` limit has been exceeded.
-    MaxMultiviewViewCountExceeded {
-        view_count: u32,
-        max: u32,
-    },
+    MaxMultiviewViewCountExceeded { view_count: u32, max: u32 },
 
     /// The render pass uses multiview, but `layer_count` was not 0 or 1.
     MultiviewLayersInvalid,
 
     /// The render pass uses multiview, and in a clear rectangle, `array_layers` was not `0..1`.
-    MultiviewRectArrayLayersInvalid {
-        rect_index: usize,
-    },
+    MultiviewRectArrayLayersInvalid { rect_index: usize },
 
     /// Tried to advance to the next subpass, but there are no subpasses remaining in the render
     /// pass.
-    NoSubpassesRemaining {
-        current_subpass: u32,
-    },
+    NoSubpassesRemaining { current_subpass: u32 },
 
     /// The queue family doesn't allow this operation.
     NotSupportedByQueueFamily,
@@ -2789,25 +2643,17 @@ pub enum RenderPassError {
     QueryIsActive,
 
     /// A clear rectangle's `array_layers` is empty.
-    RectArrayLayersEmpty {
-        rect_index: usize,
-    },
+    RectArrayLayersEmpty { rect_index: usize },
 
     /// A clear rectangle's `array_layers` is outside the range of layers of the attachments.
-    RectArrayLayersOutOfBounds {
-        rect_index: usize,
-    },
+    RectArrayLayersOutOfBounds { rect_index: usize },
 
     /// A clear rectangle's `extent` is zero.
-    RectExtentZero {
-        rect_index: usize,
-    },
+    RectExtentZero { rect_index: usize },
 
     /// A clear rectangle's `offset` and `extent` are outside the render area of the render pass
     /// instance.
-    RectOutOfBounds {
-        rect_index: usize,
-    },
+    RectOutOfBounds { rect_index: usize },
 
     /// The render area's `offset` and `extent` are outside the extent of the framebuffer.
     RenderAreaOutOfBounds,
@@ -2849,19 +2695,11 @@ pub enum RenderPassError {
     },
 }
 
-impl Error for RenderPassError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::SyncCommandBufferBuilderError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
+impl Error for RenderPassError {}
 
 impl Display for RenderPassError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -3156,12 +2994,6 @@ impl Display for RenderPassError {
                 current_subpass, remaining_subpasses,
             ),
         }
-    }
-}
-
-impl From<SyncCommandBufferBuilderError> for RenderPassError {
-    fn from(err: SyncCommandBufferBuilderError) -> Self {
-        Self::SyncCommandBufferBuilderError(err)
     }
 }
 

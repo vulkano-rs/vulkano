@@ -11,16 +11,15 @@ use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
-        auto::RenderPassStateType,
-        synced::{Command, SetOrPush, SyncCommandBufferBuilder},
+        auto::{RenderPassStateType, SetOrPush},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
     },
     descriptor_set::{
-        layout::DescriptorType, set_descriptor_write_image_layouts, sys::UnsafeDescriptorSet,
-        validate_descriptor_write, DescriptorBindingResources, DescriptorBufferInfo,
-        DescriptorSetResources, DescriptorSetUpdateError, DescriptorSetWithOffsets,
-        DescriptorSetsCollection, DescriptorWriteInfo, WriteDescriptorSet,
+        layout::DescriptorType, set_descriptor_write_image_layouts, validate_descriptor_write,
+        DescriptorBindingResources, DescriptorBufferInfo, DescriptorSetResources,
+        DescriptorSetUpdateError, DescriptorSetWithOffsets, DescriptorSetsCollection,
+        DescriptorWriteInfo, WriteDescriptorSet,
     },
     device::{DeviceOwned, QueueFlags},
     memory::{is_aligned, DeviceAlignment},
@@ -32,17 +31,15 @@ use crate::{
         },
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
-    shader::ShaderStages,
     DeviceSize, RequirementNotMet, RequiresOneOf, VulkanObject,
 };
-use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
     cmp::min,
     error,
     fmt::{Display, Error as FmtError, Formatter},
-    mem::{size_of, size_of_val},
-    ptr, slice,
+    mem::size_of,
+    slice,
     sync::Arc,
 };
 
@@ -61,16 +58,13 @@ where
     /// - Panics if the highest descriptor set slot being bound is not less than the number of sets
     ///   in `pipeline_layout`.
     /// - Panics if `self` and any element of `descriptor_sets` do not belong to the same device.
-    pub fn bind_descriptor_sets<S>(
+    pub fn bind_descriptor_sets(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         first_set: u32,
-        descriptor_sets: S,
-    ) -> &mut Self
-    where
-        S: DescriptorSetsCollection,
-    {
+        descriptor_sets: impl DescriptorSetsCollection,
+    ) -> &mut Self {
         let descriptor_sets = descriptor_sets.into_vec();
         self.validate_bind_descriptor_sets(
             pipeline_bind_point,
@@ -81,11 +75,12 @@ where
         .unwrap();
 
         unsafe {
-            let mut sets_binder = self.inner.bind_descriptor_sets();
-            for set in descriptor_sets.into_iter() {
-                sets_binder.add(set);
-            }
-            sets_binder.submit(pipeline_bind_point, pipeline_layout, first_set);
+            self.bind_descriptor_sets_unchecked(
+                pipeline_bind_point,
+                pipeline_layout,
+                first_set,
+                descriptor_sets,
+            );
         }
 
         self
@@ -226,6 +221,49 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_descriptor_sets_unchecked(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: Arc<PipelineLayout>,
+        first_set: u32,
+        descriptor_sets: impl DescriptorSetsCollection,
+    ) -> &mut Self {
+        let descriptor_sets = descriptor_sets.into_vec();
+
+        if descriptor_sets.is_empty() {
+            return self;
+        }
+
+        let state = self.builder_state.invalidate_descriptor_sets(
+            pipeline_bind_point,
+            pipeline_layout.clone(),
+            first_set,
+            descriptor_sets.len() as u32,
+        );
+
+        for (set_num, set) in descriptor_sets.iter().enumerate() {
+            state
+                .descriptor_sets
+                .insert(first_set + set_num as u32, SetOrPush::Set(set.clone()));
+        }
+
+        self.add_command(
+            "bind_descriptor_sets",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.bind_descriptor_sets(
+                    pipeline_bind_point,
+                    pipeline_layout,
+                    first_set,
+                    descriptor_sets,
+                );
+            },
+        );
+
+        self
+    }
+
     /// Binds an index buffer for future indexed draw calls.
     ///
     /// # Panics
@@ -243,8 +281,7 @@ where
             .unwrap();
 
         unsafe {
-            self.inner
-                .bind_index_buffer(index_buffer.into_bytes(), I::ty());
+            self.bind_index_buffer_unchecked(index_buffer);
         }
 
         self
@@ -294,6 +331,23 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_index_buffer_unchecked<I: Index>(
+        &mut self,
+        buffer: Subbuffer<[I]>,
+    ) -> &mut Self {
+        self.builder_state.index_buffer = Some((buffer.clone().into_bytes(), I::ty()));
+        self.add_command(
+            "bind_index_buffer",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.bind_index_buffer(buffer);
+            },
+        );
+
+        self
+    }
+
     /// Binds a compute pipeline for future dispatch calls.
     ///
     /// # Panics
@@ -304,7 +358,7 @@ where
         self.validate_bind_pipeline_compute(&pipeline).unwrap();
 
         unsafe {
-            self.inner.bind_pipeline_compute(pipeline);
+            self.bind_pipeline_compute_unchecked(pipeline);
         }
 
         self
@@ -330,6 +384,23 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_pipeline_compute_unchecked(
+        &mut self,
+        pipeline: Arc<ComputePipeline>,
+    ) -> &mut Self {
+        self.builder_state.pipeline_compute = Some(pipeline.clone());
+        self.add_command(
+            "bind_pipeline_compute",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.bind_pipeline_compute(pipeline);
+            },
+        );
+
+        self
+    }
+
     /// Binds a graphics pipeline for future draw calls.
     ///
     /// # Panics
@@ -340,7 +411,7 @@ where
         self.validate_bind_pipeline_graphics(&pipeline).unwrap();
 
         unsafe {
-            self.inner.bind_pipeline_graphics(pipeline);
+            self.bind_pipeline_graphics_unchecked(pipeline);
         }
 
         self
@@ -363,15 +434,16 @@ where
         // VUID-vkCmdBindPipeline-commonparent
         assert_eq!(self.device(), pipeline.device());
 
-        if let Some(last_pipeline) = self
-            .render_pass_state
-            .as_ref()
-            .and_then(|render_pass_state| match &render_pass_state.render_pass {
-                RenderPassStateType::BeginRendering(state) if state.pipeline_used => {
-                    self.state().pipeline_graphics()
-                }
-                _ => None,
-            })
+        if let Some(last_pipeline) =
+            self.builder_state
+                .render_pass
+                .as_ref()
+                .and_then(|render_pass_state| match &render_pass_state.render_pass {
+                    RenderPassStateType::BeginRendering(state) if state.pipeline_used => {
+                        self.builder_state.pipeline_graphics.as_ref()
+                    }
+                    _ => None,
+                })
         {
             if let (
                 PipelineSubpassType::BeginRendering(pipeline_rendering_info),
@@ -408,6 +480,31 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_pipeline_graphics_unchecked(
+        &mut self,
+        pipeline: Arc<GraphicsPipeline>,
+    ) -> &mut Self {
+        // Reset any states that are fixed in the new pipeline. The pipeline bind command will
+        // overwrite these states.
+        self.builder_state.reset_dynamic_states(
+            pipeline
+                .dynamic_states()
+                .filter(|(_, d)| !d) // not dynamic
+                .map(|(s, _)| s),
+        );
+        self.builder_state.pipeline_graphics = Some(pipeline.clone());
+        self.add_command(
+            "bind_pipeline_graphics",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.bind_pipeline_graphics(pipeline);
+            },
+        );
+
+        self
+    }
+
     /// Binds vertex buffers for future draw calls.
     ///
     /// # Panics
@@ -431,11 +528,7 @@ where
             .unwrap();
 
         unsafe {
-            let mut binder = self.inner.bind_vertex_buffers();
-            for vb in vertex_buffers.into_iter() {
-                binder.add(vb);
-            }
-            binder.submit(first_binding);
+            self.bind_vertex_buffers_unchecked(first_binding, vertex_buffers);
         }
 
         self
@@ -492,6 +585,31 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_vertex_buffers_unchecked(
+        &mut self,
+        first_binding: u32,
+        vertex_buffers: impl VertexBuffersCollection,
+    ) -> &mut Self {
+        let vertex_buffers = vertex_buffers.into_vec();
+
+        for (i, buffer) in vertex_buffers.iter().enumerate() {
+            self.builder_state
+                .vertex_buffers
+                .insert(first_binding + i as u32, buffer.clone());
+        }
+
+        self.add_command(
+            "bind_vertex_buffers",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.bind_vertex_buffers(first_binding, vertex_buffers);
+            },
+        );
+
+        self
+    }
+
     /// Sets push constants for future dispatch or draw calls.
     ///
     /// # Panics
@@ -515,59 +633,30 @@ where
             return self;
         }
 
-        // SAFETY: `&push_constants` is a valid pointer, and the size of the struct is `size`,
-        //         thus, getting a slice of the whole struct is safe if its not modified.
-        let push_constants = unsafe {
-            slice::from_raw_parts(&push_constants as *const Pc as *const u8, size as usize)
-        };
-
-        self.validate_push_constants(&pipeline_layout, offset, push_constants)
+        self.validate_push_constants(&pipeline_layout, offset, &push_constants)
             .unwrap();
 
-        let mut current_offset = offset;
-        let mut remaining_size = size;
-        for range in pipeline_layout
-            .push_constant_ranges_disjoint()
-            .iter()
-            .skip_while(|range| range.offset + range.size <= offset)
-        {
-            // there is a gap between ranges, but the passed push_constants contains
-            // some bytes in this gap, exit the loop and report error
-            if range.offset > current_offset {
-                break;
-            }
-
-            // push the minimum of the whole remaining data, and the part until the end of this range
-            let push_size = remaining_size.min(range.offset + range.size - current_offset);
-            let data_offset = (current_offset - offset) as usize;
-            unsafe {
-                self.inner.push_constants::<[u8]>(
-                    pipeline_layout.clone(),
-                    range.stages,
-                    current_offset,
-                    push_size,
-                    &push_constants[data_offset..(data_offset + push_size as usize)],
-                );
-            }
-            current_offset += push_size;
-            remaining_size -= push_size;
-
-            if remaining_size == 0 {
-                break;
-            }
+        unsafe {
+            self.push_constants_unchecked(pipeline_layout, offset, push_constants);
         }
-
-        debug_assert!(remaining_size == 0);
 
         self
     }
 
-    fn validate_push_constants(
+    fn validate_push_constants<Pc: BufferContents>(
         &self,
         pipeline_layout: &PipelineLayout,
         offset: u32,
-        push_constants: &[u8],
+        push_constants: &Pc,
     ) -> Result<(), BindPushError> {
+        let size = size_of::<Pc>() as u32;
+
+        // SAFETY: `&push_constants` is a valid pointer, and the size of the struct is `size`,
+        //         thus, getting a slice of the whole struct is safe if its not modified.
+        let push_constants = unsafe {
+            slice::from_raw_parts(push_constants as *const Pc as *const u8, size as usize)
+        };
+
         if offset % 4 != 0 {
             return Err(BindPushError::PushConstantsOffsetNotAligned);
         }
@@ -608,6 +697,37 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn push_constants_unchecked<Pc>(
+        &mut self,
+        pipeline_layout: Arc<PipelineLayout>,
+        offset: u32,
+        push_constants: Pc,
+    ) -> &mut Self
+    where
+        Pc: BufferContents,
+    {
+        // TODO: Push constant invalidations.
+        // The Vulkan spec currently is unclear about this, so Vulkano currently just marks
+        // push constants as set, and never unsets them. See:
+        // https://github.com/KhronosGroup/Vulkan-Docs/issues/1485
+        // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2711
+        self.builder_state
+            .push_constants
+            .insert(offset..offset + size_of::<Pc>() as u32);
+        self.builder_state.push_constants_pipeline_layout = Some(pipeline_layout.clone());
+
+        self.add_command(
+            "push_constants",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.push_constants(pipeline_layout, offset, push_constants);
+            },
+        );
+
+        self
+    }
+
     /// Pushes descriptor data directly into the command buffer for future dispatch or draw calls.
     ///
     /// # Panics
@@ -643,7 +763,7 @@ where
         .unwrap();
 
         unsafe {
-            self.inner.push_descriptor_set(
+            self.push_descriptor_set_unchecked(
                 pipeline_bind_point,
                 pipeline_layout,
                 set_num,
@@ -721,196 +841,15 @@ where
 
         Ok(())
     }
-}
 
-impl SyncCommandBufferBuilder {
-    /// Starts the process of binding descriptor sets. Returns an intermediate struct which can be
-    /// used to add the sets.
-    #[inline]
-    pub fn bind_descriptor_sets(&mut self) -> SyncCommandBufferBuilderBindDescriptorSets<'_> {
-        SyncCommandBufferBuilderBindDescriptorSets {
-            builder: self,
-            descriptor_sets: SmallVec::new(),
-        }
-    }
-
-    /// Calls `vkCmdBindIndexBuffer` on the builder.
-    #[inline]
-    pub unsafe fn bind_index_buffer(&mut self, buffer: Subbuffer<[u8]>, index_type: IndexType) {
-        struct Cmd {
-            buffer: Subbuffer<[u8]>,
-            index_type: IndexType,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "bind_index_buffer"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_index_buffer(&self.buffer, self.index_type);
-            }
-        }
-
-        self.current_state.index_buffer = Some((buffer.clone(), index_type));
-        self.commands.push(Box::new(Cmd { buffer, index_type }));
-    }
-
-    /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
-    #[inline]
-    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: Arc<ComputePipeline>) {
-        struct Cmd {
-            pipeline: Arc<ComputePipeline>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "bind_pipeline_compute"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_pipeline_compute(&self.pipeline);
-            }
-        }
-
-        self.current_state.pipeline_compute = Some(pipeline.clone());
-        self.commands.push(Box::new(Cmd { pipeline }));
-    }
-
-    /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
-    #[inline]
-    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: Arc<GraphicsPipeline>) {
-        struct Cmd {
-            pipeline: Arc<GraphicsPipeline>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "bind_pipeline_graphics"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_pipeline_graphics(&self.pipeline);
-            }
-        }
-
-        // Reset any states that are fixed in the new pipeline. The pipeline bind command will
-        // overwrite these states.
-        self.current_state.reset_dynamic_states(
-            pipeline
-                .dynamic_states()
-                .filter(|(_, d)| !d) // not dynamic
-                .map(|(s, _)| s),
-        );
-        self.current_state.pipeline_graphics = Some(pipeline.clone());
-        self.commands.push(Box::new(Cmd { pipeline }));
-    }
-
-    /// Starts the process of binding vertex buffers. Returns an intermediate struct which can be
-    /// used to add the buffers.
-    #[inline]
-    pub fn bind_vertex_buffers(&mut self) -> SyncCommandBufferBuilderBindVertexBuffer<'_> {
-        SyncCommandBufferBuilderBindVertexBuffer {
-            builder: self,
-            inner: UnsafeCommandBufferBuilderBindVertexBuffer::new(),
-            buffers: SmallVec::new(),
-        }
-    }
-
-    /// Calls `vkCmdPushConstants` on the builder.
-    pub unsafe fn push_constants<D>(
-        &mut self,
-        pipeline_layout: Arc<PipelineLayout>,
-        stages: ShaderStages,
-        offset: u32,
-        size: u32,
-        data: &D,
-    ) where
-        D: ?Sized + Send + Sync + 'static,
-    {
-        struct Cmd {
-            pipeline_layout: Arc<PipelineLayout>,
-            stages: ShaderStages,
-            offset: u32,
-            size: u32,
-            data: Box<[u8]>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "push_constants"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.push_constants::<[u8]>(
-                    &self.pipeline_layout,
-                    self.stages,
-                    self.offset,
-                    self.size,
-                    &self.data,
-                );
-            }
-        }
-
-        debug_assert!(size_of_val(data) >= size as usize);
-
-        let mut out = Vec::with_capacity(size as usize);
-        ptr::copy::<u8>(
-            data as *const D as *const u8,
-            out.as_mut_ptr(),
-            size as usize,
-        );
-        out.set_len(size as usize);
-
-        self.commands.push(Box::new(Cmd {
-            pipeline_layout: pipeline_layout.clone(),
-            stages,
-            offset,
-            size,
-            data: out.into(),
-        }));
-
-        // TODO: Push constant invalidations.
-        // The Vulkan spec currently is unclear about this, so Vulkano currently just marks
-        // push constants as set, and never unsets them. See:
-        // https://github.com/KhronosGroup/Vulkan-Docs/issues/1485
-        // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2711
-        self.current_state
-            .push_constants
-            .insert(offset..offset + size);
-        self.current_state.push_constants_pipeline_layout = Some(pipeline_layout);
-    }
-
-    /// Calls `vkCmdPushDescriptorSetKHR` on the builder.
-    pub unsafe fn push_descriptor_set(
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn push_descriptor_set_unchecked(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) {
-        struct Cmd {
-            pipeline_bind_point: PipelineBindPoint,
-            pipeline_layout: Arc<PipelineLayout>,
-            set_num: u32,
-            descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "push_descriptor_set"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.push_descriptor_set(
-                    self.pipeline_bind_point,
-                    &self.pipeline_layout,
-                    self.set_num,
-                    &self.descriptor_writes,
-                );
-            }
-        }
-
+    ) -> &mut Self {
         let mut descriptor_writes: SmallVec<[WriteDescriptorSet; 8]> =
             descriptor_writes.into_iter().collect();
 
@@ -921,7 +860,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let state = self.current_state.invalidate_descriptor_sets(
+        let state = self.builder_state.invalidate_descriptor_sets(
             pipeline_bind_point,
             pipeline_layout.clone(),
             set_num,
@@ -943,212 +882,124 @@ impl SyncCommandBufferBuilder {
             set_resources.update(write);
         }
 
-        self.commands.push(Box::new(Cmd {
-            pipeline_bind_point,
-            pipeline_layout,
-            set_num,
-            descriptor_writes,
-        }));
-    }
-}
-
-pub struct SyncCommandBufferBuilderBindDescriptorSets<'b> {
-    builder: &'b mut SyncCommandBufferBuilder,
-    descriptor_sets: SmallVec<[DescriptorSetWithOffsets; 12]>,
-}
-
-impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
-    /// Adds a descriptor set to the list.
-    pub fn add(&mut self, descriptor_set: impl Into<DescriptorSetWithOffsets>) {
-        self.descriptor_sets.push(descriptor_set.into());
-    }
-
-    #[inline]
-    pub unsafe fn submit(
-        self,
-        pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: Arc<PipelineLayout>,
-        first_set: u32,
-    ) {
-        if self.descriptor_sets.is_empty() {
-            return;
-        }
-
-        struct Cmd {
-            descriptor_sets: SmallVec<[DescriptorSetWithOffsets; 12]>,
-            pipeline_bind_point: PipelineBindPoint,
-            pipeline_layout: Arc<PipelineLayout>,
-            first_set: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "bind_descriptor_sets"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                let descriptor_sets = self.descriptor_sets.iter().map(|x| x.as_ref().0.inner());
-                let dynamic_offsets = self
-                    .descriptor_sets
-                    .iter()
-                    .flat_map(|x| x.as_ref().1.iter().copied());
-
-                out.bind_descriptor_sets(
-                    self.pipeline_bind_point,
-                    &self.pipeline_layout,
-                    self.first_set,
-                    descriptor_sets,
-                    dynamic_offsets,
+        self.add_command(
+            "push_descriptor_set",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.push_descriptor_set(
+                    pipeline_bind_point,
+                    pipeline_layout,
+                    set_num,
+                    descriptor_writes,
                 );
-            }
-        }
-
-        let state = self.builder.current_state.invalidate_descriptor_sets(
-            pipeline_bind_point,
-            pipeline_layout.clone(),
-            first_set,
-            self.descriptor_sets.len() as u32,
+            },
         );
 
-        for (set_num, set) in self.descriptor_sets.iter().enumerate() {
-            state
-                .descriptor_sets
-                .insert(first_set + set_num as u32, SetOrPush::Set(set.clone()));
-        }
-
-        self.builder.commands.push(Box::new(Cmd {
-            descriptor_sets: self.descriptor_sets,
-            pipeline_bind_point,
-            pipeline_layout,
-            first_set,
-        }));
+        self
     }
 }
 
-/// Prototype for a `vkCmdBindVertexBuffers`.
-pub struct SyncCommandBufferBuilderBindVertexBuffer<'a> {
-    builder: &'a mut SyncCommandBufferBuilder,
-    inner: UnsafeCommandBufferBuilderBindVertexBuffer,
-    buffers: SmallVec<[Subbuffer<[u8]>; 4]>,
-}
-
-impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
-    /// Adds a buffer to the list.
-    #[inline]
-    pub fn add(&mut self, buffer: Subbuffer<[u8]>) {
-        self.inner.add(&buffer);
-        self.buffers.push(buffer);
-    }
-
-    #[inline]
-    pub unsafe fn submit(self, first_set: u32) {
-        struct Cmd {
-            first_set: u32,
-            inner: Mutex<Option<UnsafeCommandBufferBuilderBindVertexBuffer>>,
-            _buffers: SmallVec<[Subbuffer<[u8]>; 4]>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "bind_vertex_buffers"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_vertex_buffers(self.first_set, self.inner.lock().take().unwrap());
-            }
-        }
-
-        for (i, buffer) in self.buffers.iter().enumerate() {
-            self.builder
-                .current_state
-                .vertex_buffers
-                .insert(first_set + i as u32, buffer.clone());
-        }
-
-        self.builder.commands.push(Box::new(Cmd {
-            first_set,
-            inner: Mutex::new(Some(self.inner)),
-            _buffers: self.buffers,
-        }));
-    }
-}
-
-impl UnsafeCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Calls `vkCmdBindDescriptorSets` on the builder.
     ///
     /// Does nothing if the list of descriptor sets is empty, as it would be a no-op and isn't a
     /// valid usage of the command anyway.
     #[inline]
-    pub unsafe fn bind_descriptor_sets<'s>(
+    pub unsafe fn bind_descriptor_sets(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
+        pipeline_layout: Arc<PipelineLayout>,
         first_set: u32,
-        sets: impl IntoIterator<Item = &'s UnsafeDescriptorSet>,
-        dynamic_offsets: impl IntoIterator<Item = u32>,
-    ) {
-        let fns = self.device.fns();
+        descriptor_sets: impl DescriptorSetsCollection,
+    ) -> &mut Self {
+        let descriptor_sets = descriptor_sets.into_vec();
 
-        let sets: SmallVec<[_; 12]> = sets.into_iter().map(|s| s.handle()).collect();
-        if sets.is_empty() {
-            return;
+        if descriptor_sets.is_empty() {
+            return self;
         }
-        let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.into_iter().collect();
 
-        let num_bindings = sets.len() as u32;
-        debug_assert!(first_set + num_bindings <= pipeline_layout.set_layouts().len() as u32);
+        let descriptor_sets_vk: SmallVec<[_; 12]> = descriptor_sets
+            .iter()
+            .map(|x| x.as_ref().0.inner().handle())
+            .collect();
+        let dynamic_offsets_vk: SmallVec<[_; 32]> = descriptor_sets
+            .iter()
+            .flat_map(|x| x.as_ref().1.iter().copied())
+            .collect();
 
+        let fns = self.device().fns();
         (fns.v1_0.cmd_bind_descriptor_sets)(
-            self.handle,
+            self.handle(),
             pipeline_bind_point.into(),
             pipeline_layout.handle(),
             first_set,
-            num_bindings,
-            sets.as_ptr(),
-            dynamic_offsets.len() as u32,
-            dynamic_offsets.as_ptr(),
+            descriptor_sets_vk.len() as u32,
+            descriptor_sets_vk.as_ptr(),
+            dynamic_offsets_vk.len() as u32,
+            dynamic_offsets_vk.as_ptr(),
         );
+
+        self.keep_alive_objects.push(Box::new(pipeline_layout));
+        self.keep_alive_objects
+            .extend(
+                descriptor_sets
+                    .into_iter()
+                    .map(|descriptor_set_with_offsets| {
+                        Box::new(descriptor_set_with_offsets.into_tuple().0) as _
+                    }),
+            );
+
+        self
     }
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer(&mut self, buffer: &Subbuffer<[u8]>, index_type: IndexType) {
-        let fns = self.device.fns();
-
-        debug_assert!(buffer.offset() < buffer.buffer().size());
-        debug_assert!(buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDEX_BUFFER));
-
+    pub unsafe fn bind_index_buffer<I: Index>(&mut self, buffer: Subbuffer<[I]>) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_bind_index_buffer)(
-            self.handle,
+            self.handle(),
             buffer.buffer().handle(),
             buffer.offset(),
-            index_type.into(),
+            I::ty().into(),
         );
+
+        self.keep_alive_objects
+            .push(Box::new(buffer.buffer().clone()));
+
+        self
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: &ComputePipeline) {
-        let fns = self.device.fns();
+    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: Arc<ComputePipeline>) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_bind_pipeline)(
-            self.handle,
+            self.handle(),
             ash::vk::PipelineBindPoint::COMPUTE,
             pipeline.handle(),
         );
+
+        self.keep_alive_objects.push(Box::new(pipeline));
+
+        self
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: &GraphicsPipeline) {
-        let fns = self.device.fns();
+    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: Arc<GraphicsPipeline>) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_bind_pipeline)(
-            self.handle,
+            self.handle(),
             ash::vk::PipelineBindPoint::GRAPHICS,
             pipeline.handle(),
         );
+
+        self.keep_alive_objects.push(Box::new(pipeline));
+
+        self
     }
 
     /// Calls `vkCmdBindVertexBuffers` on the builder.
@@ -1160,82 +1011,117 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn bind_vertex_buffers(
         &mut self,
         first_binding: u32,
-        params: UnsafeCommandBufferBuilderBindVertexBuffer,
-    ) {
-        debug_assert_eq!(params.raw_buffers.len(), params.offsets.len());
+        vertex_buffers: impl VertexBuffersCollection,
+    ) -> &mut Self {
+        let vertex_buffers = vertex_buffers.into_vec();
 
-        if params.raw_buffers.is_empty() {
-            return;
+        if vertex_buffers.is_empty() {
+            return self;
         }
 
-        let fns = self.device.fns();
+        let (buffers_vk, offsets_vk): (SmallVec<[_; 2]>, SmallVec<[_; 2]>) = vertex_buffers
+            .iter()
+            .map(|buffer| (buffer.buffer().handle(), buffer.offset()))
+            .unzip();
 
-        let num_bindings = params.raw_buffers.len() as u32;
-
-        debug_assert!({
-            let max_bindings = self
-                .device
-                .physical_device()
-                .properties()
-                .max_vertex_input_bindings;
-            first_binding + num_bindings <= max_bindings
-        });
-
+        let fns = self.device().fns();
         (fns.v1_0.cmd_bind_vertex_buffers)(
-            self.handle,
+            self.handle(),
             first_binding,
-            num_bindings,
-            params.raw_buffers.as_ptr(),
-            params.offsets.as_ptr(),
+            buffers_vk.len() as u32,
+            buffers_vk.as_ptr(),
+            offsets_vk.as_ptr(),
         );
+
+        self.keep_alive_objects.extend(
+            vertex_buffers
+                .into_iter()
+                .map(|buffer| Box::new(buffer.buffer().clone()) as _),
+        );
+
+        self
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
-    pub unsafe fn push_constants<D>(
+    pub unsafe fn push_constants<Pc>(
         &mut self,
-        pipeline_layout: &PipelineLayout,
-        stages: ShaderStages,
+        pipeline_layout: Arc<PipelineLayout>,
         offset: u32,
-        size: u32,
-        data: &D,
-    ) where
-        D: BufferContents + ?Sized,
+        push_constants: Pc,
+    ) -> &mut Self
+    where
+        Pc: BufferContents,
     {
-        let fns = self.device.fns();
+        let size = size_of::<Pc>() as u32;
 
-        debug_assert!(!stages.is_empty());
-        debug_assert!(size > 0);
-        debug_assert_eq!(size % 4, 0);
-        debug_assert_eq!(offset % 4, 0);
-        debug_assert!(size_of_val(data) >= size as usize);
+        if size == 0 {
+            return self;
+        }
 
-        (fns.v1_0.cmd_push_constants)(
-            self.handle,
-            pipeline_layout.handle(),
-            stages.into(),
-            offset,
-            size,
-            data as *const _ as *const _,
-        );
+        // SAFETY: `&push_constants` is a valid pointer, and the size of the struct is `size`,
+        //         thus, getting a slice of the whole struct is safe if its not modified.
+        let push_constants = unsafe {
+            slice::from_raw_parts(&push_constants as *const Pc as *const u8, size as usize)
+        };
+
+        let fns = self.device().fns();
+        let mut current_offset = offset;
+        let mut remaining_size = size;
+        for range in pipeline_layout
+            .push_constant_ranges_disjoint()
+            .iter()
+            .skip_while(|range| range.offset + range.size <= offset)
+        {
+            // there is a gap between ranges, but the passed push_constants contains
+            // some bytes in this gap, exit the loop and report error
+            if range.offset > current_offset {
+                break;
+            }
+
+            // push the minimum of the whole remaining data, and the part until the end of this range
+            let push_size = remaining_size.min(range.offset + range.size - current_offset);
+            let data_offset = (current_offset - offset) as usize;
+            let slice = &push_constants[data_offset..(data_offset + push_size as usize)];
+
+            (fns.v1_0.cmd_push_constants)(
+                self.handle(),
+                pipeline_layout.handle(),
+                range.stages.into(),
+                current_offset,
+                push_size,
+                slice.as_ptr() as _,
+            );
+
+            current_offset += push_size;
+            remaining_size -= push_size;
+
+            if remaining_size == 0 {
+                break;
+            }
+        }
+
+        debug_assert!(remaining_size == 0);
+
+        self.keep_alive_objects.push(Box::new(pipeline_layout));
+
+        self
     }
 
     /// Calls `vkCmdPushDescriptorSetKHR` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn push_descriptor_set<'a>(
+    pub unsafe fn push_descriptor_set(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
+        pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        descriptor_writes: impl IntoIterator<Item = &'a WriteDescriptorSet>,
-    ) {
-        debug_assert!(self.device.enabled_extensions().khr_push_descriptor);
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+    ) -> &mut Self {
         let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 
         let (infos_vk, mut writes_vk): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = descriptor_writes
             .into_iter()
-            .map(|write| {
-                let mut write = write.clone(); // Ew!
+            .map(|mut write| {
                 set_descriptor_write_image_layouts(&mut write, set_layout);
 
                 let binding = &set_layout.bindings()[&write.binding()];
@@ -1248,7 +1134,7 @@ impl UnsafeCommandBufferBuilder {
             .unzip();
 
         if writes_vk.is_empty() {
-            return;
+            return self;
         }
 
         // Set the info pointers separately.
@@ -1271,47 +1157,19 @@ impl UnsafeCommandBufferBuilder {
             debug_assert!(write_vk.descriptor_count != 0);
         }
 
-        let fns = self.device.fns();
-
+        let fns = self.device().fns();
         (fns.khr_push_descriptor.cmd_push_descriptor_set_khr)(
-            self.handle,
+            self.handle(),
             pipeline_bind_point.into(),
             pipeline_layout.handle(),
             set_num,
             writes_vk.len() as u32,
             writes_vk.as_ptr(),
         );
-    }
-}
 
-/// Prototype for a `vkCmdBindVertexBuffers`.
-#[derive(Debug)]
-pub struct UnsafeCommandBufferBuilderBindVertexBuffer {
-    // Raw handles of the buffers to bind.
-    pub raw_buffers: SmallVec<[ash::vk::Buffer; 4]>,
-    // Raw offsets of the buffers to bind.
-    pub offsets: SmallVec<[DeviceSize; 4]>,
-}
+        self.keep_alive_objects.push(Box::new(pipeline_layout));
 
-impl UnsafeCommandBufferBuilderBindVertexBuffer {
-    /// Builds a new empty list.
-    #[inline]
-    pub fn new() -> UnsafeCommandBufferBuilderBindVertexBuffer {
-        UnsafeCommandBufferBuilderBindVertexBuffer {
-            raw_buffers: SmallVec::new(),
-            offsets: SmallVec::new(),
-        }
-    }
-
-    /// Adds a buffer to the list.
-    #[inline]
-    pub fn add(&mut self, subbuffer: &Subbuffer<[u8]>) {
-        debug_assert!(subbuffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::VERTEX_BUFFER));
-        self.raw_buffers.push(subbuffer.buffer().handle());
-        self.offsets.push(subbuffer.offset());
+        self
     }
 }
 

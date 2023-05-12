@@ -11,23 +11,18 @@ use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
-        auto::QueryState,
-        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
+        auto::{QueryState, Resource},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, ResourceInCommand, ResourceUseRef,
+        AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
-    query::{
-        QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags,
-        QueryType,
-    },
+    query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags, QueryType},
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStage, PipelineStages},
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanObject,
 };
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    mem::size_of,
     ops::Range,
     sync::Arc,
 };
@@ -53,20 +48,7 @@ where
     ) -> Result<&mut Self, QueryError> {
         self.validate_begin_query(&query_pool, query, flags)?;
 
-        let ty = query_pool.query_type();
-        let raw_query_pool = query_pool.handle();
-
-        self.inner.begin_query(query_pool, query, flags);
-        self.query_state.insert(
-            ty.into(),
-            QueryState {
-                query_pool: raw_query_pool,
-                query,
-                ty,
-                flags,
-                in_subpass: self.render_pass_state.is_some(),
-            },
-        );
+        self.begin_query_unchecked(query_pool, query, flags);
 
         Ok(self)
     }
@@ -149,15 +131,18 @@ where
 
         // VUID-vkCmdBeginQuery-queryPool-01922
         if self
-            .query_state
+            .builder_state
+            .queries
             .contains_key(&query_pool.query_type().into())
         {
             return Err(QueryError::QueryIsActive);
         }
 
-        if let Some(render_pass_state) = &self.render_pass_state {
+        if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdBeginQuery-query-00808
-            if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
+            if query + render_pass_state.rendering_info.view_mask.count_ones()
+                > query_pool.query_count()
+            {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }
@@ -169,6 +154,37 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn begin_query_unchecked(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        flags: QueryControlFlags,
+    ) -> &mut Self {
+        let ty = query_pool.query_type();
+        let raw_query_pool = query_pool.handle();
+        self.builder_state.queries.insert(
+            ty.into(),
+            QueryState {
+                query_pool: raw_query_pool,
+                query,
+                ty,
+                flags,
+                in_subpass: self.builder_state.render_pass.is_some(),
+            },
+        );
+
+        self.add_command(
+            "begin_query",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.begin_query(query_pool, query, flags);
+            },
+        );
+
+        self
+    }
+
     /// Ends an active query.
     pub fn end_query(
         &mut self,
@@ -178,9 +194,7 @@ where
         self.validate_end_query(&query_pool, query)?;
 
         unsafe {
-            let raw_ty = query_pool.query_type().into();
-            self.inner.end_query(query_pool, query);
-            self.query_state.remove(&raw_ty);
+            self.end_query_unchecked(query_pool, query);
         }
 
         Ok(self)
@@ -204,7 +218,8 @@ where
 
         // VUID-vkCmdEndQuery-None-01923
         if !self
-            .query_state
+            .builder_state
+            .queries
             .get(&query_pool.query_type().into())
             .map_or(false, |state| {
                 state.query_pool == query_pool.handle() && state.query == query
@@ -216,14 +231,36 @@ where
         // VUID-vkCmdEndQuery-query-00810
         query_pool.query(query).ok_or(QueryError::OutOfRange)?;
 
-        if let Some(render_pass_state) = &self.render_pass_state {
+        if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdEndQuery-query-00812
-            if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
+            if query + render_pass_state.rendering_info.view_mask.count_ones()
+                > query_pool.query_count()
+            {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }
 
         Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn end_query_unchecked(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+    ) -> &mut Self {
+        let raw_ty = query_pool.query_type().into();
+        self.builder_state.queries.remove(&raw_ty);
+
+        self.add_command(
+            "end_query",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.end_query(query_pool, query);
+            },
+        );
+
+        self
     }
 
     /// Writes a timestamp to a timestamp query.
@@ -240,7 +277,7 @@ where
     ) -> Result<&mut Self, QueryError> {
         self.validate_write_timestamp(&query_pool, query, stage)?;
 
-        self.inner.write_timestamp(query_pool, query, stage);
+        self.write_timestamp_unchecked(query_pool, query, stage);
 
         Ok(self)
     }
@@ -430,9 +467,11 @@ where
         // VUID-vkCmdWriteTimestamp2-query-04903
         query_pool.query(query).ok_or(QueryError::OutOfRange)?;
 
-        if let Some(render_pass_state) = &self.render_pass_state {
+        if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdWriteTimestamp2-query-03865
-            if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
+            if query + render_pass_state.rendering_info.view_mask.count_ones()
+                > query_pool.query_count()
+            {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }
@@ -443,6 +482,24 @@ where
         // TODO: add check.
 
         Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn write_timestamp_unchecked(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        stage: PipelineStage,
+    ) -> &mut Self {
+        self.add_command(
+            "write_timestamp",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.write_timestamp(query_pool, query, stage);
+            },
+        );
+
+        self
     }
 
     /// Copies the results of a range of queries to a buffer on the GPU.
@@ -469,11 +526,7 @@ where
         self.validate_copy_query_pool_results(&query_pool, queries.clone(), &destination, flags)?;
 
         unsafe {
-            let per_query_len = query_pool.query_type().result_len()
-                + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
-            let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
-            self.inner
-                .copy_query_pool_results(query_pool, queries, destination, stride, flags)?;
+            self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags);
         }
 
         Ok(self)
@@ -500,7 +553,7 @@ where
         }
 
         // VUID-vkCmdCopyQueryPoolResults-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(QueryError::ForbiddenInsideRenderPass);
         }
 
@@ -554,6 +607,41 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_query_pool_results_unchecked<T>(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+        destination: Subbuffer<[T]>,
+        flags: QueryResultFlags,
+    ) -> &mut Self
+    where
+        T: QueryResultElement,
+    {
+        self.add_command(
+            "copy_query_pool_results",
+            [(
+                ResourceInCommand::Destination.into(),
+                Resource::Buffer {
+                    buffer: destination.as_bytes().clone(),
+                    range: 0..destination.size(), // TODO:
+                    memory: PipelineMemoryAccess {
+                        stages: PipelineStages::ALL_TRANSFER,
+                        access: AccessFlags::TRANSFER_WRITE,
+                        exclusive: true,
+                    },
+                },
+            )]
+            .into_iter()
+            .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.copy_query_pool_results(query_pool, queries, destination, flags);
+            },
+        );
+
+        self
+    }
+
     /// Resets a range of queries on a query pool.
     ///
     /// The affected queries will be marked as "unavailable" after this command runs, and will no
@@ -569,7 +657,7 @@ where
     ) -> Result<&mut Self, QueryError> {
         self.validate_reset_query_pool(&query_pool, queries.clone())?;
 
-        self.inner.reset_query_pool(query_pool, queries);
+        self.reset_query_pool_unchecked(query_pool, queries);
 
         Ok(self)
     }
@@ -580,7 +668,7 @@ where
         queries: Range<u32>,
     ) -> Result<(), QueryError> {
         // VUID-vkCmdResetQueryPool-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(QueryError::ForbiddenInsideRenderPass);
         }
 
@@ -607,7 +695,8 @@ where
 
         // VUID-vkCmdResetQueryPool-None-02841
         if self
-            .query_state
+            .builder_state
+            .queries
             .values()
             .any(|state| state.query_pool == query_pool.handle() && queries.contains(&state.query))
         {
@@ -616,9 +705,29 @@ where
 
         Ok(())
     }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reset_query_pool_unchecked(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+    ) -> &mut Self {
+        self.add_command(
+            "reset_query_pool",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.reset_query_pool(query_pool, queries);
+            },
+        );
+
+        self
+    }
 }
 
-impl SyncCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Calls `vkCmdBeginQuery` on the builder.
     #[inline]
     pub unsafe fn begin_query(
@@ -626,49 +735,24 @@ impl SyncCommandBufferBuilder {
         query_pool: Arc<QueryPool>,
         query: u32,
         flags: QueryControlFlags,
-    ) {
-        struct Cmd {
-            query_pool: Arc<QueryPool>,
-            query: u32,
-            flags: QueryControlFlags,
-        }
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_begin_query)(self.handle(), query_pool.handle(), query, flags.into());
 
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "begin_query"
-            }
+        self.keep_alive_objects.push(Box::new(query_pool));
 
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.begin_query(self.query_pool.query(self.query).unwrap(), self.flags);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd {
-            query_pool,
-            query,
-            flags,
-        }));
+        self
     }
 
     /// Calls `vkCmdEndQuery` on the builder.
     #[inline]
-    pub unsafe fn end_query(&mut self, query_pool: Arc<QueryPool>, query: u32) {
-        struct Cmd {
-            query_pool: Arc<QueryPool>,
-            query: u32,
-        }
+    pub unsafe fn end_query(&mut self, query_pool: Arc<QueryPool>, query: u32) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_end_query)(self.handle(), query_pool.handle(), query);
 
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "end_query"
-            }
+        self.keep_alive_objects.push(Box::new(query_pool));
 
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.end_query(self.query_pool.query(self.query).unwrap());
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { query_pool, query }));
+        self
     }
 
     /// Calls `vkCmdWriteTimestamp` on the builder.
@@ -678,235 +762,90 @@ impl SyncCommandBufferBuilder {
         query_pool: Arc<QueryPool>,
         query: u32,
         stage: PipelineStage,
-    ) {
-        struct Cmd {
-            query_pool: Arc<QueryPool>,
-            query: u32,
-            stage: PipelineStage,
-        }
+    ) -> &mut Self {
+        let fns = self.device().fns();
 
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "write_timestamp"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.write_timestamp(self.query_pool.query(self.query).unwrap(), self.stage);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd {
-            query_pool,
-            query,
-            stage,
-        }));
-    }
-
-    /// Calls `vkCmdCopyQueryPoolResults` on the builder.
-    ///
-    /// # Safety
-    /// `stride` must be at least the number of bytes that will be written by each query.
-    pub unsafe fn copy_query_pool_results(
-        &mut self,
-        query_pool: Arc<QueryPool>,
-        queries: Range<u32>,
-        destination: Subbuffer<[impl QueryResultElement]>,
-        stride: DeviceSize,
-        flags: QueryResultFlags,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd<T> {
-            query_pool: Arc<QueryPool>,
-            queries: Range<u32>,
-            destination: Subbuffer<[T]>,
-            stride: DeviceSize,
-            flags: QueryResultFlags,
-        }
-
-        impl<T> Command for Cmd<T>
-        where
-            T: QueryResultElement,
-        {
-            fn name(&self) -> &'static str {
-                "copy_query_pool_results"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.copy_query_pool_results(
-                    self.query_pool.queries_range(self.queries.clone()).unwrap(),
-                    &self.destination,
-                    self.stride,
-                    self.flags,
-                );
-            }
-        }
-
-        let command_index = self.commands.len();
-        let command_name = "copy_query_pool_results";
-        let resources = [(
-            ResourceUseRef {
-                command_index,
-                command_name,
-                resource_in_command: ResourceInCommand::Destination,
-                secondary_use_ref: None,
-            },
-            Resource::Buffer {
-                buffer: destination.as_bytes().clone(),
-                range: 0..destination.size(), // TODO:
-                memory: PipelineMemoryAccess {
-                    stages: PipelineStages::ALL_TRANSFER,
-                    access: AccessFlags::TRANSFER_WRITE,
-                    exclusive: true,
-                },
-            },
-        )];
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            query_pool,
-            queries,
-            destination,
-            stride,
-            flags,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdResetQueryPool` on the builder.
-    #[inline]
-    pub unsafe fn reset_query_pool(&mut self, query_pool: Arc<QueryPool>, queries: Range<u32>) {
-        struct Cmd {
-            query_pool: Arc<QueryPool>,
-            queries: Range<u32>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "reset_query_pool"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.reset_query_pool(self.query_pool.queries_range(self.queries.clone()).unwrap());
-            }
-        }
-
-        self.commands.push(Box::new(Cmd {
-            query_pool,
-            queries,
-        }));
-    }
-}
-
-impl UnsafeCommandBufferBuilder {
-    /// Calls `vkCmdBeginQuery` on the builder.
-    #[inline]
-    pub unsafe fn begin_query(&mut self, query: Query<'_>, flags: QueryControlFlags) {
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_begin_query)(
-            self.handle,
-            query.pool().handle(),
-            query.index(),
-            flags.into(),
-        );
-    }
-
-    /// Calls `vkCmdEndQuery` on the builder.
-    #[inline]
-    pub unsafe fn end_query(&mut self, query: Query<'_>) {
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_end_query)(self.handle, query.pool().handle(), query.index());
-    }
-
-    /// Calls `vkCmdWriteTimestamp` on the builder.
-    #[inline]
-    pub unsafe fn write_timestamp(&mut self, query: Query<'_>, stage: PipelineStage) {
-        let fns = self.device.fns();
-
-        if self.device.enabled_features().synchronization2 {
-            if self.device.api_version() >= Version::V1_3 {
+        if self.device().enabled_features().synchronization2 {
+            if self.device().api_version() >= Version::V1_3 {
                 (fns.v1_3.cmd_write_timestamp2)(
-                    self.handle,
+                    self.handle(),
                     stage.into(),
-                    query.pool().handle(),
-                    query.index(),
+                    query_pool.handle(),
+                    query,
                 );
             } else {
-                debug_assert!(self.device.enabled_extensions().khr_synchronization2);
                 (fns.khr_synchronization2.cmd_write_timestamp2_khr)(
-                    self.handle,
+                    self.handle(),
                     stage.into(),
-                    query.pool().handle(),
-                    query.index(),
+                    query_pool.handle(),
+                    query,
                 );
             }
         } else {
-            (fns.v1_0.cmd_write_timestamp)(
-                self.handle,
-                stage.into(),
-                query.pool().handle(),
-                query.index(),
-            );
+            (fns.v1_0.cmd_write_timestamp)(self.handle(), stage.into(), query_pool.handle(), query);
         }
+
+        self.keep_alive_objects.push(Box::new(query_pool));
+
+        self
     }
 
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
     pub unsafe fn copy_query_pool_results<T>(
         &mut self,
-        queries: QueriesRange<'_>,
-        destination: &Subbuffer<[T]>,
-        stride: DeviceSize,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+        destination: Subbuffer<[T]>,
         flags: QueryResultFlags,
-    ) where
+    ) -> &mut Self
+    where
         T: QueryResultElement,
     {
-        let range = queries.range();
-        debug_assert!(destination.offset() < destination.buffer().size());
-        debug_assert!(destination
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_DST));
-        debug_assert!(destination.offset() % size_of::<T>() as DeviceSize == 0);
-        debug_assert!(stride % size_of::<T>() as DeviceSize == 0);
+        let per_query_len = query_pool.query_type().result_len()
+            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
+        let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
         (fns.v1_0.cmd_copy_query_pool_results)(
-            self.handle,
-            queries.pool().handle(),
-            range.start,
-            range.end - range.start,
+            self.handle(),
+            query_pool.handle(),
+            queries.start,
+            queries.end - queries.start,
             destination.buffer().handle(),
             destination.offset(),
             stride,
             ash::vk::QueryResultFlags::from(flags) | T::FLAG,
         );
+
+        self.keep_alive_objects.push(Box::new(query_pool));
+
+        self
     }
 
     /// Calls `vkCmdResetQueryPool` on the builder.
     #[inline]
-    pub unsafe fn reset_query_pool(&mut self, queries: QueriesRange<'_>) {
-        let range = queries.range();
-        let fns = self.device.fns();
+    pub unsafe fn reset_query_pool(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+    ) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_reset_query_pool)(
-            self.handle,
-            queries.pool().handle(),
-            range.start,
-            range.end - range.start,
+            self.handle(),
+            query_pool.handle(),
+            queries.start,
+            queries.end - queries.start,
         );
+
+        self.keep_alive_objects.push(Box::new(query_pool));
+
+        self
     }
 }
 
 /// Error that can happen when recording a query command.
 #[derive(Clone, Debug)]
 pub enum QueryError {
-    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
-
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
@@ -960,7 +899,6 @@ impl Error for QueryError {}
 impl Display for QueryError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -1005,12 +943,6 @@ impl Display for QueryError {
                 write!(f, "the provided stage is not supported by the queue family")
             }
         }
-    }
-}
-
-impl From<SyncCommandBufferBuilderError> for QueryError {
-    fn from(err: SyncCommandBufferBuilderError) -> Self {
-        Self::SyncCommandBufferBuilderError(err)
     }
 }
 

@@ -16,8 +16,8 @@ use super::{
 use crate::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferError, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
-        BufferImageCopy, CommandBufferBeginError, CopyBufferToImageInfo, ImageBlit,
+        allocator::CommandBufferAllocator, auto::CommandBufferBeginError, AutoCommandBufferBuilder,
+        BlitImageInfo, BufferImageCopy, CopyBufferToImageInfo, ImageBlit,
     },
     device::{Device, DeviceOwned},
     format::Format,

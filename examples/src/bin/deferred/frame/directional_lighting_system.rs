@@ -176,7 +176,7 @@ impl DirectionalLightingSystem {
         normals_input: Arc<dyn ImageViewAbstract + 'static>,
         direction: Vector3<f32>,
         color: [f32; 3],
-    ) -> SecondaryAutoCommandBuffer {
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let push_constants = fs::PushConstants {
             color: [color[0], color[1], color[2], 1.0],
             direction: direction.extend(0.0).into(),

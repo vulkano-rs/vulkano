@@ -202,7 +202,7 @@ impl PixelsDrawPipeline {
         &self,
         viewport_dimensions: [u32; 2],
         image: Arc<dyn ImageViewAbstract>,
-    ) -> SecondaryAutoCommandBuffer {
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let mut builder = AutoCommandBufferBuilder::secondary(
             &self.command_buffer_allocator,
             self.gfx_queue.queue_family_index(),
