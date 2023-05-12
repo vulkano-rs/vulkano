@@ -220,7 +220,7 @@ fn main() {
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(
             device.clone(),
-            surface.clone(),
+            surface,
             SwapchainCreateInfo {
                 min_image_count: surface_capabilities.min_image_count,
 
