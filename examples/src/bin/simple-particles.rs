@@ -46,16 +46,16 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
     shader::PipelineShaderStageCreateInfo,
     swapchain::{
-        acquire_next_image, PresentMode, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
+        acquire_next_image, PresentMode, Surface, Swapchain, SwapchainCreateInfo,
+        SwapchainPresentInfo,
     },
     sync::{self, future::FenceSignalFuture, GpuFuture},
     VulkanLibrary,
 };
-use vulkano_win::VkSurfaceBuild;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::WindowBuilder,
 };
 
 const WINDOW_WIDTH: u32 = 800;
@@ -66,8 +66,10 @@ const PARTICLE_COUNT: usize = 100_000;
 fn main() {
     // The usual Vulkan initialization. Largely the same as example `triangle.rs` until further
     // commentation is provided.
+    let event_loop = EventLoop::new();
+
     let library = VulkanLibrary::new().unwrap();
-    let required_extensions = vulkano_win::required_extensions(&library);
+    let required_extensions = Surface::required_extensions(&event_loop);
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
@@ -78,14 +80,16 @@ fn main() {
     )
     .unwrap();
 
-    let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new()
-        // For simplicity, we are going to assert that the window size is static.
-        .with_resizable(false)
-        .with_title("simple particles")
-        .with_inner_size(winit::dpi::PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
+    let window = Arc::new(
+        WindowBuilder::new()
+            // For simplicity, we are going to assert that the window size is static.
+            .with_resizable(false)
+            .with_title("simple particles")
+            .with_inner_size(winit::dpi::PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
+            .build(&event_loop)
+            .unwrap(),
+    );
+    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
@@ -518,7 +522,6 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::RedrawEventsCleared => {
-                let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
                 let dimensions = window.inner_size();
                 if dimensions.width == 0 || dimensions.height == 0 {
                     return;

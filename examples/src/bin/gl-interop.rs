@@ -51,7 +51,7 @@ mod linux {
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
         shader::PipelineShaderStageCreateInfo,
         swapchain::{
-            AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+            AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
             SwapchainPresentInfo,
         },
         sync::{
@@ -64,7 +64,6 @@ mod linux {
         },
         VulkanLibrary,
     };
-    use vulkano_win::VkSurfaceBuild;
     use winit::{
         event::{Event, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
@@ -98,7 +97,7 @@ mod linux {
             device,
             _instance,
             mut swapchain,
-            surface,
+            window,
             mut viewport,
             queue,
             render_pass,
@@ -290,7 +289,6 @@ mod linux {
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
 
                     if recreate_swapchain {
-                        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
                         let (new_swapchain, new_images) =
                             match swapchain.recreate(SwapchainCreateInfo {
                                 image_extent: window.inner_size().into(),
@@ -405,21 +403,21 @@ mod linux {
         display: glium::HeadlessRenderer,
         event_loop: &EventLoop<()>,
     ) -> (
-        Arc<vulkano::device::Device>,
-        Arc<vulkano::instance::Instance>,
+        Arc<Device>,
+        Arc<Instance>,
         Arc<Swapchain>,
-        Arc<vulkano::swapchain::Surface>,
-        vulkano::pipeline::graphics::viewport::Viewport,
+        Arc<Window>,
+        Viewport,
         Arc<Queue>,
         Arc<RenderPass>,
         Vec<Arc<Framebuffer>>,
-        Arc<vulkano::sampler::Sampler>,
+        Arc<Sampler>,
         Arc<GraphicsPipeline>,
         StandardMemoryAllocator,
         Subbuffer<[MyVertex]>,
     ) {
         let library = VulkanLibrary::new().unwrap();
-        let required_extensions = vulkano_win::required_extensions(&library);
+        let required_extensions = Surface::required_extensions(&event_loop);
         let instance = Instance::new(
             library,
             InstanceCreateInfo {
@@ -429,13 +427,9 @@ mod linux {
                     khr_external_semaphore_capabilities: true,
                     khr_external_fence_capabilities: true,
                     ext_debug_utils: true,
-
-                    ..InstanceExtensions::empty()
-                }
-                .union(&required_extensions),
-
+                    ..required_extensions
+                },
                 enumerate_portability: true,
-
                 ..Default::default()
             },
         )
@@ -457,9 +451,8 @@ mod linux {
             .unwrap()
         };
 
-        let surface = WindowBuilder::new()
-            .build_vk_surface(event_loop, instance.clone())
-            .unwrap();
+        let window = Arc::new(WindowBuilder::new().build(event_loop).unwrap());
+        let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
         let device_extensions = DeviceExtensions {
             khr_external_semaphore: true,
@@ -536,7 +529,6 @@ mod linux {
                     .unwrap()[0]
                     .0,
             );
-            let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
             Swapchain::new(
                 device.clone(),
@@ -674,7 +666,7 @@ mod linux {
             device,
             instance,
             swapchain,
-            surface,
+            window,
             viewport,
             queue,
             render_pass,
@@ -715,7 +707,7 @@ mod linux {
 
         images
             .iter()
-            .map(|image| -> Arc<Framebuffer> {
+            .map(|image| {
                 let view = ImageView::new_default(image.clone()).unwrap();
 
                 Framebuffer::new(
