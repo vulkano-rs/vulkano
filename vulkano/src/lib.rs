@@ -159,7 +159,7 @@ pub use library::{LoadingError, VulkanLibrary};
 use std::{
     borrow::Cow,
     error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     num::NonZeroU64,
     ops::Deref,
     sync::Arc,
@@ -240,7 +240,7 @@ where
 
 /// An error that can happen when calling a safe (validated) function that makes a call to the
 /// Vulkan API.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum VulkanError {
     /// The function call was invalid in some way.
     ValidationError(ValidationError),
@@ -249,8 +249,19 @@ pub enum VulkanError {
     RuntimeError(RuntimeError),
 }
 
+impl Debug for VulkanError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::ValidationError(err) => {
+                write!(f, "a validation error occurred\n\nCaused by:\n    {err:?}")
+            }
+            Self::RuntimeError(err) => write!(f, "a runtime error occurred: {err}"),
+        }
+    }
+}
+
 impl Display for VulkanError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::ValidationError(_) => write!(f, "a validation error occurred"),
             Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
@@ -280,7 +291,7 @@ impl From<RuntimeError> for VulkanError {
 }
 
 /// The arguments or other context of a call to a Vulkan function were not valid.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct ValidationError {
     /// The context in which the problem exists (e.g. a specific parameter).
     pub context: Cow<'static, str>,
@@ -315,25 +326,38 @@ impl ValidationError {
     }
 }
 
-impl Display for ValidationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let Self {
-            context,
-            problem,
-            requires_one_of,
-            vuids,
-        } = self;
+impl Debug for ValidationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "{}: {}", self.context, self.problem)?;
 
-        write!(f, "{}: {}", context, problem)?;
-
-        if let Some(requires_one_of) = requires_one_of {
-            write!(f, " -- Requires one of: {}", requires_one_of)?;
+        if let Some(requires_one_of) = self.requires_one_of {
+            write!(f, "\n\n{:?}", requires_one_of)?;
         }
 
-        if !vuids.is_empty() {
-            write!(f, " (Vulkan VUIDs: {}", vuids[0])?;
+        if !self.vuids.is_empty() {
+            write!(f, "\n\nVulkan VUIDs:")?;
 
-            for vuid in &vuids[1..] {
+            for vuid in self.vuids {
+                write!(f, "\n    {}", vuid)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for ValidationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "{}: {}", self.context, self.problem)?;
+
+        if let Some(requires_one_of) = self.requires_one_of {
+            write!(f, " -- {}", requires_one_of)?;
+        }
+
+        if let Some((first, rest)) = self.vuids.split_first() {
+            write!(f, " (Vulkan VUIDs: {}", first)?;
+
+            for vuid in rest {
                 write!(f, ", {}", vuid)?;
             }
 
@@ -348,7 +372,7 @@ impl Error for ValidationError {}
 
 /// Used in errors to indicate a set of alternatives that needs to be available/enabled to allow
 /// a given operation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct RequiresOneOf {
     /// A minimum Vulkan API version that would allow the operation.
     pub api_version: Option<Version>,
@@ -373,70 +397,78 @@ impl RequiresOneOf {
     }
 }
 
+impl Debug for RequiresOneOf {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "Requires one of:")?;
+
+        if let Some(Version { major, minor, .. }) = self.api_version {
+            write!(f, "\n    Vulkan API version {}.{}", major, minor)?;
+        }
+
+        for feature in self.features {
+            write!(f, "\n    The `{}` feature", feature)?;
+        }
+
+        for extension in self.device_extensions {
+            write!(f, "\n    The `{}` device extension", extension)?;
+        }
+
+        for extension in self.instance_extensions {
+            write!(f, "\n    The `{}` instance extension", extension)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl Display for RequiresOneOf {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        let mut members_written = 0;
+        write!(f, "requires one of: ")?;
 
-        if let Some(version) = self.api_version {
-            write!(f, "Vulkan API version {}.{}", version.major, version.minor)?;
-            members_written += 1;
+        let mut written = false;
+
+        if let Some(Version { major, minor, .. }) = self.api_version {
+            write!(f, "Vulkan API version {}.{}", major, minor)?;
+            written = true;
         }
 
-        if let Some((last, rest)) = self.features.split_last() {
-            if members_written != 0 {
+        if let Some((first, rest)) = self.features.split_first() {
+            if written {
                 write!(f, ", ")?;
             }
 
-            members_written += 1;
+            write!(f, "feature `{}`", first)?;
 
-            if rest.is_empty() {
-                write!(f, "feature {}", last)?;
-            } else {
-                write!(f, "features ")?;
-
-                for feature in rest {
-                    write!(f, "{}, ", feature)?;
-                }
-
-                write!(f, "{}", last)?;
+            for feature in rest {
+                write!(f, ", feature `{}`", feature)?;
             }
+
+            written = true;
         }
 
-        if let Some((last, rest)) = self.device_extensions.split_last() {
-            if members_written != 0 {
+        if let Some((first, rest)) = self.device_extensions.split_first() {
+            if written {
                 write!(f, ", ")?;
             }
 
-            members_written += 1;
+            write!(f, "device extension `{}`", first)?;
 
-            if rest.is_empty() {
-                write!(f, "device extension {}", last)?;
-            } else {
-                write!(f, "device extensions ")?;
-
-                for feature in rest {
-                    write!(f, "{}, ", feature)?;
-                }
-
-                write!(f, "{}", last)?;
+            for extension in rest {
+                write!(f, ", device extension `{}`", extension)?;
             }
+
+            written = true;
         }
 
-        if let Some((last, rest)) = self.instance_extensions.split_last() {
-            if members_written != 0 {
+        if let Some((first, rest)) = self.instance_extensions.split_first() {
+            if written {
                 write!(f, ", ")?;
             }
 
-            if rest.is_empty() {
-                write!(f, "instance extension {}", last)?;
-            } else {
-                write!(f, "instance extensions ")?;
+            write!(f, "instance extension `{}`", first)?;
 
-                for feature in rest {
-                    write!(f, "{}, ", feature)?;
-                }
-
-                write!(f, "{}", last)?;
+            for extension in rest {
+                write!(f, ", instance extension `{}`", extension)?;
             }
         }
 
@@ -463,14 +495,12 @@ impl Error for OomError {}
 
 impl Display for OomError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                OomError::OutOfHostMemory => "no memory available on the host",
-                OomError::OutOfDeviceMemory => "no memory available on the graphical device",
-            }
-        )
+        let msg = match self {
+            OomError::OutOfHostMemory => "no memory available on the host",
+            OomError::OutOfDeviceMemory => "no memory available on the graphical device",
+        };
+
+        write!(f, "{msg}")
     }
 }
 
@@ -491,96 +521,100 @@ impl Error for RuntimeError {}
 
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                RuntimeError::OutOfHostMemory => "a host memory allocation has failed",
-                RuntimeError::OutOfDeviceMemory => "a device memory allocation has failed",
-                RuntimeError::InitializationFailed => {
-                    "initialization of an object could not be completed for \
-                    implementation-specific reasons"
-                }
-                RuntimeError::DeviceLost => "the logical or physical device has been lost",
-                RuntimeError::MemoryMapFailed => "mapping of a memory object has failed",
-                RuntimeError::LayerNotPresent => {
-                    "a requested layer is not present or could not be loaded"
-                }
-                RuntimeError::ExtensionNotPresent => "a requested extension is not supported",
-                RuntimeError::FeatureNotPresent => "a requested feature is not supported",
-                RuntimeError::IncompatibleDriver => {
-                    "the requested version of Vulkan is not supported by the driver or is \
-                    otherwise incompatible for implementation-specific reasons"
-                }
-                RuntimeError::TooManyObjects => {
-                    "too many objects of the type have already been created"
-                }
-                RuntimeError::FormatNotSupported => {
-                    "a requested format is not supported on this device"
-                }
-                RuntimeError::FragmentedPool => {
-                    "a pool allocation has failed due to fragmentation of the pool's memory"
-                }
-                RuntimeError::Unknown => {
-                    "an unknown error has occurred; either the application has provided invalid \
-                    input, or an implementation failure has occurred"
-                }
-                RuntimeError::OutOfPoolMemory => "a pool memory allocation has failed",
-                RuntimeError::InvalidExternalHandle => {
-                    "an external handle is not a valid handle of the specified type"
-                }
-                RuntimeError::Fragmentation => {
-                    "a descriptor pool creation has failed due to fragmentation"
-                }
-                RuntimeError::InvalidOpaqueCaptureAddress => {
-                    "a buffer creation or memory allocation failed because the requested address \
-                    is not available. A shader group handle assignment failed because the \
-                    requested shader group handle information is no longer valid"
-                }
-                RuntimeError::IncompatibleDisplay => {
-                    "the display used by a swapchain does not use the same presentable image \
-                    layout, or is incompatible in a way that prevents sharing an image"
-                }
-                RuntimeError::NotPermitted => "a requested operation was not permitted",
-                RuntimeError::SurfaceLost => "a surface is no longer available",
-                RuntimeError::NativeWindowInUse => {
-                    "the requested window is already in use by Vulkan or another API in a manner \
-                    which prevents it from being used again"
-                }
-                RuntimeError::OutOfDate => {
-                    "a surface has changed in such a way that it is no longer compatible with the \
-                    swapchain, and further presentation requests using the swapchain will fail"
-                }
-                RuntimeError::ValidationFailed => "validation failed",
-                RuntimeError::FullScreenExclusiveModeLost => {
-                    "an operation on a swapchain created with application controlled full-screen \
-                    access failed as it did not have exclusive full-screen access"
-                }
-                RuntimeError::InvalidDrmFormatModifierPlaneLayout => {
-                    "the requested DRM format modifier plane layout is invalid"
-                }
-                RuntimeError::InvalidShader => "one or more shaders failed to compile or link",
-                RuntimeError::ImageUsageNotSupported =>
-                    "the requested `ImageUsage` are not supported",
-                RuntimeError::VideoPictureLayoutNotSupported =>
-                    "the requested video picture layout is not supported",
-                RuntimeError::VideoProfileOperationNotSupported =>
-                    "a video profile operation specified via \
-                    `VideoProfileInfo::video_codec_operation` is not supported",
-                RuntimeError::VideoProfileFormatNotSupported =>
-                    "format parameters in a requested `VideoProfileInfo` chain are not supported",
-                RuntimeError::VideoProfileCodecNotSupported =>
-                    "codec-specific parameters in a requested `VideoProfileInfo` chain are not \
-                    supported",
-                RuntimeError::VideoStdVersionNotSupported =>
-                    "the specified video Std header version is not supported",
-                RuntimeError::CompressionExhausted =>
-                    "an image creation failed because internal resources required for compression \
-                    are exhausted",
-                RuntimeError::Unnamed(result) =>
-                    return write!(f, "unnamed error, VkResult value {}", result.as_raw()),
+        let msg = match self {
+            RuntimeError::OutOfHostMemory => "a host memory allocation has failed",
+            RuntimeError::OutOfDeviceMemory => "a device memory allocation has failed",
+            RuntimeError::InitializationFailed => {
+                "initialization of an object could not be completed for implementation-specific \
+                reasons"
             }
-        )
+            RuntimeError::DeviceLost => "the logical or physical device has been lost",
+            RuntimeError::MemoryMapFailed => "mapping of a memory object has failed",
+            RuntimeError::LayerNotPresent => {
+                "a requested layer is not present or could not be loaded"
+            }
+            RuntimeError::ExtensionNotPresent => "a requested extension is not supported",
+            RuntimeError::FeatureNotPresent => "a requested feature is not supported",
+            RuntimeError::IncompatibleDriver => {
+                "the requested version of Vulkan is not supported by the driver or is otherwise \
+                incompatible for implementation-specific reasons"
+            }
+            RuntimeError::TooManyObjects => {
+                "too many objects of the type have already been created"
+            }
+            RuntimeError::FormatNotSupported => {
+                "a requested format is not supported on this device"
+            }
+            RuntimeError::FragmentedPool => {
+                "a pool allocation has failed due to fragmentation of the pool's memory"
+            }
+            RuntimeError::Unknown => {
+                "an unknown error has occurred; either the application has provided invalid input, \
+                or an implementation failure has occurred"
+            }
+            RuntimeError::OutOfPoolMemory => "a pool memory allocation has failed",
+            RuntimeError::InvalidExternalHandle => {
+                "an external handle is not a valid handle of the specified type"
+            }
+            RuntimeError::Fragmentation => {
+                "a descriptor pool creation has failed due to fragmentation"
+            }
+            RuntimeError::InvalidOpaqueCaptureAddress => {
+                "a buffer creation or memory allocation failed because the requested address is \
+                not available. A shader group handle assignment failed because the requested \
+                shader group handle information is no longer valid"
+            }
+            RuntimeError::IncompatibleDisplay => {
+                "the display used by a swapchain does not use the same presentable image layout, \
+                or is incompatible in a way that prevents sharing an image"
+            }
+            RuntimeError::NotPermitted => "a requested operation was not permitted",
+            RuntimeError::SurfaceLost => "a surface is no longer available",
+            RuntimeError::NativeWindowInUse => {
+                "the requested window is already in use by Vulkan or another API in a manner which \
+                prevents it from being used again"
+            }
+            RuntimeError::OutOfDate => {
+                "a surface has changed in such a way that it is no longer compatible with the \
+                swapchain, and further presentation requests using the swapchain will fail"
+            }
+            RuntimeError::ValidationFailed => "validation failed",
+            RuntimeError::FullScreenExclusiveModeLost => {
+                "an operation on a swapchain created with application controlled full-screen \
+                access failed as it did not have exclusive full-screen access"
+            }
+            RuntimeError::InvalidDrmFormatModifierPlaneLayout => {
+                "the requested DRM format modifier plane layout is invalid"
+            }
+            RuntimeError::InvalidShader => "one or more shaders failed to compile or link",
+            RuntimeError::ImageUsageNotSupported => "the requested `ImageUsage` are not supported",
+            RuntimeError::VideoPictureLayoutNotSupported => {
+                "the requested video picture layout is not supported"
+            }
+            RuntimeError::VideoProfileOperationNotSupported => {
+                "a video profile operation specified via `VideoProfileInfo::video_codec_operation` \
+                is not supported"
+            }
+            RuntimeError::VideoProfileFormatNotSupported => {
+                "format parameters in a requested `VideoProfileInfo` chain are not supported"
+            }
+            RuntimeError::VideoProfileCodecNotSupported => {
+                "codec-specific parameters in a requested `VideoProfileInfo` chain are not \
+                supported"
+            }
+            RuntimeError::VideoStdVersionNotSupported => {
+                "the specified video Std header version is not supported"
+            }
+            RuntimeError::CompressionExhausted => {
+                "an image creation failed because internal resources required for compression are \
+                exhausted"
+            }
+            RuntimeError::Unnamed(result) => {
+                return write!(f, "unnamed error, VkResult value {}", result.as_raw());
+            }
+        };
+
+        write!(f, "{msg}")
     }
 }
 
