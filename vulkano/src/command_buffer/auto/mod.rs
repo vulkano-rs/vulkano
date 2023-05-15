@@ -659,7 +659,7 @@ mod tests {
 
                 // Add both secondary command buffers using separate execute_commands calls.
                 secondary.iter().cloned().for_each(|secondary| {
-                    builder.execute_commands_unchecked([secondary as _]);
+                    builder.execute_commands_unchecked([secondary as _].into_iter().collect());
                 });
 
                 let _primary = builder.build().unwrap();
@@ -682,7 +682,10 @@ mod tests {
 
                 // Add a single execute_commands for all secondary command buffers at once
                 builder.execute_commands_unchecked(
-                    secondary.into_iter().map(|secondary| secondary as _),
+                    secondary
+                        .into_iter()
+                        .map(|secondary| secondary as _)
+                        .collect(),
                 );
             }
         }

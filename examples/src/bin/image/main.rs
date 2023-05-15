@@ -399,7 +399,7 @@ fn main() {
                     SubpassContents::Inline,
                 )
                 .unwrap()
-                .set_viewport(0, [viewport.clone()])
+                .set_viewport(0, [viewport.clone()].into_iter().collect())
                 .bind_pipeline_graphics(pipeline.clone())
                 .bind_descriptor_sets(
                     PipelineBindPoint::Graphics,

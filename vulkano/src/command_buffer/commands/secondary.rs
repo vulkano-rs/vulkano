@@ -372,7 +372,7 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn execute_commands_unchecked(
         &mut self,
-        command_buffers: impl IntoIterator<Item = Arc<dyn SecondaryCommandBufferAbstract>>,
+        command_buffers: SmallVec<[Arc<dyn SecondaryCommandBufferAbstract>; 4]>,
     ) -> &mut Self {
         self.execute_commands_locked(
             command_buffers
@@ -470,7 +470,7 @@ where
     #[inline]
     pub unsafe fn execute_commands(
         &mut self,
-        command_buffers: impl IntoIterator<Item = Arc<dyn SecondaryCommandBufferAbstract>>,
+        command_buffers: SmallVec<[Arc<dyn SecondaryCommandBufferAbstract>; 4]>,
     ) -> &mut Self {
         self.execute_commands_locked(
             command_buffers

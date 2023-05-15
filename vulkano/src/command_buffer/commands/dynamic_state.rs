@@ -119,13 +119,7 @@ where
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If there is a graphics pipeline with color blend state bound, `enables.len()` must equal
     /// - [`attachments.len()`](crate::pipeline::graphics::color_blend::ColorBlendState::attachments).
-    pub fn set_color_write_enable<I>(&mut self, enables: I) -> &mut Self
-    where
-        I: IntoIterator<Item = bool>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let enables = enables.into_iter();
-
+    pub fn set_color_write_enable(&mut self, enables: SmallVec<[bool; 4]>) -> &mut Self {
         self.validate_set_color_write_enable(&enables).unwrap();
 
         unsafe {
@@ -137,7 +131,7 @@ where
 
     fn validate_set_color_write_enable(
         &self,
-        enables: &impl ExactSizeIterator,
+        enables: &[bool],
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::ColorWriteEnable)?;
 
@@ -186,15 +180,14 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_color_write_enable_unchecked(
         &mut self,
-        enables: impl IntoIterator<Item = bool>,
+        enables: SmallVec<[bool; 4]>,
     ) -> &mut Self {
-        let enables: SmallVec<[bool; 4]> = enables.into_iter().collect();
         self.builder_state.color_write_enable = Some(enables.clone());
         self.add_command(
             "set_color_write_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_color_write_enable(enables.iter().copied());
+                out.set_color_write_enable(enables);
             },
         );
 
@@ -755,9 +748,8 @@ where
     pub fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
-        rectangles: impl IntoIterator<Item = Scissor>,
+        rectangles: SmallVec<[Scissor; 2]>,
     ) -> &mut Self {
-        let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
         self.validate_set_discard_rectangle(first_rectangle, &rectangles)
             .unwrap();
 
@@ -822,10 +814,8 @@ where
     pub unsafe fn set_discard_rectangle_unchecked(
         &mut self,
         first_rectangle: u32,
-        rectangles: impl IntoIterator<Item = Scissor>,
+        rectangles: SmallVec<[Scissor; 2]>,
     ) -> &mut Self {
-        let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
-
         for (num, rectangle) in rectangles.iter().enumerate() {
             let num = num as u32 + first_rectangle;
             self.builder_state.discard_rectangle.insert(num, *rectangle);
@@ -835,7 +825,7 @@ where
             "set_discard_rectangle",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_discard_rectangle(first_rectangle, rectangles.iter().copied());
+                out.set_discard_rectangle(first_rectangle, rectangles);
             },
         );
 
@@ -1458,9 +1448,8 @@ where
     pub fn set_scissor(
         &mut self,
         first_scissor: u32,
-        scissors: impl IntoIterator<Item = Scissor>,
+        scissors: SmallVec<[Scissor; 2]>,
     ) -> &mut Self {
-        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
         self.validate_set_scissor(first_scissor, &scissors).unwrap();
 
         unsafe {
@@ -1528,7 +1517,7 @@ where
     pub unsafe fn set_scissor_unchecked(
         &mut self,
         first_scissor: u32,
-        scissors: impl IntoIterator<Item = Scissor>,
+        scissors: SmallVec<[Scissor; 2]>,
     ) -> &mut Self {
         let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
 
@@ -1541,7 +1530,7 @@ where
             "set_scissor",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_scissor(first_scissor, scissors.iter().copied());
+                out.set_scissor(first_scissor, scissors);
             },
         );
 
@@ -1561,11 +1550,7 @@ where
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if more than 1 scissor is provided.
-    pub fn set_scissor_with_count(
-        &mut self,
-        scissors: impl IntoIterator<Item = Scissor>,
-    ) -> &mut Self {
-        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
+    pub fn set_scissor_with_count(&mut self, scissors: SmallVec<[Scissor; 2]>) -> &mut Self {
         self.validate_set_scissor_with_count(&scissors).unwrap();
 
         unsafe {
@@ -1630,15 +1615,14 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_scissor_with_count_unchecked(
         &mut self,
-        scissors: impl IntoIterator<Item = Scissor>,
+        scissors: SmallVec<[Scissor; 2]>,
     ) -> &mut Self {
-        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
         self.builder_state.scissor_with_count = Some(scissors.clone());
         self.add_command(
             "set_scissor_with_count",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_scissor_with_count(scissors.iter().copied());
+                out.set_scissor_with_count(scissors);
             },
         );
 
@@ -2045,9 +2029,8 @@ where
     pub fn set_viewport(
         &mut self,
         first_viewport: u32,
-        viewports: impl IntoIterator<Item = Viewport>,
+        viewports: SmallVec<[Viewport; 2]>,
     ) -> &mut Self {
-        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
         self.validate_set_viewport(first_viewport, &viewports)
             .unwrap();
 
@@ -2116,10 +2099,8 @@ where
     pub unsafe fn set_viewport_unchecked(
         &mut self,
         first_viewport: u32,
-        viewports: impl IntoIterator<Item = Viewport>,
+        viewports: SmallVec<[Viewport; 2]>,
     ) -> &mut Self {
-        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
-
         for (num, viewport) in viewports.iter().enumerate() {
             let num = num as u32 + first_viewport;
             self.builder_state.viewport.insert(num, viewport.clone());
@@ -2129,7 +2110,7 @@ where
             "set_viewport",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_viewport(first_viewport, viewports.iter().cloned());
+                out.set_viewport(first_viewport, viewports);
             },
         );
 
@@ -2149,11 +2130,7 @@ where
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if more than 1 viewport is provided.
-    pub fn set_viewport_with_count(
-        &mut self,
-        viewports: impl IntoIterator<Item = Viewport>,
-    ) -> &mut Self {
-        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
+    pub fn set_viewport_with_count(&mut self, viewports: SmallVec<[Viewport; 2]>) -> &mut Self {
         self.validate_set_viewport_with_count(&viewports).unwrap();
 
         unsafe {
@@ -2218,15 +2195,14 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_viewport_with_count_unchecked(
         &mut self,
-        viewports: impl IntoIterator<Item = Viewport>,
+        viewports: SmallVec<[Viewport; 2]>,
     ) -> &mut Self {
-        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
         self.builder_state.viewport_with_count = Some(viewports.clone());
         self.add_command(
             "set_viewport",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_viewport_with_count(viewports.iter().cloned());
+                out.set_viewport_with_count(viewports);
             },
         );
 
@@ -2250,10 +2226,7 @@ where
     /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_color_write_enable(
-        &mut self,
-        enables: impl IntoIterator<Item = bool>,
-    ) -> &mut Self {
+    pub unsafe fn set_color_write_enable(&mut self, enables: SmallVec<[bool; 4]>) -> &mut Self {
         let enables = enables
             .into_iter()
             .map(|v| v as ash::vk::Bool32)
@@ -2394,7 +2367,7 @@ where
     pub unsafe fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
-        rectangles: impl IntoIterator<Item = Scissor>,
+        rectangles: SmallVec<[Scissor; 2]>,
     ) -> &mut Self {
         let rectangles = rectangles
             .into_iter()
@@ -2606,7 +2579,7 @@ where
     pub unsafe fn set_scissor(
         &mut self,
         first_scissor: u32,
-        scissors: impl IntoIterator<Item = Scissor>,
+        scissors: SmallVec<[Scissor; 2]>,
     ) -> &mut Self {
         let scissors = scissors
             .into_iter()
@@ -2630,10 +2603,7 @@ where
     /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor_with_count(
-        &mut self,
-        scissors: impl IntoIterator<Item = Scissor>,
-    ) -> &mut Self {
+    pub unsafe fn set_scissor_with_count(&mut self, scissors: SmallVec<[Scissor; 2]>) -> &mut Self {
         let scissors = scissors
             .into_iter()
             .map(ash::vk::Rect2D::from)
@@ -2668,7 +2638,7 @@ where
     pub unsafe fn set_viewport(
         &mut self,
         first_viewport: u32,
-        viewports: impl IntoIterator<Item = Viewport>,
+        viewports: SmallVec<[Viewport; 2]>,
     ) -> &mut Self {
         let viewports = viewports
             .into_iter()
@@ -2694,7 +2664,7 @@ where
     /// If the list is empty then the command is automatically ignored.
     pub unsafe fn set_viewport_with_count(
         &mut self,
-        viewports: impl IntoIterator<Item = Viewport>,
+        viewports: SmallVec<[Viewport; 2]>,
     ) -> &mut Self {
         let viewports = viewports
             .into_iter()

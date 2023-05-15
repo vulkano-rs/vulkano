@@ -422,7 +422,7 @@ fn main() {
                         SubpassContents::Inline,
                     )
                     .unwrap()
-                    .set_viewport(0, [viewport.clone()])
+                    .set_viewport(0, [viewport.clone()].into_iter().collect())
                     .bind_pipeline_graphics(pipeline.clone())
                     // We pass both our lists of vertices here.
                     .bind_vertex_buffers(0, (vertex_buffer.clone(), instance_buffer.clone()))

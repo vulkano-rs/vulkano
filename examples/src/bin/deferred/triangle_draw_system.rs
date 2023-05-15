@@ -146,7 +146,9 @@ impl TriangleDrawSystem {
                     origin: [0.0, 0.0],
                     dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
                     depth_range: 0.0..1.0,
-                }],
+                }]
+                .into_iter()
+                .collect(),
             )
             .bind_pipeline_graphics(self.pipeline.clone())
             .bind_vertex_buffers(0, self.vertex_buffer.clone())

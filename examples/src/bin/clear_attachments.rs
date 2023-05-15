@@ -236,7 +236,9 @@ fn main() {
                     [ClearAttachment::Color {
                         color_attachment: 0,
                         clear_value: [1.0, 0.0, 0.0, 1.0].into(),
-                    }],
+                    }]
+                    .into_iter()
+                    .collect(),
                     [
                         // Fixed offset and extent.
                         ClearRect {
@@ -256,7 +258,9 @@ fn main() {
                             extent: [width / 3, height / 5],
                             array_layers: 0..1,
                         },
-                    ],
+                    ]
+                    .into_iter()
+                    .collect(),
                 )
                 .unwrap()
                 .end_render_pass()

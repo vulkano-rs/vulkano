@@ -1494,12 +1494,9 @@ where
     /// The rectangle area must be inside the render area ranges.
     pub fn clear_attachments(
         &mut self,
-        attachments: impl IntoIterator<Item = ClearAttachment>,
-        rects: impl IntoIterator<Item = ClearRect>,
+        attachments: SmallVec<[ClearAttachment; 4]>,
+        rects: SmallVec<[ClearRect; 4]>,
     ) -> Result<&mut Self, RenderPassError> {
-        let attachments: SmallVec<[ClearAttachment; 3]> = attachments.into_iter().collect();
-        let rects: SmallVec<[ClearRect; 4]> = rects.into_iter().collect();
-
         self.validate_clear_attachments(&attachments, &rects)?;
 
         unsafe {
@@ -1681,16 +1678,14 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn clear_attachments_unchecked(
         &mut self,
-        attachments: impl IntoIterator<Item = ClearAttachment>,
-        rects: impl IntoIterator<Item = ClearRect>,
+        attachments: SmallVec<[ClearAttachment; 4]>,
+        rects: SmallVec<[ClearRect; 4]>,
     ) -> &mut Self {
-        let attachments: SmallVec<[_; 3]> = attachments.into_iter().collect();
-        let rects: SmallVec<[_; 4]> = rects.into_iter().collect();
         self.add_command(
             "clear_attachments",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.clear_attachments(attachments.iter().copied(), rects.iter().cloned());
+                out.clear_attachments(attachments, rects);
             },
         );
 
@@ -2019,10 +2014,10 @@ where
     /// no-op and isn't a valid usage of the command anyway.
     pub unsafe fn clear_attachments(
         &mut self,
-        attachments: impl IntoIterator<Item = ClearAttachment>,
-        rects: impl IntoIterator<Item = ClearRect>,
+        attachments: SmallVec<[ClearAttachment; 4]>,
+        rects: SmallVec<[ClearRect; 4]>,
     ) -> &mut Self {
-        let attachments_vk: SmallVec<[_; 3]> = attachments.into_iter().map(|v| v.into()).collect();
+        let attachments_vk: SmallVec<[_; 4]> = attachments.into_iter().map(|v| v.into()).collect();
         let rects_vk: SmallVec<[_; 4]> = rects
             .into_iter()
             .map(|rect| ash::vk::ClearRect {

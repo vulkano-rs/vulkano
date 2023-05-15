@@ -743,10 +743,8 @@ where
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        mut descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
     ) -> &mut Self {
-        let mut descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
-
         // Set the image layouts
         if let Some(set_layout) = pipeline_layout.set_layouts().get(set_num as usize) {
             for write in &mut descriptor_writes {
@@ -848,11 +846,8 @@ where
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        mut descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
     ) -> &mut Self {
-        let mut descriptor_writes: SmallVec<[WriteDescriptorSet; 8]> =
-            descriptor_writes.into_iter().collect();
-
         // Set the image layouts
         if let Some(set_layout) = pipeline_layout.set_layouts().get(set_num as usize) {
             for write in &mut descriptor_writes {
@@ -1115,7 +1110,7 @@ where
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
     ) -> &mut Self {
         let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 

@@ -469,9 +469,8 @@ where
     /// Calls `vkCmdWaitEvents` on the builder.
     pub unsafe fn wait_events(
         &mut self,
-        events: impl IntoIterator<Item = (Arc<Event>, DependencyInfo)>,
+        events: SmallVec<[(Arc<Event>, DependencyInfo); 4]>,
     ) -> &mut Self {
-        let events: SmallVec<[(Arc<Event>, DependencyInfo); 4]> = events.into_iter().collect();
         let fns = self.device().fns();
 
         if self.device().enabled_features().synchronization2 {

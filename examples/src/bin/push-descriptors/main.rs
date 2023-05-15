@@ -394,13 +394,15 @@ fn main() {
                     SubpassContents::Inline,
                 )
                 .unwrap()
-                .set_viewport(0, [viewport.clone()])
+                .set_viewport(0, [viewport.clone()].into_iter().collect())
                 .bind_pipeline_graphics(pipeline.clone())
                 .push_descriptor_set(
                     PipelineBindPoint::Graphics,
                     pipeline.layout().clone(),
                     0,
-                    [WriteDescriptorSet::image_view(0, texture.clone())],
+                    [WriteDescriptorSet::image_view(0, texture.clone())]
+                        .into_iter()
+                        .collect(),
                 )
                 .bind_vertex_buffers(0, vertex_buffer.clone())
                 .draw(vertex_buffer.len() as u32, 1, 0, 0)

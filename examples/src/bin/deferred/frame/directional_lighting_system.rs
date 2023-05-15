@@ -210,7 +210,7 @@ impl DirectionalLightingSystem {
         )
         .unwrap();
         builder
-            .set_viewport(0, [viewport])
+            .set_viewport(0, [viewport].into_iter().collect())
             .bind_pipeline_graphics(self.pipeline.clone())
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
