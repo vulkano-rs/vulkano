@@ -10,7 +10,7 @@
 use super::{
     allocator::{
         CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc,
-        StandardCommandBufferAlloc, StandardCommandBufferAllocator,
+        StandardCommandBufferAllocator,
     },
     CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
 };
@@ -193,7 +193,7 @@ where
 
     /// Turns the builder into an actual command buffer.
     #[inline]
-    pub fn build(self) -> Result<UnsafeCommandBuffer<A::Alloc>, OomError> {
+    pub fn build(self) -> Result<UnsafeCommandBuffer<A>, OomError> {
         unsafe {
             let fns = self.device().fns();
             (fns.v1_0.end_command_buffer)(self.handle())
@@ -308,11 +308,11 @@ impl Default for CommandBufferBeginInfo {
 /// The command buffer must not outlive the command pool that it was created from,
 /// nor the resources used by the recorded commands.
 #[derive(Debug)]
-pub struct UnsafeCommandBuffer<A = StandardCommandBufferAlloc>
+pub struct UnsafeCommandBuffer<A = StandardCommandBufferAllocator>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
-    alloc: A,
+    alloc: A::Alloc,
 
     queue_family_index: u32,
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
@@ -324,7 +324,7 @@ where
 
 impl<A> UnsafeCommandBuffer<A>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     /// Returns the queue family index that this command buffer was created for.
     #[inline]
@@ -353,7 +353,7 @@ where
 
 unsafe impl<A> VulkanObject for UnsafeCommandBuffer<A>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     type Handle = ash::vk::CommandBuffer;
 
@@ -365,7 +365,7 @@ where
 
 unsafe impl<A> DeviceOwned for UnsafeCommandBuffer<A>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {

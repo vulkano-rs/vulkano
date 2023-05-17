@@ -92,10 +92,8 @@ where
         allocator: &A,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<
-        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A::Alloc>, A>,
-        CommandBufferBeginError,
-    > {
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, CommandBufferBeginError>
+    {
         unsafe {
             AutoCommandBufferBuilder::begin(
                 allocator,
@@ -116,7 +114,7 @@ where
         allocator: &A,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A::Alloc>, A>, OomError> {
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, OomError> {
         AutoCommandBufferBuilder::begin_unchecked(
             allocator,
             queue_family_index,
@@ -141,10 +139,8 @@ where
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A::Alloc>, A>,
-        CommandBufferBeginError,
-    > {
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, CommandBufferBeginError>
+    {
         unsafe {
             AutoCommandBufferBuilder::begin(
                 allocator,
@@ -166,7 +162,7 @@ where
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A::Alloc>, A>, OomError> {
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, OomError> {
         AutoCommandBufferBuilder::begin_unchecked(
             allocator,
             queue_family_index,
@@ -482,7 +478,7 @@ where
         mut self,
     ) -> Result<
         (
-            UnsafeCommandBuffer<A::Alloc>,
+            UnsafeCommandBuffer<A>,
             CommandBufferResourcesUsage,
             SecondaryCommandBufferResourcesUsage,
         ),
@@ -630,12 +626,12 @@ impl From<RequirementNotMet> for CommandBufferBeginError {
     }
 }
 
-impl<A> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A::Alloc>, A>
+impl<A> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>
 where
     A: CommandBufferAllocator,
 {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer<A::Alloc>>, CommandBufferBuildError> {
+    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer<A>>, CommandBufferBuildError> {
         if self.builder_state.render_pass.is_some() {
             return Err(CommandBufferBuildError::RenderPassActive);
         }
@@ -654,14 +650,12 @@ where
     }
 }
 
-impl<A> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A::Alloc>, A>
+impl<A> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>
 where
     A: CommandBufferAllocator,
 {
     /// Builds the command buffer.
-    pub fn build(
-        self,
-    ) -> Result<Arc<SecondaryAutoCommandBuffer<A::Alloc>>, CommandBufferBuildError> {
+    pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer<A>>, CommandBufferBuildError> {
         if !self.builder_state.queries.is_empty() {
             return Err(CommandBufferBuildError::QueryActive);
         }

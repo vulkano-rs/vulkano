@@ -72,7 +72,7 @@ pub(in crate::command_buffer) use self::builder::{
     RenderPassStateAttachments, RenderPassStateType, SetOrPush,
 };
 use super::{
-    allocator::{CommandBufferAlloc, StandardCommandBufferAlloc},
+    allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
     sys::UnsafeCommandBuffer,
     CommandBufferExecError, CommandBufferInheritanceInfo, CommandBufferResourcesUsage,
     CommandBufferState, CommandBufferUsage, PrimaryCommandBufferAbstract, ResourceInCommand,
@@ -97,9 +97,9 @@ use std::{
 
 mod builder;
 
-pub struct PrimaryAutoCommandBuffer<A = StandardCommandBufferAlloc>
+pub struct PrimaryAutoCommandBuffer<A = StandardCommandBufferAllocator>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     inner: UnsafeCommandBuffer<A>,
     resources_usage: CommandBufferResourcesUsage,
@@ -108,7 +108,7 @@ where
 
 unsafe impl<A> VulkanObject for PrimaryAutoCommandBuffer<A>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     type Handle = ash::vk::CommandBuffer;
 
@@ -119,7 +119,7 @@ where
 
 unsafe impl<A> DeviceOwned for PrimaryAutoCommandBuffer<A>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
@@ -128,7 +128,7 @@ where
 
 unsafe impl<A> PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer<A>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
@@ -143,9 +143,9 @@ where
     }
 }
 
-pub struct SecondaryAutoCommandBuffer<A = StandardCommandBufferAlloc>
+pub struct SecondaryAutoCommandBuffer<A = StandardCommandBufferAllocator>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     inner: UnsafeCommandBuffer<A>,
     resources_usage: SecondaryCommandBufferResourcesUsage,
@@ -154,7 +154,7 @@ where
 
 unsafe impl<A> VulkanObject for SecondaryAutoCommandBuffer<A>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     type Handle = ash::vk::CommandBuffer;
 
@@ -165,7 +165,7 @@ where
 
 unsafe impl<A> DeviceOwned for SecondaryAutoCommandBuffer<A>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
@@ -174,7 +174,7 @@ where
 
 unsafe impl<A> SecondaryCommandBufferAbstract for SecondaryAutoCommandBuffer<A>
 where
-    A: CommandBufferAlloc,
+    A: CommandBufferAllocator,
 {
     fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()

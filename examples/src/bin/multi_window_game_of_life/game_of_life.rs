@@ -134,7 +134,7 @@ impl GameOfLifeComputePipeline {
         dead_color: [f32; 4],
     ) -> Box<dyn GpuFuture> {
         let mut builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.compute_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -168,7 +168,7 @@ impl GameOfLifeComputePipeline {
         &self,
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
-            Arc<StandardCommandBufferAllocator>,
+            StandardCommandBufferAllocator,
         >,
         life_color: [f32; 4],
         dead_color: [f32; 4],

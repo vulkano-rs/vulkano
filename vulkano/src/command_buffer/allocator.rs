@@ -272,24 +272,6 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
     }
 }
 
-unsafe impl CommandBufferAllocator for Arc<StandardCommandBufferAllocator> {
-    type Iter = IntoIter<[StandardCommandBufferBuilderAlloc; 1]>;
-
-    type Builder = StandardCommandBufferBuilderAlloc;
-
-    type Alloc = StandardCommandBufferAlloc;
-
-    #[inline]
-    fn allocate(
-        &self,
-        queue_family_index: u32,
-        level: CommandBufferLevel,
-        command_buffer_count: u32,
-    ) -> Result<Self::Iter, OomError> {
-        (**self).allocate(queue_family_index, level, command_buffer_count)
-    }
-}
-
 unsafe impl DeviceOwned for StandardCommandBufferAllocator {
     #[inline]
     fn device(&self) -> &Arc<Device> {
