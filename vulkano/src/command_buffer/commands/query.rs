@@ -178,7 +178,7 @@ where
             "begin_query",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.begin_query(query_pool, query, flags);
+                out.begin_query(&query_pool, query, flags);
             },
         );
 
@@ -256,7 +256,7 @@ where
             "end_query",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.end_query(query_pool, query);
+                out.end_query(&query_pool, query);
             },
         );
 
@@ -495,7 +495,7 @@ where
             "write_timestamp",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.write_timestamp(query_pool, query, stage);
+                out.write_timestamp(&query_pool, query, stage);
             },
         );
 
@@ -635,7 +635,7 @@ where
             .into_iter()
             .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_query_pool_results(query_pool, queries, destination, flags);
+                out.copy_query_pool_results(&query_pool, queries.clone(), &destination, flags);
             },
         );
 
@@ -716,7 +716,7 @@ where
             "reset_query_pool",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.reset_query_pool(query_pool, queries);
+                out.reset_query_pool(&query_pool, queries.clone());
             },
         );
 
@@ -732,25 +732,21 @@ where
     #[inline]
     pub unsafe fn begin_query(
         &mut self,
-        query_pool: Arc<QueryPool>,
+        query_pool: &QueryPool,
         query: u32,
         flags: QueryControlFlags,
     ) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_begin_query)(self.handle(), query_pool.handle(), query, flags.into());
 
-        self.keep_alive_objects.push(Box::new(query_pool));
-
         self
     }
 
     /// Calls `vkCmdEndQuery` on the builder.
     #[inline]
-    pub unsafe fn end_query(&mut self, query_pool: Arc<QueryPool>, query: u32) -> &mut Self {
+    pub unsafe fn end_query(&mut self, query_pool: &QueryPool, query: u32) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_end_query)(self.handle(), query_pool.handle(), query);
-
-        self.keep_alive_objects.push(Box::new(query_pool));
 
         self
     }
@@ -759,7 +755,7 @@ where
     #[inline]
     pub unsafe fn write_timestamp(
         &mut self,
-        query_pool: Arc<QueryPool>,
+        query_pool: &QueryPool,
         query: u32,
         stage: PipelineStage,
     ) -> &mut Self {
@@ -785,17 +781,15 @@ where
             (fns.v1_0.cmd_write_timestamp)(self.handle(), stage.into(), query_pool.handle(), query);
         }
 
-        self.keep_alive_objects.push(Box::new(query_pool));
-
         self
     }
 
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
     pub unsafe fn copy_query_pool_results<T>(
         &mut self,
-        query_pool: Arc<QueryPool>,
+        query_pool: &QueryPool,
         queries: Range<u32>,
-        destination: Subbuffer<[T]>,
+        destination: &Subbuffer<[T]>,
         flags: QueryResultFlags,
     ) -> &mut Self
     where
@@ -817,8 +811,6 @@ where
             ash::vk::QueryResultFlags::from(flags) | T::FLAG,
         );
 
-        self.keep_alive_objects.push(Box::new(query_pool));
-
         self
     }
 
@@ -826,7 +818,7 @@ where
     #[inline]
     pub unsafe fn reset_query_pool(
         &mut self,
-        query_pool: Arc<QueryPool>,
+        query_pool: &QueryPool,
         queries: Range<u32>,
     ) -> &mut Self {
         let fns = self.device().fns();
@@ -836,8 +828,6 @@ where
             queries.start,
             queries.end - queries.start,
         );
-
-        self.keep_alive_objects.push(Box::new(query_pool));
 
         self
     }

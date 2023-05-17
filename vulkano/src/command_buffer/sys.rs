@@ -24,7 +24,7 @@ use crate::{
     OomError, RuntimeError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{any::Any, fmt::Debug, ptr, sync::Arc};
+use std::{fmt::Debug, ptr, sync::Arc};
 
 /// Command buffer being built.
 ///
@@ -46,8 +46,6 @@ where
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
     inheritance_info: Option<CommandBufferInheritanceInfo>,
     pub(super) usage: CommandBufferUsage,
-
-    pub(super) keep_alive_objects: Vec<Box<dyn Any + Send + Sync>>,
 }
 
 impl<A> UnsafeCommandBufferBuilder<A>
@@ -186,8 +184,6 @@ where
             inheritance_info,
             queue_family_index,
             usage,
-
-            keep_alive_objects: Vec::new(),
         })
     }
 
@@ -205,8 +201,6 @@ where
                 inheritance_info: self.inheritance_info,
                 queue_family_index: self.queue_family_index,
                 usage: self.usage,
-
-                _keep_alive_objects: self.keep_alive_objects,
             })
         }
     }
@@ -267,7 +261,6 @@ where
             .field("handle", &self.level())
             .field("level", &self.level())
             .field("usage", &self.usage)
-            .field("keep_alive_objects", &self.keep_alive_objects)
             .finish()
     }
 }
@@ -318,8 +311,6 @@ where
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
     inheritance_info: Option<CommandBufferInheritanceInfo>,
     usage: CommandBufferUsage,
-
-    _keep_alive_objects: Vec<Box<dyn Any + Send + Sync>>,
 }
 
 impl<A> UnsafeCommandBuffer<A>

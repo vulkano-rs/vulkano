@@ -86,7 +86,7 @@ where
             "begin_debug_utils_label",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.begin_debug_utils_label(label_info);
+                out.begin_debug_utils_label(&label_info);
             },
         );
 
@@ -211,7 +211,7 @@ where
             "insert_debug_utils_label",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.insert_debug_utils_label(label_info);
+                out.insert_debug_utils_label(&label_info);
             },
         );
 
@@ -229,9 +229,9 @@ where
     /// The command pool that this command buffer was allocated from must support graphics or
     /// compute operations
     #[inline]
-    pub unsafe fn begin_debug_utils_label(&mut self, label_info: DebugUtilsLabel) -> &mut Self {
-        let DebugUtilsLabel {
-            label_name,
+    pub unsafe fn begin_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) -> &mut Self {
+        let &DebugUtilsLabel {
+            ref label_name,
             color,
             _ne: _,
         } = label_info;
@@ -268,9 +268,9 @@ where
     /// The command pool that this command buffer was allocated from must support graphics or
     /// compute operations
     #[inline]
-    pub unsafe fn insert_debug_utils_label(&mut self, label_info: DebugUtilsLabel) -> &mut Self {
-        let DebugUtilsLabel {
-            label_name,
+    pub unsafe fn insert_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) -> &mut Self {
+        let &DebugUtilsLabel {
+            ref label_name,
             color,
             _ne: _,
         } = label_info;

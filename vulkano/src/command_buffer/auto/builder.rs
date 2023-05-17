@@ -76,7 +76,7 @@ where
     pub(in crate::command_buffer) inner: UnsafeCommandBufferBuilder<A>,
     commands: Vec<(
         CommandInfo,
-        Box<dyn FnOnce(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>,
+        Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>,
     )>,
     pub(in crate::command_buffer) builder_state: CommandBufferBuilderState,
     _data: PhantomData<L>,
@@ -479,6 +479,7 @@ where
     ) -> Result<
         (
             UnsafeCommandBuffer<A>,
+            Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>>,
             CommandBufferResourcesUsage,
             SecondaryCommandBufferResourcesUsage,
         ),
@@ -502,11 +503,11 @@ where
         let final_barrier_index = self.commands.len();
 
         // Record all the commands and barriers to the inner command buffer.
-        for (command_index, (_, record_func)) in self.commands.into_iter().enumerate() {
+        for (command_index, (_, record_func)) in self.commands.iter().enumerate() {
             if let Some(barriers) = barriers.remove(&command_index) {
                 for dependency_info in barriers {
                     unsafe {
-                        self.inner.pipeline_barrier(dependency_info);
+                        self.inner.pipeline_barrier(&dependency_info);
                     }
                 }
             }
@@ -518,7 +519,7 @@ where
         if let Some(final_barriers) = barriers.remove(&final_barrier_index) {
             for dependency_info in final_barriers {
                 unsafe {
-                    self.inner.pipeline_barrier(dependency_info);
+                    self.inner.pipeline_barrier(&dependency_info);
                 }
             }
         }
@@ -527,6 +528,10 @@ where
 
         Ok((
             self.inner.build()?,
+            self.commands
+                .into_iter()
+                .map(|(_, record_func)| record_func)
+                .collect(),
             resources_usage,
             secondary_resources_usage,
         ))
@@ -640,10 +645,11 @@ where
             return Err(CommandBufferBuildError::QueryActive);
         }
 
-        let (inner, resources_usage, _) = unsafe { self.end_unchecked()? };
+        let (inner, keep_alive_objects, resources_usage, _) = unsafe { self.end_unchecked()? };
 
         Ok(Arc::new(PrimaryAutoCommandBuffer {
             inner,
+            _keep_alive_objects: keep_alive_objects,
             resources_usage,
             state: Mutex::new(Default::default()),
         }))
@@ -670,10 +676,11 @@ where
             },
         };
 
-        let (inner, _, resources_usage) = unsafe { self.end_unchecked()? };
+        let (inner, keep_alive_objects, _, resources_usage) = unsafe { self.end_unchecked()? };
 
         Ok(Arc::new(SecondaryAutoCommandBuffer {
             inner,
+            _keep_alive_objects: keep_alive_objects,
             resources_usage,
             submit_state,
         }))
@@ -743,7 +750,7 @@ where
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl FnOnce(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
+        record_func: impl Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -759,7 +766,7 @@ where
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl FnOnce(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
+        record_func: impl Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -775,7 +782,7 @@ where
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl FnOnce(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
+        record_func: impl Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {

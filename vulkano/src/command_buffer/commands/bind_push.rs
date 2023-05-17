@@ -254,9 +254,9 @@ where
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
                 out.bind_descriptor_sets(
                     pipeline_bind_point,
-                    pipeline_layout,
+                    &pipeline_layout,
                     first_set,
-                    descriptor_sets,
+                    &descriptor_sets,
                 );
             },
         );
@@ -341,7 +341,7 @@ where
             "bind_index_buffer",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_index_buffer(buffer);
+                out.bind_index_buffer(&buffer);
             },
         );
 
@@ -394,7 +394,7 @@ where
             "bind_pipeline_compute",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_pipeline_compute(pipeline);
+                out.bind_pipeline_compute(&pipeline);
             },
         );
 
@@ -498,7 +498,7 @@ where
             "bind_pipeline_graphics",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_pipeline_graphics(pipeline);
+                out.bind_pipeline_graphics(&pipeline);
             },
         );
 
@@ -603,7 +603,7 @@ where
             "bind_vertex_buffers",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_vertex_buffers(first_binding, vertex_buffers);
+                out.bind_vertex_buffers(first_binding, &vertex_buffers);
             },
         );
 
@@ -721,7 +721,7 @@ where
             "push_constants",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.push_constants(pipeline_layout, offset, push_constants);
+                out.push_constants(&pipeline_layout, offset, &push_constants);
             },
         );
 
@@ -883,9 +883,9 @@ where
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
                 out.push_descriptor_set(
                     pipeline_bind_point,
-                    pipeline_layout,
+                    &pipeline_layout,
                     set_num,
-                    descriptor_writes,
+                    &descriptor_writes,
                 );
             },
         );
@@ -906,12 +906,10 @@ where
     pub unsafe fn bind_descriptor_sets(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: Arc<PipelineLayout>,
+        pipeline_layout: &PipelineLayout,
         first_set: u32,
-        descriptor_sets: impl DescriptorSetsCollection,
+        descriptor_sets: &[DescriptorSetWithOffsets],
     ) -> &mut Self {
-        let descriptor_sets = descriptor_sets.into_vec();
-
         if descriptor_sets.is_empty() {
             return self;
         }
@@ -937,22 +935,12 @@ where
             dynamic_offsets_vk.as_ptr(),
         );
 
-        self.keep_alive_objects.push(Box::new(pipeline_layout));
-        self.keep_alive_objects
-            .extend(
-                descriptor_sets
-                    .into_iter()
-                    .map(|descriptor_set_with_offsets| {
-                        Box::new(descriptor_set_with_offsets.into_tuple().0) as _
-                    }),
-            );
-
         self
     }
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer<I: Index>(&mut self, buffer: Subbuffer<[I]>) -> &mut Self {
+    pub unsafe fn bind_index_buffer<I: Index>(&mut self, buffer: &Subbuffer<[I]>) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_bind_index_buffer)(
             self.handle(),
@@ -961,15 +949,12 @@ where
             I::ty().into(),
         );
 
-        self.keep_alive_objects
-            .push(Box::new(buffer.buffer().clone()));
-
         self
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: Arc<ComputePipeline>) -> &mut Self {
+    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: &ComputePipeline) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_bind_pipeline)(
             self.handle(),
@@ -977,22 +962,18 @@ where
             pipeline.handle(),
         );
 
-        self.keep_alive_objects.push(Box::new(pipeline));
-
         self
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: Arc<GraphicsPipeline>) -> &mut Self {
+    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: &GraphicsPipeline) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_bind_pipeline)(
             self.handle(),
             ash::vk::PipelineBindPoint::GRAPHICS,
             pipeline.handle(),
         );
-
-        self.keep_alive_objects.push(Box::new(pipeline));
 
         self
     }
@@ -1006,10 +987,8 @@ where
     pub unsafe fn bind_vertex_buffers(
         &mut self,
         first_binding: u32,
-        vertex_buffers: impl VertexBuffersCollection,
+        vertex_buffers: &[Subbuffer<[u8]>],
     ) -> &mut Self {
-        let vertex_buffers = vertex_buffers.into_vec();
-
         if vertex_buffers.is_empty() {
             return self;
         }
@@ -1028,21 +1007,15 @@ where
             offsets_vk.as_ptr(),
         );
 
-        self.keep_alive_objects.extend(
-            vertex_buffers
-                .into_iter()
-                .map(|buffer| Box::new(buffer.buffer().clone()) as _),
-        );
-
         self
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
     pub unsafe fn push_constants<Pc>(
         &mut self,
-        pipeline_layout: Arc<PipelineLayout>,
+        pipeline_layout: &PipelineLayout,
         offset: u32,
-        push_constants: Pc,
+        push_constants: &Pc,
     ) -> &mut Self
     where
         Pc: BufferContents,
@@ -1056,7 +1029,7 @@ where
         // SAFETY: `&push_constants` is a valid pointer, and the size of the struct is `size`,
         //         thus, getting a slice of the whole struct is safe if its not modified.
         let push_constants = unsafe {
-            slice::from_raw_parts(&push_constants as *const Pc as *const u8, size as usize)
+            slice::from_raw_parts(push_constants as *const Pc as *const u8, size as usize)
         };
 
         let fns = self.device().fns();
@@ -1097,8 +1070,6 @@ where
 
         debug_assert!(remaining_size == 0);
 
-        self.keep_alive_objects.push(Box::new(pipeline_layout));
-
         self
     }
 
@@ -1108,17 +1079,15 @@ where
     pub unsafe fn push_descriptor_set(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: Arc<PipelineLayout>,
+        pipeline_layout: &PipelineLayout,
         set_num: u32,
-        descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
+        descriptor_writes: &[WriteDescriptorSet],
     ) -> &mut Self {
         let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 
         let (infos_vk, mut writes_vk): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = descriptor_writes
-            .into_iter()
-            .map(|mut write| {
-                set_descriptor_write_image_layouts(&mut write, set_layout);
-
+            .iter()
+            .map(|write| {
                 let binding = &set_layout.bindings()[&write.binding()];
 
                 (
@@ -1161,8 +1130,6 @@ where
             writes_vk.len() as u32,
             writes_vk.as_ptr(),
         );
-
-        self.keep_alive_objects.push(Box::new(pipeline_layout));
 
         self
     }

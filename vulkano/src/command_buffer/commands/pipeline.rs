@@ -215,7 +215,7 @@ where
             "dispatch",
             used_resources,
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.dispatch_indirect(indirect_buffer);
+                out.dispatch_indirect(&indirect_buffer);
             },
         );
 
@@ -436,7 +436,7 @@ where
             "draw_indirect",
             used_resources,
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.draw_indirect(indirect_buffer, draw_count, stride);
+                out.draw_indirect(&indirect_buffer, draw_count, stride);
             },
         );
 
@@ -697,7 +697,7 @@ where
             "draw_indexed_indirect",
             used_resources,
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.draw_indexed_indirect(indirect_buffer, draw_count, stride);
+                out.draw_indexed_indirect(&indirect_buffer, draw_count, stride);
             },
         );
 
@@ -2170,7 +2170,7 @@ where
     #[inline]
     pub unsafe fn dispatch_indirect(
         &mut self,
-        indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
+        indirect_buffer: &Subbuffer<[DispatchIndirectCommand]>,
     ) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_dispatch_indirect)(
@@ -2178,9 +2178,6 @@ where
             indirect_buffer.buffer().handle(),
             indirect_buffer.offset(),
         );
-
-        self.keep_alive_objects
-            .push(Box::new(indirect_buffer.buffer().clone()));
 
         self
     }
@@ -2233,7 +2230,7 @@ where
     #[inline]
     pub unsafe fn draw_indirect(
         &mut self,
-        indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
+        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
         draw_count: u32,
         stride: u32,
     ) -> &mut Self {
@@ -2246,9 +2243,6 @@ where
             stride,
         );
 
-        self.keep_alive_objects
-            .push(Box::new(indirect_buffer.buffer().clone()));
-
         self
     }
 
@@ -2256,7 +2250,7 @@ where
     #[inline]
     pub unsafe fn draw_indexed_indirect(
         &mut self,
-        indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
+        indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
         draw_count: u32,
         stride: u32,
     ) -> &mut Self {
@@ -2268,9 +2262,6 @@ where
             draw_count,
             stride,
         );
-
-        self.keep_alive_objects
-            .push(Box::new(indirect_buffer.buffer().clone()));
 
         self
     }

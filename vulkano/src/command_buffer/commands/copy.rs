@@ -233,7 +233,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_buffer(copy_buffer_info);
+                out.copy_buffer(&copy_buffer_info);
             },
         );
 
@@ -1001,7 +1001,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_image(copy_image_info);
+                out.copy_image(&copy_image_info);
             },
         );
 
@@ -1510,7 +1510,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_buffer_to_image(copy_buffer_to_image_info);
+                out.copy_buffer_to_image(&copy_buffer_to_image_info);
             },
         );
 
@@ -2008,7 +2008,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_image_to_buffer(copy_image_to_buffer_info);
+                out.copy_image_to_buffer(&copy_image_to_buffer_info);
             },
         );
 
@@ -2605,7 +2605,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.blit_image(blit_image_info);
+                out.blit_image(&blit_image_info);
             },
         );
 
@@ -2947,7 +2947,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.resolve_image(resolve_image_info);
+                out.resolve_image(&resolve_image_info);
             },
         );
 
@@ -2964,8 +2964,7 @@ where
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_buffer(&mut self, copy_buffer_info: impl Into<CopyBufferInfo>) -> &mut Self {
-        let copy_buffer_info = copy_buffer_info.into();
+    pub unsafe fn copy_buffer(&mut self, copy_buffer_info: &CopyBufferInfo) -> &mut Self {
         let CopyBufferInfo {
             src_buffer,
             dst_buffer,
@@ -3042,11 +3041,6 @@ where
             );
         }
 
-        self.keep_alive_objects
-            .push(Box::new(src_buffer.buffer().clone()));
-        self.keep_alive_objects
-            .push(Box::new(dst_buffer.buffer().clone()));
-
         self
     }
 
@@ -3055,13 +3049,13 @@ where
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_image(&mut self, copy_image_info: CopyImageInfo) -> &mut Self {
-        let CopyImageInfo {
-            src_image,
+    pub unsafe fn copy_image(&mut self, copy_image_info: &CopyImageInfo) -> &mut Self {
+        let &CopyImageInfo {
+            ref src_image,
             src_image_layout,
-            dst_image,
+            ref dst_image,
             dst_image_layout,
-            regions,
+            ref regions,
             _ne: _,
         } = copy_image_info;
 
@@ -3173,11 +3167,6 @@ where
             );
         }
 
-        self.keep_alive_objects
-            .push(Box::new(src_image.inner().clone()));
-        self.keep_alive_objects
-            .push(Box::new(dst_image.inner().clone()));
-
         self
     }
 
@@ -3188,13 +3177,13 @@ where
     #[inline]
     pub unsafe fn copy_buffer_to_image(
         &mut self,
-        copy_buffer_to_image_info: CopyBufferToImageInfo,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo,
     ) -> &mut Self {
-        let CopyBufferToImageInfo {
-            src_buffer,
-            dst_image,
+        let &CopyBufferToImageInfo {
+            ref src_buffer,
+            ref dst_image,
             dst_image_layout,
-            regions,
+            ref regions,
             _ne: _,
         } = copy_buffer_to_image_info;
 
@@ -3302,11 +3291,6 @@ where
             );
         }
 
-        self.keep_alive_objects
-            .push(Box::new(src_buffer.buffer().clone()));
-        self.keep_alive_objects
-            .push(Box::new(dst_image.inner().clone()));
-
         self
     }
 
@@ -3317,13 +3301,13 @@ where
     #[inline]
     pub unsafe fn copy_image_to_buffer(
         &mut self,
-        copy_image_to_buffer_info: CopyImageToBufferInfo,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo,
     ) -> &mut Self {
-        let CopyImageToBufferInfo {
-            src_image,
+        let &CopyImageToBufferInfo {
+            ref src_image,
             src_image_layout,
-            dst_buffer,
-            regions,
+            ref dst_buffer,
+            ref regions,
             _ne: _,
         } = copy_image_to_buffer_info;
 
@@ -3431,11 +3415,6 @@ where
             );
         }
 
-        self.keep_alive_objects
-            .push(Box::new(src_image.inner().clone()));
-        self.keep_alive_objects
-            .push(Box::new(dst_buffer.buffer().clone()));
-
         self
     }
 
@@ -3444,13 +3423,13 @@ where
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn blit_image(&mut self, blit_image_info: BlitImageInfo) -> &mut Self {
-        let BlitImageInfo {
-            src_image,
+    pub unsafe fn blit_image(&mut self, blit_image_info: &BlitImageInfo) -> &mut Self {
+        let &BlitImageInfo {
+            ref src_image,
             src_image_layout,
-            dst_image,
+            ref dst_image,
             dst_image_layout,
-            regions,
+            ref regions,
             filter,
             _ne,
         } = blit_image_info;
@@ -3581,11 +3560,6 @@ where
             );
         }
 
-        self.keep_alive_objects
-            .push(Box::new(src_image.inner().clone()));
-        self.keep_alive_objects
-            .push(Box::new(dst_image.inner().clone()));
-
         self
     }
 
@@ -3594,13 +3568,13 @@ where
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn resolve_image(&mut self, resolve_image_info: ResolveImageInfo) -> &mut Self {
-        let ResolveImageInfo {
-            src_image,
+    pub unsafe fn resolve_image(&mut self, resolve_image_info: &ResolveImageInfo) -> &mut Self {
+        let &ResolveImageInfo {
+            ref src_image,
             src_image_layout,
-            dst_image,
+            ref dst_image,
             dst_image_layout,
-            regions,
+            ref regions,
             _ne: _,
         } = resolve_image_info;
 
@@ -3711,11 +3685,6 @@ where
                 regions.as_ptr(),
             );
         }
-
-        self.keep_alive_objects
-            .push(Box::new(src_image.inner().clone()));
-        self.keep_alive_objects
-            .push(Box::new(dst_image.inner().clone()));
 
         self
     }

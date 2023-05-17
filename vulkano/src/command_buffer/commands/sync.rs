@@ -24,16 +24,16 @@ where
     A: CommandBufferAllocator,
 {
     #[inline]
-    pub unsafe fn pipeline_barrier(&mut self, dependency_info: DependencyInfo) -> &mut Self {
+    pub unsafe fn pipeline_barrier(&mut self, dependency_info: &DependencyInfo) -> &mut Self {
         if dependency_info.is_empty() {
             return self;
         }
 
-        let DependencyInfo {
+        let &DependencyInfo {
             mut dependency_flags,
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
             _ne: _,
         } = dependency_info;
 
@@ -284,17 +284,6 @@ where
             );
         }
 
-        self.keep_alive_objects.extend(
-            (buffer_memory_barriers
-                .into_iter()
-                .map(|barrier| Box::new(barrier.buffer) as _))
-            .chain(
-                image_memory_barriers
-                    .into_iter()
-                    .map(|barrier| Box::new(barrier.image) as _),
-            ),
-        );
-
         self
     }
 
@@ -302,14 +291,14 @@ where
     #[inline]
     pub unsafe fn set_event(
         &mut self,
-        event: Arc<Event>,
-        dependency_info: DependencyInfo,
+        event: &Event,
+        dependency_info: &DependencyInfo,
     ) -> &mut Self {
-        let DependencyInfo {
+        let &DependencyInfo {
             mut dependency_flags,
-            memory_barriers,
-            buffer_memory_barriers,
-            image_memory_barriers,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
             _ne: _,
         } = dependency_info;
 
@@ -461,16 +450,11 @@ where
             (fns.v1_0.cmd_set_event)(self.handle(), event.handle(), stage_mask);
         }
 
-        self.keep_alive_objects.push(Box::new(event));
-
         self
     }
 
     /// Calls `vkCmdWaitEvents` on the builder.
-    pub unsafe fn wait_events(
-        &mut self,
-        events: SmallVec<[(Arc<Event>, DependencyInfo); 4]>,
-    ) -> &mut Self {
+    pub unsafe fn wait_events(&mut self, events: &[(Arc<Event>, DependencyInfo)]) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().enabled_features().synchronization2 {
@@ -484,7 +468,7 @@ where
             let mut dependency_infos_vk: SmallVec<[_; 4]> = SmallVec::new();
             let mut per_dependency_info_vk: SmallVec<[_; 4]> = SmallVec::new();
 
-            for (event, dependency_info) in &events {
+            for (event, dependency_info) in events {
                 let &DependencyInfo {
                     mut dependency_flags,
                     ref memory_barriers,
@@ -649,7 +633,7 @@ where
             // same behaviour as the "2" function, we split it up into multiple Vulkan API calls,
             // one per event.
 
-            for (event, dependency_info) in &events {
+            for (event, dependency_info) in events {
                 let events_vk = [event.handle()];
 
                 let &DependencyInfo {
@@ -788,9 +772,6 @@ where
             }
         }
 
-        self.keep_alive_objects
-            .extend(events.into_iter().map(|(event, _)| Box::new(event) as _));
-
         self
     }
 
@@ -812,8 +793,6 @@ where
         } else {
             (fns.v1_0.cmd_reset_event)(self.handle(), event.handle(), stages.into());
         }
-
-        self.keep_alive_objects.push(Box::new(event));
 
         self
     }

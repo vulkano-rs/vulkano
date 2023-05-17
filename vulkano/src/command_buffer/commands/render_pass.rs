@@ -448,7 +448,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.begin_render_pass(render_pass_begin_info, contents);
+                out.begin_render_pass(&render_pass_begin_info, contents);
             },
         );
 
@@ -1416,7 +1416,7 @@ where
             }))
             .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.begin_rendering(rendering_info);
+                out.begin_rendering(&rendering_info);
             },
         );
 
@@ -1685,7 +1685,7 @@ where
             "clear_attachments",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.clear_attachments(attachments, rects);
+                out.clear_attachments(&attachments, &rects);
             },
         );
 
@@ -1701,15 +1701,15 @@ where
     #[inline]
     pub unsafe fn begin_render_pass(
         &mut self,
-        render_pass_begin_info: RenderPassBeginInfo,
+        render_pass_begin_info: &RenderPassBeginInfo,
         contents: SubpassContents,
     ) -> &mut Self {
-        let RenderPassBeginInfo {
-            render_pass,
-            framebuffer,
+        let &RenderPassBeginInfo {
+            ref render_pass,
+            ref framebuffer,
             render_area_offset,
             render_area_extent,
-            clear_values,
+            ref clear_values,
             _ne: _,
         } = render_pass_begin_info;
 
@@ -1769,9 +1769,6 @@ where
                 subpass_begin_info.contents,
             );
         }
-
-        self.keep_alive_objects.push(Box::new(render_pass));
-        self.keep_alive_objects.push(Box::new(framebuffer));
 
         self
     }
@@ -1839,15 +1836,15 @@ where
 
     /// Calls `vkCmdBeginRendering` on the builder.
     #[inline]
-    pub unsafe fn begin_rendering(&mut self, rendering_info: RenderingInfo) -> &mut Self {
-        let RenderingInfo {
+    pub unsafe fn begin_rendering(&mut self, rendering_info: &RenderingInfo) -> &mut Self {
+        let &RenderingInfo {
             render_area_offset,
             render_area_extent,
             layer_count,
             view_mask,
-            color_attachments,
-            depth_attachment,
-            stencil_attachment,
+            ref color_attachments,
+            ref depth_attachment,
+            ref stencil_attachment,
             contents,
             _ne: _,
         } = rendering_info;
@@ -1902,8 +1899,8 @@ where
 
         let color_attachments_vk: SmallVec<[_; 2]> =
             color_attachments.iter().map(map_attachment_info).collect();
-        let depth_attachment_vk = map_attachment_info(&depth_attachment);
-        let stencil_attachment_vk = map_attachment_info(&stencil_attachment);
+        let depth_attachment_vk = map_attachment_info(depth_attachment);
+        let stencil_attachment_vk = map_attachment_info(stencil_attachment);
 
         let rendering_info = ash::vk::RenderingInfo {
             flags: contents.into(),
@@ -1934,63 +1931,6 @@ where
             (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(self.handle(), &rendering_info);
         }
 
-        self.keep_alive_objects.extend(
-            (color_attachments
-                .into_iter()
-                .flatten()
-                .flat_map(|attachment_info| {
-                    let RenderingAttachmentInfo {
-                        image_view,
-                        resolve_info,
-                        ..
-                    } = attachment_info;
-
-                    [
-                        Some(Box::new(image_view.image().inner().clone()) as _),
-                        resolve_info.map(|resolve_info| {
-                            let RenderingAttachmentResolveInfo { image_view, .. } = resolve_info;
-                            Box::new(image_view.image().inner().clone()) as _
-                        }),
-                    ]
-                    .into_iter()
-                    .flatten()
-                }))
-            .chain(depth_attachment.into_iter().flat_map(|attachment_info| {
-                let RenderingAttachmentInfo {
-                    image_view,
-                    resolve_info,
-                    ..
-                } = attachment_info;
-
-                [
-                    Some(Box::new(image_view.image().inner().clone()) as _),
-                    resolve_info.map(|resolve_info| {
-                        let RenderingAttachmentResolveInfo { image_view, .. } = resolve_info;
-                        Box::new(image_view.image().inner().clone()) as _
-                    }),
-                ]
-                .into_iter()
-                .flatten()
-            }))
-            .chain(stencil_attachment.into_iter().flat_map(|attachment_info| {
-                let RenderingAttachmentInfo {
-                    image_view,
-                    resolve_info,
-                    ..
-                } = attachment_info;
-
-                [
-                    Some(Box::new(image_view.image().inner().clone()) as _),
-                    resolve_info.map(|resolve_info| {
-                        let RenderingAttachmentResolveInfo { image_view, .. } = resolve_info;
-                        Box::new(image_view.image().inner().clone()) as _
-                    }),
-                ]
-                .into_iter()
-                .flatten()
-            })),
-        );
-
         self
     }
 
@@ -2014,12 +1954,17 @@ where
     /// no-op and isn't a valid usage of the command anyway.
     pub unsafe fn clear_attachments(
         &mut self,
-        attachments: SmallVec<[ClearAttachment; 4]>,
-        rects: SmallVec<[ClearRect; 4]>,
+        attachments: &[ClearAttachment],
+        rects: &[ClearRect],
     ) -> &mut Self {
-        let attachments_vk: SmallVec<[_; 4]> = attachments.into_iter().map(|v| v.into()).collect();
+        if attachments.is_empty() || rects.is_empty() {
+            return self;
+        }
+
+        let attachments_vk: SmallVec<[_; 4]> =
+            attachments.iter().copied().map(|v| v.into()).collect();
         let rects_vk: SmallVec<[_; 4]> = rects
-            .into_iter()
+            .iter()
             .map(|rect| ash::vk::ClearRect {
                 rect: ash::vk::Rect2D {
                     offset: ash::vk::Offset2D {
@@ -2035,10 +1980,6 @@ where
                 layer_count: rect.array_layers.end - rect.array_layers.start,
             })
             .collect();
-
-        if attachments_vk.is_empty() || rects_vk.is_empty() {
-            return self;
-        }
 
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_attachments)(

@@ -73,7 +73,7 @@ pub(in crate::command_buffer) use self::builder::{
 };
 use super::{
     allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
-    sys::UnsafeCommandBuffer,
+    sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
     CommandBufferExecError, CommandBufferInheritanceInfo, CommandBufferResourcesUsage,
     CommandBufferState, CommandBufferUsage, PrimaryCommandBufferAbstract, ResourceInCommand,
     SecondaryCommandBufferAbstract, SecondaryCommandBufferResourcesUsage, SecondaryResourceUseRef,
@@ -102,6 +102,8 @@ where
     A: CommandBufferAllocator,
 {
     inner: UnsafeCommandBuffer<A>,
+    _keep_alive_objects:
+        Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>>,
     resources_usage: CommandBufferResourcesUsage,
     state: Mutex<CommandBufferState>,
 }
@@ -148,6 +150,8 @@ where
     A: CommandBufferAllocator,
 {
     inner: UnsafeCommandBuffer<A>,
+    _keep_alive_objects:
+        Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>>,
     resources_usage: SecondaryCommandBufferResourcesUsage,
     submit_state: SubmitState,
 }

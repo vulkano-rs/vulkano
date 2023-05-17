@@ -877,7 +877,7 @@ impl Display for SuballocationCreationError {
 /// let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 ///
 /// # fn read_textures() -> Vec<Vec<u8>> { Vec::new() }
-/// # let mut command_buffer_builder: vulkano::command_buffer::AutoCommandBufferBuilder<vulkano::command_buffer::PrimaryAutoCommandBuffer<vulkano::command_buffer::allocator::StandardCommandBufferAlloc>> = return;
+/// # let mut command_buffer_builder: vulkano::command_buffer::AutoCommandBufferBuilder<vulkano::command_buffer::PrimaryAutoCommandBuffer<vulkano::command_buffer::allocator::StandardCommandBufferAllocator>> = return;
 /// // Allocate some resources.
 /// let textures_data: Vec<Vec<u8>> = read_textures();
 /// let textures = textures_data.into_iter().map(|data| {

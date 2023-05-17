@@ -213,7 +213,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.clear_color_image(clear_info);
+                out.clear_color_image(&clear_info);
             },
         );
 
@@ -419,7 +419,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.clear_depth_stencil_image(clear_info);
+                out.clear_depth_stencil_image(&clear_info);
             },
         );
 
@@ -531,7 +531,7 @@ where
             .into_iter()
             .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.fill_buffer(dst_buffer, data);
+                out.fill_buffer(&dst_buffer, data);
             },
         );
 
@@ -669,7 +669,7 @@ where
             .into_iter()
             .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.update_buffer(dst_buffer, data);
+                out.update_buffer(&dst_buffer, &data);
             },
         );
 
@@ -686,12 +686,12 @@ where
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn clear_color_image(&mut self, clear_info: ClearColorImageInfo) -> &mut Self {
-        let ClearColorImageInfo {
-            image,
+    pub unsafe fn clear_color_image(&mut self, clear_info: &ClearColorImageInfo) -> &mut Self {
+        let &ClearColorImageInfo {
+            ref image,
             image_layout,
             clear_value,
-            regions,
+            ref regions,
             _ne: _,
         } = clear_info;
 
@@ -699,8 +699,8 @@ where
             return self;
         }
 
-        let clear_value = clear_value.into();
-        let ranges: SmallVec<[_; 8]> = regions
+        let clear_value_vk = clear_value.into();
+        let ranges_vk: SmallVec<[_; 8]> = regions
             .iter()
             .cloned()
             .map(ash::vk::ImageSubresourceRange::from)
@@ -711,13 +711,10 @@ where
             self.handle(),
             image.inner().handle(),
             image_layout.into(),
-            &clear_value,
-            ranges.len() as u32,
-            ranges.as_ptr(),
+            &clear_value_vk,
+            ranges_vk.len() as u32,
+            ranges_vk.as_ptr(),
         );
-
-        self.keep_alive_objects
-            .push(Box::new(image.inner().clone()));
 
         self
     }
@@ -729,13 +726,13 @@ where
     #[inline]
     pub unsafe fn clear_depth_stencil_image(
         &mut self,
-        clear_info: ClearDepthStencilImageInfo,
+        clear_info: &ClearDepthStencilImageInfo,
     ) -> &mut Self {
-        let ClearDepthStencilImageInfo {
-            image,
+        let &ClearDepthStencilImageInfo {
+            ref image,
             image_layout,
             clear_value,
-            regions,
+            ref regions,
             _ne: _,
         } = clear_info;
 
@@ -743,8 +740,8 @@ where
             return self;
         }
 
-        let clear_value = clear_value.into();
-        let ranges: SmallVec<[_; 8]> = regions
+        let clear_value_vk = clear_value.into();
+        let ranges_vk: SmallVec<[_; 8]> = regions
             .iter()
             .cloned()
             .map(ash::vk::ImageSubresourceRange::from)
@@ -755,20 +752,17 @@ where
             self.handle(),
             image.inner().handle(),
             image_layout.into(),
-            &clear_value,
-            ranges.len() as u32,
-            ranges.as_ptr(),
+            &clear_value_vk,
+            ranges_vk.len() as u32,
+            ranges_vk.as_ptr(),
         );
-
-        self.keep_alive_objects
-            .push(Box::new(image.inner().clone()));
 
         self
     }
 
     /// Calls `vkCmdFillBuffer` on the builder.
     #[inline]
-    pub unsafe fn fill_buffer(&mut self, dst_buffer: Subbuffer<[u32]>, data: u32) -> &mut Self {
+    pub unsafe fn fill_buffer(&mut self, dst_buffer: &Subbuffer<[u32]>, data: u32) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_fill_buffer)(
             self.handle(),
@@ -778,31 +772,22 @@ where
             data,
         );
 
-        self.keep_alive_objects
-            .push(Box::new(dst_buffer.buffer().clone()));
-
         self
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
-    pub unsafe fn update_buffer<D, Dd>(&mut self, dst_buffer: Subbuffer<D>, data: Dd) -> &mut Self
+    pub unsafe fn update_buffer<D>(&mut self, dst_buffer: &Subbuffer<D>, data: &D) -> &mut Self
     where
         D: BufferContents + ?Sized,
-        Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
-        let data_vk = data.deref();
-
         let fns = self.device().fns();
         (fns.v1_0.cmd_update_buffer)(
             self.handle(),
             dst_buffer.buffer().handle(),
             dst_buffer.offset(),
-            size_of_val(data_vk) as DeviceSize,
-            data_vk as *const _ as *const _,
+            size_of_val(data) as DeviceSize,
+            data as *const _ as *const _,
         );
-
-        self.keep_alive_objects
-            .push(Box::new(dst_buffer.buffer().clone()));
 
         self
     }

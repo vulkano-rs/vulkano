@@ -187,7 +187,7 @@ where
             "set_color_write_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_color_write_enable(enables);
+                out.set_color_write_enable(&enables);
             },
         );
 
@@ -465,7 +465,7 @@ where
             "set_depth_bounds",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_bounds(bounds);
+                out.set_depth_bounds(bounds.clone());
             },
         );
 
@@ -825,7 +825,7 @@ where
             "set_discard_rectangle",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_discard_rectangle(first_rectangle, rectangles);
+                out.set_discard_rectangle(first_rectangle, &rectangles);
             },
         );
 
@@ -1530,7 +1530,7 @@ where
             "set_scissor",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_scissor(first_scissor, scissors);
+                out.set_scissor(first_scissor, &scissors);
             },
         );
 
@@ -1622,7 +1622,7 @@ where
             "set_scissor_with_count",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_scissor_with_count(scissors);
+                out.set_scissor_with_count(&scissors);
             },
         );
 
@@ -2110,7 +2110,7 @@ where
             "set_viewport",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_viewport(first_viewport, viewports);
+                out.set_viewport(first_viewport, &viewports);
             },
         );
 
@@ -2202,7 +2202,7 @@ where
             "set_viewport",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_viewport_with_count(viewports);
+                out.set_viewport_with_count(&viewports);
             },
         );
 
@@ -2226,9 +2226,10 @@ where
     /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_color_write_enable(&mut self, enables: SmallVec<[bool; 4]>) -> &mut Self {
+    pub unsafe fn set_color_write_enable(&mut self, enables: &[bool]) -> &mut Self {
         let enables = enables
-            .into_iter()
+            .iter()
+            .copied()
             .map(|v| v as ash::vk::Bool32)
             .collect::<SmallVec<[_; 4]>>();
         if enables.is_empty() {
@@ -2367,10 +2368,11 @@ where
     pub unsafe fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
-        rectangles: SmallVec<[Scissor; 2]>,
+        rectangles: &[Scissor],
     ) -> &mut Self {
         let rectangles = rectangles
-            .into_iter()
+            .iter()
+            .copied()
             .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if rectangles.is_empty() {
@@ -2576,13 +2578,10 @@ where
     /// Calls `vkCmdSetScissor` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor(
-        &mut self,
-        first_scissor: u32,
-        scissors: SmallVec<[Scissor; 2]>,
-    ) -> &mut Self {
+    pub unsafe fn set_scissor(&mut self, first_scissor: u32, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
-            .into_iter()
+            .iter()
+            .copied()
             .map(ash::vk::Rect2D::from)
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
@@ -2603,9 +2602,10 @@ where
     /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor_with_count(&mut self, scissors: SmallVec<[Scissor; 2]>) -> &mut Self {
+    pub unsafe fn set_scissor_with_count(&mut self, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
-            .into_iter()
+            .iter()
+            .copied()
             .map(ash::vk::Rect2D::from)
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
@@ -2638,10 +2638,11 @@ where
     pub unsafe fn set_viewport(
         &mut self,
         first_viewport: u32,
-        viewports: SmallVec<[Viewport; 2]>,
+        viewports: &[Viewport],
     ) -> &mut Self {
         let viewports = viewports
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
@@ -2662,12 +2663,10 @@ where
     /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_viewport_with_count(
-        &mut self,
-        viewports: SmallVec<[Viewport; 2]>,
-    ) -> &mut Self {
+    pub unsafe fn set_viewport_with_count(&mut self, viewports: &[Viewport]) -> &mut Self {
         let viewports = viewports
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {

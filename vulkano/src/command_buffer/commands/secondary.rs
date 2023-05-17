@@ -451,7 +451,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.execute_commands_locked(command_buffers);
+                out.execute_commands_locked(&command_buffers);
             },
         );
 
@@ -470,22 +470,7 @@ where
     #[inline]
     pub unsafe fn execute_commands(
         &mut self,
-        command_buffers: SmallVec<[Arc<dyn SecondaryCommandBufferAbstract>; 4]>,
-    ) -> &mut Self {
-        self.execute_commands_locked(
-            command_buffers
-                .into_iter()
-                .map(DropUnlockCommandBuffer::new)
-                .collect::<Result<_, _>>()
-                .unwrap(),
-        );
-
-        self
-    }
-
-    unsafe fn execute_commands_locked(
-        &mut self,
-        command_buffers: SmallVec<[DropUnlockCommandBuffer; 4]>,
+        command_buffers: &[Arc<dyn SecondaryCommandBufferAbstract>],
     ) -> &mut Self {
         if command_buffers.is_empty() {
             return self;
@@ -508,8 +493,33 @@ where
             .map(|cb| cb.usage())
             .fold(self.usage, min);
 
-        self.keep_alive_objects
-            .extend(command_buffers.into_iter().map(|cb| Box::new(cb) as _));
+        self
+    }
+
+    unsafe fn execute_commands_locked(
+        &mut self,
+        command_buffers: &[DropUnlockCommandBuffer],
+    ) -> &mut Self {
+        if command_buffers.is_empty() {
+            return self;
+        }
+
+        let command_buffers_vk: SmallVec<[_; 4]> =
+            command_buffers.iter().map(|cb| cb.handle()).collect();
+
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_execute_commands)(
+            self.handle(),
+            command_buffers_vk.len() as u32,
+            command_buffers_vk.as_ptr(),
+        );
+
+        // If the secondary is non-concurrent or one-time use, that restricts the primary as
+        // well.
+        self.usage = command_buffers
+            .iter()
+            .map(|cb| cb.usage())
+            .fold(self.usage, min);
 
         self
     }
