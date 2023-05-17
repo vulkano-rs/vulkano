@@ -33,9 +33,6 @@ use std::{fmt::Debug, ptr, sync::Arc};
 /// - All submitted commands must be valid and follow the requirements of the Vulkan specification.
 /// - Any resources used by submitted commands must outlive the returned builder and its created
 ///   command buffer. They must be protected against data races through manual synchronization.
-///
-/// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
-/// > submit invalid commands.
 pub struct UnsafeCommandBufferBuilder<A = StandardCommandBufferAllocator>
 where
     A: CommandBufferAllocator,
