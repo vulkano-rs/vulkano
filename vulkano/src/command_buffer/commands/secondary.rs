@@ -10,13 +10,11 @@
 use crate::{
     command_buffer::{
         allocator::CommandBufferAllocator,
-        auto::RenderPassStateType,
-        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
+        auto::{RenderPassStateType, Resource, ResourceUseRef2},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferInheritanceRenderPassType,
-        CommandBufferUsage, ResourceInCommand, ResourceUseRef, SecondaryCommandBufferAbstract,
-        SecondaryCommandBufferBufferUsage, SecondaryCommandBufferImageUsage,
-        SecondaryCommandBufferResourcesUsage, SubpassContents,
+        ResourceInCommand, SecondaryCommandBufferAbstract, SecondaryCommandBufferBufferUsage,
+        SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     device::{DeviceOwned, QueueFlags},
     format::Format,
@@ -24,10 +22,12 @@ use crate::{
     query::{QueryControlFlags, QueryPipelineStatisticFlags, QueryType},
     RequiresOneOf, SafeDeref, VulkanObject,
 };
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::{
+    cmp::min,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
+    sync::Arc,
 };
 
 /// # Commands to execute a secondary command buffer inside a primary command buffer.
@@ -43,27 +43,15 @@ where
     /// If the `flags` that `command_buffer` was created with are more restrictive than those of
     /// `self`, then `self` will be restricted to match. E.g. executing a secondary command buffer
     /// with `Flags::OneTimeSubmit` will set `self`'s flags to `Flags::OneTimeSubmit` also.
-    pub fn execute_commands<C>(
+    pub fn execute_commands(
         &mut self,
-        command_buffer: C,
-    ) -> Result<&mut Self, ExecuteCommandsError>
-    where
-        C: SecondaryCommandBufferAbstract + 'static,
-    {
+        command_buffer: Arc<dyn SecondaryCommandBufferAbstract>,
+    ) -> Result<&mut Self, ExecuteCommandsError> {
+        let command_buffer = DropUnlockCommandBuffer::new(command_buffer)?;
         self.validate_execute_commands(&command_buffer, 0)?;
 
         unsafe {
-            let secondary_usage = command_buffer.usage();
-            let mut builder = self.inner.execute_commands();
-            builder.add(command_buffer);
-            builder.submit()?;
-
-            // Secondary command buffer could leave the primary in any state.
-            self.inner.reset_state();
-
-            // If the secondary is non-concurrent or one-time use, that restricts the primary as
-            // well.
-            self.usage = std::cmp::min(self.usage, secondary_usage);
+            self.execute_commands_locked(smallvec![command_buffer]);
         }
 
         Ok(self)
@@ -75,46 +63,31 @@ where
     /// will be returned if there are any. Use `execute_commands` if you want to ensure that
     /// resource conflicts are automatically resolved.
     // TODO ^ would be nice if this just worked without errors
-    pub fn execute_commands_from_vec<C>(
+    pub fn execute_commands_from_vec(
         &mut self,
-        command_buffers: Vec<C>,
-    ) -> Result<&mut Self, ExecuteCommandsError>
-    where
-        C: SecondaryCommandBufferAbstract + 'static,
-    {
+        command_buffers: Vec<Arc<dyn SecondaryCommandBufferAbstract>>,
+    ) -> Result<&mut Self, ExecuteCommandsError> {
+        let command_buffers: SmallVec<[_; 4]> = command_buffers
+            .into_iter()
+            .map(DropUnlockCommandBuffer::new)
+            .collect::<Result<_, _>>()?;
+
         for (command_buffer_index, command_buffer) in command_buffers.iter().enumerate() {
             self.validate_execute_commands(command_buffer, command_buffer_index as u32)?;
         }
 
         unsafe {
-            let mut secondary_usage = CommandBufferUsage::SimultaneousUse; // Most permissive usage
-
-            let mut builder = self.inner.execute_commands();
-            for command_buffer in command_buffers {
-                secondary_usage = std::cmp::min(secondary_usage, command_buffer.usage());
-                builder.add(command_buffer);
-            }
-            builder.submit()?;
-
-            // Secondary command buffer could leave the primary in any state.
-            self.inner.reset_state();
-
-            // If the secondary is non-concurrent or one-time use, that restricts the primary as
-            // well.
-            self.usage = std::cmp::min(self.usage, secondary_usage);
+            self.execute_commands_locked(command_buffers);
         }
 
         Ok(self)
     }
 
-    fn validate_execute_commands<C>(
+    fn validate_execute_commands(
         &self,
-        command_buffer: &C,
+        command_buffer: &dyn SecondaryCommandBufferAbstract,
         command_buffer_index: u32,
-    ) -> Result<(), ExecuteCommandsError>
-    where
-        C: SecondaryCommandBufferAbstract + 'static,
-    {
+    ) -> Result<(), ExecuteCommandsError> {
         // VUID-vkCmdExecuteCommands-commonparent
         assert_eq!(self.device(), command_buffer.device());
 
@@ -131,7 +104,7 @@ where
         // TODO:
         // VUID-vkCmdExecuteCommands-pCommandBuffers-00094
 
-        if let Some(render_pass_state) = &self.render_pass_state {
+        if let Some(render_pass_state) = &self.builder_state.render_pass {
             // VUID-vkCmdExecuteCommands-contents-06018
             // VUID-vkCmdExecuteCommands-flags-06024
             if render_pass_state.contents != SubpassContents::SecondaryCommandBuffers {
@@ -184,10 +157,10 @@ where
                     }
                 }
                 (
-                    RenderPassStateType::BeginRendering(state),
+                    RenderPassStateType::BeginRendering(_),
                     CommandBufferInheritanceRenderPassType::BeginRendering(inheritance_info),
                 ) => {
-                    let attachments = state.attachments.as_ref().unwrap();
+                    let attachments = render_pass_state.attachments.as_ref().unwrap();
 
                     // VUID-vkCmdExecuteCommands-colorAttachmentCount-06027
                     if inheritance_info.color_attachment_formats.len()
@@ -294,10 +267,10 @@ where
                     }
 
                     // VUID-vkCmdExecuteCommands-viewMask-06031
-                    if inheritance_info.view_mask != render_pass_state.view_mask {
+                    if inheritance_info.view_mask != render_pass_state.rendering_info.view_mask {
                         return Err(ExecuteCommandsError::RenderPassViewMaskMismatch {
                             command_buffer_index,
-                            required_view_mask: render_pass_state.view_mask,
+                            required_view_mask: render_pass_state.rendering_info.view_mask,
                             inherited_view_mask: inheritance_info.view_mask,
                         });
                     }
@@ -325,7 +298,9 @@ where
         }
 
         // VUID-vkCmdExecuteCommands-commandBuffer-00101
-        if !self.query_state.is_empty() && !self.device().enabled_features().inherited_queries {
+        if !self.builder_state.queries.is_empty()
+            && !self.device().enabled_features().inherited_queries
+        {
             return Err(ExecuteCommandsError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::execute_commands` when a query is active",
                 requires_one_of: RequiresOneOf {
@@ -335,7 +310,7 @@ where
             });
         }
 
-        for state in self.query_state.values() {
+        for state in self.builder_state.queries.values() {
             match state.ty {
                 QueryType::Occlusion => {
                     // VUID-vkCmdExecuteCommands-commandBuffer-00102
@@ -393,207 +368,195 @@ where
 
         Ok(())
     }
-}
 
-impl SyncCommandBufferBuilder {
-    /// Starts the process of executing secondary command buffers. Returns an intermediate struct
-    /// which can be used to add the command buffers.
-    #[inline]
-    pub unsafe fn execute_commands(&mut self) -> SyncCommandBufferBuilderExecuteCommands<'_> {
-        SyncCommandBufferBuilderExecuteCommands {
-            builder: self,
-            inner: Vec::new(),
-        }
-    }
-}
-
-/// Prototype for a `vkCmdExecuteCommands`.
-pub struct SyncCommandBufferBuilderExecuteCommands<'a> {
-    builder: &'a mut SyncCommandBufferBuilder,
-    inner: Vec<Box<dyn SecondaryCommandBufferAbstract>>,
-}
-
-impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
-    /// Adds a command buffer to the list.
-    pub fn add(&mut self, command_buffer: impl SecondaryCommandBufferAbstract + 'static) {
-        self.inner.push(Box::new(command_buffer));
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn execute_commands_unchecked(
+        &mut self,
+        command_buffers: SmallVec<[Arc<dyn SecondaryCommandBufferAbstract>; 4]>,
+    ) -> &mut Self {
+        self.execute_commands_locked(
+            command_buffers
+                .into_iter()
+                .map(DropUnlockCommandBuffer::new)
+                .collect::<Result<_, _>>()
+                .unwrap(),
+        )
     }
 
-    #[inline]
-    pub unsafe fn submit(self) -> Result<(), SyncCommandBufferBuilderError> {
-        struct DropUnlock(Box<dyn SecondaryCommandBufferAbstract>);
-        impl std::ops::Deref for DropUnlock {
-            type Target = Box<dyn SecondaryCommandBufferAbstract>;
+    unsafe fn execute_commands_locked(
+        &mut self,
+        command_buffers: SmallVec<[DropUnlockCommandBuffer; 4]>,
+    ) -> &mut Self {
+        // Secondary command buffer could leave the primary in any state.
+        self.builder_state.reset_non_render_pass_states();
 
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-        unsafe impl SafeDeref for DropUnlock {}
+        self.add_command(
+            "execute_commands",
+            command_buffers
+                .iter()
+                .enumerate()
+                .flat_map(|(index, command_buffer)| {
+                    let index = index as u32;
+                    let SecondaryCommandBufferResourcesUsage { buffers, images } =
+                        command_buffer.resources_usage();
 
-        impl Drop for DropUnlock {
-            fn drop(&mut self) {
-                unsafe {
-                    self.unlock();
-                }
-            }
-        }
-
-        struct Cmd(Vec<DropUnlock>);
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "execute_commands"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                let mut execute = UnsafeCommandBufferBuilderExecuteCommands::new();
-                self.0
-                    .iter()
-                    .for_each(|cbuf| execute.add_raw(cbuf.handle()));
-                out.execute_commands(execute);
-            }
-        }
-
-        let command_index = self.builder.commands.len();
-        let command_name = "execute_commands";
-        let resources: Vec<_> = self
-            .inner
-            .iter()
-            .enumerate()
-            .flat_map(|(index, cbuf)| {
-                let index = index as u32;
-                let SecondaryCommandBufferResourcesUsage { buffers, images } =
-                    cbuf.resources_usage();
-
-                (buffers.iter().map(move |usage| {
-                    let &SecondaryCommandBufferBufferUsage {
-                        use_ref,
-                        ref buffer,
-                        ref range,
-                        memory,
-                    } = usage;
-
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::SecondaryCommandBuffer {
-                                index,
-                            },
-                            secondary_use_ref: Some(use_ref.into()),
-                        },
-                        Resource::Buffer {
-                            buffer: buffer.clone(),
-                            range: range.clone(),
+                    (buffers.iter().map(move |usage| {
+                        let &SecondaryCommandBufferBufferUsage {
+                            use_ref,
+                            ref buffer,
+                            ref range,
                             memory,
-                        },
-                    )
-                }))
-                .chain(images.iter().map(move |usage| {
-                    let &SecondaryCommandBufferImageUsage {
-                        use_ref,
-                        ref image,
-                        ref subresource_range,
-                        memory,
-                        start_layout,
-                        end_layout,
-                    } = usage;
+                        } = usage;
 
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::SecondaryCommandBuffer {
-                                index,
+                        (
+                            ResourceUseRef2 {
+                                resource_in_command: ResourceInCommand::SecondaryCommandBuffer {
+                                    index,
+                                },
+                                secondary_use_ref: Some(use_ref.into()),
                             },
-                            secondary_use_ref: Some(use_ref.into()),
-                        },
-                        Resource::Image {
-                            image: image.clone(),
-                            subresource_range: subresource_range.clone(),
+                            Resource::Buffer {
+                                buffer: buffer.clone(),
+                                range: range.clone(),
+                                memory,
+                            },
+                        )
+                    }))
+                    .chain(images.iter().map(move |usage| {
+                        let &SecondaryCommandBufferImageUsage {
+                            use_ref,
+                            ref image,
+                            ref subresource_range,
                             memory,
                             start_layout,
                             end_layout,
-                        },
-                    )
-                }))
-            })
-            .collect();
+                        } = usage;
 
-        for resource in &resources {
-            self.builder.check_resource_conflicts(resource)?;
-        }
+                        (
+                            ResourceUseRef2 {
+                                resource_in_command: ResourceInCommand::SecondaryCommandBuffer {
+                                    index,
+                                },
+                                secondary_use_ref: Some(use_ref.into()),
+                            },
+                            Resource::Image {
+                                image: image.clone(),
+                                subresource_range: subresource_range.clone(),
+                                memory,
+                                start_layout,
+                                end_layout,
+                            },
+                        )
+                    }))
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.execute_commands_locked(&command_buffers);
+            },
+        );
 
-        self.builder.commands.push(Box::new(Cmd(self
-            .inner
-            .into_iter()
-            .map(|cbuf| {
-                cbuf.lock_record()?;
-                Ok(DropUnlock(cbuf))
-            })
-            .collect::<Result<Vec<_>, CommandBufferExecError>>()?)));
-
-        for resource in resources {
-            self.builder.add_resource(resource);
-        }
-
-        Ok(())
+        self
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Calls `vkCmdExecuteCommands` on the builder.
     ///
     /// Does nothing if the list of command buffers is empty, as it would be a no-op and isn't a
     /// valid usage of the command anyway.
     #[inline]
-    pub unsafe fn execute_commands(&mut self, cbs: UnsafeCommandBufferBuilderExecuteCommands) {
-        if cbs.raw_cbs.is_empty() {
-            return;
+    pub unsafe fn execute_commands(
+        &mut self,
+        command_buffers: &[Arc<dyn SecondaryCommandBufferAbstract>],
+    ) -> &mut Self {
+        if command_buffers.is_empty() {
+            return self;
         }
 
-        let fns = self.device.fns();
+        let command_buffers_vk: SmallVec<[_; 4]> =
+            command_buffers.iter().map(|cb| cb.handle()).collect();
+
+        let fns = self.device().fns();
         (fns.v1_0.cmd_execute_commands)(
-            self.handle,
-            cbs.raw_cbs.len() as u32,
-            cbs.raw_cbs.as_ptr(),
+            self.handle(),
+            command_buffers_vk.len() as u32,
+            command_buffers_vk.as_ptr(),
         );
+
+        // If the secondary is non-concurrent or one-time use, that restricts the primary as
+        // well.
+        self.usage = command_buffers
+            .iter()
+            .map(|cb| cb.usage())
+            .fold(self.usage, min);
+
+        self
     }
-}
 
-/// Prototype for a `vkCmdExecuteCommands`.
-pub struct UnsafeCommandBufferBuilderExecuteCommands {
-    // Raw handles of the command buffers to execute.
-    raw_cbs: SmallVec<[ash::vk::CommandBuffer; 4]>,
-}
-
-impl UnsafeCommandBufferBuilderExecuteCommands {
-    /// Builds a new empty list.
-    #[inline]
-    pub fn new() -> UnsafeCommandBufferBuilderExecuteCommands {
-        UnsafeCommandBufferBuilderExecuteCommands {
-            raw_cbs: SmallVec::new(),
+    unsafe fn execute_commands_locked(
+        &mut self,
+        command_buffers: &[DropUnlockCommandBuffer],
+    ) -> &mut Self {
+        if command_buffers.is_empty() {
+            return self;
         }
-    }
 
-    /// Adds a command buffer to the list.
-    pub fn add(&mut self, cb: &(impl SecondaryCommandBufferAbstract + ?Sized)) {
-        // TODO: debug assert that it is a secondary command buffer?
-        self.raw_cbs.push(cb.handle());
-    }
+        let command_buffers_vk: SmallVec<[_; 4]> =
+            command_buffers.iter().map(|cb| cb.handle()).collect();
 
-    /// Adds a command buffer to the list.
-    #[inline]
-    pub unsafe fn add_raw(&mut self, cb: ash::vk::CommandBuffer) {
-        self.raw_cbs.push(cb);
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_execute_commands)(
+            self.handle(),
+            command_buffers_vk.len() as u32,
+            command_buffers_vk.as_ptr(),
+        );
+
+        // If the secondary is non-concurrent or one-time use, that restricts the primary as
+        // well.
+        self.usage = command_buffers
+            .iter()
+            .map(|cb| cb.usage())
+            .fold(self.usage, min);
+
+        self
+    }
+}
+
+struct DropUnlockCommandBuffer(Arc<dyn SecondaryCommandBufferAbstract>);
+
+impl DropUnlockCommandBuffer {
+    fn new(
+        command_buffer: Arc<dyn SecondaryCommandBufferAbstract>,
+    ) -> Result<Self, CommandBufferExecError> {
+        command_buffer.lock_record()?;
+        Ok(Self(command_buffer))
+    }
+}
+
+impl std::ops::Deref for DropUnlockCommandBuffer {
+    type Target = Arc<dyn SecondaryCommandBufferAbstract>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+unsafe impl SafeDeref for DropUnlockCommandBuffer {}
+
+impl Drop for DropUnlockCommandBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.unlock();
+        }
     }
 }
 
 /// Error that can happen when executing a secondary command buffer.
 #[derive(Clone, Debug)]
 pub enum ExecuteCommandsError {
-    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
+    ExecError(CommandBufferExecError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -729,19 +692,12 @@ pub enum ExecuteCommandsError {
     },
 }
 
-impl Error for ExecuteCommandsError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::SyncCommandBufferBuilderError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
+impl Error for ExecuteCommandsError {}
 
 impl Display for ExecuteCommandsError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
+            Self::ExecError(err) => Display::fmt(err, f),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -923,8 +879,8 @@ impl Display for ExecuteCommandsError {
     }
 }
 
-impl From<SyncCommandBufferBuilderError> for ExecuteCommandsError {
-    fn from(err: SyncCommandBufferBuilderError) -> Self {
-        Self::SyncCommandBufferBuilderError(err)
+impl From<CommandBufferExecError> for ExecuteCommandsError {
+    fn from(val: CommandBufferExecError) -> Self {
+        Self::ExecError(val)
     }
 }

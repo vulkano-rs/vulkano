@@ -67,7 +67,7 @@ pub unsafe trait PrimaryCommandBufferAbstract:
     /// - Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
     fn execute(
-        self,
+        self: Arc<Self>,
         queue: Arc<Queue>,
     ) -> Result<CommandBufferExecFuture<NowFuture>, CommandBufferExecError>
     where
@@ -104,7 +104,7 @@ pub unsafe trait PrimaryCommandBufferAbstract:
     ///
     /// - Panics if the device of the command buffer is not the same as the device of the future.
     fn execute_after<F>(
-        self,
+        self: Arc<Self>,
         future: F,
         queue: Arc<Queue>,
     ) -> Result<CommandBufferExecFuture<F>, CommandBufferExecError>
@@ -120,7 +120,7 @@ pub unsafe trait PrimaryCommandBufferAbstract:
 
         Ok(CommandBufferExecFuture {
             previous: future,
-            command_buffer: Arc::new(self),
+            command_buffer: self,
             queue,
             submitted: Mutex::new(false),
             finished: AtomicBool::new(false),

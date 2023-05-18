@@ -26,11 +26,11 @@ use crate::{
         allocator::{
             CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
         },
+        auto::{CommandBufferBeginError, CommandBufferBuildError},
         sys::CommandBufferBeginInfo,
-        BuildError, CommandBufferBeginError, CommandBufferInheritanceInfo,
-        CommandBufferInheritanceRenderPassInfo, CommandBufferInheritanceRenderPassType,
-        CommandBufferInheritanceRenderingInfo, CommandBufferLevel, CommandBufferUsage,
-        ResourceInCommand, ResourceUseRef, SubpassContents,
+        CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassInfo,
+        CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo,
+        CommandBufferLevel, CommandBufferUsage, ResourceInCommand, ResourceUseRef, SubpassContents,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned, QueueFamilyProperties, QueueFlags},
@@ -591,13 +591,13 @@ where
     A: CommandBufferAllocator,
 {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<PrimaryCommandBuffer<A::Alloc>, BuildError> {
+    pub fn build(self) -> Result<PrimaryCommandBuffer<A::Alloc>, CommandBufferBuildError> {
         if self.builder_state.render_pass.is_some() {
-            return Err(BuildError::RenderPassActive);
+            return Err(CommandBufferBuildError::RenderPassActive);
         }
 
         if !self.builder_state.queries.is_empty() {
-            return Err(BuildError::QueryActive);
+            return Err(CommandBufferBuildError::QueryActive);
         }
 
         Ok(unsafe { self.build_unchecked()? })
@@ -625,9 +625,9 @@ where
     A: CommandBufferAllocator,
 {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<SecondaryCommandBuffer<A::Alloc>, BuildError> {
+    pub fn build(self) -> Result<SecondaryCommandBuffer<A::Alloc>, CommandBufferBuildError> {
         if !self.builder_state.queries.is_empty() {
-            return Err(BuildError::QueryActive);
+            return Err(CommandBufferBuildError::QueryActive);
         }
 
         Ok(unsafe { self.build_unchecked()? })

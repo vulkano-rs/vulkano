@@ -312,7 +312,7 @@ impl FrameSystem {
 
         // Start the command buffer builder that will be filled throughout the frame handling.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -364,9 +364,7 @@ pub struct Frame<'a> {
     // Framebuffer that was used when starting the render pass.
     framebuffer: Arc<Framebuffer>,
     // The command buffer builder that will be built during the lifetime of this object.
-    command_buffer_builder: Option<
-        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, Arc<StandardCommandBufferAllocator>>,
-    >,
+    command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
     // Matrix that was passed to `frame()`.
     world_to_framebuffer: Matrix4<f32>,
 }
@@ -453,10 +451,7 @@ pub struct DrawPass<'f, 's: 'f> {
 
 impl<'f, 's: 'f> DrawPass<'f, 's> {
     /// Appends a command that executes a secondary command buffer that performs drawing.
-    pub fn execute<C>(&mut self, command_buffer: C)
-    where
-        C: SecondaryCommandBufferAbstract + 'static,
-    {
+    pub fn execute(&mut self, command_buffer: Arc<dyn SecondaryCommandBufferAbstract>) {
         self.frame
             .command_buffer_builder
             .as_mut()

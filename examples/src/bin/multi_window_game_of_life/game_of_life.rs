@@ -134,7 +134,7 @@ impl GameOfLifeComputePipeline {
         dead_color: [f32; 4],
     ) -> Box<dyn GpuFuture> {
         let mut builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.compute_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -166,10 +166,7 @@ impl GameOfLifeComputePipeline {
     /// Builds the command for a dispatch.
     fn dispatch(
         &self,
-        builder: &mut AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer,
-            Arc<StandardCommandBufferAllocator>,
-        >,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         life_color: [f32; 4],
         dead_color: [f32; 4],
         // Step determines whether we color or compute life (see branch in the shader)s.

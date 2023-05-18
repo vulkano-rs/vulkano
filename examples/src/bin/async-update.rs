@@ -339,7 +339,7 @@ fn main() {
     // Initialize the textures.
     {
         let mut builder = AutoCommandBufferBuilder::primary(
-            &command_buffer_allocator,
+            command_buffer_allocator.as_ref(),
             graphics_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -582,7 +582,7 @@ fn main() {
                 }
 
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    &command_buffer_allocator,
+                    command_buffer_allocator.as_ref(),
                     graphics_queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )
@@ -598,7 +598,7 @@ fn main() {
                         SubpassContents::Inline,
                     )
                     .unwrap()
-                    .set_viewport(0, [viewport.clone()])
+                    .set_viewport(0, [viewport.clone()].into_iter().collect())
                     .bind_pipeline_graphics(pipeline.clone())
                     .bind_descriptor_sets(
                         PipelineBindPoint::Graphics,
@@ -750,7 +750,7 @@ fn run_worker(
             let texture = textures[!current_index as usize].clone();
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                &command_buffer_allocator,
+                command_buffer_allocator.as_ref(),
                 transfer_queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )

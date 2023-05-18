@@ -164,7 +164,7 @@ impl AmbientLightingSystem {
         viewport_dimensions: [u32; 2],
         color_input: Arc<dyn ImageViewAbstract + 'static>,
         ambient_color: [f32; 3],
-    ) -> SecondaryAutoCommandBuffer {
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let push_constants = fs::PushConstants {
             color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],
         };
@@ -184,7 +184,7 @@ impl AmbientLightingSystem {
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
@@ -194,7 +194,7 @@ impl AmbientLightingSystem {
         )
         .unwrap();
         builder
-            .set_viewport(0, [viewport])
+            .set_viewport(0, [viewport].into_iter().collect())
             .bind_pipeline_graphics(self.pipeline.clone())
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,

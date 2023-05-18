@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-pub use super::commands::{
-    bind_push::UnsafeCommandBufferBuilderBindVertexBuffer,
-    secondary::UnsafeCommandBufferBuilderExecuteCommands,
-};
 use super::{
-    pool::CommandPoolAlloc, CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
+    allocator::{
+        CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc,
+        StandardCommandBufferAllocator,
+    },
+    CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
 };
 use crate::{
     command_buffer::{
@@ -24,7 +24,7 @@ use crate::{
     OomError, RuntimeError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{ptr, sync::Arc};
+use std::{fmt::Debug, ptr, sync::Arc};
 
 /// Command buffer being built.
 ///
@@ -33,51 +33,46 @@ use std::{ptr, sync::Arc};
 /// - All submitted commands must be valid and follow the requirements of the Vulkan specification.
 /// - Any resources used by submitted commands must outlive the returned builder and its created
 ///   command buffer. They must be protected against data races through manual synchronization.
-///
-/// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
-/// > submit invalid commands.
-#[derive(Debug)]
-pub struct UnsafeCommandBufferBuilder {
-    pub(super) handle: ash::vk::CommandBuffer,
-    pub(super) device: Arc<Device>,
-    usage: CommandBufferUsage,
+pub struct UnsafeCommandBufferBuilder<A = StandardCommandBufferAllocator>
+where
+    A: CommandBufferAllocator,
+{
+    builder_alloc: A::Builder,
+
+    queue_family_index: u32,
+    // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
+    inheritance_info: Option<CommandBufferInheritanceInfo>,
+    pub(super) usage: CommandBufferUsage,
 }
 
-impl UnsafeCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Creates a new builder, for recording commands.
     ///
     /// # Safety
     ///
-    /// - `pool_alloc` must outlive the returned builder and its created command buffer.
-    /// - `kind` must match how `pool_alloc` was created.
+    /// - `begin_info` must be valid.
     #[inline]
     pub unsafe fn new(
-        pool_alloc: &CommandPoolAlloc,
+        allocator: &A,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<UnsafeCommandBufferBuilder, OomError> {
+    ) -> Result<Self, OomError> {
+        let builder_alloc = allocator
+            .allocate(queue_family_index, level, 1)?
+            .next()
+            .expect("requested one command buffer from the command pool, but got zero");
+
         let CommandBufferBeginInfo {
             usage,
             inheritance_info,
             _ne: _,
         } = begin_info;
 
-        // VUID-vkBeginCommandBuffer-commandBuffer-00049
-        // Can't validate
-
-        // VUID-vkBeginCommandBuffer-commandBuffer-00050
-        // Can't validate
-
-        let device = pool_alloc.device().clone();
-
-        // VUID-vkBeginCommandBuffer-commandBuffer-00051
-        debug_assert_eq!(
-            pool_alloc.level() == CommandBufferLevel::Secondary,
-            inheritance_info.is_some()
-        );
-
         {
-            // VUID-vkBeginCommandBuffer-commandBuffer-02840
-            // Guaranteed by use of enum
             let mut flags = ash::vk::CommandBufferUsageFlags::from(usage);
             let mut inheritance_info_vk = None;
             let mut inheritance_rendering_info_vk = None;
@@ -175,51 +170,95 @@ impl UnsafeCommandBufferBuilder {
                 ..Default::default()
             };
 
-            let fns = device.fns();
-
-            (fns.v1_0.begin_command_buffer)(pool_alloc.handle(), &begin_info_vk)
+            let fns = builder_alloc.device().fns();
+            (fns.v1_0.begin_command_buffer)(builder_alloc.inner().handle(), &begin_info_vk)
                 .result()
                 .map_err(RuntimeError::from)?;
         }
 
         Ok(UnsafeCommandBufferBuilder {
-            handle: pool_alloc.handle(),
-            device,
+            builder_alloc,
+            inheritance_info,
+            queue_family_index,
             usage,
         })
     }
 
     /// Turns the builder into an actual command buffer.
     #[inline]
-    pub fn build(self) -> Result<UnsafeCommandBuffer, OomError> {
+    pub fn build(self) -> Result<UnsafeCommandBuffer<A>, OomError> {
         unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.end_command_buffer)(self.handle)
+            let fns = self.device().fns();
+            (fns.v1_0.end_command_buffer)(self.handle())
                 .result()
                 .map_err(RuntimeError::from)?;
 
             Ok(UnsafeCommandBuffer {
-                command_buffer: self.handle,
-                device: self.device.clone(),
+                alloc: self.builder_alloc.into_alloc(),
+                inheritance_info: self.inheritance_info,
+                queue_family_index: self.queue_family_index,
                 usage: self.usage,
             })
         }
     }
+
+    /// Returns the queue family index that this command buffer was created for.
+    #[inline]
+    pub fn queue_family_index(&self) -> u32 {
+        self.queue_family_index
+    }
+
+    /// Returns the level of the command buffer.
+    #[inline]
+    pub fn level(&self) -> CommandBufferLevel {
+        self.builder_alloc.inner().level()
+    }
+
+    /// Returns the usage that the command buffer was created with.
+    #[inline]
+    pub fn usage(&self) -> CommandBufferUsage {
+        self.usage
+    }
+
+    /// Returns the inheritance info of the command buffer, if it is a secondary command buffer.
+    #[inline]
+    pub fn inheritance_info(&self) -> Option<&CommandBufferInheritanceInfo> {
+        self.inheritance_info.as_ref()
+    }
 }
 
-unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
+unsafe impl<A> VulkanObject for UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
-        self.handle
+        self.builder_alloc.inner().handle()
     }
 }
 
-unsafe impl DeviceOwned for UnsafeCommandBufferBuilder {
+unsafe impl<A> DeviceOwned for UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.device
+        self.builder_alloc.device()
+    }
+}
+
+impl<A> Debug for UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UnsafeCommandBufferBuilder")
+            .field("handle", &self.level())
+            .field("level", &self.level())
+            .field("usage", &self.usage)
+            .finish()
     }
 }
 
@@ -259,31 +298,65 @@ impl Default for CommandBufferBeginInfo {
 /// The command buffer must not outlive the command pool that it was created from,
 /// nor the resources used by the recorded commands.
 #[derive(Debug)]
-pub struct UnsafeCommandBuffer {
-    command_buffer: ash::vk::CommandBuffer,
-    device: Arc<Device>,
+pub struct UnsafeCommandBuffer<A = StandardCommandBufferAllocator>
+where
+    A: CommandBufferAllocator,
+{
+    alloc: A::Alloc,
+
+    queue_family_index: u32,
+    // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
+    inheritance_info: Option<CommandBufferInheritanceInfo>,
     usage: CommandBufferUsage,
 }
 
-impl UnsafeCommandBuffer {
+impl<A> UnsafeCommandBuffer<A>
+where
+    A: CommandBufferAllocator,
+{
+    /// Returns the queue family index that this command buffer was created for.
+    #[inline]
+    pub fn queue_family_index(&self) -> u32 {
+        self.queue_family_index
+    }
+
+    /// Returns the level of the command buffer.
+    #[inline]
+    pub fn level(&self) -> CommandBufferLevel {
+        self.alloc.inner().level()
+    }
+
+    /// Returns the usage that the command buffer was created with.
     #[inline]
     pub fn usage(&self) -> CommandBufferUsage {
         self.usage
     }
-}
 
-unsafe impl DeviceOwned for UnsafeCommandBuffer {
+    /// Returns the inheritance info of the command buffer, if it is a secondary command buffer.
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
+    pub fn inheritance_info(&self) -> Option<&CommandBufferInheritanceInfo> {
+        self.inheritance_info.as_ref()
     }
 }
 
-unsafe impl VulkanObject for UnsafeCommandBuffer {
+unsafe impl<A> VulkanObject for UnsafeCommandBuffer<A>
+where
+    A: CommandBufferAllocator,
+{
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
-        self.command_buffer
+        self.alloc.inner().handle()
+    }
+}
+
+unsafe impl<A> DeviceOwned for UnsafeCommandBuffer<A>
+where
+    A: CommandBufferAllocator,
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.alloc.device()
     }
 }

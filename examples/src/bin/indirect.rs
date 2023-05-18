@@ -490,7 +490,7 @@ fn main() {
                         SubpassContents::Inline,
                     )
                     .unwrap()
-                    .set_viewport(0, [viewport.clone()])
+                    .set_viewport(0, [viewport.clone()].into_iter().collect())
                     .bind_pipeline_graphics(render_pipeline.clone())
                     .bind_vertex_buffers(0, vertices)
                     // The indirect draw call is placed in the command buffer with a reference to

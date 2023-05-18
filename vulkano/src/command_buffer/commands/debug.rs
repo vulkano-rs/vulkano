@@ -9,14 +9,12 @@
 
 use crate::{
     command_buffer::{
-        allocator::CommandBufferAllocator,
-        synced::{Command, SyncCommandBufferBuilder},
-        sys::UnsafeCommandBufferBuilder,
+        allocator::CommandBufferAllocator, sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
     },
     device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
-    RequiresOneOf,
+    RequiresOneOf, VulkanObject,
 };
 use std::{
     error::Error,
@@ -36,12 +34,12 @@ where
     /// Opens a command buffer debug label region.
     pub fn begin_debug_utils_label(
         &mut self,
-        mut label_info: DebugUtilsLabel,
+        label_info: DebugUtilsLabel,
     ) -> Result<&mut Self, DebugUtilsError> {
-        self.validate_begin_debug_utils_label(&mut label_info)?;
+        self.validate_begin_debug_utils_label(&label_info)?;
 
         unsafe {
-            self.inner.begin_debug_utils_label(label_info);
+            self.begin_debug_utils_label_unchecked(label_info);
         }
 
         Ok(self)
@@ -49,7 +47,7 @@ where
 
     fn validate_begin_debug_utils_label(
         &self,
-        _label_info: &mut DebugUtilsLabel,
+        _label_info: &DebugUtilsLabel,
     ) -> Result<(), DebugUtilsError> {
         if !self
             .device()
@@ -79,6 +77,22 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn begin_debug_utils_label_unchecked(
+        &mut self,
+        label_info: DebugUtilsLabel,
+    ) -> &mut Self {
+        self.add_command(
+            "begin_debug_utils_label",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.begin_debug_utils_label(&label_info);
+            },
+        );
+
+        self
+    }
+
     /// Closes a command buffer debug label region.
     ///
     /// # Safety
@@ -89,7 +103,7 @@ where
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<&mut Self, DebugUtilsError> {
         self.validate_end_debug_utils_label()?;
 
-        self.inner.end_debug_utils_label();
+        self.end_debug_utils_label_unchecked();
 
         Ok(self)
     }
@@ -129,15 +143,28 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn end_debug_utils_label_unchecked(&mut self) -> &mut Self {
+        self.add_command(
+            "end_debug_utils_label",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.end_debug_utils_label();
+            },
+        );
+
+        self
+    }
+
     /// Inserts a command buffer debug label.
     pub fn insert_debug_utils_label(
         &mut self,
-        mut label_info: DebugUtilsLabel,
+        label_info: DebugUtilsLabel,
     ) -> Result<&mut Self, DebugUtilsError> {
-        self.validate_insert_debug_utils_label(&mut label_info)?;
+        self.validate_insert_debug_utils_label(&label_info)?;
 
         unsafe {
-            self.inner.insert_debug_utils_label(label_info);
+            self.insert_debug_utils_label_unchecked(label_info);
         }
 
         Ok(self)
@@ -145,7 +172,7 @@ where
 
     fn validate_insert_debug_utils_label(
         &self,
-        _label_info: &mut DebugUtilsLabel,
+        _label_info: &DebugUtilsLabel,
     ) -> Result<(), DebugUtilsError> {
         if !self
             .device()
@@ -174,91 +201,35 @@ where
 
         Ok(())
     }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn insert_debug_utils_label_unchecked(
+        &mut self,
+        label_info: DebugUtilsLabel,
+    ) -> &mut Self {
+        self.add_command(
+            "insert_debug_utils_label",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.insert_debug_utils_label(&label_info);
+            },
+        );
+
+        self
+    }
 }
 
-impl SyncCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Calls `vkCmdBeginDebugUtilsLabelEXT` on the builder.
     ///
     /// # Safety
     /// The command pool that this command buffer was allocated from must support graphics or
     /// compute operations
     #[inline]
-    pub unsafe fn begin_debug_utils_label(&mut self, label_info: DebugUtilsLabel) {
-        struct Cmd {
-            label_info: DebugUtilsLabel,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "begin_debug_utils_label"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.begin_debug_utils_label(&self.label_info);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { label_info }));
-    }
-
-    /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
-    ///
-    /// # Safety
-    ///
-    /// - The command pool that this command buffer was allocated from must support graphics or
-    /// compute operations
-    /// - There must be an outstanding `debug_marker_begin` command prior to the
-    /// `debug_marker_end` on the queue.
-    #[inline]
-    pub unsafe fn end_debug_utils_label(&mut self) {
-        struct Cmd {}
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "end_debug_utils_label"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.end_debug_utils_label();
-            }
-        }
-
-        self.commands.push(Box::new(Cmd {}));
-    }
-
-    /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
-    ///
-    /// # Safety
-    /// The command pool that this command buffer was allocated from must support graphics or
-    /// compute operations
-    #[inline]
-    pub unsafe fn insert_debug_utils_label(&mut self, label_info: DebugUtilsLabel) {
-        struct Cmd {
-            label_info: DebugUtilsLabel,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "insert_debug_utils_label"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.insert_debug_utils_label(&self.label_info);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { label_info }));
-    }
-}
-
-impl UnsafeCommandBufferBuilder {
-    /// Calls `vkCmdBeginDebugUtilsLabelEXT` on the builder.
-    ///
-    /// # Safety
-    /// The command pool that this command buffer was allocated from must support graphics or
-    /// compute operations
-    #[inline]
-    pub unsafe fn begin_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) {
+    pub unsafe fn begin_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) -> &mut Self {
         let &DebugUtilsLabel {
             ref label_name,
             color,
@@ -272,8 +243,10 @@ impl UnsafeCommandBufferBuilder {
             ..Default::default()
         };
 
-        let fns = self.device.instance().fns();
-        (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle, &label_info);
+        let fns = self.device().instance().fns();
+        (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info);
+
+        self
     }
 
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
@@ -282,9 +255,11 @@ impl UnsafeCommandBufferBuilder {
     /// There must be an outstanding `vkCmdBeginDebugUtilsLabelEXT` command prior to the
     /// `vkQueueEndDebugUtilsLabelEXT` on the queue tha `CommandBuffer` is submitted to.
     #[inline]
-    pub unsafe fn end_debug_utils_label(&mut self) {
-        let fns = self.device.instance().fns();
-        (fns.ext_debug_utils.cmd_end_debug_utils_label_ext)(self.handle);
+    pub unsafe fn end_debug_utils_label(&mut self) -> &mut Self {
+        let fns = self.device().instance().fns();
+        (fns.ext_debug_utils.cmd_end_debug_utils_label_ext)(self.handle());
+
+        self
     }
 
     /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
@@ -293,7 +268,7 @@ impl UnsafeCommandBufferBuilder {
     /// The command pool that this command buffer was allocated from must support graphics or
     /// compute operations
     #[inline]
-    pub unsafe fn insert_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) {
+    pub unsafe fn insert_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) -> &mut Self {
         let &DebugUtilsLabel {
             ref label_name,
             color,
@@ -307,8 +282,10 @@ impl UnsafeCommandBufferBuilder {
             ..Default::default()
         };
 
-        let fns = self.device.instance().fns();
-        (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle, &label_info);
+        let fns = self.device().instance().fns();
+        (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info);
+
+        self
     }
 }
 

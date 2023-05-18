@@ -111,10 +111,7 @@
 #[doc(no_inline)]
 pub(crate) use self::standard::{PrimaryCommandBuffer, SecondaryCommandBuffer};
 pub use self::{
-    auto::{
-        AutoCommandBufferBuilder, BuildError, CommandBufferBeginError, PrimaryAutoCommandBuffer,
-        SecondaryAutoCommandBuffer,
-    },
+    auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
     commands::{
         clear::{ClearColorImageInfo, ClearDepthStencilImageInfo, ClearError},
         copy::{
@@ -152,11 +149,10 @@ use bytemuck::{Pod, Zeroable};
 use std::{ops::Range, sync::Arc};
 
 pub mod allocator;
-mod auto;
+pub mod auto;
 mod commands;
 pub mod pool;
 pub(crate) mod standard;
-pub mod synced;
 pub mod sys;
 mod traits;
 

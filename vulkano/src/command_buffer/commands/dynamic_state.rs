@@ -9,9 +9,7 @@
 
 use crate::{
     command_buffer::{
-        allocator::CommandBufferAllocator,
-        synced::{Command, SyncCommandBufferBuilder},
-        sys::UnsafeCommandBufferBuilder,
+        allocator::CommandBufferAllocator, sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
     },
     device::{DeviceOwned, QueueFlags},
@@ -25,9 +23,8 @@ use crate::{
         },
         DynamicState,
     },
-    RequirementNotMet, RequiresOneOf, Version,
+    RequirementNotMet, RequiresOneOf, Version, VulkanObject,
 };
-use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
     error::Error,
@@ -48,9 +45,14 @@ where
         state: DynamicState,
     ) -> Result<(), SetDynamicStateError> {
         // VUID-vkCmdDispatch-None-02859
-        if self.state().pipeline_graphics().map_or(false, |pipeline| {
-            matches!(pipeline.dynamic_state(state), Some(false))
-        }) {
+        if self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .map_or(false, |pipeline| {
+                matches!(pipeline.dynamic_state(state), Some(false))
+            })
+        {
             return Err(SetDynamicStateError::PipelineHasFixedState);
         }
 
@@ -67,7 +69,7 @@ where
         self.validate_set_blend_constants(constants).unwrap();
 
         unsafe {
-            self.inner.set_blend_constants(constants);
+            self.set_blend_constants_unchecked(constants);
         }
 
         self
@@ -92,6 +94,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_blend_constants_unchecked(&mut self, constants: [f32; 4]) -> &mut Self {
+        self.builder_state.blend_constants = Some(constants);
+        self.add_command(
+            "set_blend_constants",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_blend_constants(constants);
+            },
+        );
+
+        self
+    }
+
     /// Sets whether dynamic color writes should be enabled for each attachment in the
     /// framebuffer.
     ///
@@ -103,17 +119,11 @@ where
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If there is a graphics pipeline with color blend state bound, `enables.len()` must equal
     /// - [`attachments.len()`](crate::pipeline::graphics::color_blend::ColorBlendState::attachments).
-    pub fn set_color_write_enable<I>(&mut self, enables: I) -> &mut Self
-    where
-        I: IntoIterator<Item = bool>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let enables = enables.into_iter();
-
+    pub fn set_color_write_enable(&mut self, enables: SmallVec<[bool; 4]>) -> &mut Self {
         self.validate_set_color_write_enable(&enables).unwrap();
 
         unsafe {
-            self.inner.set_color_write_enable(enables);
+            self.set_color_write_enable_unchecked(enables);
         }
 
         self
@@ -121,7 +131,7 @@ where
 
     fn validate_set_color_write_enable(
         &self,
-        enables: &impl ExactSizeIterator,
+        enables: &[bool],
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::ColorWriteEnable)?;
 
@@ -147,8 +157,9 @@ where
         }
 
         if let Some(color_blend_state) = self
-            .state()
-            .pipeline_graphics()
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
             .and_then(|pipeline| pipeline.color_blend_state())
         {
             // VUID-vkCmdSetColorWriteEnableEXT-attachmentCount-06656
@@ -166,6 +177,23 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_color_write_enable_unchecked(
+        &mut self,
+        enables: SmallVec<[bool; 4]>,
+    ) -> &mut Self {
+        self.builder_state.color_write_enable = Some(enables.clone());
+        self.add_command(
+            "set_color_write_enable",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_color_write_enable(&enables);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic cull mode for future draw calls.
     ///
     /// # Panics
@@ -179,7 +207,7 @@ where
         self.validate_set_cull_mode(cull_mode).unwrap();
 
         unsafe {
-            self.inner.set_cull_mode(cull_mode);
+            self.set_cull_mode_unchecked(cull_mode);
         }
 
         self
@@ -218,6 +246,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_cull_mode_unchecked(&mut self, cull_mode: CullMode) -> &mut Self {
+        self.builder_state.cull_mode = Some(cull_mode);
+        self.add_command(
+            "set_cull_mode",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_cull_mode(cull_mode);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic depth bias values for future draw calls.
     ///
     /// # Panics
@@ -236,8 +278,7 @@ where
             .unwrap();
 
         unsafe {
-            self.inner
-                .set_depth_bias(constant_factor, clamp, slope_factor);
+            self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor);
         }
 
         self
@@ -275,6 +316,29 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_bias_unchecked(
+        &mut self,
+        constant_factor: f32,
+        clamp: f32,
+        slope_factor: f32,
+    ) -> &mut Self {
+        self.builder_state.depth_bias = Some(DepthBias {
+            constant_factor,
+            clamp,
+            slope_factor,
+        });
+        self.add_command(
+            "set_depth_bias",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_depth_bias(constant_factor, clamp, slope_factor);
+            },
+        );
+
+        self
+    }
+
     /// Sets whether dynamic depth bias is enabled for future draw calls.
     ///
     /// # Panics
@@ -288,7 +352,7 @@ where
         self.validate_set_depth_bias_enable(enable).unwrap();
 
         unsafe {
-            self.inner.set_depth_bias_enable(enable);
+            self.set_depth_bias_enable_unchecked(enable);
         }
 
         self
@@ -324,6 +388,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_bias_enable_unchecked(&mut self, enable: bool) -> &mut Self {
+        self.builder_state.depth_bias_enable = Some(enable);
+        self.add_command(
+            "set_depth_bias_enable",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_depth_bias_enable(enable);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic depth bounds for future draw calls.
     ///
     /// # Panics
@@ -338,7 +416,7 @@ where
         self.validate_set_depth_bounds(bounds.clone()).unwrap();
 
         unsafe {
-            self.inner.set_depth_bounds(bounds);
+            self.set_depth_bounds_unchecked(bounds);
         }
 
         self
@@ -380,6 +458,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_bounds_unchecked(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
+        self.builder_state.depth_bounds = Some(bounds.clone());
+        self.add_command(
+            "set_depth_bounds",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_depth_bounds(bounds.clone());
+            },
+        );
+
+        self
+    }
+
     /// Sets whether dynamic depth bounds testing is enabled for future draw calls.
     ///
     /// # Panics
@@ -393,7 +485,7 @@ where
         self.validate_set_depth_bounds_test_enable(enable).unwrap();
 
         unsafe {
-            self.inner.set_depth_bounds_test_enable(enable);
+            self.set_depth_bounds_test_enable_unchecked(enable);
         }
 
         self
@@ -432,6 +524,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_bounds_test_enable_unchecked(&mut self, enable: bool) -> &mut Self {
+        self.builder_state.depth_bounds_test_enable = Some(enable);
+        self.add_command(
+            "set_depth_bounds_test_enable",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_depth_bounds_test_enable(enable);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic depth compare op for future draw calls.
     ///
     /// # Panics
@@ -445,7 +551,7 @@ where
         self.validate_set_depth_compare_op(compare_op).unwrap();
 
         unsafe {
-            self.inner.set_depth_compare_op(compare_op);
+            self.set_depth_compare_op_unchecked(compare_op);
         }
 
         self
@@ -487,6 +593,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_compare_op_unchecked(&mut self, compare_op: CompareOp) -> &mut Self {
+        self.builder_state.depth_compare_op = Some(compare_op);
+        self.add_command(
+            "set_depth_compare_op",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_depth_compare_op(compare_op);
+            },
+        );
+
+        self
+    }
+
     /// Sets whether dynamic depth testing is enabled for future draw calls.
     ///
     /// # Panics
@@ -500,7 +620,7 @@ where
         self.validate_set_depth_test_enable(enable).unwrap();
 
         unsafe {
-            self.inner.set_depth_test_enable(enable);
+            self.set_depth_test_enable_unchecked(enable);
         }
 
         self
@@ -536,6 +656,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_test_enable_unchecked(&mut self, enable: bool) -> &mut Self {
+        self.builder_state.depth_test_enable = Some(enable);
+        self.add_command(
+            "set_depth_test_enable",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_depth_test_enable(enable);
+            },
+        );
+
+        self
+    }
+
     /// Sets whether dynamic depth write is enabled for future draw calls.
     ///
     /// # Panics
@@ -549,7 +683,7 @@ where
         self.validate_set_depth_write_enable(enable).unwrap();
 
         unsafe {
-            self.inner.set_depth_write_enable(enable);
+            self.set_depth_write_enable_unchecked(enable);
         }
 
         self
@@ -585,6 +719,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_write_enable_unchecked(&mut self, enable: bool) -> &mut Self {
+        self.builder_state.depth_write_enable = Some(enable);
+        self.add_command(
+            "set_depth_write_enable",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_depth_write_enable(enable);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic discard rectangles for future draw calls.
     ///
     /// # Panics
@@ -600,15 +748,13 @@ where
     pub fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
-        rectangles: impl IntoIterator<Item = Scissor>,
+        rectangles: SmallVec<[Scissor; 2]>,
     ) -> &mut Self {
-        let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
         self.validate_set_discard_rectangle(first_rectangle, &rectangles)
             .unwrap();
 
         unsafe {
-            self.inner
-                .set_discard_rectangle(first_rectangle, rectangles);
+            self.set_discard_rectangle_unchecked(first_rectangle, rectangles);
         }
 
         self
@@ -664,6 +810,28 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_discard_rectangle_unchecked(
+        &mut self,
+        first_rectangle: u32,
+        rectangles: SmallVec<[Scissor; 2]>,
+    ) -> &mut Self {
+        for (num, rectangle) in rectangles.iter().enumerate() {
+            let num = num as u32 + first_rectangle;
+            self.builder_state.discard_rectangle.insert(num, *rectangle);
+        }
+
+        self.add_command(
+            "set_discard_rectangle",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_discard_rectangle(first_rectangle, &rectangles);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic front face for future draw calls.
     ///
     /// # Panics
@@ -677,7 +845,7 @@ where
         self.validate_set_front_face(face).unwrap();
 
         unsafe {
-            self.inner.set_front_face(face);
+            self.set_front_face_unchecked(face);
         }
 
         self
@@ -716,6 +884,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_front_face_unchecked(&mut self, face: FrontFace) -> &mut Self {
+        self.builder_state.front_face = Some(face);
+        self.add_command(
+            "set_front_face",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_front_face(face);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic line stipple values for future draw calls.
     ///
     /// # Panics
@@ -729,7 +911,7 @@ where
         self.validate_set_line_stipple(factor, pattern).unwrap();
 
         unsafe {
-            self.inner.set_line_stipple(factor, pattern);
+            self.set_line_stipple_unchecked(factor, pattern);
         }
 
         self
@@ -770,6 +952,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_line_stipple_unchecked(&mut self, factor: u32, pattern: u16) -> &mut Self {
+        self.builder_state.line_stipple = Some(LineStipple { factor, pattern });
+        self.add_command(
+            "set_line_stipple",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_line_stipple(factor, pattern);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic line width for future draw calls.
     ///
     /// # Panics
@@ -782,7 +978,7 @@ where
         self.validate_set_line_width(line_width).unwrap();
 
         unsafe {
-            self.inner.set_line_width(line_width);
+            self.set_line_width_unchecked(line_width);
         }
 
         self
@@ -815,6 +1011,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_line_width_unchecked(&mut self, line_width: f32) -> &mut Self {
+        self.builder_state.line_width = Some(line_width);
+        self.add_command(
+            "set_line_width",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_line_width(line_width);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic logic op for future draw calls.
     ///
     /// # Panics
@@ -828,7 +1038,7 @@ where
         self.validate_set_logic_op(logic_op).unwrap();
 
         unsafe {
-            self.inner.set_logic_op(logic_op);
+            self.set_logic_op_unchecked(logic_op);
         }
 
         self
@@ -868,6 +1078,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_logic_op_unchecked(&mut self, logic_op: LogicOp) -> &mut Self {
+        self.builder_state.logic_op = Some(logic_op);
+        self.add_command(
+            "set_logic_op",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_logic_op(logic_op);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic number of patch control points for future draw calls.
     ///
     /// # Panics
@@ -885,7 +1109,7 @@ where
         self.validate_set_patch_control_points(num).unwrap();
 
         unsafe {
-            self.inner.set_patch_control_points(num);
+            self.set_patch_control_points_unchecked(num);
         }
 
         self
@@ -943,6 +1167,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_patch_control_points_unchecked(&mut self, num: u32) -> &mut Self {
+        self.builder_state.patch_control_points = Some(num);
+        self.add_command(
+            "set_patch_control_points",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_patch_control_points(num);
+            },
+        );
+
+        self
+    }
+
     /// Sets whether dynamic primitive restart is enabled for future draw calls.
     ///
     /// # Panics
@@ -956,7 +1194,7 @@ where
         self.validate_set_primitive_restart_enable(enable).unwrap();
 
         unsafe {
-            self.inner.set_primitive_restart_enable(enable);
+            self.set_primitive_restart_enable_unchecked(enable);
         }
 
         self
@@ -995,6 +1233,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_primitive_restart_enable_unchecked(&mut self, enable: bool) -> &mut Self {
+        self.builder_state.primitive_restart_enable = Some(enable);
+        self.add_command(
+            "set_primitive_restart_enable",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_primitive_restart_enable(enable);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic primitive topology for future draw calls.
     ///
     /// # Panics
@@ -1012,7 +1264,7 @@ where
         self.validate_set_primitive_topology(topology).unwrap();
 
         unsafe {
-            self.inner.set_primitive_topology(topology);
+            self.set_primitive_topology_unchecked(topology);
         }
 
         self
@@ -1100,6 +1352,23 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_primitive_topology_unchecked(
+        &mut self,
+        topology: PrimitiveTopology,
+    ) -> &mut Self {
+        self.builder_state.primitive_topology = Some(topology);
+        self.add_command(
+            "set_primitive_topology",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_primitive_topology(topology);
+            },
+        );
+
+        self
+    }
+
     /// Sets whether dynamic rasterizer discard is enabled for future draw calls.
     ///
     /// # Panics
@@ -1113,7 +1382,7 @@ where
         self.validate_set_rasterizer_discard_enable(enable).unwrap();
 
         unsafe {
-            self.inner.set_rasterizer_discard_enable(enable);
+            self.set_rasterizer_discard_enable_unchecked(enable);
         }
 
         self
@@ -1152,6 +1421,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_rasterizer_discard_enable_unchecked(&mut self, enable: bool) -> &mut Self {
+        self.builder_state.rasterizer_discard_enable = Some(enable);
+        self.add_command(
+            "set_rasterizer_discard_enable",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_rasterizer_discard_enable(enable);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic scissors for future draw calls.
     ///
     /// # Panics
@@ -1165,13 +1448,12 @@ where
     pub fn set_scissor(
         &mut self,
         first_scissor: u32,
-        scissors: impl IntoIterator<Item = Scissor>,
+        scissors: SmallVec<[Scissor; 2]>,
     ) -> &mut Self {
-        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
         self.validate_set_scissor(first_scissor, &scissors).unwrap();
 
         unsafe {
-            self.inner.set_scissor(first_scissor, scissors);
+            self.set_scissor_unchecked(first_scissor, scissors);
         }
 
         self
@@ -1231,6 +1513,30 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_scissor_unchecked(
+        &mut self,
+        first_scissor: u32,
+        scissors: SmallVec<[Scissor; 2]>,
+    ) -> &mut Self {
+        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
+
+        for (num, scissor) in scissors.iter().enumerate() {
+            let num = num as u32 + first_scissor;
+            self.builder_state.scissor.insert(num, *scissor);
+        }
+
+        self.add_command(
+            "set_scissor",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_scissor(first_scissor, &scissors);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic scissors with count for future draw calls.
     ///
     /// # Panics
@@ -1244,15 +1550,11 @@ where
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if more than 1 scissor is provided.
-    pub fn set_scissor_with_count(
-        &mut self,
-        scissors: impl IntoIterator<Item = Scissor>,
-    ) -> &mut Self {
-        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
+    pub fn set_scissor_with_count(&mut self, scissors: SmallVec<[Scissor; 2]>) -> &mut Self {
         self.validate_set_scissor_with_count(&scissors).unwrap();
 
         unsafe {
-            self.inner.set_scissor_with_count(scissors);
+            self.set_scissor_with_count_unchecked(scissors);
         }
 
         self
@@ -1310,6 +1612,23 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_scissor_with_count_unchecked(
+        &mut self,
+        scissors: SmallVec<[Scissor; 2]>,
+    ) -> &mut Self {
+        self.builder_state.scissor_with_count = Some(scissors.clone());
+        self.add_command(
+            "set_scissor_with_count",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_scissor_with_count(&scissors);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic stencil compare mask on one or both faces for future draw calls.
     ///
     /// # Panics
@@ -1325,7 +1644,7 @@ where
             .unwrap();
 
         unsafe {
-            self.inner.set_stencil_compare_mask(faces, compare_mask);
+            self.set_stencil_compare_mask_unchecked(faces, compare_mask);
         }
 
         self
@@ -1354,6 +1673,33 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_compare_mask_unchecked(
+        &mut self,
+        faces: StencilFaces,
+        compare_mask: u32,
+    ) -> &mut Self {
+        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+
+        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+            self.builder_state.stencil_compare_mask.front = Some(compare_mask);
+        }
+
+        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+            self.builder_state.stencil_compare_mask.back = Some(compare_mask);
+        }
+
+        self.add_command(
+            "set_stencil_compare_mask",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_stencil_compare_mask(faces, compare_mask);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic stencil ops on one or both faces for future draw calls.
     ///
     /// # Panics
@@ -1375,8 +1721,7 @@ where
             .unwrap();
 
         unsafe {
-            self.inner
-                .set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op);
+            self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op);
         }
 
         self
@@ -1434,6 +1779,46 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_op_unchecked(
+        &mut self,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) -> &mut Self {
+        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+
+        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+            self.builder_state.stencil_op.front = Some(StencilOps {
+                fail_op,
+                pass_op,
+                depth_fail_op,
+                compare_op,
+            });
+        }
+
+        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+            self.builder_state.stencil_op.back = Some(StencilOps {
+                fail_op,
+                pass_op,
+                depth_fail_op,
+                compare_op,
+            });
+        }
+
+        self.add_command(
+            "set_stencil_op",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic stencil reference on one or both faces for future draw calls.
     ///
     /// # Panics
@@ -1445,7 +1830,7 @@ where
             .unwrap();
 
         unsafe {
-            self.inner.set_stencil_reference(faces, reference);
+            self.set_stencil_reference_unchecked(faces, reference);
         }
 
         self
@@ -1474,6 +1859,33 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_reference_unchecked(
+        &mut self,
+        faces: StencilFaces,
+        reference: u32,
+    ) -> &mut Self {
+        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+
+        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+            self.builder_state.stencil_reference.front = Some(reference);
+        }
+
+        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+            self.builder_state.stencil_reference.back = Some(reference);
+        }
+
+        self.add_command(
+            "set_stencil_reference",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_stencil_reference(faces, reference);
+            },
+        );
+
+        self
+    }
+
     /// Sets whether dynamic stencil testing is enabled for future draw calls.
     ///
     /// # Panics
@@ -1487,7 +1899,7 @@ where
         self.validate_set_stencil_test_enable(enable).unwrap();
 
         unsafe {
-            self.inner.set_stencil_test_enable(enable);
+            self.set_stencil_test_enable_unchecked(enable);
         }
 
         self
@@ -1523,6 +1935,20 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_test_enable_unchecked(&mut self, enable: bool) -> &mut Self {
+        self.builder_state.stencil_test_enable = Some(enable);
+        self.add_command(
+            "set_stencil_test_enable",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_stencil_test_enable(enable);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic stencil write mask on one or both faces for future draw calls.
     ///
     /// # Panics
@@ -1534,7 +1960,7 @@ where
             .unwrap();
 
         unsafe {
-            self.inner.set_stencil_write_mask(faces, write_mask);
+            self.set_stencil_write_mask_unchecked(faces, write_mask);
         }
 
         self
@@ -1563,6 +1989,33 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_write_mask_unchecked(
+        &mut self,
+        faces: StencilFaces,
+        write_mask: u32,
+    ) -> &mut Self {
+        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+
+        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+            self.builder_state.stencil_write_mask.front = Some(write_mask);
+        }
+
+        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+            self.builder_state.stencil_write_mask.back = Some(write_mask);
+        }
+
+        self.add_command(
+            "set_stencil_write_mask",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_stencil_write_mask(faces, write_mask);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic viewports for future draw calls.
     ///
     /// # Panics
@@ -1576,14 +2029,13 @@ where
     pub fn set_viewport(
         &mut self,
         first_viewport: u32,
-        viewports: impl IntoIterator<Item = Viewport>,
+        viewports: SmallVec<[Viewport; 2]>,
     ) -> &mut Self {
-        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
         self.validate_set_viewport(first_viewport, &viewports)
             .unwrap();
 
         unsafe {
-            self.inner.set_viewport(first_viewport, viewports);
+            self.set_viewport_unchecked(first_viewport, viewports);
         }
 
         self
@@ -1643,6 +2095,28 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_viewport_unchecked(
+        &mut self,
+        first_viewport: u32,
+        viewports: SmallVec<[Viewport; 2]>,
+    ) -> &mut Self {
+        for (num, viewport) in viewports.iter().enumerate() {
+            let num = num as u32 + first_viewport;
+            self.builder_state.viewport.insert(num, viewport.clone());
+        }
+
+        self.add_command(
+            "set_viewport",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_viewport(first_viewport, &viewports);
+            },
+        );
+
+        self
+    }
+
     /// Sets the dynamic viewports with count for future draw calls.
     ///
     /// # Panics
@@ -1656,15 +2130,11 @@ where
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
     ///   panics if more than 1 viewport is provided.
-    pub fn set_viewport_with_count(
-        &mut self,
-        viewports: impl IntoIterator<Item = Viewport>,
-    ) -> &mut Self {
-        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
+    pub fn set_viewport_with_count(&mut self, viewports: SmallVec<[Viewport; 2]>) -> &mut Self {
         self.validate_set_viewport_with_count(&viewports).unwrap();
 
         unsafe {
-            self.inner.set_viewport_with_count(viewports);
+            self.set_viewport_with_count_unchecked(viewports);
         }
 
         self
@@ -1721,878 +2191,175 @@ where
 
         Ok(())
     }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_viewport_with_count_unchecked(
+        &mut self,
+        viewports: SmallVec<[Viewport; 2]>,
+    ) -> &mut Self {
+        self.builder_state.viewport_with_count = Some(viewports.clone());
+        self.add_command(
+            "set_viewport",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.set_viewport_with_count(&viewports);
+            },
+        );
+
+        self
+    }
 }
 
-impl SyncCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Calls `vkCmdSetBlendConstants` on the builder.
     #[inline]
-    pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) {
-        struct Cmd {
-            constants: [f32; 4],
-        }
+    pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_blend_constants)(self.handle(), &constants);
 
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_blend_constants"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_blend_constants(self.constants);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { constants }));
-        self.current_state.blend_constants = Some(constants);
+        self
     }
 
     /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_color_write_enable(&mut self, enables: impl IntoIterator<Item = bool>) {
-        struct Cmd<I> {
-            enables: Mutex<Option<I>>,
-        }
-
-        impl<I> Command for Cmd<I>
-        where
-            I: IntoIterator<Item = bool> + Send + Sync,
-        {
-            fn name(&self) -> &'static str {
-                "set_color_write_enable"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_color_write_enable(self.enables.lock().take().unwrap());
-            }
-        }
-
-        let enables: SmallVec<[bool; 4]> = enables.into_iter().collect();
-        self.current_state.color_write_enable = Some(enables.clone());
-        self.commands.push(Box::new(Cmd {
-            enables: Mutex::new(Some(enables)),
-        }));
-    }
-
-    /// Calls `vkCmdSetCullModeEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_cull_mode(&mut self, cull_mode: CullMode) {
-        struct Cmd {
-            cull_mode: CullMode,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_cull_mode"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_cull_mode(self.cull_mode);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { cull_mode }));
-        self.current_state.cull_mode = Some(cull_mode);
-    }
-
-    /// Calls `vkCmdSetDepthBias` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_bias(&mut self, constant_factor: f32, clamp: f32, slope_factor: f32) {
-        struct Cmd {
-            constant_factor: f32,
-            clamp: f32,
-            slope_factor: f32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_depth_bias"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_depth_bias(self.constant_factor, self.clamp, self.slope_factor);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd {
-            constant_factor,
-            clamp,
-            slope_factor,
-        }));
-        self.current_state.depth_bias = Some(DepthBias {
-            constant_factor,
-            clamp,
-            slope_factor,
-        });
-    }
-
-    /// Calls `vkCmdSetDepthBiasEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_bias_enable(&mut self, enable: bool) {
-        struct Cmd {
-            enable: bool,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_depth_bias_enable"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_depth_bias_enable(self.enable);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { enable }));
-        self.current_state.depth_bias_enable = Some(enable);
-    }
-
-    /// Calls `vkCmdSetDepthBounds` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_bounds(&mut self, bounds: RangeInclusive<f32>) {
-        struct Cmd {
-            bounds: RangeInclusive<f32>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_depth_bounds"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_depth_bounds(self.bounds.clone());
-            }
-        }
-
-        self.commands.push(Box::new(Cmd {
-            bounds: bounds.clone(),
-        }));
-        self.current_state.depth_bounds = Some(bounds);
-    }
-
-    /// Calls `vkCmdSetDepthBoundsTestEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_bounds_test_enable(&mut self, enable: bool) {
-        struct Cmd {
-            enable: bool,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_depth_bounds_test_enable"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_depth_bounds_test_enable(self.enable);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { enable }));
-        self.current_state.depth_bounds_test_enable = Some(enable);
-    }
-
-    /// Calls `vkCmdSetDepthCompareOpEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_compare_op(&mut self, compare_op: CompareOp) {
-        struct Cmd {
-            compare_op: CompareOp,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_depth_compare_op"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_depth_compare_op(self.compare_op);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { compare_op }));
-        self.current_state.depth_compare_op = Some(compare_op);
-    }
-
-    /// Calls `vkCmdSetDepthTestEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_test_enable(&mut self, enable: bool) {
-        struct Cmd {
-            enable: bool,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_depth_test_enable"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_depth_test_enable(self.enable);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { enable }));
-        self.current_state.depth_test_enable = Some(enable);
-    }
-
-    /// Calls `vkCmdSetDepthWriteEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_write_enable(&mut self, enable: bool) {
-        struct Cmd {
-            enable: bool,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_depth_write_enable"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_depth_write_enable(self.enable);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { enable }));
-        self.current_state.depth_write_enable = Some(enable);
-    }
-
-    /// Calls `vkCmdSetDiscardRectangle` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_discard_rectangle(
-        &mut self,
-        first_rectangle: u32,
-        rectangles: impl IntoIterator<Item = Scissor>,
-    ) {
-        struct Cmd {
-            first_rectangle: u32,
-            rectangles: Mutex<SmallVec<[Scissor; 2]>>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_discard_rectangle"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_discard_rectangle(self.first_rectangle, self.rectangles.lock().drain(..));
-            }
-        }
-
-        let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
-
-        for (num, rectangle) in rectangles.iter().enumerate() {
-            let num = num as u32 + first_rectangle;
-            self.current_state.discard_rectangle.insert(num, *rectangle);
-        }
-
-        self.commands.push(Box::new(Cmd {
-            first_rectangle,
-            rectangles: Mutex::new(rectangles),
-        }));
-    }
-
-    /// Calls `vkCmdSetFrontFaceEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_front_face(&mut self, face: FrontFace) {
-        struct Cmd {
-            face: FrontFace,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_front_face"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_front_face(self.face);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { face }));
-        self.current_state.front_face = Some(face);
-    }
-
-    /// Calls `vkCmdSetLineStippleEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) {
-        struct Cmd {
-            factor: u32,
-            pattern: u16,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_line_stipple"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_line_stipple(self.factor, self.pattern);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { factor, pattern }));
-        self.current_state.line_stipple = Some(LineStipple { factor, pattern });
-    }
-
-    /// Calls `vkCmdSetLineWidth` on the builder.
-    #[inline]
-    pub unsafe fn set_line_width(&mut self, line_width: f32) {
-        struct Cmd {
-            line_width: f32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_line_width"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_line_width(self.line_width);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { line_width }));
-        self.current_state.line_width = Some(line_width);
-    }
-
-    /// Calls `vkCmdSetLogicOpEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_logic_op(&mut self, logic_op: LogicOp) {
-        struct Cmd {
-            logic_op: LogicOp,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_logic_op"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_logic_op(self.logic_op);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { logic_op }));
-        self.current_state.logic_op = Some(logic_op);
-    }
-
-    /// Calls `vkCmdSetPatchControlPointsEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_patch_control_points(&mut self, num: u32) {
-        struct Cmd {
-            num: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_patch_control_points"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_patch_control_points(self.num);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { num }));
-        self.current_state.patch_control_points = Some(num);
-    }
-
-    /// Calls `vkCmdSetPrimitiveRestartEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_primitive_restart_enable(&mut self, enable: bool) {
-        struct Cmd {
-            enable: bool,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_primitive_restart_enable"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_primitive_restart_enable(self.enable);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { enable }));
-        self.current_state.primitive_restart_enable = Some(enable);
-    }
-
-    /// Calls `vkCmdSetPrimitiveTopologyEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_primitive_topology(&mut self, topology: PrimitiveTopology) {
-        struct Cmd {
-            topology: PrimitiveTopology,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_primitive_topology"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_primitive_topology(self.topology);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { topology }));
-        self.current_state.primitive_topology = Some(topology);
-    }
-
-    /// Calls `vkCmdSetRasterizerDiscardEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_rasterizer_discard_enable(&mut self, enable: bool) {
-        struct Cmd {
-            enable: bool,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_rasterizer_discard_enable"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_rasterizer_discard_enable(self.enable);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { enable }));
-        self.current_state.rasterizer_discard_enable = Some(enable);
-    }
-
-    /// Calls `vkCmdSetStencilCompareMask` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_compare_mask(&mut self, faces: StencilFaces, compare_mask: u32) {
-        struct Cmd {
-            faces: StencilFaces,
-            compare_mask: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_stencil_compare_mask"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_stencil_compare_mask(self.faces, self.compare_mask);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd {
-            faces,
-            compare_mask,
-        }));
-
-        let faces = ash::vk::StencilFaceFlags::from(faces);
-
-        if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
-            self.current_state.stencil_compare_mask.front = Some(compare_mask);
-        }
-
-        if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
-            self.current_state.stencil_compare_mask.back = Some(compare_mask);
-        }
-    }
-
-    /// Calls `vkCmdSetStencilOpEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_op(
-        &mut self,
-        faces: StencilFaces,
-        fail_op: StencilOp,
-        pass_op: StencilOp,
-        depth_fail_op: StencilOp,
-        compare_op: CompareOp,
-    ) {
-        struct Cmd {
-            faces: StencilFaces,
-            fail_op: StencilOp,
-            pass_op: StencilOp,
-            depth_fail_op: StencilOp,
-            compare_op: CompareOp,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_stencil_op"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_stencil_op(
-                    self.faces,
-                    self.fail_op,
-                    self.pass_op,
-                    self.depth_fail_op,
-                    self.compare_op,
-                );
-            }
-        }
-
-        self.commands.push(Box::new(Cmd {
-            faces,
-            fail_op,
-            pass_op,
-            depth_fail_op,
-            compare_op,
-        }));
-
-        let faces = ash::vk::StencilFaceFlags::from(faces);
-
-        if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
-            self.current_state.stencil_op.front = Some(StencilOps {
-                fail_op,
-                pass_op,
-                depth_fail_op,
-                compare_op,
-            });
-        }
-
-        if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
-            self.current_state.stencil_op.back = Some(StencilOps {
-                fail_op,
-                pass_op,
-                depth_fail_op,
-                compare_op,
-            });
-        }
-    }
-
-    /// Calls `vkCmdSetStencilReference` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_reference(&mut self, faces: StencilFaces, reference: u32) {
-        struct Cmd {
-            faces: StencilFaces,
-            reference: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_stencil_reference"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_stencil_reference(self.faces, self.reference);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { faces, reference }));
-
-        let faces = ash::vk::StencilFaceFlags::from(faces);
-
-        if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
-            self.current_state.stencil_reference.front = Some(reference);
-        }
-
-        if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
-            self.current_state.stencil_reference.back = Some(reference);
-        }
-    }
-
-    /// Calls `vkCmdSetStencilTestEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_test_enable(&mut self, enable: bool) {
-        struct Cmd {
-            enable: bool,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_stencil_test_enable"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_stencil_test_enable(self.enable);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { enable }));
-        self.current_state.stencil_test_enable = Some(enable);
-    }
-
-    /// Calls `vkCmdSetStencilWriteMask` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_write_mask(&mut self, faces: StencilFaces, write_mask: u32) {
-        struct Cmd {
-            faces: StencilFaces,
-            write_mask: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_stencil_write_mask"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_stencil_write_mask(self.faces, self.write_mask);
-            }
-        }
-
-        self.commands.push(Box::new(Cmd { faces, write_mask }));
-
-        let faces = ash::vk::StencilFaceFlags::from(faces);
-
-        if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
-            self.current_state.stencil_write_mask.front = Some(write_mask);
-        }
-
-        if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
-            self.current_state.stencil_write_mask.back = Some(write_mask);
-        }
-    }
-
-    /// Calls `vkCmdSetScissor` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor(
-        &mut self,
-        first_scissor: u32,
-        scissors: impl IntoIterator<Item = Scissor>,
-    ) {
-        struct Cmd {
-            first_scissor: u32,
-            scissors: Mutex<SmallVec<[Scissor; 2]>>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_scissor"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_scissor(self.first_scissor, self.scissors.lock().drain(..));
-            }
-        }
-
-        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
-
-        for (num, scissor) in scissors.iter().enumerate() {
-            let num = num as u32 + first_scissor;
-            self.current_state.scissor.insert(num, *scissor);
-        }
-
-        self.commands.push(Box::new(Cmd {
-            first_scissor,
-            scissors: Mutex::new(scissors),
-        }));
-    }
-
-    /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor_with_count(&mut self, scissors: impl IntoIterator<Item = Scissor>) {
-        struct Cmd {
-            scissors: Mutex<SmallVec<[Scissor; 2]>>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_scissor_with_count"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_scissor_with_count(self.scissors.lock().drain(..));
-            }
-        }
-
-        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
-        self.current_state.scissor_with_count = Some(scissors.clone());
-        self.commands.push(Box::new(Cmd {
-            scissors: Mutex::new(scissors),
-        }));
-    }
-
-    /// Calls `vkCmdSetViewport` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_viewport(
-        &mut self,
-        first_viewport: u32,
-        viewports: impl IntoIterator<Item = Viewport>,
-    ) {
-        struct Cmd {
-            first_viewport: u32,
-            viewports: Mutex<SmallVec<[Viewport; 2]>>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_viewport"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_viewport(self.first_viewport, self.viewports.lock().drain(..));
-            }
-        }
-
-        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
-
-        for (num, viewport) in viewports.iter().enumerate() {
-            let num = num as u32 + first_viewport;
-            self.current_state.viewport.insert(num, viewport.clone());
-        }
-
-        self.commands.push(Box::new(Cmd {
-            first_viewport,
-            viewports: Mutex::new(viewports),
-        }));
-    }
-
-    /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_viewport_with_count(
-        &mut self,
-        viewports: impl IntoIterator<Item = Viewport>,
-    ) {
-        struct Cmd {
-            viewports: Mutex<SmallVec<[Viewport; 2]>>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "set_viewport_with_count"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_viewport_with_count(self.viewports.lock().drain(..));
-            }
-        }
-
-        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
-        self.current_state.viewport_with_count = Some(viewports.clone());
-        self.commands.push(Box::new(Cmd {
-            viewports: Mutex::new(viewports),
-        }));
-    }
-}
-
-impl UnsafeCommandBufferBuilder {
-    /// Calls `vkCmdSetBlendConstants` on the builder.
-    #[inline]
-    pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) {
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_set_blend_constants)(self.handle, &constants);
-    }
-
-    /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_color_write_enable(&mut self, enables: impl IntoIterator<Item = bool>) {
-        debug_assert!(self.device.enabled_extensions().ext_color_write_enable);
-
+    pub unsafe fn set_color_write_enable(&mut self, enables: &[bool]) -> &mut Self {
         let enables = enables
-            .into_iter()
+            .iter()
+            .copied()
             .map(|v| v as ash::vk::Bool32)
             .collect::<SmallVec<[_; 4]>>();
         if enables.is_empty() {
-            return;
+            return self;
         }
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
         (fns.ext_color_write_enable.cmd_set_color_write_enable_ext)(
-            self.handle,
+            self.handle(),
             enables.len() as u32,
             enables.as_ptr(),
         );
+
+        self
     }
 
     /// Calls `vkCmdSetCullModeEXT` on the builder.
     #[inline]
-    pub unsafe fn set_cull_mode(&mut self, cull_mode: CullMode) {
-        let fns = self.device.fns();
+    pub unsafe fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_cull_mode)(self.handle, cull_mode.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_cull_mode)(self.handle(), cull_mode.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            (fns.ext_extended_dynamic_state.cmd_set_cull_mode_ext)(self.handle, cull_mode.into());
+            (fns.ext_extended_dynamic_state.cmd_set_cull_mode_ext)(self.handle(), cull_mode.into());
         }
+
+        self
     }
 
     /// Calls `vkCmdSetDepthBias` on the builder.
     #[inline]
-    pub unsafe fn set_depth_bias(&mut self, constant_factor: f32, clamp: f32, slope_factor: f32) {
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_set_depth_bias)(self.handle, constant_factor, clamp, slope_factor);
+    pub unsafe fn set_depth_bias(
+        &mut self,
+        constant_factor: f32,
+        clamp: f32,
+        slope_factor: f32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_depth_bias)(self.handle(), constant_factor, clamp, slope_factor);
+
+        self
     }
 
     /// Calls `vkCmdSetDepthBiasEnableEXT` on the builder.
     #[inline]
-    pub unsafe fn set_depth_bias_enable(&mut self, enable: bool) {
-        let fns = self.device.fns();
+    pub unsafe fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_bias_enable)(self.handle, enable.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_depth_bias_enable)(self.handle(), enable.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state2);
             (fns.ext_extended_dynamic_state2
-                .cmd_set_depth_bias_enable_ext)(self.handle, enable.into());
+                .cmd_set_depth_bias_enable_ext)(self.handle(), enable.into());
         }
+
+        self
     }
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
     #[inline]
-    pub unsafe fn set_depth_bounds(&mut self, bounds: RangeInclusive<f32>) {
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_set_depth_bounds)(self.handle, *bounds.start(), *bounds.end());
+    pub unsafe fn set_depth_bounds(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_depth_bounds)(self.handle(), *bounds.start(), *bounds.end());
+
+        self
     }
 
     /// Calls `vkCmdSetDepthBoundsTestEnableEXT` on the builder.
     #[inline]
-    pub unsafe fn set_depth_bounds_test_enable(&mut self, enable: bool) {
-        let fns = self.device.fns();
+    pub unsafe fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_bounds_test_enable)(self.handle, enable.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_depth_bounds_test_enable)(self.handle(), enable.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
             (fns.ext_extended_dynamic_state
-                .cmd_set_depth_bounds_test_enable_ext)(self.handle, enable.into());
+                .cmd_set_depth_bounds_test_enable_ext)(self.handle(), enable.into());
         }
+
+        self
     }
 
     /// Calls `vkCmdSetDepthCompareOpEXT` on the builder.
     #[inline]
-    pub unsafe fn set_depth_compare_op(&mut self, compare_op: CompareOp) {
-        let fns = self.device.fns();
+    pub unsafe fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_compare_op)(self.handle, compare_op.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_depth_compare_op)(self.handle(), compare_op.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
             (fns.ext_extended_dynamic_state.cmd_set_depth_compare_op_ext)(
-                self.handle,
+                self.handle(),
                 compare_op.into(),
             );
         }
+
+        self
     }
 
     /// Calls `vkCmdSetDepthTestEnableEXT` on the builder.
     #[inline]
-    pub unsafe fn set_depth_test_enable(&mut self, enable: bool) {
-        let fns = self.device.fns();
+    pub unsafe fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_test_enable)(self.handle, enable.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_depth_test_enable)(self.handle(), enable.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
             (fns.ext_extended_dynamic_state.cmd_set_depth_test_enable_ext)(
-                self.handle,
+                self.handle(),
                 enable.into(),
             );
         }
+
+        self
     }
 
     /// Calls `vkCmdSetDepthWriteEnableEXT` on the builder.
     #[inline]
-    pub unsafe fn set_depth_write_enable(&mut self, enable: bool) {
-        let fns = self.device.fns();
+    pub unsafe fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_depth_write_enable)(self.handle, enable.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_depth_write_enable)(self.handle(), enable.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
             (fns.ext_extended_dynamic_state
-                .cmd_set_depth_write_enable_ext)(self.handle, enable.into());
+                .cmd_set_depth_write_enable_ext)(self.handle(), enable.into());
         }
+
+        self
     }
 
     /// Calls `vkCmdSetDiscardRectangleEXT` on the builder.
@@ -2601,135 +2368,135 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
-        rectangles: impl IntoIterator<Item = Scissor>,
-    ) {
-        debug_assert!(self.device.enabled_extensions().ext_discard_rectangles);
-
+        rectangles: &[Scissor],
+    ) -> &mut Self {
         let rectangles = rectangles
-            .into_iter()
+            .iter()
+            .copied()
             .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if rectangles.is_empty() {
-            return;
+            return self;
         }
 
-        debug_assert!(
-            first_rectangle + rectangles.len() as u32
-                <= self
-                    .device
-                    .physical_device()
-                    .properties()
-                    .max_discard_rectangles
-                    .unwrap()
-        );
-
-        let fns = self.device.fns();
+        let fns = self.device().fns();
         (fns.ext_discard_rectangles.cmd_set_discard_rectangle_ext)(
-            self.handle,
+            self.handle(),
             first_rectangle,
             rectangles.len() as u32,
             rectangles.as_ptr(),
         );
+
+        self
     }
 
     /// Calls `vkCmdSetFrontFaceEXT` on the builder.
     #[inline]
-    pub unsafe fn set_front_face(&mut self, face: FrontFace) {
-        let fns = self.device.fns();
+    pub unsafe fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_front_face)(self.handle, face.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_front_face)(self.handle(), face.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            (fns.ext_extended_dynamic_state.cmd_set_front_face_ext)(self.handle, face.into());
+            (fns.ext_extended_dynamic_state.cmd_set_front_face_ext)(self.handle(), face.into());
         }
+
+        self
     }
 
     /// Calls `vkCmdSetLineStippleEXT` on the builder.
     #[inline]
-    pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) {
-        debug_assert!(self.device.enabled_extensions().ext_line_rasterization);
-        let fns = self.device.fns();
-        (fns.ext_line_rasterization.cmd_set_line_stipple_ext)(self.handle, factor, pattern);
+    pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.ext_line_rasterization.cmd_set_line_stipple_ext)(self.handle(), factor, pattern);
+
+        self
     }
 
     /// Calls `vkCmdSetLineWidth` on the builder.
     #[inline]
-    pub unsafe fn set_line_width(&mut self, line_width: f32) {
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_set_line_width)(self.handle, line_width);
+    pub unsafe fn set_line_width(&mut self, line_width: f32) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_line_width)(self.handle(), line_width);
+
+        self
     }
 
     /// Calls `vkCmdSetLogicOpEXT` on the builder.
     #[inline]
-    pub unsafe fn set_logic_op(&mut self, logic_op: LogicOp) {
-        debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state2);
-        debug_assert!(
-            self.device
-                .enabled_features()
-                .extended_dynamic_state2_logic_op
-        );
-        let fns = self.device.fns();
+    pub unsafe fn set_logic_op(&mut self, logic_op: LogicOp) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.ext_extended_dynamic_state2.cmd_set_logic_op_ext)(self.handle(), logic_op.into());
 
-        (fns.ext_extended_dynamic_state2.cmd_set_logic_op_ext)(self.handle, logic_op.into());
+        self
     }
 
     /// Calls `vkCmdSetPatchControlPointsEXT` on the builder.
     #[inline]
-    pub unsafe fn set_patch_control_points(&mut self, num: u32) {
-        debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state2);
-        let fns = self.device.fns();
+    pub unsafe fn set_patch_control_points(&mut self, num: u32) -> &mut Self {
+        let fns = self.device().fns();
         (fns.ext_extended_dynamic_state2
-            .cmd_set_patch_control_points_ext)(self.handle, num);
+            .cmd_set_patch_control_points_ext)(self.handle(), num);
+
+        self
     }
 
     /// Calls `vkCmdSetPrimitiveRestartEnableEXT` on the builder.
     #[inline]
-    pub unsafe fn set_primitive_restart_enable(&mut self, enable: bool) {
-        let fns = self.device.fns();
+    pub unsafe fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_primitive_restart_enable)(self.handle, enable.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_primitive_restart_enable)(self.handle(), enable.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state2);
             (fns.ext_extended_dynamic_state2
-                .cmd_set_primitive_restart_enable_ext)(self.handle, enable.into());
+                .cmd_set_primitive_restart_enable_ext)(self.handle(), enable.into());
         }
+
+        self
     }
 
     /// Calls `vkCmdSetPrimitiveTopologyEXT` on the builder.
     #[inline]
-    pub unsafe fn set_primitive_topology(&mut self, topology: PrimitiveTopology) {
-        let fns = self.device.fns();
+    pub unsafe fn set_primitive_topology(&mut self, topology: PrimitiveTopology) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_primitive_topology)(self.handle, topology.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_primitive_topology)(self.handle(), topology.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
             (fns.ext_extended_dynamic_state
-                .cmd_set_primitive_topology_ext)(self.handle, topology.into());
+                .cmd_set_primitive_topology_ext)(self.handle(), topology.into());
         }
+
+        self
     }
 
     /// Calls `vkCmdSetRasterizerDiscardEnableEXT` on the builder.
     #[inline]
-    pub unsafe fn set_rasterizer_discard_enable(&mut self, enable: bool) {
-        let fns = self.device.fns();
+    pub unsafe fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_rasterizer_discard_enable)(self.handle, enable.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_rasterizer_discard_enable)(self.handle(), enable.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state2);
             (fns.ext_extended_dynamic_state2
-                .cmd_set_rasterizer_discard_enable_ext)(self.handle, enable.into());
+                .cmd_set_rasterizer_discard_enable_ext)(self.handle(), enable.into());
         }
+
+        self
     }
 
     /// Calls `vkCmdSetStencilCompareMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_compare_mask(&mut self, face_mask: StencilFaces, compare_mask: u32) {
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_set_stencil_compare_mask)(self.handle, face_mask.into(), compare_mask);
+    pub unsafe fn set_stencil_compare_mask(
+        &mut self,
+        face_mask: StencilFaces,
+        compare_mask: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_stencil_compare_mask)(self.handle(), face_mask.into(), compare_mask);
+
+        self
     }
 
     /// Calls `vkCmdSetStencilOpEXT` on the builder.
@@ -2741,12 +2508,12 @@ impl UnsafeCommandBufferBuilder {
         pass_op: StencilOp,
         depth_fail_op: StencilOp,
         compare_op: CompareOp,
-    ) {
-        let fns = self.device.fns();
+    ) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
+        if self.device().api_version() >= Version::V1_3 {
             (fns.v1_3.cmd_set_stencil_op)(
-                self.handle,
+                self.handle(),
                 face_mask.into(),
                 fail_op.into(),
                 pass_op.into(),
@@ -2754,9 +2521,8 @@ impl UnsafeCommandBufferBuilder {
                 compare_op.into(),
             );
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
             (fns.ext_extended_dynamic_state.cmd_set_stencil_op_ext)(
-                self.handle,
+                self.handle(),
                 face_mask.into(),
                 fail_op.into(),
                 pass_op.into(),
@@ -2764,90 +2530,106 @@ impl UnsafeCommandBufferBuilder {
                 compare_op.into(),
             );
         }
+
+        self
     }
 
     /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_reference(&mut self, face_mask: StencilFaces, reference: u32) {
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_set_stencil_reference)(self.handle, face_mask.into(), reference);
+    pub unsafe fn set_stencil_reference(
+        &mut self,
+        face_mask: StencilFaces,
+        reference: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_stencil_reference)(self.handle(), face_mask.into(), reference);
+
+        self
     }
 
     /// Calls `vkCmdSetStencilTestEnableEXT` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_test_enable(&mut self, enable: bool) {
-        let fns = self.device.fns();
+    pub unsafe fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_stencil_test_enable)(self.handle, enable.into());
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_stencil_test_enable)(self.handle(), enable.into());
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
             (fns.ext_extended_dynamic_state
-                .cmd_set_stencil_test_enable_ext)(self.handle, enable.into());
+                .cmd_set_stencil_test_enable_ext)(self.handle(), enable.into());
         }
+
+        self
     }
 
     /// Calls `vkCmdSetStencilWriteMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_write_mask(&mut self, face_mask: StencilFaces, write_mask: u32) {
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_set_stencil_write_mask)(self.handle, face_mask.into(), write_mask);
+    pub unsafe fn set_stencil_write_mask(
+        &mut self,
+        face_mask: StencilFaces,
+        write_mask: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_stencil_write_mask)(self.handle(), face_mask.into(), write_mask);
+
+        self
     }
 
     /// Calls `vkCmdSetScissor` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor(
-        &mut self,
-        first_scissor: u32,
-        scissors: impl IntoIterator<Item = Scissor>,
-    ) {
+    pub unsafe fn set_scissor(&mut self, first_scissor: u32, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
-            .into_iter()
+            .iter()
+            .copied()
             .map(ash::vk::Rect2D::from)
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
-            return;
+            return self;
         }
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
         (fns.v1_0.cmd_set_scissor)(
-            self.handle,
+            self.handle(),
             first_scissor,
             scissors.len() as u32,
             scissors.as_ptr(),
         );
+
+        self
     }
 
     /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor_with_count(&mut self, scissors: impl IntoIterator<Item = Scissor>) {
+    pub unsafe fn set_scissor_with_count(&mut self, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
-            .into_iter()
+            .iter()
+            .copied()
             .map(ash::vk::Rect2D::from)
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
-            return;
+            return self;
         }
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
+        if self.device().api_version() >= Version::V1_3 {
             (fns.v1_3.cmd_set_scissor_with_count)(
-                self.handle,
+                self.handle(),
                 scissors.len() as u32,
                 scissors.as_ptr(),
             );
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
             (fns.ext_extended_dynamic_state
                 .cmd_set_scissor_with_count_ext)(
-                self.handle,
+                self.handle(),
                 scissors.len() as u32,
                 scissors.as_ptr(),
             );
         }
+
+        self
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -2856,57 +2638,59 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn set_viewport(
         &mut self,
         first_viewport: u32,
-        viewports: impl IntoIterator<Item = Viewport>,
-    ) {
+        viewports: &[Viewport],
+    ) -> &mut Self {
         let viewports = viewports
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
-            return;
+            return self;
         }
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
         (fns.v1_0.cmd_set_viewport)(
-            self.handle,
+            self.handle(),
             first_viewport,
             viewports.len() as u32,
             viewports.as_ptr(),
         );
+
+        self
     }
 
     /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_viewport_with_count(
-        &mut self,
-        viewports: impl IntoIterator<Item = Viewport>,
-    ) {
+    pub unsafe fn set_viewport_with_count(&mut self, viewports: &[Viewport]) -> &mut Self {
         let viewports = viewports
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
-            return;
+            return self;
         }
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3 {
+        if self.device().api_version() >= Version::V1_3 {
             (fns.v1_3.cmd_set_viewport_with_count)(
-                self.handle,
+                self.handle(),
                 viewports.len() as u32,
                 viewports.as_ptr(),
             );
         } else {
-            debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
             (fns.ext_extended_dynamic_state
                 .cmd_set_viewport_with_count_ext)(
-                self.handle,
+                self.handle(),
                 viewports.len() as u32,
                 viewports.as_ptr(),
             );
         }
+
+        self
     }
 }
 

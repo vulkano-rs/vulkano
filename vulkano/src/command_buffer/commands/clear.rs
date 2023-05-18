@@ -10,10 +10,8 @@
 use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator,
-        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
-        sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, ResourceInCommand, ResourceUseRef,
+        allocator::CommandBufferAllocator, auto::Resource, sys::UnsafeCommandBufferBuilder,
+        AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, Format, FormatFeatures},
@@ -42,7 +40,7 @@ where
         self.validate_clear_color_image(&clear_info)?;
 
         unsafe {
-            self.inner.clear_color_image(clear_info)?;
+            self.clear_color_image_unchecked(clear_info);
         }
 
         Ok(self)
@@ -55,7 +53,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdClearColorImage-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(ClearError::ForbiddenInsideRenderPass);
         }
 
@@ -179,6 +177,49 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn clear_color_image_unchecked(
+        &mut self,
+        clear_info: ClearColorImageInfo,
+    ) -> &mut Self {
+        let &ClearColorImageInfo {
+            ref image,
+            image_layout,
+            clear_value: _,
+            ref regions,
+            _ne: _,
+        } = &clear_info;
+
+        self.add_command(
+            "clear_color_image",
+            regions
+                .iter()
+                .cloned()
+                .flat_map(|subresource_range| {
+                    [(
+                        ResourceInCommand::Destination.into(),
+                        Resource::Image {
+                            image: image.clone(),
+                            subresource_range,
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_WRITE,
+                                exclusive: true,
+                            },
+                            start_layout: image_layout,
+                            end_layout: image_layout,
+                        },
+                    )]
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.clear_color_image(&clear_info);
+            },
+        );
+
+        self
+    }
+
     /// Clears a depth/stencil image with a specific value.
     pub fn clear_depth_stencil_image(
         &mut self,
@@ -187,7 +228,7 @@ where
         self.validate_clear_depth_stencil_image(&clear_info)?;
 
         unsafe {
-            self.inner.clear_depth_stencil_image(clear_info)?;
+            self.clear_depth_stencil_image_unchecked(clear_info);
         }
 
         Ok(self)
@@ -200,7 +241,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdClearDepthStencilImage-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(ClearError::ForbiddenInsideRenderPass);
         }
 
@@ -342,6 +383,49 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn clear_depth_stencil_image_unchecked(
+        &mut self,
+        clear_info: ClearDepthStencilImageInfo,
+    ) -> &mut Self {
+        let &ClearDepthStencilImageInfo {
+            ref image,
+            image_layout,
+            clear_value: _,
+            ref regions,
+            _ne: _,
+        } = &clear_info;
+
+        self.add_command(
+            "clear_depth_stencil_image",
+            regions
+                .iter()
+                .cloned()
+                .flat_map(|subresource_range| {
+                    [(
+                        ResourceInCommand::Destination.into(),
+                        Resource::Image {
+                            image: image.clone(),
+                            subresource_range,
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages::ALL_TRANSFER,
+                                access: AccessFlags::TRANSFER_WRITE,
+                                exclusive: true,
+                            },
+                            start_layout: image_layout,
+                            end_layout: image_layout,
+                        },
+                    )]
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.clear_depth_stencil_image(&clear_info);
+            },
+        );
+
+        self
+    }
+
     /// Fills a region of a buffer with repeated copies of a value.
     ///
     /// This function is similar to the `memset` function in C. The `data` parameter is a number
@@ -358,7 +442,7 @@ where
         self.validate_fill_buffer(&dst_buffer, data)?;
 
         unsafe {
-            self.inner.fill_buffer(dst_buffer, data)?;
+            self.fill_buffer_unchecked(dst_buffer, data);
         }
 
         Ok(self)
@@ -372,7 +456,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdFillBuffer-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(ClearError::ForbiddenInsideRenderPass);
         }
 
@@ -424,6 +508,36 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn fill_buffer_unchecked(
+        &mut self,
+        dst_buffer: Subbuffer<[u32]>,
+        data: u32,
+    ) -> &mut Self {
+        self.add_command(
+            "fill_buffer",
+            [(
+                ResourceInCommand::Destination.into(),
+                Resource::Buffer {
+                    buffer: dst_buffer.as_bytes().clone(),
+                    range: 0..dst_buffer.size(),
+                    memory: PipelineMemoryAccess {
+                        stages: PipelineStages::ALL_TRANSFER,
+                        access: AccessFlags::TRANSFER_WRITE,
+                        exclusive: true,
+                    },
+                },
+            )]
+            .into_iter()
+            .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.fill_buffer(&dst_buffer, data);
+            },
+        );
+
+        self
+    }
+
     /// Writes data to a region of a buffer.
     ///
     /// # Panics
@@ -444,7 +558,7 @@ where
         )?;
 
         unsafe {
-            self.inner.update_buffer(dst_buffer, data)?;
+            self.update_buffer_unchecked(dst_buffer, data);
         }
 
         Ok(self)
@@ -458,7 +572,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdUpdateBuffer-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(ClearError::ForbiddenInsideRenderPass);
         }
 
@@ -527,79 +641,82 @@ where
 
         Ok(())
     }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn update_buffer_unchecked<D, Dd>(
+        &mut self,
+        dst_buffer: Subbuffer<D>,
+        data: Dd,
+    ) -> &mut Self
+    where
+        D: BufferContents + ?Sized,
+        Dd: SafeDeref<Target = D> + Send + Sync + 'static,
+    {
+        self.add_command(
+            "update_buffer",
+            [(
+                ResourceInCommand::Destination.into(),
+                Resource::Buffer {
+                    buffer: dst_buffer.as_bytes().clone(),
+                    range: 0..size_of_val(data.deref()) as DeviceSize,
+                    memory: PipelineMemoryAccess {
+                        stages: PipelineStages::ALL_TRANSFER,
+                        access: AccessFlags::TRANSFER_WRITE,
+                        exclusive: true,
+                    },
+                },
+            )]
+            .into_iter()
+            .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.update_buffer(&dst_buffer, &data);
+            },
+        );
+
+        self
+    }
 }
 
-impl SyncCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Calls `vkCmdClearColorImage` on the builder.
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn clear_color_image(
-        &mut self,
-        clear_info: ClearColorImageInfo,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            clear_info: ClearColorImageInfo,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "clear_color_image"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.clear_color_image(&self.clear_info);
-            }
-        }
-
+    pub unsafe fn clear_color_image(&mut self, clear_info: &ClearColorImageInfo) -> &mut Self {
         let &ClearColorImageInfo {
             ref image,
             image_layout,
-            clear_value: _,
+            clear_value,
             ref regions,
             _ne: _,
-        } = &clear_info;
+        } = clear_info;
 
-        let command_index = self.commands.len();
-        let command_name = "clear_color_image";
-        let resources: SmallVec<[_; 8]> = regions
+        if regions.is_empty() {
+            return self;
+        }
+
+        let clear_value_vk = clear_value.into();
+        let ranges_vk: SmallVec<[_; 8]> = regions
             .iter()
             .cloned()
-            .flat_map(|subresource_range| {
-                [(
-                    ResourceUseRef {
-                        command_index,
-                        command_name,
-                        resource_in_command: ResourceInCommand::Destination,
-                        secondary_use_ref: None,
-                    },
-                    Resource::Image {
-                        image: image.clone(),
-                        subresource_range,
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages::ALL_TRANSFER,
-                            access: AccessFlags::TRANSFER_WRITE,
-                            exclusive: true,
-                        },
-                        start_layout: image_layout,
-                        end_layout: image_layout,
-                    },
-                )]
-            })
+            .map(ash::vk::ImageSubresourceRange::from)
             .collect();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_clear_color_image)(
+            self.handle(),
+            image.inner().handle(),
+            image_layout.into(),
+            &clear_value_vk,
+            ranges_vk.len() as u32,
+            ranges_vk.as_ptr(),
+        );
 
-        self.commands.push(Box::new(Cmd { clear_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
+        self
     }
 
     /// Calls `vkCmdClearDepthStencilImage` on the builder.
@@ -609,232 +726,8 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn clear_depth_stencil_image(
         &mut self,
-        clear_info: ClearDepthStencilImageInfo,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            clear_info: ClearDepthStencilImageInfo,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "clear_depth_stencil_image"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.clear_depth_stencil_image(&self.clear_info);
-            }
-        }
-
-        let &ClearDepthStencilImageInfo {
-            ref image,
-            image_layout,
-            clear_value: _,
-            ref regions,
-            _ne: _,
-        } = &clear_info;
-
-        let command_index = self.commands.len();
-        let command_name = "clear_depth_stencil_image";
-        let resources: SmallVec<[_; 8]> = regions
-            .iter()
-            .cloned()
-            .flat_map(|subresource_range| {
-                [(
-                    ResourceUseRef {
-                        command_index,
-                        command_name,
-                        resource_in_command: ResourceInCommand::Destination,
-                        secondary_use_ref: None,
-                    },
-                    Resource::Image {
-                        image: image.clone(),
-                        subresource_range,
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages::ALL_TRANSFER,
-                            access: AccessFlags::TRANSFER_WRITE,
-                            exclusive: true,
-                        },
-                        start_layout: image_layout,
-                        end_layout: image_layout,
-                    },
-                )]
-            })
-            .collect();
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { clear_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdFillBuffer` on the builder.
-    #[inline]
-    pub unsafe fn fill_buffer(
-        &mut self,
-        dst_buffer: Subbuffer<[u32]>,
-        data: u32,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            dst_buffer: Subbuffer<[u32]>,
-            data: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "fill_buffer"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.fill_buffer(&self.dst_buffer, self.data);
-            }
-        }
-
-        let command_index = self.commands.len();
-        let command_name = "fill_buffer";
-        let resources = [(
-            ResourceUseRef {
-                command_index,
-                command_name,
-                resource_in_command: ResourceInCommand::Destination,
-                secondary_use_ref: None,
-            },
-            Resource::Buffer {
-                buffer: dst_buffer.as_bytes().clone(),
-                range: 0..dst_buffer.size(),
-                memory: PipelineMemoryAccess {
-                    stages: PipelineStages::ALL_TRANSFER,
-                    access: AccessFlags::TRANSFER_WRITE,
-                    exclusive: true,
-                },
-            },
-        )];
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { dst_buffer, data }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdUpdateBuffer` on the builder.
-    pub unsafe fn update_buffer<D, Dd>(
-        &mut self,
-        dst_buffer: Subbuffer<D>,
-        data: Dd,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        D: BufferContents + ?Sized,
-        Dd: SafeDeref<Target = D> + Send + Sync + 'static,
-    {
-        struct Cmd<D: ?Sized, Dd> {
-            dst_buffer: Subbuffer<D>,
-            data: Dd,
-        }
-
-        impl<D, Dd> Command for Cmd<D, Dd>
-        where
-            D: BufferContents + ?Sized,
-            Dd: SafeDeref<Target = D> + Send + Sync + 'static,
-        {
-            fn name(&self) -> &'static str {
-                "update_buffer"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.update_buffer(&self.dst_buffer, self.data.deref());
-            }
-        }
-
-        let command_index = self.commands.len();
-        let command_name = "update_buffer";
-        let resources = [(
-            ResourceUseRef {
-                command_index,
-                command_name,
-                resource_in_command: ResourceInCommand::Destination,
-                secondary_use_ref: None,
-            },
-            Resource::Buffer {
-                buffer: dst_buffer.as_bytes().clone(),
-                range: 0..size_of_val(data.deref()) as DeviceSize,
-                memory: PipelineMemoryAccess {
-                    stages: PipelineStages::ALL_TRANSFER,
-                    access: AccessFlags::TRANSFER_WRITE,
-                    exclusive: true,
-                },
-            },
-        )];
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { dst_buffer, data }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-}
-
-impl UnsafeCommandBufferBuilder {
-    /// Calls `vkCmdClearColorImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn clear_color_image(&mut self, clear_info: &ClearColorImageInfo) {
-        let &ClearColorImageInfo {
-            ref image,
-            image_layout,
-            clear_value,
-            ref regions,
-            _ne: _,
-        } = clear_info;
-
-        if regions.is_empty() {
-            return;
-        }
-
-        let clear_value = clear_value.into();
-        let ranges: SmallVec<[_; 8]> = regions
-            .iter()
-            .cloned()
-            .map(ash::vk::ImageSubresourceRange::from)
-            .collect();
-
-        let fns = self.device.fns();
-        (fns.v1_0.cmd_clear_color_image)(
-            self.handle,
-            image.inner().handle(),
-            image_layout.into(),
-            &clear_value,
-            ranges.len() as u32,
-            ranges.as_ptr(),
-        );
-    }
-
-    /// Calls `vkCmdClearDepthStencilImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn clear_depth_stencil_image(&mut self, clear_info: &ClearDepthStencilImageInfo) {
+        clear_info: &ClearDepthStencilImageInfo,
+    ) -> &mut Self {
         let &ClearDepthStencilImageInfo {
             ref image,
             image_layout,
@@ -844,53 +737,59 @@ impl UnsafeCommandBufferBuilder {
         } = clear_info;
 
         if regions.is_empty() {
-            return;
+            return self;
         }
 
-        let clear_value = clear_value.into();
-        let ranges: SmallVec<[_; 8]> = regions
+        let clear_value_vk = clear_value.into();
+        let ranges_vk: SmallVec<[_; 8]> = regions
             .iter()
             .cloned()
             .map(ash::vk::ImageSubresourceRange::from)
             .collect();
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
         (fns.v1_0.cmd_clear_depth_stencil_image)(
-            self.handle,
+            self.handle(),
             image.inner().handle(),
             image_layout.into(),
-            &clear_value,
-            ranges.len() as u32,
-            ranges.as_ptr(),
+            &clear_value_vk,
+            ranges_vk.len() as u32,
+            ranges_vk.as_ptr(),
         );
+
+        self
     }
 
     /// Calls `vkCmdFillBuffer` on the builder.
     #[inline]
-    pub unsafe fn fill_buffer(&mut self, dst_buffer: &Subbuffer<[u32]>, data: u32) {
-        let fns = self.device.fns();
+    pub unsafe fn fill_buffer(&mut self, dst_buffer: &Subbuffer<[u32]>, data: u32) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_fill_buffer)(
-            self.handle,
+            self.handle(),
             dst_buffer.buffer().handle(),
             dst_buffer.offset(),
             dst_buffer.size(),
             data,
         );
+
+        self
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
-    pub unsafe fn update_buffer<D>(&mut self, dst_buffer: &Subbuffer<D>, data: &D)
+    pub unsafe fn update_buffer<D>(&mut self, dst_buffer: &Subbuffer<D>, data: &D) -> &mut Self
     where
         D: BufferContents + ?Sized,
     {
-        let fns = self.device.fns();
+        let fns = self.device().fns();
         (fns.v1_0.cmd_update_buffer)(
-            self.handle,
+            self.handle(),
             dst_buffer.buffer().handle(),
             dst_buffer.offset(),
             size_of_val(data) as DeviceSize,
             data as *const _ as *const _,
         );
+
+        self
     }
 }
 
@@ -989,8 +888,6 @@ impl ClearDepthStencilImageInfo {
 /// Error that can happen when recording a clear command.
 #[derive(Clone, Debug)]
 pub enum ClearError {
-    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
-
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
@@ -1019,20 +916,13 @@ pub enum ClearError {
     },
 
     /// The provided data has a size larger than the maximum allowed.
-    DataTooLarge {
-        size: DeviceSize,
-        max: DeviceSize,
-    },
+    DataTooLarge { size: DeviceSize, max: DeviceSize },
 
     /// The format of an image is not supported for this operation.
-    FormatNotSupported {
-        format: Format,
-    },
+    FormatNotSupported { format: Format },
 
     /// A specified image layout is not valid for this operation.
-    ImageLayoutInvalid {
-        image_layout: ImageLayout,
-    },
+    ImageLayoutInvalid { image_layout: ImageLayout },
 
     /// The end of the range of accessed mip levels of the subresource range of a region is greater
     /// than the number of mip levels in the image.
@@ -1043,14 +933,10 @@ pub enum ClearError {
     },
 
     /// An image does not have a required format feature.
-    MissingFormatFeature {
-        format_feature: &'static str,
-    },
+    MissingFormatFeature { format_feature: &'static str },
 
     /// A resource did not have a required usage enabled.
-    MissingUsage {
-        usage: &'static str,
-    },
+    MissingUsage { usage: &'static str },
 
     /// The buffer offset of a region is not a multiple of the required buffer alignment.
     OffsetNotAlignedForBuffer {
@@ -1075,19 +961,11 @@ pub enum ClearError {
     },
 }
 
-impl Error for ClearError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::SyncCommandBufferBuilderError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
+impl Error for ClearError {}
 
 impl Display for ClearError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -1188,12 +1066,6 @@ impl Display for ClearError {
                 size, region_index, required_alignment,
             ),
         }
-    }
-}
-
-impl From<SyncCommandBufferBuilderError> for ClearError {
-    fn from(err: SyncCommandBufferBuilderError) -> Self {
-        Self::SyncCommandBufferBuilderError(err)
     }
 }
 

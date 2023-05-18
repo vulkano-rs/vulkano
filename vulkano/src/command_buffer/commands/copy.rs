@@ -10,10 +10,8 @@
 use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator,
-        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
-        sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, ResourceInCommand, ResourceUseRef,
+        allocator::CommandBufferAllocator, auto::Resource, sys::UnsafeCommandBufferBuilder,
+        AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures, NumericType},
@@ -53,7 +51,7 @@ where
         self.validate_copy_buffer(&copy_buffer_info)?;
 
         unsafe {
-            self.inner.copy_buffer(copy_buffer_info)?;
+            self.copy_buffer_unchecked(copy_buffer_info);
         }
 
         Ok(self)
@@ -63,7 +61,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdCopyBuffer2-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -181,6 +179,67 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_buffer_unchecked(
+        &mut self,
+        copy_buffer_info: impl Into<CopyBufferInfo>,
+    ) -> &mut Self {
+        let copy_buffer_info = copy_buffer_info.into();
+        let CopyBufferInfo {
+            src_buffer,
+            dst_buffer,
+            regions,
+            _ne: _,
+        } = &copy_buffer_info;
+
+        self.add_command(
+            "copy_buffer",
+            regions
+                .iter()
+                .flat_map(|region| {
+                    let &BufferCopy {
+                        src_offset,
+                        dst_offset,
+                        size,
+                        _ne: _,
+                    } = region;
+
+                    [
+                        (
+                            ResourceInCommand::Source.into(),
+                            Resource::Buffer {
+                                buffer: src_buffer.clone(),
+                                range: src_offset..src_offset + size,
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_READ,
+                                    exclusive: false,
+                                },
+                            },
+                        ),
+                        (
+                            ResourceInCommand::Destination.into(),
+                            Resource::Buffer {
+                                buffer: dst_buffer.clone(),
+                                range: dst_offset..dst_offset + size,
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_WRITE,
+                                    exclusive: true,
+                                },
+                            },
+                        ),
+                    ]
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.copy_buffer(&copy_buffer_info);
+            },
+        );
+
+        self
+    }
+
     /// Copies data from an image to another image.
     ///
     /// There are several restrictions:
@@ -205,7 +264,7 @@ where
         self.validate_copy_image(&copy_image_info)?;
 
         unsafe {
-            self.inner.copy_image(copy_image_info)?;
+            self.copy_image_unchecked(copy_image_info);
         }
 
         Ok(self)
@@ -215,7 +274,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdCopyImage2-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -884,6 +943,71 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_image_unchecked(&mut self, copy_image_info: CopyImageInfo) -> &mut Self {
+        let &CopyImageInfo {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = &copy_image_info;
+
+        self.add_command(
+            "copy_image",
+            regions
+                .iter()
+                .flat_map(|region| {
+                    let &ImageCopy {
+                        ref src_subresource,
+                        src_offset: _,
+                        ref dst_subresource,
+                        dst_offset: _,
+                        extent: _,
+                        _ne: _,
+                    } = region;
+
+                    [
+                        (
+                            ResourceInCommand::Source.into(),
+                            Resource::Image {
+                                image: src_image.clone(),
+                                subresource_range: src_subresource.clone().into(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_READ,
+                                    exclusive: false,
+                                },
+                                start_layout: src_image_layout,
+                                end_layout: src_image_layout,
+                            },
+                        ),
+                        (
+                            ResourceInCommand::Destination.into(),
+                            Resource::Image {
+                                image: dst_image.clone(),
+                                subresource_range: dst_subresource.clone().into(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_WRITE,
+                                    exclusive: true,
+                                },
+                                start_layout: dst_image_layout,
+                                end_layout: dst_image_layout,
+                            },
+                        ),
+                    ]
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.copy_image(&copy_image_info);
+            },
+        );
+
+        self
+    }
+
     /// Copies from a buffer to an image.
     pub fn copy_buffer_to_image(
         &mut self,
@@ -892,7 +1016,7 @@ where
         self.validate_copy_buffer_to_image(&copy_buffer_to_image_info)?;
 
         unsafe {
-            self.inner.copy_buffer_to_image(copy_buffer_to_image_info)?;
+            self.copy_buffer_to_image_unchecked(copy_buffer_to_image_info);
         }
 
         Ok(self)
@@ -905,7 +1029,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdCopyBufferToImage2-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -1326,6 +1450,73 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_buffer_to_image_unchecked(
+        &mut self,
+        copy_buffer_to_image_info: CopyBufferToImageInfo,
+    ) -> &mut Self {
+        let &CopyBufferToImageInfo {
+            ref src_buffer,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = &copy_buffer_to_image_info;
+
+        self.add_command(
+            "copy_buffer_to_image",
+            regions
+                .iter()
+                .flat_map(|region| {
+                    let &BufferImageCopy {
+                        buffer_offset,
+                        buffer_row_length: _,
+                        buffer_image_height: _,
+                        ref image_subresource,
+                        image_offset: _,
+                        image_extent: _,
+                        _ne: _,
+                    } = region;
+
+                    [
+                        (
+                            ResourceInCommand::Source.into(),
+                            Resource::Buffer {
+                                buffer: src_buffer.clone(),
+                                range: buffer_offset
+                                    ..buffer_offset + region.buffer_copy_size(dst_image.format()),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_READ,
+                                    exclusive: false,
+                                },
+                            },
+                        ),
+                        (
+                            ResourceInCommand::Destination.into(),
+                            Resource::Image {
+                                image: dst_image.clone(),
+                                subresource_range: image_subresource.clone().into(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_WRITE,
+                                    exclusive: true,
+                                },
+                                start_layout: dst_image_layout,
+                                end_layout: dst_image_layout,
+                            },
+                        ),
+                    ]
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.copy_buffer_to_image(&copy_buffer_to_image_info);
+            },
+        );
+
+        self
+    }
+
     /// Copies from an image to a buffer.
     pub fn copy_image_to_buffer(
         &mut self,
@@ -1334,7 +1525,7 @@ where
         self.validate_copy_image_to_buffer(&copy_image_to_buffer_info)?;
 
         unsafe {
-            self.inner.copy_image_to_buffer(copy_image_to_buffer_info)?;
+            self.copy_image_to_buffer_unchecked(copy_image_to_buffer_info);
         }
 
         Ok(self)
@@ -1347,7 +1538,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdCopyImageToBuffer2-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -1757,6 +1948,73 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_image_to_buffer_unchecked(
+        &mut self,
+        copy_image_to_buffer_info: CopyImageToBufferInfo,
+    ) -> &mut Self {
+        let &CopyImageToBufferInfo {
+            ref src_image,
+            src_image_layout,
+            ref dst_buffer,
+            ref regions,
+            _ne: _,
+        } = &copy_image_to_buffer_info;
+
+        self.add_command(
+            "copy_image_to_buffer",
+            regions
+                .iter()
+                .flat_map(|region| {
+                    let &BufferImageCopy {
+                        buffer_offset,
+                        buffer_row_length: _,
+                        buffer_image_height: _,
+                        ref image_subresource,
+                        image_offset: _,
+                        image_extent: _,
+                        _ne: _,
+                    } = region;
+
+                    [
+                        (
+                            ResourceInCommand::Source.into(),
+                            Resource::Image {
+                                image: src_image.clone(),
+                                subresource_range: image_subresource.clone().into(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_READ,
+                                    exclusive: false,
+                                },
+                                start_layout: src_image_layout,
+                                end_layout: src_image_layout,
+                            },
+                        ),
+                        (
+                            ResourceInCommand::Destination.into(),
+                            Resource::Buffer {
+                                buffer: dst_buffer.clone(),
+                                range: buffer_offset
+                                    ..buffer_offset + region.buffer_copy_size(src_image.format()),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_WRITE,
+                                    exclusive: true,
+                                },
+                            },
+                        ),
+                    ]
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.copy_image_to_buffer(&copy_image_to_buffer_info);
+            },
+        );
+
+        self
+    }
+
     /// Blits an image to another.
     ///
     /// A *blit* is similar to an image copy operation, except that the portion of the image that
@@ -1791,7 +2049,7 @@ where
         self.validate_blit_image(&blit_image_info)?;
 
         unsafe {
-            self.inner.blit_image(blit_image_info)?;
+            self.blit_image_unchecked(blit_image_info);
         }
 
         Ok(self)
@@ -1801,7 +2059,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdBlitImage2-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -2289,6 +2547,71 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn blit_image_unchecked(&mut self, blit_image_info: BlitImageInfo) -> &mut Self {
+        let &BlitImageInfo {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            filter: _,
+            _ne: _,
+        } = &blit_image_info;
+
+        self.add_command(
+            "blit_image",
+            regions
+                .iter()
+                .flat_map(|region| {
+                    let &ImageBlit {
+                        ref src_subresource,
+                        src_offsets: _,
+                        ref dst_subresource,
+                        dst_offsets: _,
+                        _ne: _,
+                    } = region;
+
+                    [
+                        (
+                            ResourceInCommand::Source.into(),
+                            Resource::Image {
+                                image: src_image.clone(),
+                                subresource_range: src_subresource.clone().into(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_READ,
+                                    exclusive: false,
+                                },
+                                start_layout: src_image_layout,
+                                end_layout: src_image_layout,
+                            },
+                        ),
+                        (
+                            ResourceInCommand::Destination.into(),
+                            Resource::Image {
+                                image: dst_image.clone(),
+                                subresource_range: dst_subresource.clone().into(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_WRITE,
+                                    exclusive: true,
+                                },
+                                start_layout: dst_image_layout,
+                                end_layout: dst_image_layout,
+                            },
+                        ),
+                    ]
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.blit_image(&blit_image_info);
+            },
+        );
+
+        self
+    }
+
     /// Resolves a multisampled image into a single-sampled image.
     ///
     /// # Panics
@@ -2302,7 +2625,7 @@ where
         self.validate_resolve_image(&resolve_image_info)?;
 
         unsafe {
-            self.inner.resolve_image(resolve_image_info)?;
+            self.resolve_image_unchecked(resolve_image_info);
         }
 
         Ok(self)
@@ -2315,7 +2638,7 @@ where
         let device = self.device();
 
         // VUID-vkCmdResolveImage2-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
@@ -2562,536 +2885,12 @@ where
 
         Ok(())
     }
-}
 
-impl SyncCommandBufferBuilder {
-    /// Calls `vkCmdCopyBuffer` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn copy_buffer(
-        &mut self,
-        copy_buffer_info: CopyBufferInfo,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            copy_buffer_info: CopyBufferInfo,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "copy_buffer"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.copy_buffer(&self.copy_buffer_info);
-            }
-        }
-
-        let CopyBufferInfo {
-            src_buffer,
-            dst_buffer,
-            regions,
-            _ne: _,
-        } = &copy_buffer_info;
-
-        let command_index = self.commands.len();
-        let command_name = "copy_buffer";
-        let resources: SmallVec<[_; 8]> = regions
-            .iter()
-            .flat_map(|region| {
-                let &BufferCopy {
-                    src_offset,
-                    dst_offset,
-                    size,
-                    _ne: _,
-                } = region;
-
-                [
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Source,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Buffer {
-                            buffer: src_buffer.clone(),
-                            range: src_offset..src_offset + size,
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_READ,
-                                exclusive: false,
-                            },
-                        },
-                    ),
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Destination,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Buffer {
-                            buffer: dst_buffer.clone(),
-                            range: dst_offset..dst_offset + size,
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_WRITE,
-                                exclusive: true,
-                            },
-                        },
-                    ),
-                ]
-            })
-            .collect();
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { copy_buffer_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdCopyImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn copy_image(
-        &mut self,
-        copy_image_info: CopyImageInfo,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            copy_image_info: CopyImageInfo,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "copy_buffer_to_image"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.copy_image(&self.copy_image_info);
-            }
-        }
-
-        let &CopyImageInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            _ne: _,
-        } = &copy_image_info;
-
-        let command_index = self.commands.len();
-        let command_name = "copy_image";
-        let resources: SmallVec<[_; 8]> = regions
-            .iter()
-            .flat_map(|region| {
-                let &ImageCopy {
-                    ref src_subresource,
-                    src_offset: _,
-                    ref dst_subresource,
-                    dst_offset: _,
-                    extent: _,
-                    _ne: _,
-                } = region;
-
-                [
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Source,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: src_image.clone(),
-                            subresource_range: src_subresource.clone().into(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_READ,
-                                exclusive: false,
-                            },
-                            start_layout: src_image_layout,
-                            end_layout: src_image_layout,
-                        },
-                    ),
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Destination,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: dst_image.clone(),
-                            subresource_range: dst_subresource.clone().into(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_WRITE,
-                                exclusive: true,
-                            },
-                            start_layout: dst_image_layout,
-                            end_layout: dst_image_layout,
-                        },
-                    ),
-                ]
-            })
-            .collect();
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { copy_image_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdCopyBufferToImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn copy_buffer_to_image(
-        &mut self,
-        copy_buffer_to_image_info: CopyBufferToImageInfo,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            copy_buffer_to_image_info: CopyBufferToImageInfo,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "copy_buffer_to_image"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.copy_buffer_to_image(&self.copy_buffer_to_image_info);
-            }
-        }
-
-        let &CopyBufferToImageInfo {
-            ref src_buffer,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            _ne: _,
-        } = &copy_buffer_to_image_info;
-
-        let command_index = self.commands.len();
-        let command_name = "copy_buffer_to_image";
-        let resources: SmallVec<[_; 8]> = regions
-            .iter()
-            .flat_map(|region| {
-                let &BufferImageCopy {
-                    buffer_offset,
-                    buffer_row_length: _,
-                    buffer_image_height: _,
-                    ref image_subresource,
-                    image_offset: _,
-                    image_extent: _,
-                    _ne: _,
-                } = region;
-
-                [
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Source,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Buffer {
-                            buffer: src_buffer.clone(),
-                            range: buffer_offset
-                                ..buffer_offset + region.buffer_copy_size(dst_image.format()),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_READ,
-                                exclusive: false,
-                            },
-                        },
-                    ),
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Destination,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: dst_image.clone(),
-                            subresource_range: image_subresource.clone().into(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_WRITE,
-                                exclusive: true,
-                            },
-                            start_layout: dst_image_layout,
-                            end_layout: dst_image_layout,
-                        },
-                    ),
-                ]
-            })
-            .collect();
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            copy_buffer_to_image_info,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdCopyImageToBuffer` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn copy_image_to_buffer(
-        &mut self,
-        copy_image_to_buffer_info: CopyImageToBufferInfo,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            copy_image_to_buffer_info: CopyImageToBufferInfo,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "copy_image_to_buffer"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.copy_image_to_buffer(&self.copy_image_to_buffer_info);
-            }
-        }
-
-        let &CopyImageToBufferInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_buffer,
-            ref regions,
-            _ne: _,
-        } = &copy_image_to_buffer_info;
-
-        let command_index = self.commands.len();
-        let command_name = "copy_image_to_buffer";
-        let resources: SmallVec<[_; 8]> = regions
-            .iter()
-            .flat_map(|region| {
-                let &BufferImageCopy {
-                    buffer_offset,
-                    buffer_row_length: _,
-                    buffer_image_height: _,
-                    ref image_subresource,
-                    image_offset: _,
-                    image_extent: _,
-                    _ne: _,
-                } = region;
-
-                [
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Source,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: src_image.clone(),
-                            subresource_range: image_subresource.clone().into(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_READ,
-                                exclusive: false,
-                            },
-                            start_layout: src_image_layout,
-                            end_layout: src_image_layout,
-                        },
-                    ),
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Destination,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Buffer {
-                            buffer: dst_buffer.clone(),
-                            range: buffer_offset
-                                ..buffer_offset + region.buffer_copy_size(src_image.format()),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_WRITE,
-                                exclusive: true,
-                            },
-                        },
-                    ),
-                ]
-            })
-            .collect();
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            copy_image_to_buffer_info,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdBlitImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn blit_image(
-        &mut self,
-        blit_image_info: BlitImageInfo,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            blit_image_info: BlitImageInfo,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "blit_image"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.blit_image(&self.blit_image_info);
-            }
-        }
-
-        let &BlitImageInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            filter: _,
-            _ne: _,
-        } = &blit_image_info;
-
-        let command_index = self.commands.len();
-        let command_name = "blit_image";
-        let resources: SmallVec<[_; 8]> = regions
-            .iter()
-            .flat_map(|region| {
-                let &ImageBlit {
-                    ref src_subresource,
-                    src_offsets: _,
-                    ref dst_subresource,
-                    dst_offsets: _,
-                    _ne: _,
-                } = region;
-
-                [
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Source,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: src_image.clone(),
-                            subresource_range: src_subresource.clone().into(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_READ,
-                                exclusive: false,
-                            },
-                            start_layout: src_image_layout,
-                            end_layout: src_image_layout,
-                        },
-                    ),
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Destination,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: dst_image.clone(),
-                            subresource_range: dst_subresource.clone().into(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_WRITE,
-                                exclusive: true,
-                            },
-                            start_layout: dst_image_layout,
-                            end_layout: dst_image_layout,
-                        },
-                    ),
-                ]
-            })
-            .collect();
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { blit_image_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdResolveImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn resolve_image(
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn resolve_image_unchecked(
         &mut self,
         resolve_image_info: ResolveImageInfo,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            resolve_image_info: ResolveImageInfo,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "resolve_image"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.resolve_image(&self.resolve_image_info);
-            }
-        }
-
+    ) -> &mut Self {
         let &ResolveImageInfo {
             ref src_image,
             src_image_layout,
@@ -3101,84 +2900,71 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &resolve_image_info;
 
-        let command_index = self.commands.len();
-        let command_name = "resolve_image";
-        let resources: SmallVec<[_; 8]> = regions
-            .iter()
-            .flat_map(|region| {
-                let &ImageResolve {
-                    ref src_subresource,
-                    src_offset: _,
-                    ref dst_subresource,
-                    dst_offset: _,
-                    extent: _,
-                    _ne: _,
-                } = region;
+        self.add_command(
+            "resolve_image",
+            regions
+                .iter()
+                .flat_map(|region| {
+                    let &ImageResolve {
+                        ref src_subresource,
+                        src_offset: _,
+                        ref dst_subresource,
+                        dst_offset: _,
+                        extent: _,
+                        _ne: _,
+                    } = region;
 
-                [
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Source,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: src_image.clone(),
-                            subresource_range: src_subresource.clone().into(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_READ,
-                                exclusive: false,
+                    [
+                        (
+                            ResourceInCommand::Source.into(),
+                            Resource::Image {
+                                image: src_image.clone(),
+                                subresource_range: src_subresource.clone().into(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_READ,
+                                    exclusive: false,
+                                },
+                                start_layout: src_image_layout,
+                                end_layout: src_image_layout,
                             },
-                            start_layout: src_image_layout,
-                            end_layout: src_image_layout,
-                        },
-                    ),
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::Destination,
-                            secondary_use_ref: None,
-                        },
-                        Resource::Image {
-                            image: dst_image.clone(),
-                            subresource_range: dst_subresource.clone().into(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_WRITE,
-                                exclusive: true,
+                        ),
+                        (
+                            ResourceInCommand::Destination.into(),
+                            Resource::Image {
+                                image: dst_image.clone(),
+                                subresource_range: dst_subresource.clone().into(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages::ALL_TRANSFER,
+                                    access: AccessFlags::TRANSFER_WRITE,
+                                    exclusive: true,
+                                },
+                                start_layout: dst_image_layout,
+                                end_layout: dst_image_layout,
                             },
-                            start_layout: dst_image_layout,
-                            end_layout: dst_image_layout,
-                        },
-                    ),
-                ]
-            })
-            .collect();
+                        ),
+                    ]
+                })
+                .collect(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.resolve_image(&resolve_image_info);
+            },
+        );
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { resolve_image_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
+        self
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Calls `vkCmdCopyBuffer` on the builder.
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_buffer(&mut self, copy_buffer_info: &CopyBufferInfo) {
+    pub unsafe fn copy_buffer(&mut self, copy_buffer_info: &CopyBufferInfo) -> &mut Self {
         let CopyBufferInfo {
             src_buffer,
             dst_buffer,
@@ -3187,13 +2973,13 @@ impl UnsafeCommandBufferBuilder {
         } = copy_buffer_info;
 
         if regions.is_empty() {
-            return;
+            return self;
         }
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3
-            || self.device.enabled_extensions().khr_copy_commands2
+        if self.device().api_version() >= Version::V1_3
+            || self.device().enabled_extensions().khr_copy_commands2
         {
             let regions: SmallVec<[_; 8]> = regions
                 .iter()
@@ -3222,10 +3008,10 @@ impl UnsafeCommandBufferBuilder {
                 ..Default::default()
             };
 
-            if self.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_buffer2)(self.handle, &copy_buffer_info);
+            if self.device().api_version() >= Version::V1_3 {
+                (fns.v1_3.cmd_copy_buffer2)(self.handle(), &copy_buffer_info);
             } else {
-                (fns.khr_copy_commands2.cmd_copy_buffer2_khr)(self.handle, &copy_buffer_info);
+                (fns.khr_copy_commands2.cmd_copy_buffer2_khr)(self.handle(), &copy_buffer_info);
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
@@ -3247,13 +3033,15 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             (fns.v1_0.cmd_copy_buffer)(
-                self.handle,
+                self.handle(),
                 src_buffer.buffer().handle(),
                 dst_buffer.buffer().handle(),
                 regions.len() as u32,
                 regions.as_ptr(),
             );
         }
+
+        self
     }
 
     /// Calls `vkCmdCopyImage` on the builder.
@@ -3261,7 +3049,7 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_image(&mut self, copy_image_info: &CopyImageInfo) {
+    pub unsafe fn copy_image(&mut self, copy_image_info: &CopyImageInfo) -> &mut Self {
         let &CopyImageInfo {
             ref src_image,
             src_image_layout,
@@ -3272,19 +3060,19 @@ impl UnsafeCommandBufferBuilder {
         } = copy_image_info;
 
         if regions.is_empty() {
-            return;
+            return self;
         }
 
         let src_image_inner = src_image.inner();
         let dst_image_inner = dst_image.inner();
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3
-            || self.device.enabled_extensions().khr_copy_commands2
+        if self.device().api_version() >= Version::V1_3
+            || self.device().enabled_extensions().khr_copy_commands2
         {
             let regions: SmallVec<[_; 8]> = regions
-                .into_iter()
+                .iter()
                 .map(|region| {
                     let &ImageCopy {
                         ref src_subresource,
@@ -3328,14 +3116,14 @@ impl UnsafeCommandBufferBuilder {
                 ..Default::default()
             };
 
-            if self.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_image2)(self.handle, &copy_image_info);
+            if self.device().api_version() >= Version::V1_3 {
+                (fns.v1_3.cmd_copy_image2)(self.handle(), &copy_image_info);
             } else {
-                (fns.khr_copy_commands2.cmd_copy_image2_khr)(self.handle, &copy_image_info);
+                (fns.khr_copy_commands2.cmd_copy_image2_khr)(self.handle(), &copy_image_info);
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
-                .into_iter()
+                .iter()
                 .map(|region| {
                     let &ImageCopy {
                         ref src_subresource,
@@ -3369,7 +3157,7 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             (fns.v1_0.cmd_copy_image)(
-                self.handle,
+                self.handle(),
                 src_image_inner.handle(),
                 src_image_layout.into(),
                 dst_image_inner.handle(),
@@ -3378,6 +3166,8 @@ impl UnsafeCommandBufferBuilder {
                 regions.as_ptr(),
             );
         }
+
+        self
     }
 
     /// Calls `vkCmdCopyBufferToImage` on the builder.
@@ -3388,7 +3178,7 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn copy_buffer_to_image(
         &mut self,
         copy_buffer_to_image_info: &CopyBufferToImageInfo,
-    ) {
+    ) -> &mut Self {
         let &CopyBufferToImageInfo {
             ref src_buffer,
             ref dst_image,
@@ -3398,15 +3188,15 @@ impl UnsafeCommandBufferBuilder {
         } = copy_buffer_to_image_info;
 
         if regions.is_empty() {
-            return;
+            return self;
         }
 
         let dst_image_inner = dst_image.inner();
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3
-            || self.device.enabled_extensions().khr_copy_commands2
+        if self.device().api_version() >= Version::V1_3
+            || self.device().enabled_extensions().khr_copy_commands2
         {
             let regions: SmallVec<[_; 8]> = regions
                 .iter()
@@ -3450,11 +3240,11 @@ impl UnsafeCommandBufferBuilder {
                 ..Default::default()
             };
 
-            if self.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_buffer_to_image2)(self.handle, &copy_buffer_to_image_info);
+            if self.device().api_version() >= Version::V1_3 {
+                (fns.v1_3.cmd_copy_buffer_to_image2)(self.handle(), &copy_buffer_to_image_info);
             } else {
                 (fns.khr_copy_commands2.cmd_copy_buffer_to_image2_khr)(
-                    self.handle,
+                    self.handle(),
                     &copy_buffer_to_image_info,
                 );
             }
@@ -3492,7 +3282,7 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             (fns.v1_0.cmd_copy_buffer_to_image)(
-                self.handle,
+                self.handle(),
                 src_buffer.buffer().handle(),
                 dst_image_inner.handle(),
                 dst_image_layout.into(),
@@ -3500,6 +3290,8 @@ impl UnsafeCommandBufferBuilder {
                 regions.as_ptr(),
             );
         }
+
+        self
     }
 
     /// Calls `vkCmdCopyImageToBuffer` on the builder.
@@ -3510,7 +3302,7 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn copy_image_to_buffer(
         &mut self,
         copy_image_to_buffer_info: &CopyImageToBufferInfo,
-    ) {
+    ) -> &mut Self {
         let &CopyImageToBufferInfo {
             ref src_image,
             src_image_layout,
@@ -3520,15 +3312,15 @@ impl UnsafeCommandBufferBuilder {
         } = copy_image_to_buffer_info;
 
         if regions.is_empty() {
-            return;
+            return self;
         }
 
         let src_image_inner = src_image.inner();
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3
-            || self.device.enabled_extensions().khr_copy_commands2
+        if self.device().api_version() >= Version::V1_3
+            || self.device().enabled_extensions().khr_copy_commands2
         {
             let regions: SmallVec<[_; 8]> = regions
                 .iter()
@@ -3572,11 +3364,11 @@ impl UnsafeCommandBufferBuilder {
                 ..Default::default()
             };
 
-            if self.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_image_to_buffer2)(self.handle, &copy_image_to_buffer_info);
+            if self.device().api_version() >= Version::V1_3 {
+                (fns.v1_3.cmd_copy_image_to_buffer2)(self.handle(), &copy_image_to_buffer_info);
             } else {
                 (fns.khr_copy_commands2.cmd_copy_image_to_buffer2_khr)(
-                    self.handle,
+                    self.handle(),
                     &copy_image_to_buffer_info,
                 );
             }
@@ -3614,7 +3406,7 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             (fns.v1_0.cmd_copy_image_to_buffer)(
-                self.handle,
+                self.handle(),
                 src_image_inner.handle(),
                 src_image_layout.into(),
                 dst_buffer.buffer().handle(),
@@ -3622,6 +3414,8 @@ impl UnsafeCommandBufferBuilder {
                 regions.as_ptr(),
             );
         }
+
+        self
     }
 
     /// Calls `vkCmdBlitImage` on the builder.
@@ -3629,7 +3423,7 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn blit_image(&mut self, blit_image_info: &BlitImageInfo) {
+    pub unsafe fn blit_image(&mut self, blit_image_info: &BlitImageInfo) -> &mut Self {
         let &BlitImageInfo {
             ref src_image,
             src_image_layout,
@@ -3641,19 +3435,19 @@ impl UnsafeCommandBufferBuilder {
         } = blit_image_info;
 
         if regions.is_empty() {
-            return;
+            return self;
         }
 
         let src_image_inner = src_image.inner();
         let dst_image_inner = dst_image.inner();
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3
-            || self.device.enabled_extensions().khr_copy_commands2
+        if self.device().api_version() >= Version::V1_3
+            || self.device().enabled_extensions().khr_copy_commands2
         {
             let regions: SmallVec<[_; 8]> = regions
-                .into_iter()
+                .iter()
                 .map(|region| {
                     let &ImageBlit {
                         ref src_subresource,
@@ -3706,14 +3500,14 @@ impl UnsafeCommandBufferBuilder {
                 ..Default::default()
             };
 
-            if self.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_blit_image2)(self.handle, &blit_image_info);
+            if self.device().api_version() >= Version::V1_3 {
+                (fns.v1_3.cmd_blit_image2)(self.handle(), &blit_image_info);
             } else {
-                (fns.khr_copy_commands2.cmd_blit_image2_khr)(self.handle, &blit_image_info);
+                (fns.khr_copy_commands2.cmd_blit_image2_khr)(self.handle(), &blit_image_info);
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
-                .into_iter()
+                .iter()
                 .map(|region| {
                     let &ImageBlit {
                         ref src_subresource,
@@ -3755,7 +3549,7 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             (fns.v1_0.cmd_blit_image)(
-                self.handle,
+                self.handle(),
                 src_image_inner.handle(),
                 src_image_layout.into(),
                 dst_image_inner.handle(),
@@ -3765,6 +3559,8 @@ impl UnsafeCommandBufferBuilder {
                 filter.into(),
             );
         }
+
+        self
     }
 
     /// Calls `vkCmdResolveImage` on the builder.
@@ -3772,7 +3568,7 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn resolve_image(&mut self, resolve_image_info: &ResolveImageInfo) {
+    pub unsafe fn resolve_image(&mut self, resolve_image_info: &ResolveImageInfo) -> &mut Self {
         let &ResolveImageInfo {
             ref src_image,
             src_image_layout,
@@ -3783,19 +3579,19 @@ impl UnsafeCommandBufferBuilder {
         } = resolve_image_info;
 
         if regions.is_empty() {
-            return;
+            return self;
         }
 
         let src_image_inner = src_image.inner();
         let dst_image_inner = dst_image.inner();
 
-        let fns = self.device.fns();
+        let fns = self.device().fns();
 
-        if self.device.api_version() >= Version::V1_3
-            || self.device.enabled_extensions().khr_copy_commands2
+        if self.device().api_version() >= Version::V1_3
+            || self.device().enabled_extensions().khr_copy_commands2
         {
             let regions: SmallVec<[_; 8]> = regions
-                .into_iter()
+                .iter()
                 .map(|region| {
                     let &ImageResolve {
                         ref src_subresource,
@@ -3839,16 +3635,16 @@ impl UnsafeCommandBufferBuilder {
                 ..Default::default()
             };
 
-            if self.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_resolve_image2)(self.handle, &resolve_image_info);
+            if self.device().api_version() >= Version::V1_3 {
+                (fns.v1_3.cmd_resolve_image2)(self.handle(), &resolve_image_info);
             } else {
-                (fns.khr_copy_commands2.cmd_resolve_image2_khr)(self.handle, &resolve_image_info);
+                (fns.khr_copy_commands2.cmd_resolve_image2_khr)(self.handle(), &resolve_image_info);
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
-                .into_iter()
+                .iter()
                 .map(|region| {
-                    let &ImageResolve {
+                    let ImageResolve {
                         ref src_subresource,
                         src_offset,
                         ref dst_subresource,
@@ -3880,7 +3676,7 @@ impl UnsafeCommandBufferBuilder {
                 .collect();
 
             (fns.v1_0.cmd_resolve_image)(
-                self.handle,
+                self.handle(),
                 src_image_inner.handle(),
                 src_image_layout.into(),
                 dst_image_inner.handle(),
@@ -3889,6 +3685,8 @@ impl UnsafeCommandBufferBuilder {
                 regions.as_ptr(),
             );
         }
+
+        self
     }
 }
 
@@ -4676,8 +4474,6 @@ impl Default for ImageResolve {
 /// Error that can happen when recording a copy command.
 #[derive(Clone, Debug)]
 pub enum CopyError {
-    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
-
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
@@ -4905,19 +4701,11 @@ pub enum CopyError {
     },
 }
 
-impl Error for CopyError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::SyncCommandBufferBuilderError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
+impl Error for CopyError {}
 
 impl Display for CopyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -5211,12 +4999,6 @@ impl Display for CopyError {
                 src_sample_count, dst_sample_count,
             ),
         }
-    }
-}
-
-impl From<SyncCommandBufferBuilderError> for CopyError {
-    fn from(err: SyncCommandBufferBuilderError) -> Self {
-        Self::SyncCommandBufferBuilderError(err)
     }
 }
 

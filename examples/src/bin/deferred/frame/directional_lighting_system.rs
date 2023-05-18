@@ -176,7 +176,7 @@ impl DirectionalLightingSystem {
         normals_input: Arc<dyn ImageViewAbstract + 'static>,
         direction: Vector3<f32>,
         color: [f32; 3],
-    ) -> SecondaryAutoCommandBuffer {
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let push_constants = fs::PushConstants {
             color: [color[0], color[1], color[2], 1.0],
             direction: direction.extend(0.0).into(),
@@ -200,7 +200,7 @@ impl DirectionalLightingSystem {
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
@@ -210,7 +210,7 @@ impl DirectionalLightingSystem {
         )
         .unwrap();
         builder
-            .set_viewport(0, [viewport])
+            .set_viewport(0, [viewport].into_iter().collect())
             .bind_pipeline_graphics(self.pipeline.clone())
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,

@@ -386,7 +386,7 @@ fn main() {
                         SubpassContents::Inline,
                     )
                     .unwrap()
-                    .set_viewport(0, [viewport.clone()])
+                    .set_viewport(0, [viewport.clone()].into_iter().collect())
                     // Draw our buffer
                     .bind_pipeline_graphics(pipeline.clone())
                     .bind_vertex_buffers(0, buffer)

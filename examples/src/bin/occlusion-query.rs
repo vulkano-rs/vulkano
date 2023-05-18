@@ -437,7 +437,7 @@ fn main() {
                     // done outside a render pass.
                     .reset_query_pool(query_pool.clone(), 0..3)
                     .unwrap()
-                    .set_viewport(0, [viewport.clone()])
+                    .set_viewport(0, [viewport.clone()].into_iter().collect())
                     .bind_pipeline_graphics(pipeline.clone())
                     .begin_render_pass(
                         RenderPassBeginInfo {

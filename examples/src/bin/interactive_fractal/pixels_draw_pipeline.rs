@@ -206,9 +206,9 @@ impl PixelsDrawPipeline {
         &self,
         viewport_dimensions: [u32; 2],
         image: Arc<dyn ImageViewAbstract>,
-    ) -> SecondaryAutoCommandBuffer {
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
@@ -225,7 +225,9 @@ impl PixelsDrawPipeline {
                     origin: [0.0, 0.0],
                     dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
                     depth_range: 0.0..1.0,
-                }],
+                }]
+                .into_iter()
+                .collect(),
             )
             .bind_pipeline_graphics(self.pipeline.clone())
             .bind_descriptor_sets(

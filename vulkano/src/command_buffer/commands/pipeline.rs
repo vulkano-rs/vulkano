@@ -11,11 +11,10 @@ use crate::{
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
-        auto::{RenderPassState, RenderPassStateType},
-        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
+        auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
-        DrawIndirectCommand, ResourceInCommand, ResourceUseRef, SubpassContents,
+        DrawIndirectCommand, ResourceInCommand, SubpassContents,
     },
     descriptor_set::{
         layout::DescriptorType, DescriptorBindingResources, DescriptorBufferInfo,
@@ -68,7 +67,7 @@ where
         self.validate_dispatch(group_counts)?;
 
         unsafe {
-            self.inner.dispatch(group_counts)?;
+            self.dispatch_unchecked(group_counts);
         }
 
         Ok(self)
@@ -86,15 +85,17 @@ where
         }
 
         // VUID-vkCmdDispatch-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(PipelineExecutionError::ForbiddenInsideRenderPass);
         }
 
         // VUID-vkCmdDispatch-None-02700
-        let pipeline = match self.state().pipeline_compute() {
-            Some(x) => x.as_ref(),
-            None => return Err(PipelineExecutionError::PipelineNotBound),
-        };
+        let pipeline = self
+            .builder_state
+            .pipeline_compute
+            .as_ref()
+            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .as_ref();
 
         self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
@@ -118,6 +119,29 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn dispatch_unchecked(&mut self, group_counts: [u32; 3]) -> &mut Self {
+        let pipeline = self
+            .builder_state
+            .pipeline_compute
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets(&mut used_resources, pipeline);
+
+        self.add_command(
+            "dispatch",
+            used_resources,
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.dispatch(group_counts);
+            },
+        );
+
+        self
+    }
+
     /// Perform multiple compute operations using a compute pipeline. One dispatch is performed for
     /// each [`DispatchIndirectCommand`] struct in `indirect_buffer`.
     ///
@@ -131,7 +155,7 @@ where
         self.validate_dispatch_indirect(indirect_buffer.as_bytes())?;
 
         unsafe {
-            self.inner.dispatch_indirect(indirect_buffer)?;
+            self.dispatch_indirect_unchecked(indirect_buffer);
         }
 
         Ok(self)
@@ -152,21 +176,50 @@ where
         }
 
         // VUID-vkCmdDispatchIndirect-renderpass
-        if self.render_pass_state.is_some() {
+        if self.builder_state.render_pass.is_some() {
             return Err(PipelineExecutionError::ForbiddenInsideRenderPass);
         }
 
         // VUID-vkCmdDispatchIndirect-None-02700
-        let pipeline = match self.state().pipeline_compute() {
-            Some(x) => x.as_ref(),
-            None => return Err(PipelineExecutionError::PipelineNotBound),
-        };
+        let pipeline = self
+            .builder_state
+            .pipeline_compute
+            .as_ref()
+            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .as_ref();
 
         self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
         self.validate_indirect_buffer(indirect_buffer)?;
 
         Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn dispatch_indirect_unchecked(
+        &mut self,
+        indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
+    ) -> &mut Self {
+        let pipeline = self
+            .builder_state
+            .pipeline_compute
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets(&mut used_resources, pipeline);
+        self.add_indirect_buffer(&mut used_resources, indirect_buffer.as_bytes());
+
+        self.add_command(
+            "dispatch",
+            used_resources,
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.dispatch_indirect(&indirect_buffer);
+            },
+        );
+
+        self
     }
 
     /// Perform a single draw operation using a graphics pipeline.
@@ -190,14 +243,7 @@ where
         self.validate_draw(vertex_count, instance_count, first_vertex, first_instance)?;
 
         unsafe {
-            self.inner
-                .draw(vertex_count, instance_count, first_vertex, first_instance)?;
-        }
-
-        if let RenderPassStateType::BeginRendering(state) =
-            &mut self.render_pass_state.as_mut().unwrap().render_pass
-        {
-            state.pipeline_used = true;
+            self.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance);
         }
 
         Ok(self)
@@ -212,15 +258,18 @@ where
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDraw-renderpass
         let render_pass_state = self
-            .render_pass_state
+            .builder_state
+            .render_pass
             .as_ref()
             .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
 
         // VUID-vkCmdDraw-None-02700
-        let pipeline = match self.state().pipeline_graphics() {
-            Some(x) => x.as_ref(),
-            None => return Err(PipelineExecutionError::PipelineNotBound),
-        };
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .as_ref();
 
         self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
@@ -233,6 +282,42 @@ where
         )?;
 
         Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_unchecked(
+        &mut self,
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    ) -> &mut Self {
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets(&mut used_resources, pipeline);
+        self.add_vertex_buffers(&mut used_resources, pipeline);
+
+        self.add_command(
+            "draw",
+            used_resources,
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.draw(vertex_count, instance_count, first_vertex, first_instance);
+            },
+        );
+
+        self
     }
 
     /// Perform multiple draw operations using a graphics pipeline.
@@ -259,14 +344,7 @@ where
         self.validate_draw_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
         unsafe {
-            self.inner
-                .draw_indirect(indirect_buffer, draw_count, stride)?;
-        }
-
-        if let RenderPassStateType::BeginRendering(state) =
-            &mut self.render_pass_state.as_mut().unwrap().render_pass
-        {
-            state.pipeline_used = true;
+            self.draw_indirect_unchecked(indirect_buffer, draw_count, stride);
         }
 
         Ok(self)
@@ -280,15 +358,18 @@ where
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDrawIndirect-renderpass
         let render_pass_state = self
-            .render_pass_state
+            .builder_state
+            .render_pass
             .as_ref()
             .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
 
         // VUID-vkCmdDrawIndirect-None-02700
-        let pipeline = match self.state().pipeline_graphics() {
-            Some(x) => x.as_ref(),
-            None => return Err(PipelineExecutionError::PipelineNotBound),
-        };
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .as_ref();
 
         self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
@@ -326,6 +407,42 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indirect_unchecked(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets(&mut used_resources, pipeline);
+        self.add_vertex_buffers(&mut used_resources, pipeline);
+        self.add_indirect_buffer(&mut used_resources, indirect_buffer.as_bytes());
+
+        self.add_command(
+            "draw_indirect",
+            used_resources,
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.draw_indirect(&indirect_buffer, draw_count, stride);
+            },
+        );
+
+        self
+    }
+
     /// Perform a single draw operation using a graphics pipeline, using an index buffer.
     ///
     /// The parameters specify the first index and the number of indices in the index buffer that
@@ -361,19 +478,13 @@ where
         )?;
 
         unsafe {
-            self.inner.draw_indexed(
+            self.draw_indexed_unchecked(
                 index_count,
                 instance_count,
                 first_index,
                 vertex_offset,
                 first_instance,
-            )?;
-        }
-
-        if let RenderPassStateType::BeginRendering(state) =
-            &mut self.render_pass_state.as_mut().unwrap().render_pass
-        {
-            state.pipeline_used = true;
+            );
         }
 
         Ok(self)
@@ -391,15 +502,18 @@ where
 
         // VUID-vkCmdDrawIndexed-renderpass
         let render_pass_state = self
-            .render_pass_state
+            .builder_state
+            .render_pass
             .as_ref()
             .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
 
         // VUID-vkCmdDrawIndexed-None-02700
-        let pipeline = match self.state().pipeline_graphics() {
-            Some(x) => x.as_ref(),
-            None => return Err(PipelineExecutionError::PipelineNotBound),
-        };
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .as_ref();
 
         self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
@@ -414,6 +528,50 @@ where
         self.validate_index_buffer(Some((first_index, index_count)))?;
 
         Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indexed_unchecked(
+        &mut self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) -> &mut Self {
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets(&mut used_resources, pipeline);
+        self.add_vertex_buffers(&mut used_resources, pipeline);
+        self.add_index_buffer(&mut used_resources);
+
+        self.add_command(
+            "draw_indexed",
+            used_resources,
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.draw_indexed(
+                    index_count,
+                    instance_count,
+                    first_index,
+                    vertex_offset,
+                    first_instance,
+                );
+            },
+        );
+
+        self
     }
 
     /// Perform multiple draw operations using a graphics pipeline, using an index buffer.
@@ -445,14 +603,7 @@ where
         self.validate_draw_indexed_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
         unsafe {
-            self.inner
-                .draw_indexed_indirect(indirect_buffer, draw_count, stride)?;
-        }
-
-        if let RenderPassStateType::BeginRendering(state) =
-            &mut self.render_pass_state.as_mut().unwrap().render_pass
-        {
-            state.pipeline_used = true;
+            self.draw_indexed_indirect_unchecked(indirect_buffer, draw_count, stride);
         }
 
         Ok(self)
@@ -466,15 +617,18 @@ where
     ) -> Result<(), PipelineExecutionError> {
         // VUID-vkCmdDrawIndexedIndirect-renderpass
         let render_pass_state = self
-            .render_pass_state
+            .builder_state
+            .render_pass
             .as_ref()
             .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
 
         // VUID-vkCmdDrawIndexedIndirect-None-02700
-        let pipeline = match self.state().pipeline_graphics() {
-            Some(x) => x.as_ref(),
-            None => return Err(PipelineExecutionError::PipelineNotBound),
-        };
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .as_ref();
 
         self.validate_pipeline_descriptor_sets(pipeline)?;
         self.validate_pipeline_push_constants(pipeline.layout())?;
@@ -513,14 +667,49 @@ where
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indexed_indirect_unchecked(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets(&mut used_resources, pipeline);
+        self.add_vertex_buffers(&mut used_resources, pipeline);
+        self.add_index_buffer(&mut used_resources);
+        self.add_indirect_buffer(&mut used_resources, indirect_buffer.as_bytes());
+
+        self.add_command(
+            "draw_indexed_indirect",
+            used_resources,
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.draw_indexed_indirect(&indirect_buffer, draw_count, stride);
+            },
+        );
+
+        self
+    }
+
     fn validate_index_buffer(
         &self,
         indices: Option<(u32, u32)>,
     ) -> Result<(), PipelineExecutionError> {
-        let current_state = self.state();
-
         // VUID?
-        let (index_buffer, index_type) = match current_state.index_buffer() {
+        let (index_buffer, index_type) = match &self.builder_state.index_buffer {
             Some(x) => x,
             None => return Err(PipelineExecutionError::IndexBufferNotBound),
         };
@@ -624,18 +813,16 @@ where
             return Ok(());
         }
 
-        let current_state = self.state();
-
         // VUID-vkCmdDispatch-None-02697
-        let bindings_pipeline_layout =
-            match current_state.descriptor_sets_pipeline_layout(pipeline.bind_point()) {
-                Some(x) => x,
-                None => return Err(PipelineExecutionError::PipelineLayoutNotCompatible),
-            };
+        let descriptor_set_state = self
+            .builder_state
+            .descriptor_sets
+            .get(&pipeline.bind_point())
+            .ok_or(PipelineExecutionError::PipelineLayoutNotCompatible)?;
 
         // VUID-vkCmdDispatch-None-02697
         if !pipeline.layout().is_compatible_with(
-            bindings_pipeline_layout,
+            &descriptor_set_state.pipeline_layout,
             pipeline.num_used_descriptor_sets(),
         ) {
             return Err(PipelineExecutionError::PipelineLayoutNotCompatible);
@@ -885,8 +1072,9 @@ where
                     // If the image view isn't actually present in the resources, then just skip it.
                     // It will be caught later by check_resources.
                     let iter = desc_reqs.sampler_with_images.iter().filter_map(|id| {
-                        current_state
-                            .descriptor_set(pipeline.bind_point(), id.set)
+                        descriptor_set_state
+                            .descriptor_sets
+                            .get(&id.set)
                             .and_then(|set| set.resources().binding(id.binding))
                             .and_then(|res| match res {
                                 DescriptorBindingResources::ImageView(elements) => elements
@@ -926,10 +1114,11 @@ where
                 Ok(())
             };
 
-            let set_resources = match current_state.descriptor_set(pipeline.bind_point(), set_num) {
-                Some(x) => x.resources(),
-                None => return Err(PipelineExecutionError::DescriptorSetNotBound { set_num }),
-            };
+            let set_resources = descriptor_set_state
+                .descriptor_sets
+                .get(&set_num)
+                .ok_or(PipelineExecutionError::DescriptorSetNotBound { set_num })?
+                .resources();
 
             let binding_resources = set_resources.binding(binding_num).unwrap();
 
@@ -992,13 +1181,12 @@ where
             return Ok(());
         }
 
-        let current_state = self.state();
-
         // VUID-vkCmdDispatch-maintenance4-06425
-        let constants_pipeline_layout = match current_state.push_constants_pipeline_layout() {
-            Some(x) => x,
-            None => return Err(PipelineExecutionError::PushConstantsMissing),
-        };
+        let constants_pipeline_layout = self
+            .builder_state
+            .push_constants_pipeline_layout
+            .as_ref()
+            .ok_or(PipelineExecutionError::PushConstantsMissing)?;
 
         // VUID-vkCmdDispatch-maintenance4-06425
         if pipeline_layout.handle() != constants_pipeline_layout.handle()
@@ -1008,7 +1196,7 @@ where
             return Err(PipelineExecutionError::PushConstantsNotCompatible);
         }
 
-        let set_bytes = current_state.push_constants();
+        let set_bytes = &self.builder_state.push_constants;
 
         // VUID-vkCmdDispatch-maintenance4-06425
         if !pipeline_layout
@@ -1027,7 +1215,6 @@ where
         pipeline: &GraphicsPipeline,
     ) -> Result<(), PipelineExecutionError> {
         let device = pipeline.device();
-        let current_state = self.state();
 
         // VUID-vkCmdDraw-commandBuffer-02701
         for dynamic_state in pipeline
@@ -1038,13 +1225,13 @@ where
             match dynamic_state {
                 DynamicState::BlendConstants => {
                     // VUID?
-                    if current_state.blend_constants().is_none() {
+                    if self.builder_state.blend_constants.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::ColorWriteEnable => {
                     // VUID-vkCmdDraw-attachmentCount-06667
-                    let enables = if let Some(enables) = current_state.color_write_enable() {
+                    let enables = if let Some(enables) = &self.builder_state.color_write_enable {
                         enables
                     } else {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
@@ -1066,49 +1253,49 @@ where
                 }
                 DynamicState::CullMode => {
                     // VUID?
-                    if current_state.cull_mode().is_none() {
+                    if self.builder_state.cull_mode.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthBias => {
                     // VUID?
-                    if current_state.depth_bias().is_none() {
+                    if self.builder_state.depth_bias.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthBiasEnable => {
                     // VUID-vkCmdDraw-None-04877
-                    if current_state.depth_bias_enable().is_none() {
+                    if self.builder_state.depth_bias_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthBounds => {
                     // VUID?
-                    if current_state.depth_bounds().is_none() {
+                    if self.builder_state.depth_bounds.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthBoundsTestEnable => {
                     // VUID?
-                    if current_state.depth_bounds_test_enable().is_none() {
+                    if self.builder_state.depth_bounds_test_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthCompareOp => {
                     // VUID?
-                    if current_state.depth_compare_op().is_none() {
+                    if self.builder_state.depth_compare_op.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthTestEnable => {
                     // VUID?
-                    if current_state.depth_test_enable().is_none() {
+                    if self.builder_state.depth_test_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::DepthWriteEnable => {
                     // VUID?
-                    if current_state.depth_write_enable().is_none() {
+                    if self.builder_state.depth_write_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
 
@@ -1123,7 +1310,7 @@ where
 
                     for num in 0..discard_rectangle_count {
                         // VUID?
-                        if current_state.discard_rectangle(num).is_none() {
+                        if !self.builder_state.discard_rectangle.contains_key(&num) {
                             return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                         }
                     }
@@ -1132,38 +1319,38 @@ where
                 DynamicState::FragmentShadingRate => todo!(),
                 DynamicState::FrontFace => {
                     // VUID?
-                    if current_state.front_face().is_none() {
+                    if self.builder_state.front_face.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::LineStipple => {
                     // VUID?
-                    if current_state.line_stipple().is_none() {
+                    if self.builder_state.line_stipple.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::LineWidth => {
                     // VUID?
-                    if current_state.line_width().is_none() {
+                    if self.builder_state.line_width.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::LogicOp => {
                     // VUID-vkCmdDraw-logicOp-04878
-                    if current_state.logic_op().is_none() {
+                    if self.builder_state.logic_op.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::PatchControlPoints => {
                     // VUID-vkCmdDraw-None-04875
-                    if current_state.patch_control_points().is_none() {
+                    if self.builder_state.patch_control_points.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
                 DynamicState::PrimitiveRestartEnable => {
                     // VUID-vkCmdDraw-None-04879
                     let primitive_restart_enable =
-                        if let Some(enable) = current_state.primitive_restart_enable() {
+                        if let Some(enable) = self.builder_state.primitive_restart_enable {
                             enable
                         } else {
                             return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
@@ -1173,7 +1360,7 @@ where
                         let topology = match pipeline.input_assembly_state().topology {
                             PartialStateMode::Fixed(topology) => topology,
                             PartialStateMode::Dynamic(_) => {
-                                if let Some(topology) = current_state.primitive_topology() {
+                                if let Some(topology) = self.builder_state.primitive_topology {
                                     topology
                                 } else {
                                     return Err(PipelineExecutionError::DynamicStateNotSet {
@@ -1227,7 +1414,7 @@ where
                 }
                 DynamicState::PrimitiveTopology => {
                     // VUID-vkCmdDraw-primitiveTopology-03420
-                    let topology = if let Some(topology) = current_state.primitive_topology() {
+                    let topology = if let Some(topology) = self.builder_state.primitive_topology {
                         topology
                     } else {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
@@ -1268,7 +1455,7 @@ where
                 }
                 DynamicState::RasterizerDiscardEnable => {
                     // VUID-vkCmdDraw-None-04876
-                    if current_state.rasterizer_discard_enable().is_none() {
+                    if self.builder_state.rasterizer_discard_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
@@ -1279,7 +1466,7 @@ where
                 DynamicState::Scissor => {
                     for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
                         // VUID?
-                        if current_state.scissor(num).is_none() {
+                        if !self.builder_state.scissor.contains_key(&num) {
                             return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                         }
                     }
@@ -1287,7 +1474,7 @@ where
                 DynamicState::ScissorWithCount => {
                     // VUID-vkCmdDraw-scissorCount-03418
                     // VUID-vkCmdDraw-viewportCount-03419
-                    let scissor_count = if let Some(scissors) = current_state.scissor_with_count() {
+                    let scissor_count = if let Some(scissors) = &self.builder_state.scissor_with_count {
                         scissors.len() as u32
                     } else {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
@@ -1309,7 +1496,7 @@ where
                     }
                 }
                 DynamicState::StencilCompareMask => {
-                    let state = current_state.stencil_compare_mask();
+                    let state = self.builder_state.stencil_compare_mask;
 
                     // VUID?
                     if state.front.is_none() || state.back.is_none() {
@@ -1317,7 +1504,7 @@ where
                     }
                 }
                 DynamicState::StencilOp => {
-                    let state = current_state.stencil_op();
+                    let state = self.builder_state.stencil_op;
 
                     // VUID?
                     if state.front.is_none() || state.back.is_none() {
@@ -1325,7 +1512,7 @@ where
                     }
                 }
                 DynamicState::StencilReference => {
-                    let state = current_state.stencil_reference();
+                    let state = self.builder_state.stencil_reference;
 
                     // VUID?
                     if state.front.is_none() || state.back.is_none() {
@@ -1334,14 +1521,14 @@ where
                 }
                 DynamicState::StencilTestEnable => {
                     // VUID?
-                    if current_state.stencil_test_enable().is_none() {
+                    if self.builder_state.stencil_test_enable.is_none() {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
 
                     // TODO: Check if the stencil buffer is writable
                 }
                 DynamicState::StencilWriteMask => {
-                    let state = current_state.stencil_write_mask();
+                    let state = self.builder_state.stencil_write_mask;
 
                     // VUID?
                     if state.front.is_none() || state.back.is_none() {
@@ -1353,7 +1540,7 @@ where
                 DynamicState::Viewport => {
                     for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
                         // VUID?
-                        if current_state.viewport(num).is_none() {
+                        if !self.builder_state.viewport.contains_key(&num) {
                             return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                         }
                     }
@@ -1362,7 +1549,7 @@ where
                 DynamicState::ViewportShadingRatePalette => todo!(),
                 DynamicState::ViewportWithCount => {
                     // VUID-vkCmdDraw-viewportCount-03417
-                    let viewport_count = if let Some(viewports) = current_state.viewport_with_count() {
+                    let viewport_count = if let Some(viewports) = &self.builder_state.viewport_with_count {
                         viewports.len() as u32
                     } else {
                         return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
@@ -1376,7 +1563,7 @@ where
                     } else {
                         // VUID-vkCmdDraw-viewportCount-03419
                         // The scissor count is also dynamic.
-                        if let Some(scissors) = current_state.scissor_with_count() {
+                        if let Some(scissors) = &self.builder_state.scissor_with_count {
                             scissors.len() as u32
                         } else {
                             return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
@@ -1475,43 +1662,48 @@ where
                 }
             }
             (
-                RenderPassStateType::BeginRendering(current_rendering_info),
+                RenderPassStateType::BeginRendering(_),
                 PipelineSubpassType::BeginRendering(pipeline_rendering_info),
             ) => {
                 // VUID-vkCmdDraw-viewMask-06178
-                if pipeline_rendering_info.view_mask != render_pass_state.view_mask {
+                if pipeline_rendering_info.view_mask != render_pass_state.rendering_info.view_mask {
                     return Err(PipelineExecutionError::PipelineViewMaskMismatch {
                         pipeline_view_mask: pipeline_rendering_info.view_mask,
-                        required_view_mask: render_pass_state.view_mask,
+                        required_view_mask: render_pass_state.rendering_info.view_mask,
                     });
                 }
 
                 // VUID-vkCmdDraw-colorAttachmentCount-06179
                 if pipeline_rendering_info.color_attachment_formats.len()
-                    != current_rendering_info.color_attachment_formats.len()
+                    != render_pass_state
+                        .rendering_info
+                        .color_attachment_formats
+                        .len()
                 {
                     return Err(
                         PipelineExecutionError::PipelineColorAttachmentCountMismatch {
                             pipeline_count: pipeline_rendering_info.color_attachment_formats.len()
                                 as u32,
-                            required_count: current_rendering_info.color_attachment_formats.len()
-                                as u32,
+                            required_count: render_pass_state
+                                .rendering_info
+                                .color_attachment_formats
+                                .len() as u32,
                         },
                     );
                 }
 
-                for (color_attachment_index, required_format, pipeline_format) in
-                    current_rendering_info
-                        .color_attachment_formats
-                        .iter()
-                        .zip(
-                            pipeline_rendering_info
-                                .color_attachment_formats
-                                .iter()
-                                .copied(),
-                        )
-                        .enumerate()
-                        .filter_map(|(i, (r, p))| r.map(|r| (i as u32, r, p)))
+                for (color_attachment_index, required_format, pipeline_format) in render_pass_state
+                    .rendering_info
+                    .color_attachment_formats
+                    .iter()
+                    .zip(
+                        pipeline_rendering_info
+                            .color_attachment_formats
+                            .iter()
+                            .copied(),
+                    )
+                    .enumerate()
+                    .filter_map(|(i, (r, p))| r.map(|r| (i as u32, r, p)))
                 {
                     // VUID-vkCmdDraw-colorAttachmentCount-06180
                     if Some(required_format) != pipeline_format {
@@ -1525,7 +1717,8 @@ where
                     }
                 }
 
-                if let Some((required_format, pipeline_format)) = current_rendering_info
+                if let Some((required_format, pipeline_format)) = render_pass_state
+                    .rendering_info
                     .depth_attachment_format
                     .map(|r| (r, pipeline_rendering_info.depth_attachment_format))
                 {
@@ -1540,7 +1733,8 @@ where
                     }
                 }
 
-                if let Some((required_format, pipeline_format)) = current_rendering_info
+                if let Some((required_format, pipeline_format)) = render_pass_state
+                    .rendering_info
                     .stencil_attachment_format
                     .map(|r| (r, pipeline_rendering_info.stencil_attachment_format))
                 {
@@ -1581,11 +1775,10 @@ where
         let vertex_input = pipeline.vertex_input_state();
         let mut vertices_in_buffers: Option<u64> = None;
         let mut instances_in_buffers: Option<u64> = None;
-        let current_state = self.state();
 
         for (&binding_num, binding_desc) in &vertex_input.bindings {
             // VUID-vkCmdDraw-None-04007
-            let vertex_buffer = match current_state.vertex_buffer(binding_num) {
+            let vertex_buffer = match self.builder_state.vertex_buffers.get(&binding_num) {
                 Some(x) => x,
                 None => return Err(PipelineExecutionError::VertexBufferNotBound { binding_num }),
             };
@@ -1679,364 +1872,14 @@ where
 
         Ok(())
     }
-}
-
-impl SyncCommandBufferBuilder {
-    /// Calls `vkCmdDispatch` on the builder.
-    #[inline]
-    pub unsafe fn dispatch(
-        &mut self,
-        group_counts: [u32; 3],
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            group_counts: [u32; 3],
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "dispatch"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.dispatch(self.group_counts);
-            }
-        }
-
-        let command_index = self.commands.len();
-        let command_name = "dispatch";
-        let pipeline = self
-            .current_state
-            .pipeline_compute
-            .as_ref()
-            .unwrap()
-            .as_ref();
-
-        let mut resources = Vec::new();
-        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { group_counts }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdDispatchIndirect` on the builder.
-    #[inline]
-    pub unsafe fn dispatch_indirect(
-        &mut self,
-        indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "dispatch_indirect"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.dispatch_indirect(&self.indirect_buffer);
-            }
-        }
-
-        let command_index = self.commands.len();
-        let command_name = "dispatch_indirect";
-        let pipeline = self
-            .current_state
-            .pipeline_compute
-            .as_ref()
-            .unwrap()
-            .as_ref();
-
-        let mut resources = Vec::new();
-        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
-        self.add_indirect_buffer(
-            &mut resources,
-            command_index,
-            command_name,
-            indirect_buffer.as_bytes(),
-        );
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { indirect_buffer }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdDraw` on the builder.
-    #[inline]
-    pub unsafe fn draw(
-        &mut self,
-        vertex_count: u32,
-        instance_count: u32,
-        first_vertex: u32,
-        first_instance: u32,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            vertex_count: u32,
-            instance_count: u32,
-            first_vertex: u32,
-            first_instance: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "draw"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.draw(
-                    self.vertex_count,
-                    self.instance_count,
-                    self.first_vertex,
-                    self.first_instance,
-                );
-            }
-        }
-
-        let command_index = self.commands.len();
-        let command_name = "draw";
-        let pipeline = self
-            .current_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
-
-        let mut resources = Vec::new();
-        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
-        self.add_vertex_buffers(&mut resources, command_index, command_name, pipeline);
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            vertex_count,
-            instance_count,
-            first_vertex,
-            first_instance,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdDrawIndexed` on the builder.
-    #[inline]
-    pub unsafe fn draw_indexed(
-        &mut self,
-        index_count: u32,
-        instance_count: u32,
-        first_index: u32,
-        vertex_offset: i32,
-        first_instance: u32,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            index_count: u32,
-            instance_count: u32,
-            first_index: u32,
-            vertex_offset: i32,
-            first_instance: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "draw_indexed"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.draw_indexed(
-                    self.index_count,
-                    self.instance_count,
-                    self.first_index,
-                    self.vertex_offset,
-                    self.first_instance,
-                );
-            }
-        }
-
-        let command_index = self.commands.len();
-        let command_name = "draw_indexed";
-        let pipeline = self
-            .current_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
-
-        let mut resources = Vec::new();
-        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
-        self.add_vertex_buffers(&mut resources, command_index, command_name, pipeline);
-        self.add_index_buffer(&mut resources, command_index, command_name);
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            index_count,
-            instance_count,
-            first_index,
-            vertex_offset,
-            first_instance,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdDrawIndirect` on the builder.
-    #[inline]
-    pub unsafe fn draw_indirect(
-        &mut self,
-        indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
-        draw_count: u32,
-        stride: u32,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
-            draw_count: u32,
-            stride: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "draw_indirect"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.draw_indirect(&self.indirect_buffer, self.draw_count, self.stride);
-            }
-        }
-
-        let command_index = self.commands.len();
-        let command_name = "draw_indirect";
-        let pipeline = self
-            .current_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
-
-        let mut resources = Vec::new();
-        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
-        self.add_vertex_buffers(&mut resources, command_index, command_name, pipeline);
-        self.add_indirect_buffer(
-            &mut resources,
-            command_index,
-            command_name,
-            indirect_buffer.as_bytes(),
-        );
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            indirect_buffer,
-            draw_count,
-            stride,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdDrawIndexedIndirect` on the builder.
-    #[inline]
-    pub unsafe fn draw_indexed_indirect(
-        &mut self,
-        indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
-        draw_count: u32,
-        stride: u32,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
-            draw_count: u32,
-            stride: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "draw_indexed_indirect"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.draw_indexed_indirect(&self.indirect_buffer, self.draw_count, self.stride);
-            }
-        }
-
-        let command_index = self.commands.len();
-        let command_name = "draw_indexed_indirect";
-        let pipeline = self
-            .current_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
-
-        let mut resources = Vec::new();
-        self.add_descriptor_sets(&mut resources, command_index, command_name, pipeline);
-        self.add_vertex_buffers(&mut resources, command_index, command_name, pipeline);
-        self.add_index_buffer(&mut resources, command_index, command_name);
-        self.add_indirect_buffer(
-            &mut resources,
-            command_index,
-            command_name,
-            indirect_buffer.as_bytes(),
-        );
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            indirect_buffer,
-            draw_count,
-            stride,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
 
     fn add_descriptor_sets<Pl: Pipeline>(
         &self,
-        resources: &mut Vec<(ResourceUseRef, Resource)>,
-        command_index: usize,
-        command_name: &'static str,
+        used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         pipeline: &Pl,
     ) {
         let descriptor_sets_state = match self
-            .current_state
+            .builder_state
             .descriptor_sets
             .get(&pipeline.bind_point())
         {
@@ -2103,16 +1946,12 @@ impl SyncCommandBufferBuilder {
                 |(index, buffer, range): (u32, Subbuffer<[u8]>, Range<DeviceSize>)| {
                     memory_iter(index).map(move |memory| {
                         (
-                            ResourceUseRef {
-                                command_index,
-                                command_name,
-                                resource_in_command: ResourceInCommand::DescriptorSet {
-                                    set,
-                                    binding,
-                                    index,
-                                },
-                                secondary_use_ref: None,
-                            },
+                            ResourceInCommand::DescriptorSet {
+                                set,
+                                binding,
+                                index,
+                            }
+                            .into(),
                             Resource::Buffer {
                                 buffer: buffer.clone(),
                                 range: range.clone(),
@@ -2129,16 +1968,12 @@ impl SyncCommandBufferBuilder {
             )| {
                 memory_iter(index).map(move |memory| {
                     (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::DescriptorSet {
-                                set,
-                                binding,
-                                index,
-                            },
-                            secondary_use_ref: None,
-                        },
+                        ResourceInCommand::DescriptorSet {
+                            set,
+                            binding,
+                            index,
+                        }
+                        .into(),
                         Resource::Image {
                             image: image.clone(),
                             subresource_range: subresource_range.clone(),
@@ -2160,7 +1995,7 @@ impl SyncCommandBufferBuilder {
                         DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
                     ) {
                         let dynamic_offsets = descriptor_set_state.dynamic_offsets();
-                        resources.extend(
+                        used_resources.extend(
                             (elements.iter().enumerate())
                                 .filter_map(|(index, element)| {
                                     element.as_ref().map(|buffer_info| {
@@ -2179,7 +2014,7 @@ impl SyncCommandBufferBuilder {
                                 .flat_map(buffer_resource),
                         );
                     } else {
-                        resources.extend(
+                        used_resources.extend(
                             (elements.iter().enumerate())
                                 .filter_map(|(index, element)| {
                                     element.as_ref().map(|buffer_info| {
@@ -2192,7 +2027,7 @@ impl SyncCommandBufferBuilder {
                     }
                 }
                 DescriptorBindingResources::BufferView(elements) => {
-                    resources.extend(
+                    used_resources.extend(
                         (elements.iter().enumerate())
                             .filter_map(|(index, element)| {
                                 element.as_ref().map(|buffer_view| {
@@ -2207,7 +2042,7 @@ impl SyncCommandBufferBuilder {
                     );
                 }
                 DescriptorBindingResources::ImageView(elements) => {
-                    resources.extend(
+                    used_resources.extend(
                         (elements.iter().enumerate())
                             .filter_map(|(index, element)| {
                                 element.as_ref().map(|image_view_info| {
@@ -2228,7 +2063,7 @@ impl SyncCommandBufferBuilder {
                     );
                 }
                 DescriptorBindingResources::ImageViewSampler(elements) => {
-                    resources.extend(
+                    used_resources.extend(
                         (elements.iter().enumerate())
                             .filter_map(|(index, element)| {
                                 element.as_ref().map(|(image_view_info, _sampler)| {
@@ -2255,53 +2090,32 @@ impl SyncCommandBufferBuilder {
 
     fn add_vertex_buffers(
         &self,
-        resources: &mut Vec<(ResourceUseRef, Resource)>,
-        command_index: usize,
-        command_name: &'static str,
+        used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         pipeline: &GraphicsPipeline,
     ) {
-        resources.extend(
-            pipeline
-                .vertex_input_state()
-                .bindings
-                .iter()
-                .map(|(&binding, _)| {
-                    let vertex_buffer = &self.current_state.vertex_buffers[&binding];
-                    (
-                        ResourceUseRef {
-                            command_index,
-                            command_name,
-                            resource_in_command: ResourceInCommand::VertexBuffer { binding },
-                            secondary_use_ref: None,
+        used_resources.extend(pipeline.vertex_input_state().bindings.iter().map(
+            |(&binding, _)| {
+                let vertex_buffer = &self.builder_state.vertex_buffers[&binding];
+                (
+                    ResourceInCommand::VertexBuffer { binding }.into(),
+                    Resource::Buffer {
+                        buffer: vertex_buffer.clone(),
+                        range: 0..vertex_buffer.size(), // TODO:
+                        memory: PipelineMemoryAccess {
+                            stages: PipelineStages::VERTEX_INPUT,
+                            access: AccessFlags::VERTEX_ATTRIBUTE_READ,
+                            exclusive: false,
                         },
-                        Resource::Buffer {
-                            buffer: vertex_buffer.clone(),
-                            range: 0..vertex_buffer.size(), // TODO:
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::VERTEX_INPUT,
-                                access: AccessFlags::VERTEX_ATTRIBUTE_READ,
-                                exclusive: false,
-                            },
-                        },
-                    )
-                }),
-        );
+                    },
+                )
+            },
+        ));
     }
 
-    fn add_index_buffer(
-        &self,
-        resources: &mut Vec<(ResourceUseRef, Resource)>,
-        command_index: usize,
-        command_name: &'static str,
-    ) {
-        let index_buffer = &self.current_state.index_buffer.as_ref().unwrap().0;
-        resources.push((
-            ResourceUseRef {
-                command_index,
-                command_name,
-                resource_in_command: ResourceInCommand::IndexBuffer,
-                secondary_use_ref: None,
-            },
+    fn add_index_buffer(&self, used_resources: &mut Vec<(ResourceUseRef2, Resource)>) {
+        let index_buffer = &self.builder_state.index_buffer.as_ref().unwrap().0;
+        used_resources.push((
+            ResourceInCommand::IndexBuffer.into(),
             Resource::Buffer {
                 buffer: index_buffer.clone(),
                 range: 0..index_buffer.size(), // TODO:
@@ -2316,18 +2130,11 @@ impl SyncCommandBufferBuilder {
 
     fn add_indirect_buffer(
         &self,
-        resources: &mut Vec<(ResourceUseRef, Resource)>,
-        command_index: usize,
-        command_name: &'static str,
+        used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         indirect_buffer: &Subbuffer<[u8]>,
     ) {
-        resources.push((
-            ResourceUseRef {
-                command_index,
-                command_name,
-                resource_in_command: ResourceInCommand::IndirectBuffer,
-                secondary_use_ref: None,
-            },
+        used_resources.push((
+            ResourceInCommand::IndirectBuffer.into(),
             Resource::Buffer {
                 buffer: indirect_buffer.clone(),
                 range: 0..indirect_buffer.size(), // TODO:
@@ -2341,43 +2148,38 @@ impl SyncCommandBufferBuilder {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
     /// Calls `vkCmdDispatch` on the builder.
     #[inline]
-    pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) {
-        debug_assert!({
-            let max_group_counts = self
-                .device
-                .physical_device()
-                .properties()
-                .max_compute_work_group_count;
-            group_counts[0] <= max_group_counts[0]
-                && group_counts[1] <= max_group_counts[1]
-                && group_counts[2] <= max_group_counts[2]
-        });
-
-        let fns = self.device.fns();
+    pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_dispatch)(
-            self.handle,
+            self.handle(),
             group_counts[0],
             group_counts[1],
             group_counts[2],
         );
+
+        self
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
     #[inline]
-    pub unsafe fn dispatch_indirect(&mut self, buffer: &Subbuffer<[DispatchIndirectCommand]>) {
-        let fns = self.device.fns();
+    pub unsafe fn dispatch_indirect(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DispatchIndirectCommand]>,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_dispatch_indirect)(
+            self.handle(),
+            indirect_buffer.buffer().handle(),
+            indirect_buffer.offset(),
+        );
 
-        debug_assert!(buffer.offset() < buffer.buffer().size());
-        debug_assert!(buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER));
-        debug_assert_eq!(buffer.offset() % 4, 0);
-
-        (fns.v1_0.cmd_dispatch_indirect)(self.handle, buffer.buffer().handle(), buffer.offset());
+        self
     }
 
     /// Calls `vkCmdDraw` on the builder.
@@ -2388,15 +2190,17 @@ impl UnsafeCommandBufferBuilder {
         instance_count: u32,
         first_vertex: u32,
         first_instance: u32,
-    ) {
-        let fns = self.device.fns();
+    ) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_draw)(
-            self.handle,
+            self.handle(),
             vertex_count,
             instance_count,
             first_vertex,
             first_instance,
         );
+
+        self
     }
 
     /// Calls `vkCmdDrawIndexed` on the builder.
@@ -2408,80 +2212,64 @@ impl UnsafeCommandBufferBuilder {
         first_index: u32,
         vertex_offset: i32,
         first_instance: u32,
-    ) {
-        let fns = self.device.fns();
+    ) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_draw_indexed)(
-            self.handle,
+            self.handle(),
             index_count,
             instance_count,
             first_index,
             vertex_offset,
             first_instance,
         );
+
+        self
     }
 
     /// Calls `vkCmdDrawIndirect` on the builder.
     #[inline]
     pub unsafe fn draw_indirect(
         &mut self,
-        buffer: &Subbuffer<[DrawIndirectCommand]>,
+        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
         draw_count: u32,
         stride: u32,
-    ) {
-        let fns = self.device.fns();
-
-        debug_assert!(
-            draw_count == 0
-                || ((stride % 4) == 0)
-                    && stride as usize >= size_of::<ash::vk::DrawIndirectCommand>()
-        );
-
-        debug_assert!(buffer.offset() < buffer.buffer().size());
-        debug_assert!(buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER));
-
+    ) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_draw_indirect)(
-            self.handle,
-            buffer.buffer().handle(),
-            buffer.offset(),
+            self.handle(),
+            indirect_buffer.buffer().handle(),
+            indirect_buffer.offset(),
             draw_count,
             stride,
         );
+
+        self
     }
 
     /// Calls `vkCmdDrawIndexedIndirect` on the builder.
     #[inline]
     pub unsafe fn draw_indexed_indirect(
         &mut self,
-        buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
+        indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
         draw_count: u32,
         stride: u32,
-    ) {
-        let fns = self.device.fns();
-
-        debug_assert!(buffer.offset() < buffer.buffer().size());
-        debug_assert!(buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER));
-
+    ) -> &mut Self {
+        let fns = self.device().fns();
         (fns.v1_0.cmd_draw_indexed_indirect)(
-            self.handle,
-            buffer.buffer().handle(),
-            buffer.offset(),
+            self.handle(),
+            indirect_buffer.buffer().handle(),
+            indirect_buffer.offset(),
             draw_count,
             stride,
         );
+
+        self
     }
 }
 
 /// Error that can happen when recording a bound pipeline execution command.
 #[derive(Debug, Clone)]
 pub enum PipelineExecutionError {
-    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
-
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
@@ -2497,9 +2285,7 @@ pub enum PipelineExecutionError {
     },
 
     /// The pipeline layout requires a descriptor set bound to a set number, but none was bound.
-    DescriptorSetNotBound {
-        set_num: u32,
-    },
+    DescriptorSetNotBound { set_num: u32 },
 
     /// The bound pipeline uses a dynamic color write enable setting, but the number of provided
     /// enable values is less than the number of attachments in the current render subpass.
@@ -2517,14 +2303,10 @@ pub enum PipelineExecutionError {
 
     /// The bound pipeline uses a dynamic primitive topology, but the provided topology is not
     /// compatible with the shader stages in the pipeline.
-    DynamicPrimitiveTopologyInvalid {
-        topology: PrimitiveTopology,
-    },
+    DynamicPrimitiveTopologyInvalid { topology: PrimitiveTopology },
 
     /// The pipeline requires a particular dynamic state, but this state was not set.
-    DynamicStateNotSet {
-        dynamic_state: DynamicState,
-    },
+    DynamicStateNotSet { dynamic_state: DynamicState },
 
     /// The bound pipeline uses a dynamic scissor and/or viewport count, but the scissor count
     /// does not match the viewport count.
@@ -2540,9 +2322,7 @@ pub enum PipelineExecutionError {
     ForbiddenOutsideRenderPass,
 
     /// Operation forbidden inside a render subpass with the specified contents.
-    ForbiddenWithSubpassContents {
-        subpass_contents: SubpassContents,
-    },
+    ForbiddenWithSubpassContents { subpass_contents: SubpassContents },
 
     /// An indexed draw command was recorded, but no index buffer was bound.
     IndexBufferNotBound,
@@ -2558,22 +2338,13 @@ pub enum PipelineExecutionError {
     IndirectBufferMissingUsage,
 
     /// The `max_compute_work_group_count` limit has been exceeded.
-    MaxComputeWorkGroupCountExceeded {
-        requested: [u32; 3],
-        max: [u32; 3],
-    },
+    MaxComputeWorkGroupCountExceeded { requested: [u32; 3], max: [u32; 3] },
 
     /// The `max_draw_indirect_count` limit has been exceeded.
-    MaxDrawIndirectCountExceeded {
-        provided: u32,
-        max: u32,
-    },
+    MaxDrawIndirectCountExceeded { provided: u32, max: u32 },
 
     /// The `max_multiview_instance_index` limit has been exceeded.
-    MaxMultiviewInstanceIndexExceeded {
-        highest_instance: u64,
-        max: u32,
-    },
+    MaxMultiviewInstanceIndexExceeded { highest_instance: u64, max: u32 },
 
     /// The queue family doesn't allow this operation.
     NotSupportedByQueueFamily,
@@ -2616,10 +2387,7 @@ pub enum PipelineExecutionError {
 
     /// The bound graphics pipeline uses a render subpass index that doesn't match the currently
     /// active subpass index.
-    PipelineSubpassMismatch {
-        pipeline: u32,
-        current: u32,
-    },
+    PipelineSubpassMismatch { pipeline: u32, current: u32 },
 
     /// The format of the stencil attachment in the bound pipeline does not match the format of the
     /// stencil attachment in the current render pass.
@@ -2642,9 +2410,7 @@ pub enum PipelineExecutionError {
 
     /// The bound graphics pipeline requires a vertex buffer bound to a binding number, but none
     /// was bound.
-    VertexBufferNotBound {
-        binding_num: u32,
-    },
+    VertexBufferNotBound { binding_num: u32 },
 
     /// The number of instances to be drawn exceeds the available number of indices in the
     /// bound vertex buffers used by the pipeline.
@@ -2664,7 +2430,6 @@ pub enum PipelineExecutionError {
 impl Error for PipelineExecutionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::SyncCommandBufferBuilderError(err) => Some(err),
             Self::DescriptorResourceInvalid { error, .. } => Some(error),
             _ => None,
         }
@@ -2674,7 +2439,6 @@ impl Error for PipelineExecutionError {
 impl Display for PipelineExecutionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -2885,12 +2649,6 @@ impl Display for PipelineExecutionError {
                 vertices_needed, vertices_in_buffers,
             ),
         }
-    }
-}
-
-impl From<SyncCommandBufferBuilderError> for PipelineExecutionError {
-    fn from(err: SyncCommandBufferBuilderError) -> Self {
-        Self::SyncCommandBufferBuilderError(err)
     }
 }
 
