@@ -54,7 +54,7 @@
 //!   have compatible definitions, including the push constants, then descriptor sets above *N*
 //!   remain valid.
 //!
-//! [`SyncCommandBufferBuilder`](crate::command_buffer::synced::SyncCommandBufferBuilder) keeps
+//! [`AutoCommandBufferBuilder`](crate::command_buffer::auto::AutoCommandBufferBuilder) keeps
 //! track of this state and will automatically remove descriptor sets that have been invalidated
 //! by incompatible layouts in subsequent binding commands.
 //!

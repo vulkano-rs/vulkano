@@ -7,7 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Contains `SyncCommandBufferBuilder` and `SyncCommandBuffer`.
+//! Contains `AutoCommandBufferBuilder` and the built types `PrimaryCommandBuffer` and
+//! `SecondaryCommandBuffer`.
 //!
 //! # How pipeline stages work in Vulkan
 //!

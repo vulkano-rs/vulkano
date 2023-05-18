@@ -166,10 +166,7 @@ impl GameOfLifeComputePipeline {
     /// Builds the command for a dispatch.
     fn dispatch(
         &self,
-        builder: &mut AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer,
-            StandardCommandBufferAllocator,
-        >,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         life_color: [f32; 4],
         dead_color: [f32; 4],
         // Step determines whether we color or compute life (see branch in the shader)s.
