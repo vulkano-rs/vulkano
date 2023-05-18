@@ -56,7 +56,7 @@
 //! Since barriers are "expensive" (as the queue must block), vulkano attempts to group as many
 //! pipeline barriers as possible into one.
 //!
-//! Adding a command to a sync command buffer builder does not immediately add it to the underlying
+//! Adding a command to an `AutoCommandBufferBuilder` does not immediately add it to the underlying
 //! command buffer builder. Instead the command is added to a queue, and the builder keeps a
 //! prototype of a barrier that must be added before the commands in the queue are flushed.
 //!
