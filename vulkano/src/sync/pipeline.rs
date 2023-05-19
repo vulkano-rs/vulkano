@@ -9,11 +9,15 @@
 
 use crate::{
     buffer::Buffer,
+    descriptor_set::layout::DescriptorType,
     device::QueueFlags,
     image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
+    shader::ShaderStages,
     DeviceSize,
 };
+use ahash::HashMap;
+use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use std::{ops::Range, sync::Arc};
 
@@ -996,6 +1000,276 @@ impl PipelineStageAccess {
                 | PipelineStageAccess::OpticalFlow_OpticalFlowWrite
                 | PipelineStageAccess::MicromapBuild_MicromapWrite
         )
+    }
+
+    #[allow(unused)]
+    pub(crate) fn iter_descriptor_stages(
+        descriptor_type: DescriptorType,
+        stages_read: ShaderStages,
+        stages_write: ShaderStages,
+    ) -> impl Iterator<Item = Self> + 'static {
+        static MAP_READ: Lazy<
+            HashMap<DescriptorType, HashMap<PipelineStage, PipelineStageAccess>>,
+        > = Lazy::new(|| {
+            let uniform_read = [
+                DescriptorType::UniformBuffer,
+                DescriptorType::UniformBufferDynamic,
+            ]
+            .into_iter()
+            .map(|descriptor_type| {
+                (
+                    descriptor_type,
+                    [
+                        (
+                            PipelineStage::VertexShader,
+                            PipelineStageAccess::VertexShader_UniformRead,
+                        ),
+                        (
+                            PipelineStage::TessellationControlShader,
+                            PipelineStageAccess::TessellationControlShader_UniformRead,
+                        ),
+                        (
+                            PipelineStage::TessellationEvaluationShader,
+                            PipelineStageAccess::TessellationControlShader_UniformRead,
+                        ),
+                        (
+                            PipelineStage::GeometryShader,
+                            PipelineStageAccess::GeometryShader_UniformRead,
+                        ),
+                        (
+                            PipelineStage::FragmentShader,
+                            PipelineStageAccess::FragmentShader_UniformRead,
+                        ),
+                        (
+                            PipelineStage::ComputeShader,
+                            PipelineStageAccess::ComputeShader_UniformRead,
+                        ),
+                        (
+                            PipelineStage::RayTracingShader,
+                            PipelineStageAccess::RayTracingShader_UniformRead,
+                        ),
+                        (
+                            PipelineStage::TaskShader,
+                            PipelineStageAccess::TaskShader_UniformRead,
+                        ),
+                        (
+                            PipelineStage::MeshShader,
+                            PipelineStageAccess::MeshShader_UniformRead,
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )
+            });
+
+            let shader_sampled_read = [
+                DescriptorType::CombinedImageSampler,
+                DescriptorType::SampledImage,
+                DescriptorType::UniformTexelBuffer,
+            ]
+            .into_iter()
+            .map(|descriptor_type| {
+                (
+                    descriptor_type,
+                    [
+                        (
+                            PipelineStage::VertexShader,
+                            PipelineStageAccess::VertexShader_ShaderSampledRead,
+                        ),
+                        (
+                            PipelineStage::TessellationControlShader,
+                            PipelineStageAccess::TessellationControlShader_ShaderSampledRead,
+                        ),
+                        (
+                            PipelineStage::TessellationEvaluationShader,
+                            PipelineStageAccess::TessellationControlShader_ShaderSampledRead,
+                        ),
+                        (
+                            PipelineStage::GeometryShader,
+                            PipelineStageAccess::GeometryShader_ShaderSampledRead,
+                        ),
+                        (
+                            PipelineStage::FragmentShader,
+                            PipelineStageAccess::FragmentShader_ShaderSampledRead,
+                        ),
+                        (
+                            PipelineStage::ComputeShader,
+                            PipelineStageAccess::ComputeShader_ShaderSampledRead,
+                        ),
+                        (
+                            PipelineStage::RayTracingShader,
+                            PipelineStageAccess::RayTracingShader_ShaderSampledRead,
+                        ),
+                        (
+                            PipelineStage::TaskShader,
+                            PipelineStageAccess::TaskShader_ShaderSampledRead,
+                        ),
+                        (
+                            PipelineStage::MeshShader,
+                            PipelineStageAccess::MeshShader_ShaderSampledRead,
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )
+            });
+
+            let shader_storage_read = [
+                DescriptorType::StorageImage,
+                DescriptorType::StorageTexelBuffer,
+                DescriptorType::StorageBuffer,
+                DescriptorType::StorageBufferDynamic,
+            ]
+            .into_iter()
+            .map(|descriptor_type| {
+                (
+                    descriptor_type,
+                    [
+                        (
+                            PipelineStage::VertexShader,
+                            PipelineStageAccess::VertexShader_ShaderStorageRead,
+                        ),
+                        (
+                            PipelineStage::TessellationControlShader,
+                            PipelineStageAccess::TessellationControlShader_ShaderStorageRead,
+                        ),
+                        (
+                            PipelineStage::TessellationEvaluationShader,
+                            PipelineStageAccess::TessellationControlShader_ShaderStorageRead,
+                        ),
+                        (
+                            PipelineStage::GeometryShader,
+                            PipelineStageAccess::GeometryShader_ShaderStorageRead,
+                        ),
+                        (
+                            PipelineStage::FragmentShader,
+                            PipelineStageAccess::FragmentShader_ShaderStorageRead,
+                        ),
+                        (
+                            PipelineStage::ComputeShader,
+                            PipelineStageAccess::ComputeShader_ShaderStorageRead,
+                        ),
+                        (
+                            PipelineStage::RayTracingShader,
+                            PipelineStageAccess::RayTracingShader_ShaderStorageRead,
+                        ),
+                        (
+                            PipelineStage::TaskShader,
+                            PipelineStageAccess::TaskShader_ShaderStorageRead,
+                        ),
+                        (
+                            PipelineStage::MeshShader,
+                            PipelineStageAccess::MeshShader_ShaderStorageRead,
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )
+            });
+
+            let input_attachment_read =
+                [DescriptorType::InputAttachment]
+                    .into_iter()
+                    .map(|descriptor_type| {
+                        (
+                            descriptor_type,
+                            [(
+                                PipelineStage::FragmentShader,
+                                PipelineStageAccess::FragmentShader_InputAttachmentRead,
+                            )]
+                            .into_iter()
+                            .collect(),
+                        )
+                    });
+
+            uniform_read
+                .chain(shader_sampled_read)
+                .chain(shader_storage_read)
+                .chain(input_attachment_read)
+                .collect()
+        });
+        static MAP_WRITE: Lazy<
+            HashMap<DescriptorType, HashMap<PipelineStage, PipelineStageAccess>>,
+        > = Lazy::new(|| {
+            let shader_storage_write = [
+                DescriptorType::StorageImage,
+                DescriptorType::StorageTexelBuffer,
+                DescriptorType::StorageBuffer,
+                DescriptorType::StorageBufferDynamic,
+            ]
+            .into_iter()
+            .map(|descriptor_type| {
+                (
+                    descriptor_type,
+                    [
+                        (
+                            PipelineStage::VertexShader,
+                            PipelineStageAccess::VertexShader_ShaderStorageWrite,
+                        ),
+                        (
+                            PipelineStage::TessellationControlShader,
+                            PipelineStageAccess::TessellationControlShader_ShaderStorageWrite,
+                        ),
+                        (
+                            PipelineStage::TessellationEvaluationShader,
+                            PipelineStageAccess::TessellationControlShader_ShaderStorageWrite,
+                        ),
+                        (
+                            PipelineStage::GeometryShader,
+                            PipelineStageAccess::GeometryShader_ShaderStorageWrite,
+                        ),
+                        (
+                            PipelineStage::FragmentShader,
+                            PipelineStageAccess::FragmentShader_ShaderStorageWrite,
+                        ),
+                        (
+                            PipelineStage::ComputeShader,
+                            PipelineStageAccess::ComputeShader_ShaderStorageWrite,
+                        ),
+                        (
+                            PipelineStage::RayTracingShader,
+                            PipelineStageAccess::RayTracingShader_ShaderStorageWrite,
+                        ),
+                        (
+                            PipelineStage::TaskShader,
+                            PipelineStageAccess::TaskShader_ShaderStorageWrite,
+                        ),
+                        (
+                            PipelineStage::MeshShader,
+                            PipelineStageAccess::MeshShader_ShaderStorageWrite,
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )
+            });
+
+            shader_storage_write.collect()
+        });
+
+        [
+            (stages_read, &*MAP_READ, "read"),
+            (stages_write, &*MAP_WRITE, "write"),
+        ]
+        .into_iter()
+        .filter(|(stages, _, _)| !stages.is_empty())
+        .flat_map(move |(stages, descriptor_map, access)| {
+            let stages_map = descriptor_map.get(&descriptor_type).unwrap_or_else(|| {
+                panic!(
+                    "DescriptorType::{:?} does not {} memory",
+                    descriptor_type, access,
+                )
+            });
+
+            PipelineStages::from(stages).into_iter().map(move |stage| {
+                *stages_map.get(&stage).unwrap_or_else(|| {
+                    panic!(
+                        "DescriptorType::{:?} does not {} memory in PipelineStage::{:?}",
+                        descriptor_type, access, stage,
+                    )
+                })
+            })
+        })
     }
 }
 
