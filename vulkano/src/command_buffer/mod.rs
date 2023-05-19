@@ -108,8 +108,6 @@
 //! [pipeline barriers]: CommandBufferBuilder::pipeline_barrier
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
-#[doc(no_inline)]
-pub(crate) use self::standard::{PrimaryCommandBuffer, SecondaryCommandBuffer};
 pub use self::{
     auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
     commands::{
@@ -152,7 +150,6 @@ pub mod allocator;
 pub mod auto;
 mod commands;
 pub mod pool;
-pub(crate) mod standard;
 pub mod sys;
 mod traits;
 

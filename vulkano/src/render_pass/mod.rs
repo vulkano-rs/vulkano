@@ -111,7 +111,6 @@ pub struct RenderPass {
     dependencies: Vec<SubpassDependency>,
     correlated_view_masks: Vec<u32>,
 
-    attachment_uses: Vec<Option<AttachmentUse>>,
     granularity: [u32; 2],
     views_used: u32,
 }
@@ -179,37 +178,13 @@ impl RenderPass {
         } = create_info;
 
         let granularity = Self::get_granularity(&device, handle);
-        let mut attachment_uses: Vec<Option<AttachmentUse>> = vec![None; attachments.len()];
         let mut views_used = 0;
 
-        for (index, subpass_desc) in subpasses.iter().enumerate() {
-            let index = index as u32;
-            let &SubpassDescription {
-                view_mask,
-                ref input_attachments,
-                ref color_attachments,
-                ref resolve_attachments,
-                ref depth_stencil_attachment,
-                ..
-            } = subpass_desc;
-
-            for atch_ref in (input_attachments.iter().flatten())
-                .chain(color_attachments.iter().flatten())
-                .chain(resolve_attachments.iter().flatten())
-                .chain(depth_stencil_attachment.iter())
-            {
-                match &mut attachment_uses[atch_ref.attachment as usize] {
-                    Some(attachment_use) => attachment_use.last_use_subpass = index,
-                    attachment_use @ None => {
-                        *attachment_use = Some(AttachmentUse {
-                            first_use_subpass: index,
-                            last_use_subpass: index,
-                        })
-                    }
-                }
-            }
-
-            views_used = max(views_used, u32::BITS - view_mask.leading_zeros());
+        for subpass_desc in &subpasses {
+            views_used = max(
+                views_used,
+                u32::BITS - subpass_desc.view_mask.leading_zeros(),
+            );
         }
 
         Arc::new(RenderPass {
@@ -222,7 +197,6 @@ impl RenderPass {
             dependencies,
             correlated_view_masks,
 
-            attachment_uses,
             granularity,
             views_used,
         })
@@ -304,7 +278,6 @@ impl RenderPass {
             subpasses: subpasses1,
             dependencies: dependencies1,
             correlated_view_masks: correlated_view_masks1,
-            attachment_uses: _,
             granularity: _,
             views_used: _,
         } = self;
@@ -315,7 +288,6 @@ impl RenderPass {
             attachments: attachments2,
             subpasses: subpasses2,
             dependencies: dependencies2,
-            attachment_uses: _,
             correlated_view_masks: correlated_view_masks2,
             granularity: _,
             views_used: _,
@@ -726,44 +698,6 @@ impl Subpass {
     pub fn is_compatible_with(&self, shader_interface: &ShaderInterface) -> bool {
         self.render_pass
             .is_compatible_with_shader(self.subpass_id, shader_interface)
-    }
-
-    pub(crate) fn load_op(&self, attachment_index: u32) -> Option<LoadOp> {
-        self.render_pass.attachment_uses[attachment_index as usize]
-            .as_ref()
-            .and_then(|attachment_use| {
-                (attachment_use.first_use_subpass == self.subpass_id)
-                    .then(|| self.render_pass.attachments[attachment_index as usize].load_op)
-            })
-    }
-
-    pub(crate) fn store_op(&self, attachment_index: u32) -> Option<StoreOp> {
-        self.render_pass.attachment_uses[attachment_index as usize]
-            .as_ref()
-            .and_then(|attachment_use| {
-                (attachment_use.last_use_subpass == self.subpass_id)
-                    .then(|| self.render_pass.attachments[attachment_index as usize].store_op)
-            })
-    }
-
-    pub(crate) fn stencil_load_op(&self, attachment_index: u32) -> Option<LoadOp> {
-        self.render_pass.attachment_uses[attachment_index as usize]
-            .as_ref()
-            .and_then(|attachment_use| {
-                (attachment_use.first_use_subpass == self.subpass_id).then(|| {
-                    self.render_pass.attachments[attachment_index as usize].stencil_load_op
-                })
-            })
-    }
-
-    pub(crate) fn stencil_store_op(&self, attachment_index: u32) -> Option<StoreOp> {
-        self.render_pass.attachment_uses[attachment_index as usize]
-            .as_ref()
-            .and_then(|attachment_use| {
-                (attachment_use.last_use_subpass == self.subpass_id).then(|| {
-                    self.render_pass.attachments[attachment_index as usize].stencil_store_op
-                })
-            })
     }
 }
 
@@ -1234,12 +1168,6 @@ vulkan_bitflags_enum! {
     ///
     /// This mode is supported for depth and stencil formats only.
     MAX, Max = MAX,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct AttachmentUse {
-    first_use_subpass: u32,
-    last_use_subpass: u32,
 }
 
 #[cfg(test)]

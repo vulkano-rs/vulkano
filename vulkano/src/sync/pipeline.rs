@@ -10,11 +10,11 @@
 use crate::{
     buffer::Buffer,
     descriptor_set::layout::DescriptorType,
-    device::{Device, QueueFlags},
+    device::QueueFlags,
     image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
     shader::ShaderStages,
-    DeviceSize, RequirementNotMet, Version,
+    DeviceSize,
 };
 use ahash::HashMap;
 use once_cell::sync::Lazy;
@@ -98,28 +98,6 @@ vulkan_bitflags_enum! {
             }
 
             self
-        }
-
-        pub(crate) fn with_earlier(self) -> Self {
-            STAGE_ORDER.iter().rev().fold(
-                self,
-                |stages, &(before, after)| if stages.intersects(after) {
-                    stages.union(before)
-                } else {
-                    stages
-                }
-            )
-        }
-
-        pub(crate) fn with_later(self) -> Self {
-            STAGE_ORDER.iter().fold(
-                self,
-                |stages, &(before, after)| if stages.intersects(before) {
-                    stages.union(after)
-                } else {
-                    stages
-                }
-            )
         }
     },
 
@@ -360,125 +338,6 @@ vulkan_bitflags_enum! {
     OPTICAL_FLOW, OpticalFlow = OPTICAL_FLOW_NV {
         device_extensions: [nv_optical_flow],
     },
-}
-
-macro_rules! stage_order {
-    {
-        $((
-            $($before:ident)|+,
-            $($after:ident)|+,
-        ),)+
-    } => {
-        static STAGE_ORDER: [(PipelineStages, PipelineStages); 15] = [
-            $(
-                (
-                    PipelineStages::empty()
-                    $(.union(PipelineStages::$before))+
-                    ,
-                    PipelineStages::empty()
-                    $(.union(PipelineStages::$after))+
-                ),
-            )+
-        ];
-    };
-}
-
-// Per
-// https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-stages-types
-stage_order! {
-    (
-        TOP_OF_PIPE,
-        DRAW_INDIRECT
-            | COPY | RESOLVE | BLIT | CLEAR
-            | VIDEO_DECODE | VIDEO_ENCODE
-            | CONDITIONAL_RENDERING
-            | COMMAND_PREPROCESS
-            | ACCELERATION_STRUCTURE_BUILD
-            | SUBPASS_SHADING
-            | ACCELERATION_STRUCTURE_COPY
-            | MICROMAP_BUILD
-            | OPTICAL_FLOW,
-    ),
-
-    (
-        DRAW_INDIRECT,
-        COMPUTE_SHADER | INDEX_INPUT | RAY_TRACING_SHADER | TASK_SHADER,
-    ),
-
-    (
-        INDEX_INPUT,
-        VERTEX_ATTRIBUTE_INPUT,
-    ),
-
-    (
-        VERTEX_ATTRIBUTE_INPUT,
-        VERTEX_SHADER,
-    ),
-
-    (
-        VERTEX_SHADER,
-        TESSELLATION_CONTROL_SHADER,
-    ),
-
-    (
-        TESSELLATION_CONTROL_SHADER,
-        TESSELLATION_EVALUATION_SHADER,
-    ),
-
-    (
-        TESSELLATION_EVALUATION_SHADER,
-        GEOMETRY_SHADER,
-    ),
-
-    (
-        GEOMETRY_SHADER,
-        TRANSFORM_FEEDBACK,
-    ),
-
-    (
-        TASK_SHADER,
-        MESH_SHADER,
-    ),
-
-    (
-        TRANSFORM_FEEDBACK | MESH_SHADER,
-        FRAGMENT_SHADING_RATE_ATTACHMENT,
-    ),
-
-    (
-        FRAGMENT_DENSITY_PROCESS | FRAGMENT_SHADING_RATE_ATTACHMENT,
-        EARLY_FRAGMENT_TESTS,
-    ),
-
-    (
-        EARLY_FRAGMENT_TESTS,
-        FRAGMENT_SHADER,
-    ),
-
-    (
-        FRAGMENT_SHADER,
-        LATE_FRAGMENT_TESTS,
-    ),
-
-    (
-        LATE_FRAGMENT_TESTS,
-        COLOR_ATTACHMENT_OUTPUT,
-    ),
-
-    (
-        COLOR_ATTACHMENT_OUTPUT
-            | COMPUTE_SHADER
-            | COPY | RESOLVE | BLIT | CLEAR
-            | VIDEO_DECODE | VIDEO_ENCODE
-            | CONDITIONAL_RENDERING
-            | COMMAND_PREPROCESS
-            | ACCELERATION_STRUCTURE_BUILD | RAY_TRACING_SHADER
-            | SUBPASS_SHADING
-            | ACCELERATION_STRUCTURE_COPY
-            | MICROMAP_BUILD
-            | OPTICAL_FLOW,
-        BOTTOM_OF_PIPE,
-    ),
 }
 
 impl From<QueueFlags> for PipelineStages {
@@ -1107,6 +966,7 @@ pub(crate) enum PipelineStageAccess {
 }
 
 impl PipelineStageAccess {
+    #[allow(unused)]
     #[inline]
     pub(crate) const fn is_write(self) -> bool {
         matches!(
@@ -1142,6 +1002,7 @@ impl PipelineStageAccess {
         )
     }
 
+    #[allow(unused)]
     pub(crate) fn iter_descriptor_stages(
         descriptor_type: DescriptorType,
         stages_read: ShaderStages,
@@ -2571,116 +2432,6 @@ pub enum QueueFamilyOwnershipTransfer {
     /// [`Sharing::Concurrent`]: crate::sync::Sharing::Concurrent
     /// [`ext_queue_family_foreign`]: crate::device::DeviceExtensions::ext_queue_family_foreign
     ConcurrentFromForeign,
-}
-
-impl QueueFamilyOwnershipTransfer {
-    pub(crate) fn validate_device(self, device: &Device) -> Result<(), RequirementNotMet> {
-        match self {
-            QueueFamilyOwnershipTransfer::ExclusiveToExternal { .. } => {
-                if !(device.api_version() >= Version::V1_1
-                    || device.enabled_extensions().khr_external_memory)
-                {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "`QueueFamilyOwnershipTransfer::ExclusiveToExternal",
-                        requires_one_of: crate::RequiresOneOf {
-                            api_version: Some(Version::V1_1),
-                            device_extensions: &["khr_external_memory"],
-                            ..Default::default()
-                        },
-                    });
-                }
-            }
-            QueueFamilyOwnershipTransfer::ExclusiveFromExternal { .. } => {
-                if !(device.api_version() >= Version::V1_1
-                    || device.enabled_extensions().khr_external_memory)
-                {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "`QueueFamilyOwnershipTransfer::ExclusiveFromExternal",
-                        requires_one_of: crate::RequiresOneOf {
-                            api_version: Some(Version::V1_1),
-                            device_extensions: &["khr_external_memory"],
-                            ..Default::default()
-                        },
-                    });
-                }
-            }
-            QueueFamilyOwnershipTransfer::ExclusiveToForeign { .. } => {
-                if !device.enabled_extensions().ext_queue_family_foreign {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "`QueueFamilyOwnershipTransfer::ExclusiveToForeign",
-                        requires_one_of: crate::RequiresOneOf {
-                            device_extensions: &["ext_queue_family_foreign"],
-                            ..Default::default()
-                        },
-                    });
-                }
-            }
-            QueueFamilyOwnershipTransfer::ExclusiveFromForeign { .. } => {
-                if !device.enabled_extensions().ext_queue_family_foreign {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "`QueueFamilyOwnershipTransfer::ExclusiveFromForeign",
-                        requires_one_of: crate::RequiresOneOf {
-                            device_extensions: &["ext_queue_family_foreign"],
-                            ..Default::default()
-                        },
-                    });
-                }
-            }
-            QueueFamilyOwnershipTransfer::ConcurrentToExternal => {
-                if !(device.api_version() >= Version::V1_1
-                    || device.enabled_extensions().khr_external_memory)
-                {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "`QueueFamilyOwnershipTransfer::ConcurrentToExternal",
-                        requires_one_of: crate::RequiresOneOf {
-                            api_version: Some(Version::V1_1),
-                            device_extensions: &["khr_external_memory"],
-                            ..Default::default()
-                        },
-                    });
-                }
-            }
-            QueueFamilyOwnershipTransfer::ConcurrentFromExternal => {
-                if !(device.api_version() >= Version::V1_1
-                    || device.enabled_extensions().khr_external_memory)
-                {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "`QueueFamilyOwnershipTransfer::ConcurrentFromExternal",
-                        requires_one_of: crate::RequiresOneOf {
-                            api_version: Some(Version::V1_1),
-                            device_extensions: &["khr_external_memory"],
-                            ..Default::default()
-                        },
-                    });
-                }
-            }
-            QueueFamilyOwnershipTransfer::ConcurrentToForeign => {
-                if !device.enabled_extensions().ext_queue_family_foreign {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "`QueueFamilyOwnershipTransfer::ConcurrentToForeign",
-                        requires_one_of: crate::RequiresOneOf {
-                            device_extensions: &["ext_queue_family_foreign"],
-                            ..Default::default()
-                        },
-                    });
-                }
-            }
-            QueueFamilyOwnershipTransfer::ConcurrentFromForeign => {
-                if !device.enabled_extensions().ext_queue_family_foreign {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "`QueueFamilyOwnershipTransfer::ConcurrentFromForeign",
-                        requires_one_of: crate::RequiresOneOf {
-                            device_extensions: &["ext_queue_family_foreign"],
-                            ..Default::default()
-                        },
-                    });
-                }
-            }
-            _ => (),
-        }
-
-        Ok(())
-    }
 }
 
 impl From<QueueFamilyOwnershipTransfer> for (u32, u32) {
