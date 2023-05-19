@@ -108,7 +108,6 @@
 //! [pipeline barriers]: CommandBufferBuilder::pipeline_barrier
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
-#[doc(no_inline)]
 pub use self::{
     auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
     commands::{
