@@ -290,7 +290,9 @@ where
     ) -> Result<(), QueryError> {
         let device = self.device();
 
-        if !device.enabled_features().synchronization2 && PipelineStages::from(stage).is_2() {
+        if !device.enabled_features().synchronization2
+            && PipelineStages::from(stage).contains_flags2()
+        {
             return Err(QueryError::RequirementNotMet {
                 required_for: "`stage` has flags set from `VkPipelineStageFlagBits2`",
                 requires_one_of: RequiresOneOf {

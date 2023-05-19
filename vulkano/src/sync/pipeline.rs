@@ -27,7 +27,7 @@ vulkan_bitflags_enum! {
     PipelineStages impl {
         /// Returns whether `self` contains stages that are only available in
         /// `VkPipelineStageFlagBits2`.
-        pub(crate) fn is_2(self) -> bool {
+        pub(crate) fn contains_flags2(self) -> bool {
             !(self
                 - (PipelineStages::TOP_OF_PIPE
                     | PipelineStages::DRAW_INDIRECT
@@ -126,7 +126,7 @@ vulkan_bitflags_enum! {
                     self |= PipelineStages::ALL_TRANSFER;
                 }
 
-                if self.is_2() {
+                if self.contains_flags2() {
                     if (self - PipelineStages::from(QueueFlags::GRAPHICS)).is_empty() {
                         return PipelineStages::ALL_GRAPHICS;
                     } else {
@@ -504,7 +504,7 @@ vulkan_bitflags! {
 
         /// Returns whether `self` contains stages that are only available in
         /// `VkAccessFlagBits2`.
-        pub(crate) fn is_2(self) -> bool {
+        pub(crate) fn contains_flags2(self) -> bool {
             !(self
                 - (AccessFlags::INDIRECT_COMMAND_READ
                     | AccessFlags::INDEX_READ
@@ -585,7 +585,7 @@ vulkan_bitflags! {
                     self |= AccessFlags::SHADER_WRITE;
                 }
 
-                if self.is_2() {
+                if self.contains_flags2() {
                     return match (self.contains_reads(), self.contains_writes()) {
                         (true, true) => AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
                         (true, false) => AccessFlags::MEMORY_READ,
