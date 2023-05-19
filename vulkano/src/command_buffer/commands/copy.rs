@@ -20,7 +20,7 @@ use crate::{
         ImageUsage, SampleCount, SampleCounts,
     },
     sampler::Filter,
-    sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
+    sync::PipelineStageAccessFlags,
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
@@ -210,11 +210,7 @@ where
                             Resource::Buffer {
                                 buffer: src_buffer.clone(),
                                 range: src_offset..src_offset + size,
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_READ,
-                                    exclusive: false,
-                                },
+                                memory_access: PipelineStageAccessFlags::Copy_TransferRead,
                             },
                         ),
                         (
@@ -222,11 +218,7 @@ where
                             Resource::Buffer {
                                 buffer: dst_buffer.clone(),
                                 range: dst_offset..dst_offset + size,
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_WRITE,
-                                    exclusive: true,
-                                },
+                                memory_access: PipelineStageAccessFlags::Copy_TransferWrite,
                             },
                         ),
                     ]
@@ -974,11 +966,7 @@ where
                             Resource::Image {
                                 image: src_image.clone(),
                                 subresource_range: src_subresource.clone().into(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_READ,
-                                    exclusive: false,
-                                },
+                                memory_access: PipelineStageAccessFlags::Copy_TransferRead,
                                 start_layout: src_image_layout,
                                 end_layout: src_image_layout,
                             },
@@ -988,11 +976,7 @@ where
                             Resource::Image {
                                 image: dst_image.clone(),
                                 subresource_range: dst_subresource.clone().into(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_WRITE,
-                                    exclusive: true,
-                                },
+                                memory_access: PipelineStageAccessFlags::Copy_TransferWrite,
                                 start_layout: dst_image_layout,
                                 end_layout: dst_image_layout,
                             },
@@ -1485,11 +1469,7 @@ where
                                 buffer: src_buffer.clone(),
                                 range: buffer_offset
                                     ..buffer_offset + region.buffer_copy_size(dst_image.format()),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_READ,
-                                    exclusive: false,
-                                },
+                                memory_access: PipelineStageAccessFlags::Copy_TransferRead,
                             },
                         ),
                         (
@@ -1497,11 +1477,7 @@ where
                             Resource::Image {
                                 image: dst_image.clone(),
                                 subresource_range: image_subresource.clone().into(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_WRITE,
-                                    exclusive: true,
-                                },
+                                memory_access: PipelineStageAccessFlags::Copy_TransferWrite,
                                 start_layout: dst_image_layout,
                                 end_layout: dst_image_layout,
                             },
@@ -1982,11 +1958,7 @@ where
                             Resource::Image {
                                 image: src_image.clone(),
                                 subresource_range: image_subresource.clone().into(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_READ,
-                                    exclusive: false,
-                                },
+                                memory_access: PipelineStageAccessFlags::Copy_TransferRead,
                                 start_layout: src_image_layout,
                                 end_layout: src_image_layout,
                             },
@@ -1997,11 +1969,7 @@ where
                                 buffer: dst_buffer.clone(),
                                 range: buffer_offset
                                     ..buffer_offset + region.buffer_copy_size(src_image.format()),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_WRITE,
-                                    exclusive: true,
-                                },
+                                memory_access: PipelineStageAccessFlags::Copy_TransferWrite,
                             },
                         ),
                     ]
@@ -2578,11 +2546,7 @@ where
                             Resource::Image {
                                 image: src_image.clone(),
                                 subresource_range: src_subresource.clone().into(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_READ,
-                                    exclusive: false,
-                                },
+                                memory_access: PipelineStageAccessFlags::Blit_TransferRead,
                                 start_layout: src_image_layout,
                                 end_layout: src_image_layout,
                             },
@@ -2592,11 +2556,7 @@ where
                             Resource::Image {
                                 image: dst_image.clone(),
                                 subresource_range: dst_subresource.clone().into(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_WRITE,
-                                    exclusive: true,
-                                },
+                                memory_access: PipelineStageAccessFlags::Blit_TransferWrite,
                                 start_layout: dst_image_layout,
                                 end_layout: dst_image_layout,
                             },
@@ -2920,11 +2880,7 @@ where
                             Resource::Image {
                                 image: src_image.clone(),
                                 subresource_range: src_subresource.clone().into(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_READ,
-                                    exclusive: false,
-                                },
+                                memory_access: PipelineStageAccessFlags::Resolve_TransferRead,
                                 start_layout: src_image_layout,
                                 end_layout: src_image_layout,
                             },
@@ -2934,11 +2890,7 @@ where
                             Resource::Image {
                                 image: dst_image.clone(),
                                 subresource_range: dst_subresource.clone().into(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_TRANSFER,
-                                    access: AccessFlags::TRANSFER_WRITE,
-                                    exclusive: true,
-                                },
+                                memory_access: PipelineStageAccessFlags::Resolve_TransferWrite,
                                 start_layout: dst_image_layout,
                                 end_layout: dst_image_layout,
                             },

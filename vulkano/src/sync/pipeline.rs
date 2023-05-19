@@ -10,7 +10,7 @@
 use crate::{
     buffer::Buffer,
     descriptor_set::layout::DescriptorType,
-    device::QueueFlags,
+    device::{Device, QueueFlags},
     image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
     shader::ShaderStages,
@@ -95,6 +95,52 @@ vulkan_bitflags_enum! {
                     | PipelineStages::BLIT
                     | PipelineStages::CLEAR
                     | PipelineStages::ACCELERATION_STRUCTURE_COPY;
+            }
+
+            self
+        }
+
+        /// Replaces unsupported flags with more general supported ones.
+        pub(crate) fn into_supported(mut self, device: &Device) -> Self {
+            if !device.enabled_features().synchronization2 {
+                if self.intersects(
+                    PipelineStages::INDEX_INPUT
+                    | PipelineStages::VERTEX_ATTRIBUTE_INPUT
+                ) {
+                    self -= PipelineStages::INDEX_INPUT | PipelineStages::VERTEX_ATTRIBUTE_INPUT;
+                    self |= PipelineStages::VERTEX_INPUT;
+                }
+
+                if self.intersects(
+                    PipelineStages::COPY
+                    | PipelineStages::RESOLVE
+                    | PipelineStages::BLIT
+                    | PipelineStages::CLEAR
+                    | PipelineStages::ACCELERATION_STRUCTURE_COPY
+                ) {
+                    self -= PipelineStages::COPY
+                        | PipelineStages::RESOLVE
+                        | PipelineStages::BLIT
+                        | PipelineStages::CLEAR
+                        | PipelineStages::ACCELERATION_STRUCTURE_COPY;
+                    self |= PipelineStages::ALL_TRANSFER;
+                }
+
+                if self.is_2() {
+                    if (self - PipelineStages::from(QueueFlags::GRAPHICS)).is_empty() {
+                        return PipelineStages::ALL_GRAPHICS;
+                    } else {
+                        return PipelineStages::ALL_COMMANDS;
+                    }
+                }
+            }
+
+            if self.validate_device(device).is_err() {
+                if (self - PipelineStages::from(QueueFlags::GRAPHICS)).is_empty() {
+                    return PipelineStages::ALL_GRAPHICS;
+                } else {
+                    return PipelineStages::ALL_COMMANDS;
+                }
             }
 
             self
@@ -340,6 +386,20 @@ vulkan_bitflags_enum! {
     },
 }
 
+impl From<PipelineStage> for ash::vk::PipelineStageFlags {
+    #[inline]
+    fn from(val: PipelineStage) -> Self {
+        Self::from_raw(val as u32)
+    }
+}
+
+impl From<PipelineStages> for ash::vk::PipelineStageFlags {
+    #[inline]
+    fn from(val: PipelineStages) -> Self {
+        Self::from_raw(ash::vk::PipelineStageFlags2::from(val).as_raw() as u32)
+    }
+}
+
 impl From<QueueFlags> for PipelineStages {
     /// Corresponds to the table "[Supported pipeline stage flags]" in the Vulkan specification.
     ///
@@ -412,25 +472,36 @@ impl From<QueueFlags> for PipelineStages {
     }
 }
 
-impl From<PipelineStage> for ash::vk::PipelineStageFlags {
-    #[inline]
-    fn from(val: PipelineStage) -> Self {
-        Self::from_raw(val as u32)
-    }
-}
-
-impl From<PipelineStages> for ash::vk::PipelineStageFlags {
-    #[inline]
-    fn from(val: PipelineStages) -> Self {
-        Self::from_raw(ash::vk::PipelineStageFlags2::from(val).as_raw() as u32)
-    }
-}
-
 vulkan_bitflags! {
     #[non_exhaustive]
 
     /// A set of memory access types that are included in a memory dependency.
     AccessFlags impl {
+        // TODO: use the Vulkano associated constants once | becomes const for custom types.
+        const WRITES: AccessFlags = AccessFlags(
+            ash::vk::AccessFlags2::SHADER_WRITE.as_raw()
+            | ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE.as_raw()
+            | ash::vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw()
+            | ash::vk::AccessFlags2::TRANSFER_WRITE.as_raw()
+            | ash::vk::AccessFlags2::HOST_WRITE.as_raw()
+            | ash::vk::AccessFlags2::MEMORY_WRITE.as_raw()
+            | ash::vk::AccessFlags2::SHADER_STORAGE_WRITE.as_raw()
+            | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR.as_raw()
+            | ash::vk::AccessFlags2::VIDEO_ENCODE_WRITE_KHR.as_raw()
+            | ash::vk::AccessFlags2::TRANSFORM_FEEDBACK_WRITE_EXT.as_raw()
+            | ash::vk::AccessFlags2::TRANSFORM_FEEDBACK_COUNTER_WRITE_EXT.as_raw()
+            | ash::vk::AccessFlags2::COMMAND_PREPROCESS_WRITE_NV.as_raw()
+            | ash::vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR.as_raw()
+        );
+
+        pub(crate) fn contains_reads(self) -> bool {
+            !(self - Self::WRITES).is_empty()
+        }
+
+        pub(crate) fn contains_writes(self) -> bool {
+            self.intersects(Self::WRITES)
+        }
+
         /// Returns whether `self` contains stages that are only available in
         /// `VkAccessFlagBits2`.
         pub(crate) fn is_2(self) -> bool {
@@ -491,6 +562,46 @@ vulkan_bitflags! {
             if self.intersects(AccessFlags::SHADER_WRITE) {
                 self -= AccessFlags::SHADER_WRITE;
                 self |= AccessFlags::SHADER_STORAGE_WRITE;
+            }
+
+            self
+        }
+
+        /// Replaces unsupported flags with more general supported ones.
+        pub(crate) fn into_supported(mut self, device: &Device) -> Self {
+            if !device.enabled_features().synchronization2 {
+                if self.intersects(
+                    AccessFlags::SHADER_SAMPLED_READ
+                    | AccessFlags::SHADER_STORAGE_READ
+                ) {
+                    self -= AccessFlags::SHADER_SAMPLED_READ | AccessFlags::SHADER_STORAGE_READ;
+                    self |= AccessFlags::SHADER_READ;
+                }
+
+                if self.intersects(
+                    AccessFlags::SHADER_STORAGE_WRITE
+                ) {
+                    self -= AccessFlags::SHADER_STORAGE_WRITE;
+                    self |= AccessFlags::SHADER_WRITE;
+                }
+
+                if self.is_2() {
+                    return match (self.contains_reads(), self.contains_writes()) {
+                        (true, true) => AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
+                        (true, false) => AccessFlags::MEMORY_READ,
+                        (false, true) => AccessFlags::MEMORY_WRITE,
+                        (false, false) => unreachable!(),
+                    };
+                }
+            }
+
+            if self.validate_device(device).is_err() {
+                return match (self.contains_reads(), self.contains_writes()) {
+                    (true, true) => AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
+                    (true, false) => AccessFlags::MEMORY_READ,
+                    (false, true) => AccessFlags::MEMORY_WRITE,
+                    (false, false) => unreachable!(),
+                };
             }
 
             self
@@ -695,6 +806,13 @@ vulkan_bitflags! {
     },
 }
 
+impl From<AccessFlags> for ash::vk::AccessFlags {
+    #[inline]
+    fn from(val: AccessFlags) -> Self {
+        Self::from_raw(ash::vk::AccessFlags2::from(val).as_raw() as u32)
+    }
+}
+
 impl From<PipelineStages> for AccessFlags {
     /// Corresponds to the table "[Supported access types]" in the Vulkan specification.
     ///
@@ -838,171 +956,312 @@ impl From<PipelineStages> for AccessFlags {
     }
 }
 
-impl From<AccessFlags> for ash::vk::AccessFlags {
-    #[inline]
-    fn from(val: AccessFlags) -> Self {
-        Self::from_raw(ash::vk::AccessFlags2::from(val).as_raw() as u32)
-    }
+macro_rules! pipeline_stage_access {
+    (
+        $(
+            $val:ident, $stage:ident, $access:ident
+        );*
+        $(;)?
+    ) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+        #[allow(non_camel_case_types, dead_code)]
+        #[repr(u8)]
+        pub(crate) enum PipelineStageAccess {
+            $($val,)*
+
+            // If there are ever more than 128 preceding values, then there will be a compile error:
+            // "discriminant value `128` assigned more than once"
+            __MAX_VALUE__ = 128,
+        }
+
+        impl From<PipelineStageAccess> for PipelineStages {
+            #[inline]
+            fn from(val: PipelineStageAccess) -> Self {
+                match val {
+                    $(
+                        PipelineStageAccess::$val => PipelineStages::$stage,
+                    )*
+                    PipelineStageAccess::__MAX_VALUE__ => unreachable!(),
+                }
+            }
+        }
+
+        impl From<PipelineStageAccess> for AccessFlags {
+            #[inline]
+            fn from(val: PipelineStageAccess) -> Self {
+                match val {
+                    $(
+                        PipelineStageAccess::$val => AccessFlags::$access,
+                    )*
+                    PipelineStageAccess::__MAX_VALUE__ => unreachable!(),
+                }
+            }
+        }
+
+        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+        pub(crate) struct PipelineStageAccessFlags(u128);
+
+        #[allow(non_upper_case_globals, dead_code)]
+        impl PipelineStageAccessFlags {
+            $(
+                pub(crate) const $val: Self = Self(1u128 << PipelineStageAccess::$val as u8);
+            )*
+
+            #[inline]
+            pub(crate) const fn empty() -> Self {
+                Self(0)
+            }
+
+            #[inline]
+            pub(crate) const fn count(self) -> u32 {
+                self.0.count_ones()
+            }
+
+            #[inline]
+            pub(crate) const fn is_empty(self) -> bool {
+                self.0 == 0
+            }
+
+            #[inline]
+            pub(crate) const fn intersects(self, other: Self) -> bool {
+                self.0 & other.0 != 0
+            }
+
+            #[inline]
+            pub(crate) const fn contains(self, other: Self) -> bool {
+                self.0 & other.0 == other.0
+            }
+
+            #[inline]
+            pub(crate) const fn union(self, other: Self) -> Self {
+                Self(self.0 | other.0)
+            }
+
+            #[inline]
+            pub(crate) const fn intersection(self, other: Self) -> Self {
+                Self(self.0 & other.0)
+            }
+
+            #[inline]
+            pub(crate) const fn difference(self, other: Self) -> Self {
+                Self(self.0 & !other.0)
+            }
+
+            #[inline]
+            pub(crate) const fn symmetric_difference(self, other: Self) -> Self {
+                Self(self.0 ^ other.0)
+            }
+
+            #[inline]
+            pub(crate) fn contains_enum(self, val: PipelineStageAccess) -> bool {
+                self.intersects(val.into())
+            }
+        }
+
+        impl std::ops::BitAnd for PipelineStageAccessFlags {
+            type Output = Self;
+
+            #[inline]
+            fn bitand(self, rhs: Self) -> Self {
+                self.intersection(rhs)
+            }
+        }
+
+        impl std::ops::BitAndAssign for PipelineStageAccessFlags {
+            #[inline]
+            fn bitand_assign(&mut self, rhs: Self) {
+                *self = self.intersection(rhs);
+            }
+        }
+
+        impl std::ops::BitOr for PipelineStageAccessFlags {
+            type Output = Self;
+
+            #[inline]
+            fn bitor(self, rhs: Self) -> Self {
+                self.union(rhs)
+            }
+        }
+
+        impl std::ops::BitOrAssign for PipelineStageAccessFlags {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: Self) {
+                *self = self.union(rhs);
+            }
+        }
+
+        impl std::ops::BitXor for PipelineStageAccessFlags {
+            type Output = Self;
+
+            #[inline]
+            fn bitxor(self, rhs: Self) -> Self {
+                self.symmetric_difference(rhs)
+            }
+        }
+
+        impl std::ops::BitXorAssign for PipelineStageAccessFlags {
+            #[inline]
+            fn bitxor_assign(&mut self, rhs: Self) {
+                *self = self.symmetric_difference(rhs);
+            }
+        }
+
+        impl std::ops::Sub for PipelineStageAccessFlags {
+            type Output = Self;
+
+            #[inline]
+            fn sub(self, rhs: Self) -> Self {
+                self.difference(rhs)
+            }
+        }
+
+        impl std::ops::SubAssign for PipelineStageAccessFlags {
+            #[inline]
+            fn sub_assign(&mut self, rhs: Self) {
+                *self = self.difference(rhs);
+            }
+        }
+
+        impl From<PipelineStageAccess> for PipelineStageAccessFlags {
+            #[inline]
+            fn from(val: PipelineStageAccess) -> Self {
+                debug_assert!(val != PipelineStageAccess::__MAX_VALUE__); // You did something very dumb...
+                Self(1u128 << val as u8)
+            }
+        }
+
+        impl From<PipelineStageAccessFlags> for PipelineStages {
+            #[inline]
+            fn from(val: PipelineStageAccessFlags) -> Self {
+                let mut result = PipelineStages::empty();
+
+                $(
+                    if val.intersects(PipelineStageAccessFlags::$val) {
+                        result |= PipelineStages::$stage;
+                    }
+                )*
+
+                result
+            }
+        }
+
+        impl From<PipelineStageAccessFlags> for AccessFlags {
+            #[inline]
+            fn from(val: PipelineStageAccessFlags) -> Self {
+                let mut result = AccessFlags::empty();
+
+                $(
+                    if val.intersects(PipelineStageAccessFlags::$val) {
+                        result |= AccessFlags::$access;
+                    }
+                )*
+
+                result
+            }
+        }
+    };
 }
 
-/// The full specification of memory access by the pipeline for a particular resource.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct PipelineMemoryAccess {
-    /// The pipeline stages the resource will be accessed in.
-    pub stages: PipelineStages,
-    /// The type of memory access that will be performed.
-    pub access: AccessFlags,
-    /// Whether the resource needs exclusive (mutable) access or can be shared.
-    pub exclusive: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[allow(non_camel_case_types, dead_code)]
-#[repr(u8)]
-pub(crate) enum PipelineStageAccess {
-    // There is no stage/access for this, but it is a memory write operation nonetheless.
-    ImageLayoutTransition,
-
-    DrawIndirect_IndirectCommandRead,
-    DrawIndirect_TransformFeedbackCounterRead,
-    VertexShader_UniformRead,
-    VertexShader_ShaderSampledRead,
-    VertexShader_ShaderStorageRead,
-    VertexShader_ShaderStorageWrite,
-    VertexShader_AccelerationStructureRead,
-    TessellationControlShader_UniformRead,
-    TessellationControlShader_ShaderSampledRead,
-    TessellationControlShader_ShaderStorageRead,
-    TessellationControlShader_ShaderStorageWrite,
-    TessellationControlShader_AccelerationStructureRead,
-    TessellationEvaluationShader_UniformRead,
-    TessellationEvaluationShader_ShaderSampledRead,
-    TessellationEvaluationShader_ShaderStorageRead,
-    TessellationEvaluationShader_ShaderStorageWrite,
-    TessellationEvaluationShader_AccelerationStructureRead,
-    GeometryShader_UniformRead,
-    GeometryShader_ShaderSampledRead,
-    GeometryShader_ShaderStorageRead,
-    GeometryShader_ShaderStorageWrite,
-    GeometryShader_AccelerationStructureRead,
-    FragmentShader_UniformRead,
-    FragmentShader_InputAttachmentRead,
-    FragmentShader_ShaderSampledRead,
-    FragmentShader_ShaderStorageRead,
-    FragmentShader_ShaderStorageWrite,
-    FragmentShader_AccelerationStructureRead,
-    EarlyFragmentTests_DepthStencilAttachmentRead,
-    EarlyFragmentTests_DepthStencilAttachmentWrite,
-    LateFragmentTests_DepthStencilAttachmentRead,
-    LateFragmentTests_DepthStencilAttachmentWrite,
-    ColorAttachmentOutput_ColorAttachmentRead,
-    ColorAttachmentOutput_ColorAttachmentWrite,
-    ColorAttachmentOutput_ColorAttachmentReadNoncoherent,
-    ComputeShader_UniformRead,
-    ComputeShader_ShaderSampledRead,
-    ComputeShader_ShaderStorageRead,
-    ComputeShader_ShaderStorageWrite,
-    ComputeShader_AccelerationStructureRead,
-    Host_HostRead,
-    Host_HostWrite,
-    Copy_TransferRead,
-    Copy_TransferWrite,
-    Resolve_TransferRead,
-    Resolve_TransferWrite,
-    Blit_TransferRead,
-    Blit_TransferWrite,
-    Clear_TransferWrite,
-    IndexInput_IndexRead,
-    VertexAttributeInput_VertexAttributeRead,
-    VideoDecode_VideoDecodeRead,
-    VideoDecode_VideoDecodeWrite,
-    VideoEncode_VideoEncodeRead,
-    VideoEncode_VideoEncodeWrite,
-    TransformFeedback_TransformFeedbackWrite,
-    TransformFeedback_TransformFeedbackCounterRead,
-    TransformFeedback_TransformFeedbackCounterWrite,
-    ConditionalRendering_ConditionalRenderingRead,
-    AccelerationStructureBuild_IndirectCommandRead,
-    AccelerationStructureBuild_UniformRead,
-    AccelerationStructureBuild_TransferRead,
-    AccelerationStructureBuild_TransferWrite,
-    AccelerationStructureBuild_ShaderSampledRead,
-    AccelerationStructureBuild_ShaderStorageRead,
-    AccelerationStructureBuild_AccelerationStructureRead,
-    AccelerationStructureBuild_AccelerationStructureWrite,
-    AccelerationStructureBuild_MicromapRead,
-    RayTracingShader_UniformRead,
-    RayTracingShader_ShaderSampledRead,
-    RayTracingShader_ShaderStorageRead,
-    RayTracingShader_ShaderStorageWrite,
-    RayTracingShader_AccelerationStructureRead,
-    RayTracingShader_ShaderBindingTableRead,
-    FragmentDensityProcess_FragmentDensityMapRead,
-    FragmentShadingRateAttachment_FragmentShadingRateAttachmentRead,
-    CommandPreprocess_CommandPreprocessRead,
-    CommandPreprocess_CommandPreprocessWrite,
-    TaskShader_UniformRead,
-    TaskShader_ShaderSampledRead,
-    TaskShader_ShaderStorageRead,
-    TaskShader_ShaderStorageWrite,
-    TaskShader_AccelerationStructureRead,
-    MeshShader_UniformRead,
-    MeshShader_ShaderSampledRead,
-    MeshShader_ShaderStorageRead,
-    MeshShader_ShaderStorageWrite,
-    MeshShader_AccelerationStructureRead,
-    SubpassShading_InputAttachmentRead,
-    InvocationMask_InvocationMaskRead,
-    AccelerationStructureCopy_TransferRead,
-    AccelerationStructureCopy_TransferWrite,
-    OpticalFlow_OpticalFlowRead,
-    OpticalFlow_OpticalFlowWrite,
-    MicromapBuild_MicromapRead,
-    MicromapBuild_MicromapWrite,
-
-    // If there are ever more than 128 preceding values, then there will be a compile error:
-    // "discriminant value `128` assigned more than once"
-    __MAX_VALUE__ = 128,
+pipeline_stage_access! {
+    DrawIndirect_IndirectCommandRead, DRAW_INDIRECT, INDIRECT_COMMAND_READ;
+    DrawIndirect_TransformFeedbackCounterRead, DRAW_INDIRECT, TRANSFORM_FEEDBACK_COUNTER_READ;
+    VertexShader_UniformRead, VERTEX_SHADER, UNIFORM_READ;
+    VertexShader_ShaderSampledRead, VERTEX_SHADER, SHADER_SAMPLED_READ;
+    VertexShader_ShaderStorageRead, VERTEX_SHADER, SHADER_STORAGE_READ;
+    VertexShader_ShaderStorageWrite, VERTEX_SHADER, SHADER_STORAGE_WRITE;
+    VertexShader_AccelerationStructureRead, VERTEX_SHADER, ACCELERATION_STRUCTURE_READ;
+    TessellationControlShader_UniformRead, TESSELLATION_CONTROL_SHADER, UNIFORM_READ;
+    TessellationControlShader_ShaderSampledRead, TESSELLATION_CONTROL_SHADER, SHADER_SAMPLED_READ;
+    TessellationControlShader_ShaderStorageRead, TESSELLATION_CONTROL_SHADER, SHADER_STORAGE_READ;
+    TessellationControlShader_ShaderStorageWrite, TESSELLATION_CONTROL_SHADER, SHADER_STORAGE_WRITE;
+    TessellationControlShader_AccelerationStructureRead, TESSELLATION_CONTROL_SHADER, ACCELERATION_STRUCTURE_READ;
+    TessellationEvaluationShader_UniformRead, TESSELLATION_EVALUATION_SHADER, UNIFORM_READ;
+    TessellationEvaluationShader_ShaderSampledRead, TESSELLATION_EVALUATION_SHADER, SHADER_SAMPLED_READ;
+    TessellationEvaluationShader_ShaderStorageRead, TESSELLATION_EVALUATION_SHADER, SHADER_STORAGE_READ;
+    TessellationEvaluationShader_ShaderStorageWrite, TESSELLATION_EVALUATION_SHADER, SHADER_STORAGE_WRITE;
+    TessellationEvaluationShader_AccelerationStructureRead, TESSELLATION_EVALUATION_SHADER, ACCELERATION_STRUCTURE_READ;
+    GeometryShader_UniformRead, GEOMETRY_SHADER, UNIFORM_READ;
+    GeometryShader_ShaderSampledRead, GEOMETRY_SHADER, SHADER_SAMPLED_READ;
+    GeometryShader_ShaderStorageRead, GEOMETRY_SHADER, SHADER_STORAGE_READ;
+    GeometryShader_ShaderStorageWrite, GEOMETRY_SHADER, SHADER_STORAGE_WRITE;
+    GeometryShader_AccelerationStructureRead, GEOMETRY_SHADER, ACCELERATION_STRUCTURE_READ;
+    FragmentShader_UniformRead, FRAGMENT_SHADER, UNIFORM_READ;
+    FragmentShader_InputAttachmentRead, FRAGMENT_SHADER, INPUT_ATTACHMENT_READ;
+    FragmentShader_ShaderSampledRead, FRAGMENT_SHADER, SHADER_SAMPLED_READ;
+    FragmentShader_ShaderStorageRead, FRAGMENT_SHADER, SHADER_STORAGE_READ;
+    FragmentShader_ShaderStorageWrite, FRAGMENT_SHADER, SHADER_STORAGE_WRITE;
+    FragmentShader_AccelerationStructureRead, FRAGMENT_SHADER, ACCELERATION_STRUCTURE_READ;
+    EarlyFragmentTests_DepthStencilAttachmentRead, EARLY_FRAGMENT_TESTS, DEPTH_STENCIL_ATTACHMENT_READ;
+    EarlyFragmentTests_DepthStencilAttachmentWrite, EARLY_FRAGMENT_TESTS, DEPTH_STENCIL_ATTACHMENT_WRITE;
+    LateFragmentTests_DepthStencilAttachmentRead, LATE_FRAGMENT_TESTS, DEPTH_STENCIL_ATTACHMENT_READ;
+    LateFragmentTests_DepthStencilAttachmentWrite, LATE_FRAGMENT_TESTS, DEPTH_STENCIL_ATTACHMENT_WRITE;
+    ColorAttachmentOutput_ColorAttachmentRead, COLOR_ATTACHMENT_OUTPUT, COLOR_ATTACHMENT_READ;
+    ColorAttachmentOutput_ColorAttachmentWrite, COLOR_ATTACHMENT_OUTPUT, COLOR_ATTACHMENT_WRITE;
+    ColorAttachmentOutput_ColorAttachmentReadNoncoherent, COLOR_ATTACHMENT_OUTPUT, COLOR_ATTACHMENT_READ_NONCOHERENT;
+    ComputeShader_UniformRead, COMPUTE_SHADER, UNIFORM_READ;
+    ComputeShader_ShaderSampledRead, COMPUTE_SHADER, SHADER_SAMPLED_READ;
+    ComputeShader_ShaderStorageRead, COMPUTE_SHADER, SHADER_STORAGE_READ;
+    ComputeShader_ShaderStorageWrite, COMPUTE_SHADER, SHADER_STORAGE_WRITE;
+    ComputeShader_AccelerationStructureRead, COMPUTE_SHADER, ACCELERATION_STRUCTURE_READ;
+    Host_HostRead, HOST, HOST_READ;
+    Host_HostWrite, HOST, HOST_WRITE;
+    Copy_TransferRead, COPY, TRANSFER_READ;
+    Copy_TransferWrite, COPY, TRANSFER_WRITE;
+    Resolve_TransferRead, RESOLVE, TRANSFER_READ;
+    Resolve_TransferWrite, RESOLVE, TRANSFER_WRITE;
+    Blit_TransferRead, BLIT, TRANSFER_READ;
+    Blit_TransferWrite, BLIT, TRANSFER_WRITE;
+    Clear_TransferWrite, CLEAR, TRANSFER_WRITE;
+    IndexInput_IndexRead, INDEX_INPUT, INDEX_READ;
+    VertexAttributeInput_VertexAttributeRead, VERTEX_ATTRIBUTE_INPUT, VERTEX_ATTRIBUTE_READ;
+    VideoDecode_VideoDecodeRead, VIDEO_DECODE, VIDEO_DECODE_READ;
+    VideoDecode_VideoDecodeWrite, VIDEO_DECODE, VIDEO_DECODE_WRITE;
+    VideoEncode_VideoEncodeRead, VIDEO_ENCODE, VIDEO_ENCODE_READ;
+    VideoEncode_VideoEncodeWrite, VIDEO_ENCODE, VIDEO_ENCODE_WRITE;
+    TransformFeedback_TransformFeedbackWrite, TRANSFORM_FEEDBACK, TRANSFORM_FEEDBACK_WRITE;
+    TransformFeedback_TransformFeedbackCounterRead, TRANSFORM_FEEDBACK, TRANSFORM_FEEDBACK_COUNTER_READ;
+    TransformFeedback_TransformFeedbackCounterWrite, TRANSFORM_FEEDBACK, TRANSFORM_FEEDBACK_COUNTER_WRITE;
+    ConditionalRendering_ConditionalRenderingRead, CONDITIONAL_RENDERING, CONDITIONAL_RENDERING_READ;
+    AccelerationStructureBuild_IndirectCommandRead, ACCELERATION_STRUCTURE_BUILD, INDIRECT_COMMAND_READ;
+    AccelerationStructureBuild_UniformRead, ACCELERATION_STRUCTURE_BUILD, UNIFORM_READ;
+    AccelerationStructureBuild_TransferRead, ACCELERATION_STRUCTURE_BUILD, TRANSFER_READ;
+    AccelerationStructureBuild_TransferWrite, ACCELERATION_STRUCTURE_BUILD, TRANSFER_WRITE;
+    AccelerationStructureBuild_ShaderSampledRead, ACCELERATION_STRUCTURE_BUILD, SHADER_SAMPLED_READ;
+    AccelerationStructureBuild_ShaderStorageRead, ACCELERATION_STRUCTURE_BUILD, SHADER_STORAGE_READ;
+    AccelerationStructureBuild_AccelerationStructureRead, ACCELERATION_STRUCTURE_BUILD, ACCELERATION_STRUCTURE_READ;
+    AccelerationStructureBuild_AccelerationStructureWrite, ACCELERATION_STRUCTURE_BUILD, ACCELERATION_STRUCTURE_WRITE;
+    AccelerationStructureBuild_MicromapRead, ACCELERATION_STRUCTURE_BUILD, MICROMAP_READ;
+    RayTracingShader_UniformRead, RAY_TRACING_SHADER, UNIFORM_READ;
+    RayTracingShader_ShaderSampledRead, RAY_TRACING_SHADER, SHADER_SAMPLED_READ;
+    RayTracingShader_ShaderStorageRead, RAY_TRACING_SHADER, SHADER_STORAGE_READ;
+    RayTracingShader_ShaderStorageWrite, RAY_TRACING_SHADER, SHADER_STORAGE_WRITE;
+    RayTracingShader_AccelerationStructureRead, RAY_TRACING_SHADER, ACCELERATION_STRUCTURE_READ;
+    RayTracingShader_ShaderBindingTableRead, RAY_TRACING_SHADER, SHADER_BINDING_TABLE_READ;
+    FragmentDensityProcess_FragmentDensityMapRead, FRAGMENT_DENSITY_PROCESS, FRAGMENT_DENSITY_MAP_READ;
+    FragmentShadingRateAttachment_FragmentShadingRateAttachmentRead, FRAGMENT_SHADING_RATE_ATTACHMENT, FRAGMENT_SHADING_RATE_ATTACHMENT_READ;
+    CommandPreprocess_CommandPreprocessRead, COMMAND_PREPROCESS, COMMAND_PREPROCESS_READ;
+    CommandPreprocess_CommandPreprocessWrite, COMMAND_PREPROCESS, COMMAND_PREPROCESS_WRITE;
+    TaskShader_UniformRead, TASK_SHADER, UNIFORM_READ;
+    TaskShader_ShaderSampledRead, TASK_SHADER, SHADER_SAMPLED_READ;
+    TaskShader_ShaderStorageRead, TASK_SHADER, SHADER_STORAGE_READ;
+    TaskShader_ShaderStorageWrite, TASK_SHADER, SHADER_STORAGE_WRITE;
+    TaskShader_AccelerationStructureRead, TASK_SHADER, ACCELERATION_STRUCTURE_READ;
+    MeshShader_UniformRead, MESH_SHADER, UNIFORM_READ;
+    MeshShader_ShaderSampledRead, MESH_SHADER, SHADER_SAMPLED_READ;
+    MeshShader_ShaderStorageRead, MESH_SHADER, SHADER_STORAGE_READ;
+    MeshShader_ShaderStorageWrite, MESH_SHADER, SHADER_STORAGE_WRITE;
+    MeshShader_AccelerationStructureRead, MESH_SHADER, ACCELERATION_STRUCTURE_READ;
+    SubpassShading_InputAttachmentRead, SUBPASS_SHADING, INPUT_ATTACHMENT_READ;
+    InvocationMask_InvocationMaskRead, INVOCATION_MASK, INVOCATION_MASK_READ;
+    AccelerationStructureCopy_TransferRead, ACCELERATION_STRUCTURE_COPY, TRANSFER_READ;
+    AccelerationStructureCopy_TransferWrite, ACCELERATION_STRUCTURE_COPY, TRANSFER_WRITE;
+    OpticalFlow_OpticalFlowRead, OPTICAL_FLOW, OPTICAL_FLOW_READ;
+    OpticalFlow_OpticalFlowWrite, OPTICAL_FLOW, OPTICAL_FLOW_WRITE;
+    MicromapBuild_MicromapRead, MICROMAP_BUILD, MICROMAP_READ;
+    MicromapBuild_MicromapWrite, MICROMAP_BUILD, MICROMAP_WRITE;
 }
 
 impl PipelineStageAccess {
-    #[allow(unused)]
-    #[inline]
-    pub(crate) const fn is_write(self) -> bool {
-        matches!(
-            self,
-            PipelineStageAccess::ImageLayoutTransition
-                | PipelineStageAccess::VertexShader_ShaderStorageWrite
-                | PipelineStageAccess::TessellationControlShader_ShaderStorageWrite
-                | PipelineStageAccess::TessellationEvaluationShader_ShaderStorageWrite
-                | PipelineStageAccess::GeometryShader_ShaderStorageWrite
-                | PipelineStageAccess::FragmentShader_ShaderStorageWrite
-                | PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite
-                | PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite
-                | PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite
-                | PipelineStageAccess::ComputeShader_ShaderStorageWrite
-                | PipelineStageAccess::Host_HostWrite
-                | PipelineStageAccess::Copy_TransferWrite
-                | PipelineStageAccess::Resolve_TransferWrite
-                | PipelineStageAccess::Blit_TransferWrite
-                | PipelineStageAccess::Clear_TransferWrite
-                | PipelineStageAccess::VideoDecode_VideoDecodeWrite
-                | PipelineStageAccess::VideoEncode_VideoEncodeWrite
-                | PipelineStageAccess::TransformFeedback_TransformFeedbackWrite
-                | PipelineStageAccess::TransformFeedback_TransformFeedbackCounterWrite
-                | PipelineStageAccess::AccelerationStructureBuild_TransferWrite
-                | PipelineStageAccess::AccelerationStructureBuild_AccelerationStructureWrite
-                | PipelineStageAccess::RayTracingShader_ShaderStorageWrite
-                | PipelineStageAccess::CommandPreprocess_CommandPreprocessWrite
-                | PipelineStageAccess::TaskShader_ShaderStorageWrite
-                | PipelineStageAccess::MeshShader_ShaderStorageWrite
-                | PipelineStageAccess::AccelerationStructureCopy_TransferWrite
-                | PipelineStageAccess::OpticalFlow_OpticalFlowWrite
-                | PipelineStageAccess::MicromapBuild_MicromapWrite
-        )
-    }
-
-    #[allow(unused)]
     pub(crate) fn iter_descriptor_stages(
         descriptor_type: DescriptorType,
         stages_read: ShaderStages,
@@ -1273,788 +1532,38 @@ impl PipelineStageAccess {
     }
 }
 
-impl TryFrom<PipelineStageAccess> for PipelineStage {
-    type Error = ();
-
+impl PipelineStageAccessFlags {
     #[inline]
-    fn try_from(val: PipelineStageAccess) -> Result<Self, Self::Error> {
-        Ok(match val {
-            PipelineStageAccess::ImageLayoutTransition => return Err(()),
-            PipelineStageAccess::DrawIndirect_IndirectCommandRead
-            | PipelineStageAccess::DrawIndirect_TransformFeedbackCounterRead => PipelineStage::DrawIndirect,
-            PipelineStageAccess::VertexShader_UniformRead
-            | PipelineStageAccess::VertexShader_ShaderSampledRead
-            | PipelineStageAccess::VertexShader_ShaderStorageRead
-            | PipelineStageAccess::VertexShader_ShaderStorageWrite
-            | PipelineStageAccess::VertexShader_AccelerationStructureRead => PipelineStage::VertexShader,
-            PipelineStageAccess::TessellationControlShader_UniformRead
-            | PipelineStageAccess::TessellationControlShader_ShaderSampledRead
-            | PipelineStageAccess::TessellationControlShader_ShaderStorageRead
-            | PipelineStageAccess::TessellationControlShader_ShaderStorageWrite
-            | PipelineStageAccess::TessellationControlShader_AccelerationStructureRead => PipelineStage::TessellationControlShader,
-            PipelineStageAccess::TessellationEvaluationShader_UniformRead
-            | PipelineStageAccess::TessellationEvaluationShader_ShaderSampledRead
-            | PipelineStageAccess::TessellationEvaluationShader_ShaderStorageRead
-            | PipelineStageAccess::TessellationEvaluationShader_ShaderStorageWrite
-            | PipelineStageAccess::TessellationEvaluationShader_AccelerationStructureRead => PipelineStage::TessellationEvaluationShader,
-            PipelineStageAccess::GeometryShader_UniformRead
-            | PipelineStageAccess::GeometryShader_ShaderSampledRead
-            | PipelineStageAccess::GeometryShader_ShaderStorageRead
-            | PipelineStageAccess::GeometryShader_ShaderStorageWrite
-            | PipelineStageAccess::GeometryShader_AccelerationStructureRead => PipelineStage::GeometryShader,
-            PipelineStageAccess::FragmentShader_UniformRead
-            | PipelineStageAccess::FragmentShader_InputAttachmentRead
-            | PipelineStageAccess::FragmentShader_ShaderSampledRead
-            | PipelineStageAccess::FragmentShader_ShaderStorageRead
-            | PipelineStageAccess::FragmentShader_ShaderStorageWrite
-            | PipelineStageAccess::FragmentShader_AccelerationStructureRead => PipelineStage::FragmentShader,
-            PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentRead
-            | PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite => PipelineStage::EarlyFragmentTests,
-            PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentRead
-            | PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite => PipelineStage::LateFragmentTests,
-            PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentRead
-            | PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite
-            | PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentReadNoncoherent => PipelineStage::ColorAttachmentOutput,
-            PipelineStageAccess::ComputeShader_UniformRead
-            | PipelineStageAccess::ComputeShader_ShaderSampledRead
-            | PipelineStageAccess::ComputeShader_ShaderStorageRead
-            | PipelineStageAccess::ComputeShader_ShaderStorageWrite
-            | PipelineStageAccess::ComputeShader_AccelerationStructureRead => PipelineStage::ComputeShader,
-            PipelineStageAccess::Host_HostRead
-            | PipelineStageAccess::Host_HostWrite => PipelineStage::Host,
-            PipelineStageAccess::Copy_TransferRead
-            | PipelineStageAccess::Copy_TransferWrite => PipelineStage::Copy,
-            PipelineStageAccess::Resolve_TransferRead
-            | PipelineStageAccess::Resolve_TransferWrite => PipelineStage::Resolve,
-            PipelineStageAccess::Blit_TransferRead
-            | PipelineStageAccess::Blit_TransferWrite => PipelineStage::Blit,
-            PipelineStageAccess::Clear_TransferWrite => PipelineStage::Clear,
-            PipelineStageAccess::IndexInput_IndexRead => PipelineStage::IndexInput,
-            PipelineStageAccess::VertexAttributeInput_VertexAttributeRead => PipelineStage::VertexAttributeInput,
-            PipelineStageAccess::VideoDecode_VideoDecodeRead
-            | PipelineStageAccess::VideoDecode_VideoDecodeWrite => PipelineStage::VideoDecode,
-            PipelineStageAccess::VideoEncode_VideoEncodeRead
-            | PipelineStageAccess::VideoEncode_VideoEncodeWrite => PipelineStage::VideoEncode,
-            PipelineStageAccess::TransformFeedback_TransformFeedbackWrite
-            | PipelineStageAccess::TransformFeedback_TransformFeedbackCounterRead
-            | PipelineStageAccess::TransformFeedback_TransformFeedbackCounterWrite => PipelineStage::TransformFeedback,
-            PipelineStageAccess::ConditionalRendering_ConditionalRenderingRead => PipelineStage::ConditionalRendering,
-            PipelineStageAccess::AccelerationStructureBuild_IndirectCommandRead
-            | PipelineStageAccess::AccelerationStructureBuild_UniformRead
-            | PipelineStageAccess::AccelerationStructureBuild_TransferRead
-            | PipelineStageAccess::AccelerationStructureBuild_TransferWrite
-            | PipelineStageAccess::AccelerationStructureBuild_ShaderSampledRead
-            | PipelineStageAccess::AccelerationStructureBuild_ShaderStorageRead
-            | PipelineStageAccess::AccelerationStructureBuild_AccelerationStructureRead
-            | PipelineStageAccess::AccelerationStructureBuild_AccelerationStructureWrite
-            | PipelineStageAccess::AccelerationStructureBuild_MicromapRead => PipelineStage::AccelerationStructureBuild,
-            PipelineStageAccess::RayTracingShader_UniformRead
-            | PipelineStageAccess::RayTracingShader_ShaderSampledRead
-            | PipelineStageAccess::RayTracingShader_ShaderStorageRead
-            | PipelineStageAccess::RayTracingShader_ShaderStorageWrite
-            | PipelineStageAccess::RayTracingShader_AccelerationStructureRead => PipelineStage::RayTracingShader,
-            | PipelineStageAccess::RayTracingShader_ShaderBindingTableRead => PipelineStage::RayTracingShader,
-            PipelineStageAccess::FragmentDensityProcess_FragmentDensityMapRead => PipelineStage::FragmentDensityProcess,
-            PipelineStageAccess::FragmentShadingRateAttachment_FragmentShadingRateAttachmentRead => PipelineStage::FragmentShadingRateAttachment,
-            PipelineStageAccess::CommandPreprocess_CommandPreprocessRead
-            | PipelineStageAccess::CommandPreprocess_CommandPreprocessWrite => PipelineStage::CommandPreprocess,
-            PipelineStageAccess::TaskShader_UniformRead
-            | PipelineStageAccess::TaskShader_ShaderSampledRead
-            | PipelineStageAccess::TaskShader_ShaderStorageRead
-            | PipelineStageAccess::TaskShader_ShaderStorageWrite
-            | PipelineStageAccess::TaskShader_AccelerationStructureRead => PipelineStage::TaskShader,
-            PipelineStageAccess::MeshShader_UniformRead
-            | PipelineStageAccess::MeshShader_ShaderSampledRead
-            | PipelineStageAccess::MeshShader_ShaderStorageRead
-            | PipelineStageAccess::MeshShader_ShaderStorageWrite
-            | PipelineStageAccess::MeshShader_AccelerationStructureRead => PipelineStage::MeshShader,
-            PipelineStageAccess::SubpassShading_InputAttachmentRead => PipelineStage::SubpassShading,
-            PipelineStageAccess::InvocationMask_InvocationMaskRead => PipelineStage::InvocationMask,
-            PipelineStageAccess::AccelerationStructureCopy_TransferRead
-            | PipelineStageAccess::AccelerationStructureCopy_TransferWrite => PipelineStage::AccelerationStructureCopy,
-            PipelineStageAccess::OpticalFlow_OpticalFlowRead
-            | PipelineStageAccess::OpticalFlow_OpticalFlowWrite => PipelineStage::OpticalFlow,
-            PipelineStageAccess::MicromapBuild_MicromapRead
-            | PipelineStageAccess::MicromapBuild_MicromapWrite => PipelineStage::MicromapBuild,
-            PipelineStageAccess::__MAX_VALUE__ => unreachable!(),
-        })
-    }
-}
-
-impl From<PipelineStageAccess> for AccessFlags {
-    #[inline]
-    fn from(val: PipelineStageAccess) -> Self {
-        match val {
-            PipelineStageAccess::ImageLayoutTransition => AccessFlags::empty(),
-            PipelineStageAccess::DrawIndirect_IndirectCommandRead
-            | PipelineStageAccess::AccelerationStructureBuild_IndirectCommandRead => AccessFlags::INDIRECT_COMMAND_READ,
-            PipelineStageAccess::IndexInput_IndexRead => AccessFlags::INDEX_READ,
-            PipelineStageAccess::VertexAttributeInput_VertexAttributeRead => AccessFlags::VERTEX_ATTRIBUTE_READ,
-            PipelineStageAccess::VertexShader_UniformRead
-            | PipelineStageAccess::TessellationControlShader_UniformRead
-            | PipelineStageAccess::TessellationEvaluationShader_UniformRead
-            | PipelineStageAccess::GeometryShader_UniformRead
-            | PipelineStageAccess::FragmentShader_UniformRead
-            | PipelineStageAccess::ComputeShader_UniformRead
-            | PipelineStageAccess::AccelerationStructureBuild_UniformRead
-            | PipelineStageAccess::RayTracingShader_UniformRead
-            | PipelineStageAccess::TaskShader_UniformRead
-            | PipelineStageAccess::MeshShader_UniformRead => AccessFlags::UNIFORM_READ,
-            PipelineStageAccess::FragmentShader_InputAttachmentRead
-            | PipelineStageAccess::SubpassShading_InputAttachmentRead => AccessFlags::INPUT_ATTACHMENT_READ,
-            PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentRead => AccessFlags::COLOR_ATTACHMENT_READ,
-            PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite => AccessFlags::COLOR_ATTACHMENT_WRITE,
-            PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentRead
-            | PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentRead => AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-            PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite
-            | PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite => AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            PipelineStageAccess::Copy_TransferRead
-            | PipelineStageAccess::Resolve_TransferRead
-            | PipelineStageAccess::Blit_TransferRead
-            | PipelineStageAccess::AccelerationStructureBuild_TransferRead
-            | PipelineStageAccess::AccelerationStructureCopy_TransferRead => AccessFlags::TRANSFER_READ,
-            PipelineStageAccess::Copy_TransferWrite
-            | PipelineStageAccess::Resolve_TransferWrite
-            | PipelineStageAccess::Blit_TransferWrite
-            | PipelineStageAccess::Clear_TransferWrite
-            | PipelineStageAccess::AccelerationStructureBuild_TransferWrite
-            | PipelineStageAccess::AccelerationStructureCopy_TransferWrite => AccessFlags::TRANSFER_WRITE,
-            PipelineStageAccess::Host_HostRead => AccessFlags::HOST_READ,
-            PipelineStageAccess::Host_HostWrite => AccessFlags::HOST_WRITE,
-            PipelineStageAccess::VertexShader_ShaderSampledRead
-            | PipelineStageAccess::TessellationControlShader_ShaderSampledRead
-            | PipelineStageAccess::TessellationEvaluationShader_ShaderSampledRead
-            | PipelineStageAccess::GeometryShader_ShaderSampledRead
-            | PipelineStageAccess::FragmentShader_ShaderSampledRead
-            | PipelineStageAccess::ComputeShader_ShaderSampledRead
-            | PipelineStageAccess::AccelerationStructureBuild_ShaderSampledRead
-            | PipelineStageAccess::RayTracingShader_ShaderSampledRead
-            | PipelineStageAccess::TaskShader_ShaderSampledRead
-            | PipelineStageAccess::MeshShader_ShaderSampledRead => AccessFlags::SHADER_SAMPLED_READ,
-            PipelineStageAccess::VertexShader_ShaderStorageRead
-            | PipelineStageAccess::TessellationControlShader_ShaderStorageRead
-            | PipelineStageAccess::TessellationEvaluationShader_ShaderStorageRead
-            | PipelineStageAccess::GeometryShader_ShaderStorageRead
-            | PipelineStageAccess::FragmentShader_ShaderStorageRead
-            | PipelineStageAccess::ComputeShader_ShaderStorageRead
-            | PipelineStageAccess::AccelerationStructureBuild_ShaderStorageRead
-            | PipelineStageAccess::RayTracingShader_ShaderStorageRead
-            | PipelineStageAccess::TaskShader_ShaderStorageRead
-            | PipelineStageAccess::MeshShader_ShaderStorageRead => AccessFlags::SHADER_STORAGE_READ,
-            PipelineStageAccess::VertexShader_ShaderStorageWrite
-            | PipelineStageAccess::TessellationControlShader_ShaderStorageWrite
-            | PipelineStageAccess::TessellationEvaluationShader_ShaderStorageWrite
-            | PipelineStageAccess::GeometryShader_ShaderStorageWrite
-            | PipelineStageAccess::FragmentShader_ShaderStorageWrite
-            | PipelineStageAccess::ComputeShader_ShaderStorageWrite
-            | PipelineStageAccess::RayTracingShader_ShaderStorageWrite
-            | PipelineStageAccess::TaskShader_ShaderStorageWrite
-            | PipelineStageAccess::MeshShader_ShaderStorageWrite => AccessFlags::SHADER_STORAGE_WRITE,
-            PipelineStageAccess::VideoDecode_VideoDecodeRead => AccessFlags::VIDEO_DECODE_READ,
-            PipelineStageAccess::VideoDecode_VideoDecodeWrite => AccessFlags::VIDEO_DECODE_WRITE,
-            PipelineStageAccess::VideoEncode_VideoEncodeRead => AccessFlags::VIDEO_ENCODE_READ,
-            PipelineStageAccess::VideoEncode_VideoEncodeWrite => AccessFlags::VIDEO_ENCODE_WRITE,
-            PipelineStageAccess::TransformFeedback_TransformFeedbackWrite => AccessFlags::TRANSFORM_FEEDBACK_WRITE,
-            PipelineStageAccess::DrawIndirect_TransformFeedbackCounterRead
-            | PipelineStageAccess::TransformFeedback_TransformFeedbackCounterRead => AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ,
-            PipelineStageAccess::TransformFeedback_TransformFeedbackCounterWrite => AccessFlags::TRANSFORM_FEEDBACK_COUNTER_WRITE,
-            PipelineStageAccess::ConditionalRendering_ConditionalRenderingRead => AccessFlags::CONDITIONAL_RENDERING_READ,
-            PipelineStageAccess::CommandPreprocess_CommandPreprocessRead => AccessFlags::COMMAND_PREPROCESS_READ,
-            PipelineStageAccess::CommandPreprocess_CommandPreprocessWrite => AccessFlags::COMMAND_PREPROCESS_WRITE,
-            PipelineStageAccess::FragmentShadingRateAttachment_FragmentShadingRateAttachmentRead => AccessFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_READ,
-            PipelineStageAccess::VertexShader_AccelerationStructureRead
-            | PipelineStageAccess::TessellationControlShader_AccelerationStructureRead
-            | PipelineStageAccess::TessellationEvaluationShader_AccelerationStructureRead
-            | PipelineStageAccess::GeometryShader_AccelerationStructureRead
-            | PipelineStageAccess::FragmentShader_AccelerationStructureRead
-            | PipelineStageAccess::ComputeShader_AccelerationStructureRead
-            | PipelineStageAccess::AccelerationStructureBuild_AccelerationStructureRead
-            | PipelineStageAccess::RayTracingShader_AccelerationStructureRead
-            | PipelineStageAccess::TaskShader_AccelerationStructureRead
-            | PipelineStageAccess::MeshShader_AccelerationStructureRead => AccessFlags::ACCELERATION_STRUCTURE_READ,
-            PipelineStageAccess::AccelerationStructureBuild_AccelerationStructureWrite => AccessFlags::ACCELERATION_STRUCTURE_WRITE,
-            PipelineStageAccess::FragmentDensityProcess_FragmentDensityMapRead => AccessFlags::FRAGMENT_DENSITY_MAP_READ,
-            PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentReadNoncoherent => AccessFlags::COLOR_ATTACHMENT_READ_NONCOHERENT,
-            PipelineStageAccess::InvocationMask_InvocationMaskRead => AccessFlags::INVOCATION_MASK_READ,
-            PipelineStageAccess::RayTracingShader_ShaderBindingTableRead => AccessFlags::SHADER_BINDING_TABLE_READ,
-            PipelineStageAccess::AccelerationStructureBuild_MicromapRead
-            | PipelineStageAccess::MicromapBuild_MicromapRead => AccessFlags::MICROMAP_READ,
-            PipelineStageAccess::MicromapBuild_MicromapWrite => AccessFlags::MICROMAP_WRITE,
-            PipelineStageAccess::OpticalFlow_OpticalFlowRead => AccessFlags::OPTICAL_FLOW_READ,
-            PipelineStageAccess::OpticalFlow_OpticalFlowWrite => AccessFlags::OPTICAL_FLOW_WRITE,
-            PipelineStageAccess::__MAX_VALUE__ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub(crate) struct PipelineStageAccessSet(u128);
-
-#[allow(dead_code)]
-impl PipelineStageAccessSet {
-    #[inline]
-    pub(crate) const fn empty() -> Self {
-        Self(0)
-    }
-
-    #[inline]
-    pub(crate) const fn count(self) -> u32 {
-        self.0.count_ones()
-    }
-
-    #[inline]
-    pub(crate) const fn is_empty(self) -> bool {
-        self.0 == 0
-    }
-
-    #[inline]
-    pub(crate) const fn intersects(self, other: Self) -> bool {
-        self.0 & other.0 != 0
-    }
-
-    #[inline]
-    pub(crate) const fn contains(self, other: Self) -> bool {
-        self.0 & other.0 == other.0
-    }
-
-    #[inline]
-    pub(crate) const fn union(self, other: Self) -> Self {
-        Self(self.0 | other.0)
-    }
-
-    #[inline]
-    pub(crate) const fn intersection(self, other: Self) -> Self {
-        Self(self.0 & other.0)
-    }
-
-    #[inline]
-    pub(crate) const fn difference(self, other: Self) -> Self {
-        Self(self.0 & !other.0)
-    }
-
-    #[inline]
-    pub(crate) const fn symmetric_difference(self, other: Self) -> Self {
-        Self(self.0 ^ other.0)
-    }
-
-    #[inline]
-    pub(crate) fn contains_enum(self, val: PipelineStageAccess) -> bool {
-        self.intersects(val.into())
-    }
-}
-
-impl std::ops::BitAnd for PipelineStageAccessSet {
-    type Output = Self;
-
-    #[inline]
-    fn bitand(self, rhs: Self) -> Self {
-        self.intersection(rhs)
-    }
-}
-
-impl std::ops::BitAndAssign for PipelineStageAccessSet {
-    #[inline]
-    fn bitand_assign(&mut self, rhs: Self) {
-        *self = self.intersection(rhs);
-    }
-}
-
-impl std::ops::BitOr for PipelineStageAccessSet {
-    type Output = Self;
-
-    #[inline]
-    fn bitor(self, rhs: Self) -> Self {
-        self.union(rhs)
-    }
-}
-
-impl std::ops::BitOrAssign for PipelineStageAccessSet {
-    #[inline]
-    fn bitor_assign(&mut self, rhs: Self) {
-        *self = self.union(rhs);
-    }
-}
-
-impl std::ops::BitXor for PipelineStageAccessSet {
-    type Output = Self;
-
-    #[inline]
-    fn bitxor(self, rhs: Self) -> Self {
-        self.symmetric_difference(rhs)
-    }
-}
-
-impl std::ops::BitXorAssign for PipelineStageAccessSet {
-    #[inline]
-    fn bitxor_assign(&mut self, rhs: Self) {
-        *self = self.symmetric_difference(rhs);
-    }
-}
-
-impl std::ops::Sub for PipelineStageAccessSet {
-    type Output = Self;
-
-    #[inline]
-    fn sub(self, rhs: Self) -> Self {
-        self.difference(rhs)
-    }
-}
-
-impl std::ops::SubAssign for PipelineStageAccessSet {
-    #[inline]
-    fn sub_assign(&mut self, rhs: Self) {
-        *self = self.difference(rhs);
-    }
-}
-
-impl From<PipelineStageAccess> for PipelineStageAccessSet {
-    #[inline]
-    fn from(val: PipelineStageAccess) -> Self {
-        debug_assert!(val != PipelineStageAccess::__MAX_VALUE__); // You did something very dumb...
-        Self(1u128 << val as u8)
-    }
-}
-
-impl From<PipelineStages> for PipelineStageAccessSet {
-    #[inline]
-    fn from(stages: PipelineStages) -> Self {
-        let mut result = Self::empty();
-
-        if stages.intersects(PipelineStages::DRAW_INDIRECT) {
-            result |= Self::from(PipelineStageAccess::DrawIndirect_IndirectCommandRead)
-                | Self::from(PipelineStageAccess::DrawIndirect_TransformFeedbackCounterRead)
-        }
-
-        if stages.intersects(PipelineStages::VERTEX_SHADER) {
-            result |= Self::from(PipelineStageAccess::VertexShader_UniformRead)
-                | Self::from(PipelineStageAccess::VertexShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::VertexShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::VertexShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::VertexShader_AccelerationStructureRead)
-        }
-
-        if stages.intersects(PipelineStages::TESSELLATION_CONTROL_SHADER) {
-            result |= Self::from(PipelineStageAccess::TessellationControlShader_UniformRead)
-                | Self::from(PipelineStageAccess::TessellationControlShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::TessellationControlShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::TessellationControlShader_ShaderStorageWrite)
-                | Self::from(
-                    PipelineStageAccess::TessellationControlShader_AccelerationStructureRead,
-                )
-        }
-
-        if stages.intersects(PipelineStages::TESSELLATION_EVALUATION_SHADER) {
-            result |= Self::from(PipelineStageAccess::TessellationEvaluationShader_UniformRead)
-                | Self::from(PipelineStageAccess::TessellationEvaluationShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::TessellationEvaluationShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::TessellationEvaluationShader_ShaderStorageWrite)
-                | Self::from(
-                    PipelineStageAccess::TessellationEvaluationShader_AccelerationStructureRead,
-                )
-        }
-
-        if stages.intersects(PipelineStages::GEOMETRY_SHADER) {
-            result |= Self::from(PipelineStageAccess::GeometryShader_UniformRead)
-                | Self::from(PipelineStageAccess::GeometryShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::GeometryShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::GeometryShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::GeometryShader_AccelerationStructureRead)
-        }
-
-        if stages.intersects(PipelineStages::FRAGMENT_SHADER) {
-            result |= Self::from(PipelineStageAccess::FragmentShader_UniformRead)
-                | Self::from(PipelineStageAccess::FragmentShader_InputAttachmentRead)
-                | Self::from(PipelineStageAccess::FragmentShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::FragmentShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::FragmentShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::FragmentShader_AccelerationStructureRead)
-        }
-
-        if stages.intersects(PipelineStages::EARLY_FRAGMENT_TESTS) {
-            result |= Self::from(PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentRead)
-                | Self::from(PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite)
-        }
-
-        if stages.intersects(PipelineStages::LATE_FRAGMENT_TESTS) {
-            result |= Self::from(PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentRead)
-                | Self::from(PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite)
-        }
-
-        if stages.intersects(PipelineStages::COLOR_ATTACHMENT_OUTPUT) {
-            result |= Self::from(PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentRead)
-                | Self::from(PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite)
-                | Self::from(
-                    PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentReadNoncoherent,
-                )
-        }
-
-        if stages.intersects(PipelineStages::COMPUTE_SHADER) {
-            result |= Self::from(PipelineStageAccess::ComputeShader_UniformRead)
-                | Self::from(PipelineStageAccess::ComputeShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::ComputeShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::ComputeShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::ComputeShader_AccelerationStructureRead)
-        }
-
-        if stages.intersects(PipelineStages::HOST) {
-            result |= Self::from(PipelineStageAccess::Host_HostRead)
-                | Self::from(PipelineStageAccess::Host_HostWrite)
-        }
-
-        if stages.intersects(PipelineStages::COPY) {
-            result |= Self::from(PipelineStageAccess::Copy_TransferRead)
-                | Self::from(PipelineStageAccess::Copy_TransferWrite)
-        }
-
-        if stages.intersects(PipelineStages::RESOLVE) {
-            result |= Self::from(PipelineStageAccess::Resolve_TransferRead)
-                | Self::from(PipelineStageAccess::Resolve_TransferWrite)
-        }
-
-        if stages.intersects(PipelineStages::BLIT) {
-            result |= Self::from(PipelineStageAccess::Blit_TransferRead)
-                | Self::from(PipelineStageAccess::Blit_TransferWrite)
-        }
-
-        if stages.intersects(PipelineStages::CLEAR) {
-            result |= Self::from(PipelineStageAccess::Clear_TransferWrite)
-        }
-
-        if stages.intersects(PipelineStages::INDEX_INPUT) {
-            result |= Self::from(PipelineStageAccess::IndexInput_IndexRead)
-        }
-
-        if stages.intersects(PipelineStages::VERTEX_ATTRIBUTE_INPUT) {
-            result |= Self::from(PipelineStageAccess::VertexAttributeInput_VertexAttributeRead)
-        }
-
-        if stages.intersects(PipelineStages::VIDEO_DECODE) {
-            result |= Self::from(PipelineStageAccess::VideoDecode_VideoDecodeRead)
-                | Self::from(PipelineStageAccess::VideoDecode_VideoDecodeWrite)
-        }
-
-        if stages.intersects(PipelineStages::VIDEO_ENCODE) {
-            result |= Self::from(PipelineStageAccess::VideoEncode_VideoEncodeRead)
-                | Self::from(PipelineStageAccess::VideoEncode_VideoEncodeWrite)
-        }
-
-        if stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
-            result |= Self::from(PipelineStageAccess::TransformFeedback_TransformFeedbackWrite)
-                | Self::from(PipelineStageAccess::TransformFeedback_TransformFeedbackCounterRead)
-                | Self::from(PipelineStageAccess::TransformFeedback_TransformFeedbackCounterWrite)
-        }
-
-        if stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
-            result |= Self::from(PipelineStageAccess::ConditionalRendering_ConditionalRenderingRead)
-        }
-
-        if stages.intersects(PipelineStages::ACCELERATION_STRUCTURE_BUILD) {
-            result |=
-                Self::from(PipelineStageAccess::AccelerationStructureBuild_IndirectCommandRead)
-                    | Self::from(PipelineStageAccess::AccelerationStructureBuild_UniformRead)
-                    | Self::from(PipelineStageAccess::AccelerationStructureBuild_TransferRead)
-                    | Self::from(PipelineStageAccess::AccelerationStructureBuild_TransferWrite)
-                    | Self::from(PipelineStageAccess::AccelerationStructureBuild_ShaderSampledRead)
-                    | Self::from(PipelineStageAccess::AccelerationStructureBuild_ShaderStorageRead)
-                    | Self::from(
-                        PipelineStageAccess::AccelerationStructureBuild_AccelerationStructureRead,
-                    )
-                    | Self::from(
-                        PipelineStageAccess::AccelerationStructureBuild_AccelerationStructureWrite,
-                    )
-            // | Self::from(PipelineStageAccess::AccelerationStructureBuild_MicromapRead)
-        }
-
-        if stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
-            result |= Self::from(PipelineStageAccess::RayTracingShader_UniformRead)
-                | Self::from(PipelineStageAccess::RayTracingShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::RayTracingShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::RayTracingShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::RayTracingShader_AccelerationStructureRead)
-            // | Self::from(PipelineStageAccess::RayTracingShader_ShaderBindingTableRead)
-        }
-
-        if stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
-            result |= Self::from(PipelineStageAccess::FragmentDensityProcess_FragmentDensityMapRead)
-        }
-
-        if stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
-            result |=
-                PipelineStageAccess::FragmentShadingRateAttachment_FragmentShadingRateAttachmentRead
-                    .into()
-        }
-
-        if stages.intersects(PipelineStages::COMMAND_PREPROCESS) {
-            result |= Self::from(PipelineStageAccess::CommandPreprocess_CommandPreprocessRead)
-                | Self::from(PipelineStageAccess::CommandPreprocess_CommandPreprocessWrite)
-        }
-
-        if stages.intersects(PipelineStages::TASK_SHADER) {
-            result |= Self::from(PipelineStageAccess::TaskShader_UniformRead)
-                | Self::from(PipelineStageAccess::TaskShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::TaskShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::TaskShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::TaskShader_AccelerationStructureRead)
-        }
-
-        if stages.intersects(PipelineStages::MESH_SHADER) {
-            result |= Self::from(PipelineStageAccess::MeshShader_UniformRead)
-                | Self::from(PipelineStageAccess::MeshShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::MeshShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::MeshShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::MeshShader_AccelerationStructureRead)
-        }
-
-        if stages.intersects(PipelineStages::SUBPASS_SHADING) {
-            result |= Self::from(PipelineStageAccess::SubpassShading_InputAttachmentRead)
-        }
-
-        if stages.intersects(PipelineStages::INVOCATION_MASK) {
-            result |= Self::from(PipelineStageAccess::InvocationMask_InvocationMaskRead)
-        }
-
-        /*
-        if stages.intersects(PipelineStages::OPTICAL_FLOW) {
-            result |= Self::from(PipelineStageAccess::OpticalFlow_OpticalFlowRead)
-                | Self::from(PipelineStageAccess::OpticalFlow_OpticalFlowWrite)
-        }
-
-        if stages.intersects(PipelineStages::MICROMAP_BUILD) {
-            result |= Self::from(PipelineStageAccess::MicromapBuild_MicromapWrite)
-                | Self::from(PipelineStageAccess::MicromapBuild_MicromapRead)
-        }
-         */
-
-        result
-    }
-}
-
-impl From<AccessFlags> for PipelineStageAccessSet {
-    #[inline]
-    fn from(access: AccessFlags) -> Self {
-        let mut result = Self::empty();
-
-        if access.intersects(AccessFlags::INDIRECT_COMMAND_READ) {
-            result |= Self::from(PipelineStageAccess::DrawIndirect_IndirectCommandRead)
-                | Self::from(PipelineStageAccess::AccelerationStructureBuild_IndirectCommandRead)
-        }
-
-        if access.intersects(AccessFlags::INDEX_READ) {
-            result |= Self::from(PipelineStageAccess::IndexInput_IndexRead)
-        }
-
-        if access.intersects(AccessFlags::VERTEX_ATTRIBUTE_READ) {
-            result |= Self::from(PipelineStageAccess::VertexAttributeInput_VertexAttributeRead)
-        }
-
-        if access.intersects(AccessFlags::UNIFORM_READ) {
-            result |= Self::from(PipelineStageAccess::VertexShader_UniformRead)
-                | Self::from(PipelineStageAccess::TessellationControlShader_UniformRead)
-                | Self::from(PipelineStageAccess::TessellationEvaluationShader_UniformRead)
-                | Self::from(PipelineStageAccess::GeometryShader_UniformRead)
-                | Self::from(PipelineStageAccess::FragmentShader_UniformRead)
-                | Self::from(PipelineStageAccess::ComputeShader_UniformRead)
-                | Self::from(PipelineStageAccess::AccelerationStructureBuild_UniformRead)
-                | Self::from(PipelineStageAccess::RayTracingShader_UniformRead)
-                | Self::from(PipelineStageAccess::TaskShader_UniformRead)
-                | Self::from(PipelineStageAccess::MeshShader_UniformRead)
-        }
-
-        if access.intersects(AccessFlags::INPUT_ATTACHMENT_READ) {
-            result |= Self::from(PipelineStageAccess::FragmentShader_InputAttachmentRead)
-                | Self::from(PipelineStageAccess::SubpassShading_InputAttachmentRead)
-        }
-
-        if access.intersects(AccessFlags::COLOR_ATTACHMENT_READ) {
-            result |= Self::from(PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentRead)
-        }
-
-        if access.intersects(AccessFlags::COLOR_ATTACHMENT_WRITE) {
-            result |= Self::from(PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentWrite)
-        }
-
-        if access.intersects(AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ) {
-            result |= Self::from(PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentRead)
-                | Self::from(PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentRead)
-        }
-
-        if access.intersects(AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE) {
-            result |=
-                Self::from(PipelineStageAccess::EarlyFragmentTests_DepthStencilAttachmentWrite)
-                    | Self::from(PipelineStageAccess::LateFragmentTests_DepthStencilAttachmentWrite)
-        }
-
-        if access.intersects(AccessFlags::TRANSFER_READ) {
-            result |= Self::from(PipelineStageAccess::Copy_TransferRead)
-                | Self::from(PipelineStageAccess::Resolve_TransferRead)
-                | Self::from(PipelineStageAccess::Blit_TransferRead)
-                | Self::from(PipelineStageAccess::AccelerationStructureBuild_TransferRead)
-        }
-
-        if access.intersects(AccessFlags::TRANSFER_WRITE) {
-            result |= Self::from(PipelineStageAccess::Copy_TransferWrite)
-                | Self::from(PipelineStageAccess::Resolve_TransferWrite)
-                | Self::from(PipelineStageAccess::Blit_TransferWrite)
-                | Self::from(PipelineStageAccess::Clear_TransferWrite)
-                | Self::from(PipelineStageAccess::AccelerationStructureBuild_TransferWrite)
-        }
-
-        if access.intersects(AccessFlags::HOST_READ) {
-            result |= Self::from(PipelineStageAccess::Host_HostRead)
-        }
-
-        if access.intersects(AccessFlags::HOST_WRITE) {
-            result |= Self::from(PipelineStageAccess::Host_HostWrite)
-        }
-
-        if access.intersects(AccessFlags::SHADER_SAMPLED_READ) {
-            result |= Self::from(PipelineStageAccess::VertexShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::TessellationControlShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::TessellationEvaluationShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::GeometryShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::FragmentShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::ComputeShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::AccelerationStructureBuild_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::RayTracingShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::TaskShader_ShaderSampledRead)
-                | Self::from(PipelineStageAccess::MeshShader_ShaderSampledRead)
-        }
-
-        if access.intersects(AccessFlags::SHADER_STORAGE_READ) {
-            result |= Self::from(PipelineStageAccess::VertexShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::TessellationControlShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::TessellationEvaluationShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::GeometryShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::FragmentShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::ComputeShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::AccelerationStructureBuild_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::RayTracingShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::TaskShader_ShaderStorageRead)
-                | Self::from(PipelineStageAccess::MeshShader_ShaderStorageRead)
-        }
-
-        if access.intersects(AccessFlags::SHADER_STORAGE_WRITE) {
-            result |= Self::from(PipelineStageAccess::VertexShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::TessellationControlShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::TessellationEvaluationShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::GeometryShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::FragmentShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::ComputeShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::RayTracingShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::TaskShader_ShaderStorageWrite)
-                | Self::from(PipelineStageAccess::MeshShader_ShaderStorageWrite)
-        }
-
-        if access.intersects(AccessFlags::VIDEO_DECODE_READ) {
-            result |= Self::from(PipelineStageAccess::VideoDecode_VideoDecodeRead)
-        }
-
-        if access.intersects(AccessFlags::VIDEO_DECODE_WRITE) {
-            result |= Self::from(PipelineStageAccess::VideoDecode_VideoDecodeWrite)
-        }
-
-        if access.intersects(AccessFlags::VIDEO_ENCODE_READ) {
-            result |= Self::from(PipelineStageAccess::VideoEncode_VideoEncodeRead)
-        }
-
-        if access.intersects(AccessFlags::VIDEO_ENCODE_WRITE) {
-            result |= Self::from(PipelineStageAccess::VideoEncode_VideoEncodeWrite)
-        }
-
-        if access.intersects(AccessFlags::TRANSFORM_FEEDBACK_WRITE) {
-            result |= Self::from(PipelineStageAccess::TransformFeedback_TransformFeedbackWrite)
-        }
-
-        if access.intersects(AccessFlags::TRANSFORM_FEEDBACK_COUNTER_READ) {
-            result |= Self::from(PipelineStageAccess::DrawIndirect_TransformFeedbackCounterRead)
-                | Self::from(PipelineStageAccess::TransformFeedback_TransformFeedbackCounterRead)
-        }
-
-        if access.intersects(AccessFlags::TRANSFORM_FEEDBACK_COUNTER_WRITE) {
-            result |=
-                Self::from(PipelineStageAccess::TransformFeedback_TransformFeedbackCounterWrite)
-        }
-
-        if access.intersects(AccessFlags::CONDITIONAL_RENDERING_READ) {
-            result |= Self::from(PipelineStageAccess::ConditionalRendering_ConditionalRenderingRead)
-        }
-
-        if access.intersects(AccessFlags::COMMAND_PREPROCESS_READ) {
-            result |= Self::from(PipelineStageAccess::CommandPreprocess_CommandPreprocessRead)
-        }
-
-        if access.intersects(AccessFlags::COMMAND_PREPROCESS_WRITE) {
-            result |= Self::from(PipelineStageAccess::CommandPreprocess_CommandPreprocessWrite)
-        }
-
-        if access.intersects(AccessFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_READ) {
-            result |=
-                Self::from(PipelineStageAccess::FragmentShadingRateAttachment_FragmentShadingRateAttachmentRead)
-        }
-
-        if access.intersects(AccessFlags::ACCELERATION_STRUCTURE_READ) {
-            result |= Self::from(PipelineStageAccess::VertexShader_AccelerationStructureRead)
-                | Self::from(
-                    PipelineStageAccess::TessellationControlShader_AccelerationStructureRead,
-                )
-                | Self::from(
-                    PipelineStageAccess::TessellationEvaluationShader_AccelerationStructureRead,
-                )
-                | Self::from(PipelineStageAccess::GeometryShader_AccelerationStructureRead)
-                | Self::from(PipelineStageAccess::FragmentShader_AccelerationStructureRead)
-                | Self::from(PipelineStageAccess::ComputeShader_AccelerationStructureRead)
-                | Self::from(
-                    PipelineStageAccess::AccelerationStructureBuild_AccelerationStructureRead,
-                )
-                | Self::from(PipelineStageAccess::RayTracingShader_AccelerationStructureRead)
-                | Self::from(PipelineStageAccess::TaskShader_AccelerationStructureRead)
-                | Self::from(PipelineStageAccess::MeshShader_AccelerationStructureRead)
-        }
-
-        if access.intersects(AccessFlags::ACCELERATION_STRUCTURE_WRITE) {
-            result |= Self::from(
-                PipelineStageAccess::AccelerationStructureBuild_AccelerationStructureWrite,
-            )
-        }
-
-        if access.intersects(AccessFlags::FRAGMENT_DENSITY_MAP_READ) {
-            result |= Self::from(PipelineStageAccess::FragmentDensityProcess_FragmentDensityMapRead)
-        }
-
-        if access.intersects(AccessFlags::COLOR_ATTACHMENT_READ_NONCOHERENT) {
-            result |= Self::from(
-                PipelineStageAccess::ColorAttachmentOutput_ColorAttachmentReadNoncoherent,
-            )
-        }
-
-        if access.intersects(AccessFlags::INVOCATION_MASK_READ) {
-            result |= Self::from(PipelineStageAccess::InvocationMask_InvocationMaskRead)
-        }
-
-        /*
-        if access.intersects(AccessFlags::SHADER_BINDING_TABLE_READ) {
-            result |= Self::from(PipelineStageAccess::RayTracingShader_ShaderBindingTableRead)
-        }
-
-        if access.intersects(AccessFlags::MICROMAP_READ) {
-            result |= Self::from(PipelineStageAccess::AccelerationStructureBuild_MicromapRead)
-                | Self::from(PipelineStageAccess::MicromapBuild_MicromapRead)
-        }
-
-        if access.intersects(AccessFlags::MICROMAP_WRITE) {
-            result |= Self::from(PipelineStageAccess::MicromapBuild_MicromapWrite)
-        }
-
-        if access.intersects(AccessFlags::OPTICAL_FLOW_READ) {
-            result |= Self::from(PipelineStageAccess::OpticalFlow_OpticalFlowRead)
-        }
-
-        if access.intersects(AccessFlags::OPTICAL_FLOW_WRITE) {
-            result |= Self::from(PipelineStageAccess::OpticalFlow_OpticalFlowWrite)
-        }
-         */
-
-        result
+    pub(crate) fn contains_write(self) -> bool {
+        self.intersects(
+            PipelineStageAccessFlags::VertexShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::TessellationControlShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::TessellationEvaluationShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::GeometryShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::FragmentShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
+                | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentWrite
+                | PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentWrite
+                | PipelineStageAccessFlags::ComputeShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::Host_HostWrite
+                | PipelineStageAccessFlags::Copy_TransferWrite
+                | PipelineStageAccessFlags::Resolve_TransferWrite
+                | PipelineStageAccessFlags::Blit_TransferWrite
+                | PipelineStageAccessFlags::Clear_TransferWrite
+                | PipelineStageAccessFlags::VideoDecode_VideoDecodeWrite
+                | PipelineStageAccessFlags::VideoEncode_VideoEncodeWrite
+                | PipelineStageAccessFlags::TransformFeedback_TransformFeedbackWrite
+                | PipelineStageAccessFlags::TransformFeedback_TransformFeedbackCounterWrite
+                | PipelineStageAccessFlags::AccelerationStructureBuild_TransferWrite
+                | PipelineStageAccessFlags::AccelerationStructureBuild_AccelerationStructureWrite
+                | PipelineStageAccessFlags::RayTracingShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::CommandPreprocess_CommandPreprocessWrite
+                | PipelineStageAccessFlags::TaskShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::MeshShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::AccelerationStructureCopy_TransferWrite
+                | PipelineStageAccessFlags::OpticalFlow_OpticalFlowWrite
+                | PipelineStageAccessFlags::MicromapBuild_MicromapWrite,
+        )
     }
 }
 

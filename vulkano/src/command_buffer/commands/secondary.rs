@@ -405,7 +405,7 @@ where
                             use_ref,
                             ref buffer,
                             ref range,
-                            memory,
+                            memory_access,
                         } = usage;
 
                         (
@@ -418,7 +418,7 @@ where
                             Resource::Buffer {
                                 buffer: buffer.clone(),
                                 range: range.clone(),
-                                memory,
+                                memory_access,
                             },
                         )
                     }))
@@ -427,7 +427,7 @@ where
                             use_ref,
                             ref image,
                             ref subresource_range,
-                            memory,
+                            memory_access,
                             start_layout,
                             end_layout,
                         } = usage;
@@ -442,7 +442,7 @@ where
                             Resource::Image {
                                 image: image.clone(),
                                 subresource_range: subresource_range.clone(),
-                                memory,
+                                memory_access,
                                 start_layout,
                                 end_layout,
                             },

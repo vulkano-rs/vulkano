@@ -139,7 +139,7 @@ use crate::{
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     range_map::RangeMap,
     render_pass::{Framebuffer, Subpass},
-    sync::{semaphore::Semaphore, PipelineMemoryAccess, PipelineStages},
+    sync::{semaphore::Semaphore, PipelineStageAccessFlags, PipelineStages},
     DeviceSize,
 };
 use ahash::HashMap;
@@ -614,7 +614,7 @@ pub(crate) struct SecondaryCommandBufferBufferUsage {
     pub(crate) use_ref: ResourceUseRef,
     pub(crate) buffer: Subbuffer<[u8]>,
     pub(crate) range: Range<DeviceSize>,
-    pub(crate) memory: PipelineMemoryAccess,
+    pub(crate) memory_access: PipelineStageAccessFlags,
 }
 
 #[derive(Debug)]
@@ -622,7 +622,7 @@ pub(crate) struct SecondaryCommandBufferImageUsage {
     pub(crate) use_ref: ResourceUseRef,
     pub(crate) image: Arc<dyn ImageAccess>,
     pub(crate) subresource_range: ImageSubresourceRange,
-    pub(crate) memory: PipelineMemoryAccess,
+    pub(crate) memory_access: PipelineStageAccessFlags,
     pub(crate) start_layout: ImageLayout,
     pub(crate) end_layout: ImageLayout,
 }

@@ -16,7 +16,7 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, Format, FormatFeatures},
     image::{ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage},
-    sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
+    sync::PipelineStageAccessFlags,
     DeviceSize, RequirementNotMet, RequiresOneOf, SafeDeref, Version, VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
@@ -201,11 +201,7 @@ where
                         Resource::Image {
                             image: image.clone(),
                             subresource_range,
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_WRITE,
-                                exclusive: true,
-                            },
+                            memory_access: PipelineStageAccessFlags::Clear_TransferWrite,
                             start_layout: image_layout,
                             end_layout: image_layout,
                         },
@@ -407,11 +403,7 @@ where
                         Resource::Image {
                             image: image.clone(),
                             subresource_range,
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_TRANSFER,
-                                access: AccessFlags::TRANSFER_WRITE,
-                                exclusive: true,
-                            },
+                            memory_access: PipelineStageAccessFlags::Clear_TransferWrite,
                             start_layout: image_layout,
                             end_layout: image_layout,
                         },
@@ -521,11 +513,7 @@ where
                 Resource::Buffer {
                     buffer: dst_buffer.as_bytes().clone(),
                     range: 0..dst_buffer.size(),
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages::ALL_TRANSFER,
-                        access: AccessFlags::TRANSFER_WRITE,
-                        exclusive: true,
-                    },
+                    memory_access: PipelineStageAccessFlags::Clear_TransferWrite,
                 },
             )]
             .into_iter()
@@ -659,11 +647,7 @@ where
                 Resource::Buffer {
                     buffer: dst_buffer.as_bytes().clone(),
                     range: 0..size_of_val(data.deref()) as DeviceSize,
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages::ALL_TRANSFER,
-                        access: AccessFlags::TRANSFER_WRITE,
-                        exclusive: true,
-                    },
+                    memory_access: PipelineStageAccessFlags::Clear_TransferWrite,
                 },
             )]
             .into_iter()

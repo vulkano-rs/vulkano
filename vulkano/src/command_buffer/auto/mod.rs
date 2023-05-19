@@ -83,7 +83,7 @@ use crate::{
     buffer::Subbuffer,
     device::{Device, DeviceOwned},
     image::{ImageAccess, ImageLayout, ImageSubresourceRange},
-    sync::PipelineMemoryAccess,
+    sync::PipelineStageAccessFlags,
     DeviceSize, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -274,12 +274,12 @@ pub(super) enum Resource {
     Buffer {
         buffer: Subbuffer<[u8]>,
         range: Range<DeviceSize>,
-        memory: PipelineMemoryAccess,
+        memory_access: PipelineStageAccessFlags,
     },
     Image {
         image: Arc<dyn ImageAccess>,
         subresource_range: ImageSubresourceRange,
-        memory: PipelineMemoryAccess,
+        memory_access: PipelineStageAccessFlags,
         start_layout: ImageLayout,
         end_layout: ImageLayout,
     },

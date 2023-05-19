@@ -17,13 +17,12 @@
 //! knowledge if you want to avoid errors.
 
 #[allow(unused)]
-pub(crate) use self::pipeline::{PipelineStageAccess, PipelineStageAccessSet};
+pub(crate) use self::pipeline::{PipelineStageAccess, PipelineStageAccessFlags};
 pub use self::{
     future::{now, FlushError, GpuFuture},
     pipeline::{
         AccessFlags, BufferMemoryBarrier, DependencyFlags, DependencyInfo, ImageMemoryBarrier,
-        MemoryBarrier, PipelineMemoryAccess, PipelineStage, PipelineStages,
-        QueueFamilyOwnershipTransfer,
+        MemoryBarrier, PipelineStage, PipelineStages, QueueFamilyOwnershipTransfer,
     },
 };
 use crate::device::Queue;
