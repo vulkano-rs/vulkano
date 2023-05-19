@@ -303,7 +303,7 @@ where
 
         let mut used_resources = Vec::new();
         self.add_descriptor_sets_resources(&mut used_resources, pipeline);
-        self.add_vertex_buffers(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
 
         self.add_command(
             "draw",
@@ -425,7 +425,7 @@ where
 
         let mut used_resources = Vec::new();
         self.add_descriptor_sets_resources(&mut used_resources, pipeline);
-        self.add_vertex_buffers(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
         self.add_command(
@@ -550,7 +550,7 @@ where
 
         let mut used_resources = Vec::new();
         self.add_descriptor_sets_resources(&mut used_resources, pipeline);
-        self.add_vertex_buffers(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_index_buffer_resources(&mut used_resources);
 
         self.add_command(
@@ -685,7 +685,7 @@ where
 
         let mut used_resources = Vec::new();
         self.add_descriptor_sets_resources(&mut used_resources, pipeline);
-        self.add_vertex_buffers(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_index_buffer_resources(&mut used_resources);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
@@ -2051,7 +2051,7 @@ where
         }
     }
 
-    fn add_vertex_buffers(
+    fn add_vertex_buffers_resources(
         &self,
         used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         pipeline: &GraphicsPipeline,
