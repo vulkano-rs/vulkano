@@ -637,7 +637,7 @@ impl RenderPass {
 
             for (stages, access) in [(src_stages, src_access), (dst_stages, dst_access)] {
                 if !device.enabled_features().synchronization2 {
-                    if stages.is_2() {
+                    if stages.contains_flags2() {
                         return Err(RenderPassCreationError::RequirementNotMet {
                             required_for: "`create_info.dependencies` has an element where \
                                 `src_stages` or `dst_stages` contains flags from \
@@ -649,7 +649,7 @@ impl RenderPass {
                         });
                     }
 
-                    if access.is_2() {
+                    if access.contains_flags2() {
                         return Err(RenderPassCreationError::RequirementNotMet {
                             required_for: "`create_info.dependencies` has an element where \
                                 `src_access` or `dst_access` contains flags from \
@@ -667,7 +667,7 @@ impl RenderPass {
                     // we are unable to use extension structs, so we can't use the
                     // extra flag bits.
 
-                    if stages.is_2() {
+                    if stages.contains_flags2() {
                         return Err(RenderPassCreationError::RequirementNotMet {
                             required_for: "`create_info.dependencies` has an element where \
                                 `src_stages` or `dst_stages` contains flags from \
@@ -680,7 +680,7 @@ impl RenderPass {
                         });
                     }
 
-                    if access.is_2() {
+                    if access.contains_flags2() {
                         return Err(RenderPassCreationError::RequirementNotMet {
                             required_for: "`create_info.dependencies` has an element where \
                                 `src_access` or `dst_access` contains flags from \

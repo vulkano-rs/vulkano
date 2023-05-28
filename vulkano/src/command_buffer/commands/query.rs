@@ -17,7 +17,7 @@ use crate::{
     },
     device::{DeviceOwned, QueueFlags},
     query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags, QueryType},
-    sync::{AccessFlags, PipelineMemoryAccess, PipelineStage, PipelineStages},
+    sync::{PipelineStage, PipelineStageAccessFlags, PipelineStages},
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanObject,
 };
 use std::{
@@ -290,7 +290,9 @@ where
     ) -> Result<(), QueryError> {
         let device = self.device();
 
-        if !device.enabled_features().synchronization2 && PipelineStages::from(stage).is_2() {
+        if !device.enabled_features().synchronization2
+            && PipelineStages::from(stage).contains_flags2()
+        {
             return Err(QueryError::RequirementNotMet {
                 required_for: "`stage` has flags set from `VkPipelineStageFlagBits2`",
                 requires_one_of: RequiresOneOf {
@@ -625,11 +627,7 @@ where
                 Resource::Buffer {
                     buffer: destination.as_bytes().clone(),
                     range: 0..destination.size(), // TODO:
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages::ALL_TRANSFER,
-                        access: AccessFlags::TRANSFER_WRITE,
-                        exclusive: true,
-                    },
+                    memory_access: PipelineStageAccessFlags::Copy_TransferWrite,
                 },
             )]
             .into_iter()

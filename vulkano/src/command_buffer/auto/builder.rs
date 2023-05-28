@@ -47,8 +47,8 @@ use crate::{
     range_set::RangeSet,
     render_pass::{Framebuffer, Subpass},
     sync::{
-        AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier, PipelineMemoryAccess,
-        PipelineStages,
+        AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier,
+        PipelineStageAccessFlags, PipelineStages,
     },
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf,
 };
@@ -866,8 +866,10 @@ impl AutoSyncState {
                     final_barrier
                         .image_memory_barriers
                         .push(ImageMemoryBarrier {
-                            src_stages: state.memory.stages,
-                            src_access: state.memory.access,
+                            src_stages: PipelineStages::from(state.memory_access)
+                                .into_supported(&self.device),
+                            src_access: AccessFlags::from(state.memory_access)
+                                .into_supported(&self.device),
                             dst_stages: PipelineStages::TOP_OF_PIPE,
                             dst_access: AccessFlags::empty(),
                             old_layout: state.current_layout,
@@ -876,7 +878,7 @@ impl AutoSyncState {
                             ..ImageMemoryBarrier::image(image.clone())
                         });
 
-                    state.exclusive_any = true;
+                    state.is_written = true;
                 }
             }
 
@@ -901,7 +903,7 @@ impl AutoSyncState {
                                 range,
                                 CommandBufferBufferRangeUsage {
                                     first_use,
-                                    mutable: state.exclusive_any,
+                                    mutable: state.is_written,
                                 },
                             )
                         })
@@ -930,7 +932,7 @@ impl AutoSyncState {
                                 range,
                                 CommandBufferImageRangeUsage {
                                     first_use,
-                                    mutable: state.exclusive_any,
+                                    mutable: state.is_written,
                                     expected_layout: state.initial_layout,
                                     final_layout: state.current_layout,
                                 },
@@ -1002,13 +1004,14 @@ impl AutoSyncState {
                 Resource::Buffer {
                     ref buffer,
                     ref range,
-                    memory,
+                    memory_access,
                 } => {
-                    debug_assert!(AccessFlags::from(memory.stages).contains(memory.access));
-
-                    if let Some(previous_use_ref) =
-                        self.find_buffer_conflict(self.command_index, buffer, range.clone(), memory)
-                    {
+                    if let Some(previous_use_ref) = self.find_buffer_conflict(
+                        self.command_index,
+                        buffer,
+                        range.clone(),
+                        memory_access,
+                    ) {
                         return Err(UnsolvableResourceConflict {
                             current_use_ref: ResourceUseRef {
                                 command_index: self.command_index,
@@ -1023,19 +1026,18 @@ impl AutoSyncState {
                 Resource::Image {
                     ref image,
                     ref subresource_range,
-                    memory,
+                    memory_access,
                     start_layout,
                     end_layout,
                 } => {
-                    debug_assert!(memory.exclusive || start_layout == end_layout);
-                    debug_assert!(AccessFlags::from(memory.stages).contains(memory.access));
+                    debug_assert!(memory_access.contains_write() || start_layout == end_layout);
                     debug_assert!(end_layout != ImageLayout::Undefined);
                     debug_assert!(end_layout != ImageLayout::Preinitialized);
 
                     if let Some(previous_use) = self.find_image_conflict(
                         image,
                         subresource_range.clone(),
-                        memory,
+                        memory_access,
                         start_layout,
                         end_layout,
                     ) {
@@ -1061,7 +1063,7 @@ impl AutoSyncState {
         command_index: usize,
         buffer: &Subbuffer<[u8]>,
         mut range: Range<DeviceSize>,
-        memory: PipelineMemoryAccess,
+        memory_access: PipelineStageAccessFlags,
     ) -> Option<ResourceUseRef> {
         // Barriers work differently in render passes, so if we're in one, we can only insert a
         // barrier before the start of the render pass.
@@ -1081,7 +1083,7 @@ impl AutoSyncState {
                 .iter()
                 .all(|resource_use| resource_use.command_index <= command_index));
 
-            if memory.exclusive || state.memory.exclusive {
+            if memory_access.contains_write() || state.memory_access.contains_write() {
                 // If there is a resource use at a position beyond where we can insert a
                 // barrier, then there is an unsolvable conflict.
                 if let Some(&use_ref) = state
@@ -1101,7 +1103,7 @@ impl AutoSyncState {
         &self,
         image: &dyn ImageAccess,
         subresource_range: ImageSubresourceRange,
-        memory: PipelineMemoryAccess,
+        memory_access: PipelineStageAccessFlags,
         start_layout: ImageLayout,
         _end_layout: ImageLayout,
     ) -> Option<ResourceUseRef> {
@@ -1131,8 +1133,8 @@ impl AutoSyncState {
                     start_layout
                 };
 
-                if memory.exclusive
-                    || state.memory.exclusive
+                if memory_access.contains_write()
+                    || state.memory_access.contains_write()
                     || state.current_layout != start_layout
                 {
                     // If there is a resource use at a position beyond where we can insert a
@@ -1172,7 +1174,7 @@ impl AutoSyncState {
                 Resource::Buffer {
                     ref buffer,
                     ref range,
-                    memory,
+                    memory_access,
                 } => {
                     self.add_buffer(
                         ResourceUseRef {
@@ -1183,13 +1185,13 @@ impl AutoSyncState {
                         },
                         buffer.clone(),
                         range.clone(),
-                        memory,
+                        memory_access,
                     );
                 }
                 Resource::Image {
                     ref image,
                     ref subresource_range,
-                    memory,
+                    memory_access,
                     start_layout,
                     end_layout,
                 } => {
@@ -1202,7 +1204,7 @@ impl AutoSyncState {
                         },
                         image.clone(),
                         subresource_range.clone(),
-                        memory,
+                        memory_access,
                         start_layout,
                         end_layout,
                     );
@@ -1216,7 +1218,7 @@ impl AutoSyncState {
         use_ref: ResourceUseRef,
         buffer: Subbuffer<[u8]>,
         mut range: Range<DeviceSize>,
-        memory: PipelineMemoryAccess,
+        memory_access: PipelineStageAccessFlags,
     ) {
         self.secondary_resources_usage
             .buffers
@@ -1224,7 +1226,7 @@ impl AutoSyncState {
                 use_ref,
                 buffer: buffer.clone(),
                 range: range.clone(),
-                memory,
+                memory_access,
             });
 
         // Barriers work differently in render passes, so if we're in one, we can only insert a
@@ -1243,8 +1245,8 @@ impl AutoSyncState {
                     0..buffer.buffer().size(),
                     BufferState {
                         resource_uses: Vec::new(),
-                        memory: PipelineMemoryAccess::default(),
-                        exclusive_any: false,
+                        memory_access: PipelineStageAccessFlags::empty(),
+                        is_written: false,
                     },
                 )]
                 .into_iter()
@@ -1257,12 +1259,8 @@ impl AutoSyncState {
             if state.resource_uses.is_empty() {
                 // This is the first time we use this resource range in this command buffer.
                 state.resource_uses.push(use_ref);
-                state.memory = PipelineMemoryAccess {
-                    stages: memory.stages,
-                    access: memory.access,
-                    exclusive: memory.exclusive,
-                };
-                state.exclusive_any = memory.exclusive;
+                state.memory_access = memory_access;
+                state.is_written = memory_access.contains_write();
 
                 match self.level {
                     CommandBufferLevel::Primary => {
@@ -1289,7 +1287,7 @@ impl AutoSyncState {
                 // This resource range was used before in this command buffer.
 
                 // Find out if we have a collision with the pending commands.
-                if memory.exclusive || state.memory.exclusive {
+                if memory_access.contains_write() || state.memory_access.contains_write() {
                     // Collision found between `latest_command_id` and `collision_cmd_id`.
 
                     // We now want to modify the current pipeline barrier in order to handle the
@@ -1313,21 +1311,24 @@ impl AutoSyncState {
                     self.pending_barrier
                         .buffer_memory_barriers
                         .push(BufferMemoryBarrier {
-                            src_stages: state.memory.stages,
-                            src_access: state.memory.access,
-                            dst_stages: memory.stages,
-                            dst_access: memory.access,
+                            src_stages: PipelineStages::from(state.memory_access)
+                                .into_supported(&self.device),
+                            src_access: AccessFlags::from(state.memory_access)
+                                .into_supported(&self.device),
+                            dst_stages: PipelineStages::from(memory_access)
+                                .into_supported(&self.device),
+                            dst_access: AccessFlags::from(memory_access)
+                                .into_supported(&self.device),
                             range: range.clone(),
                             ..BufferMemoryBarrier::buffer(buffer.buffer().clone())
                         });
 
                     // Update state.
-                    state.memory = memory;
-                    state.exclusive_any = true;
+                    state.memory_access = memory_access;
+                    state.is_written = true;
                 } else {
-                    // There is no collision. Simply merge the stages and accesses.
-                    state.memory.stages |= memory.stages;
-                    state.memory.access |= memory.access;
+                    // There is no collision. Simply merge the accesses.
+                    state.memory_access |= memory_access;
                 }
 
                 state.resource_uses.push(use_ref);
@@ -1340,7 +1341,7 @@ impl AutoSyncState {
         use_ref: ResourceUseRef,
         image: Arc<dyn ImageAccess>,
         mut subresource_range: ImageSubresourceRange,
-        memory: PipelineMemoryAccess,
+        memory_access: PipelineStageAccessFlags,
         start_layout: ImageLayout,
         end_layout: ImageLayout,
     ) {
@@ -1350,7 +1351,7 @@ impl AutoSyncState {
                 use_ref,
                 image: image.clone(),
                 subresource_range: subresource_range.clone(),
-                memory,
+                memory_access,
                 start_layout,
                 end_layout,
             });
@@ -1394,8 +1395,8 @@ impl AutoSyncState {
 
                         ImageState {
                             resource_uses: Vec::new(),
-                            memory: PipelineMemoryAccess::default(),
-                            exclusive_any: false,
+                            memory_access: PipelineStageAccessFlags::empty(),
+                            is_written: false,
                             initial_layout,
                             current_layout: initial_layout,
                             final_layout: image.final_layout_requirement(),
@@ -1406,8 +1407,8 @@ impl AutoSyncState {
                         // of the first use.
                         ImageState {
                             resource_uses: Vec::new(),
-                            memory: PipelineMemoryAccess::default(),
-                            exclusive_any: false,
+                            memory_access: PipelineStageAccessFlags::empty(),
+                            is_written: false,
                             initial_layout: ImageLayout::Undefined,
                             current_layout: ImageLayout::Undefined,
                             final_layout: ImageLayout::Undefined,
@@ -1430,12 +1431,8 @@ impl AutoSyncState {
                     debug_assert_eq!(state.initial_layout, state.current_layout);
 
                     state.resource_uses.push(use_ref);
-                    state.memory = PipelineMemoryAccess {
-                        stages: memory.stages,
-                        access: memory.access,
-                        exclusive: memory.exclusive,
-                    };
-                    state.exclusive_any = memory.exclusive;
+                    state.memory_access = memory_access;
+                    state.is_written = memory_access.contains_write();
                     state.current_layout = end_layout;
 
                     match self.level {
@@ -1509,7 +1506,7 @@ impl AutoSyncState {
                             // A layout transition is a write, so if we perform one, we
                             // need exclusive access.
                             if barrier.old_layout != barrier.new_layout {
-                                state.exclusive_any = true;
+                                state.is_written = true;
                             }
 
                             self.pending_barrier.image_memory_barriers.push(barrier);
@@ -1530,8 +1527,8 @@ impl AutoSyncState {
                     };
 
                     // Find out if we have a collision with the pending commands.
-                    if memory.exclusive
-                        || state.memory.exclusive
+                    if memory_access.contains_write()
+                        || state.memory_access.contains_write()
                         || state.current_layout != start_layout
                     {
                         // Collision found between `latest_command_id` and `collision_cmd_id`.
@@ -1558,10 +1555,14 @@ impl AutoSyncState {
                         self.pending_barrier
                             .image_memory_barriers
                             .push(ImageMemoryBarrier {
-                                src_stages: state.memory.stages,
-                                src_access: state.memory.access,
-                                dst_stages: memory.stages,
-                                dst_access: memory.access,
+                                src_stages: PipelineStages::from(state.memory_access)
+                                    .into_supported(&self.device),
+                                src_access: AccessFlags::from(state.memory_access)
+                                    .into_supported(&self.device),
+                                dst_stages: PipelineStages::from(memory_access)
+                                    .into_supported(&self.device),
+                                dst_access: AccessFlags::from(memory_access)
+                                    .into_supported(&self.device),
                                 old_layout: state.current_layout,
                                 new_layout: start_layout,
                                 subresource_range: inner.range_to_subresources(range.clone()),
@@ -1569,18 +1570,15 @@ impl AutoSyncState {
                             });
 
                         // Update state.
-                        state.memory = memory;
-                        state.exclusive_any = true;
-                        if memory.exclusive || end_layout != ImageLayout::Undefined {
-                            // Only modify the layout in case of a write, because buffer operations
-                            // pass `Undefined` for the layout. While a buffer write *must* set the
-                            // layout to `Undefined`, a buffer read must not touch it.
+                        state.memory_access = memory_access;
+                        state.is_written = true;
+
+                        if memory_access.contains_write() || end_layout != ImageLayout::Undefined {
                             state.current_layout = end_layout;
                         }
                     } else {
-                        // There is no collision. Simply merge the stages and accesses.
-                        state.memory.stages |= memory.stages;
-                        state.memory.access |= memory.access;
+                        // There is no collision. Simply merge the accesses.
+                        state.memory_access |= memory_access;
                     }
 
                     state.resource_uses.push(use_ref);
@@ -1625,12 +1623,12 @@ struct BufferState {
     // Lists every use of the resource.
     resource_uses: Vec<ResourceUseRef>,
 
-    // Memory access of the command that last used this resource.
-    memory: PipelineMemoryAccess,
+    // Memory accesses performed since the last barrier.
+    memory_access: PipelineStageAccessFlags,
 
-    // True if the resource was used in exclusive mode at any point during the building of the
-    // command buffer. Also true if an image layout transition or queue transfer has been performed.
-    exclusive_any: bool,
+    // True if the resource was written to at any point during the command buffer.
+    // Also true if an image layout transition or queue transfer has been performed.
+    is_written: bool,
 }
 
 // State of a resource during the building of the command buffer.
@@ -1639,12 +1637,12 @@ struct ImageState {
     // Lists every use of the resource.
     resource_uses: Vec<ResourceUseRef>,
 
-    // Memory access of the command that last used this resource.
-    memory: PipelineMemoryAccess,
+    // Memory accesses performed since the last barrier.
+    memory_access: PipelineStageAccessFlags,
 
-    // True if the resource was used in exclusive mode at any point during the building of the
-    // command buffer. Also true if an image layout transition or queue transfer has been performed.
-    exclusive_any: bool,
+    // True if the resource was written to at any point during the command buffer.
+    // Also true if an image layout transition or queue transfer has been performed.
+    is_written: bool,
 
     // The layout that the image range must have when this command buffer is executed.
     // Can be `Undefined` if we don't care.

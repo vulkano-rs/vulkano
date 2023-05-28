@@ -22,10 +22,7 @@ use crate::{
     },
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
-    image::{
-        view::ImageViewType, ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange,
-        ImageViewAbstract, SampleCount,
-    },
+    image::{view::ImageViewType, ImageAccess, ImageAspects, ImageViewAbstract, SampleCount},
     pipeline::{
         graphics::{
             input_assembly::{PrimitiveTopology, PrimitiveTopologyClass},
@@ -35,8 +32,8 @@ use crate::{
         DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineLayout,
     },
     sampler::{Sampler, SamplerImageViewIncompatibleError},
-    shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage},
-    sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
+    shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage, ShaderStages},
+    sync::{PipelineStageAccess, PipelineStageAccessFlags},
     DeviceSize, RequiresOneOf, VulkanObject,
 };
 use std::{
@@ -44,7 +41,6 @@ use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     mem::size_of,
-    ops::Range,
     sync::Arc,
 };
 
@@ -129,7 +125,7 @@ where
             .as_ref();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
 
         self.add_command(
             "dispatch",
@@ -208,8 +204,8 @@ where
             .as_ref();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets(&mut used_resources, pipeline);
-        self.add_indirect_buffer(&mut used_resources, indirect_buffer.as_bytes());
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
         self.add_command(
             "dispatch",
@@ -306,8 +302,8 @@ where
             .as_ref();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets(&mut used_resources, pipeline);
-        self.add_vertex_buffers(&mut used_resources, pipeline);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
 
         self.add_command(
             "draw",
@@ -428,9 +424,9 @@ where
             .as_ref();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets(&mut used_resources, pipeline);
-        self.add_vertex_buffers(&mut used_resources, pipeline);
-        self.add_indirect_buffer(&mut used_resources, indirect_buffer.as_bytes());
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
+        self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
         self.add_command(
             "draw_indirect",
@@ -553,9 +549,9 @@ where
             .as_ref();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets(&mut used_resources, pipeline);
-        self.add_vertex_buffers(&mut used_resources, pipeline);
-        self.add_index_buffer(&mut used_resources);
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
+        self.add_index_buffer_resources(&mut used_resources);
 
         self.add_command(
             "draw_indexed",
@@ -688,10 +684,10 @@ where
             .as_ref();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets(&mut used_resources, pipeline);
-        self.add_vertex_buffers(&mut used_resources, pipeline);
-        self.add_index_buffer(&mut used_resources);
-        self.add_indirect_buffer(&mut used_resources, indirect_buffer.as_bytes());
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
+        self.add_index_buffer_resources(&mut used_resources);
+        self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
         self.add_command(
             "draw_indexed_indirect",
@@ -1873,7 +1869,7 @@ where
         Ok(())
     }
 
-    fn add_descriptor_sets<Pl: Pipeline>(
+    fn add_descriptor_sets_resources<Pl: Pipeline>(
         &self,
         used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         pipeline: &Pl,
@@ -1888,101 +1884,42 @@ where
         };
 
         for (&(set, binding), binding_reqs) in pipeline.descriptor_binding_requirements() {
-            // TODO: Can things be refactored so that the pipeline layout isn't needed at all?
             let descriptor_type = descriptor_sets_state.pipeline_layout.set_layouts()[set as usize]
                 .bindings()[&binding]
                 .descriptor_type;
 
-            let (access_read, access_write) = match descriptor_type {
-                DescriptorType::Sampler => continue,
-                DescriptorType::InputAttachment => {
-                    // FIXME: This is tricky. Since we read from the input attachment
-                    // and this input attachment is being written in an earlier pass,
-                    // vulkano will think that it needs to put a pipeline barrier and will
-                    // return a `Conflict` error. For now as a work-around we simply ignore
-                    // input attachments.
-                    continue;
-                }
-                DescriptorType::CombinedImageSampler
-                | DescriptorType::SampledImage
-                | DescriptorType::UniformTexelBuffer => (Some(AccessFlags::SHADER_READ), None),
-                DescriptorType::StorageImage
-                | DescriptorType::StorageTexelBuffer
-                | DescriptorType::StorageBuffer
-                | DescriptorType::StorageBufferDynamic => (
-                    Some(AccessFlags::SHADER_READ),
-                    Some(AccessFlags::SHADER_WRITE),
-                ),
-                DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
-                    (Some(AccessFlags::UNIFORM_READ), None)
-                }
-            };
+            // TODO: Should input attachments be handled here or in attachment access?
+            if descriptor_type == DescriptorType::InputAttachment {
+                continue;
+            }
 
-            let memory_iter = move |index: u32| {
-                let mut stages_read = PipelineStages::empty();
-                let mut stages_write = PipelineStages::empty();
-
-                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
-                    .chain(binding_reqs.descriptors.get(&None))
-                {
-                    stages_read |= desc_reqs.memory_read.into();
-                    stages_write |= desc_reqs.memory_write.into();
-                }
-
-                let memory_read = (!stages_read.is_empty()).then(|| PipelineMemoryAccess {
-                    stages: stages_read,
-                    access: access_read.unwrap(),
-                    exclusive: false,
-                });
-                let memory_write = (!stages_write.is_empty()).then(|| PipelineMemoryAccess {
-                    stages: stages_write,
-                    access: access_write.unwrap(),
-                    exclusive: true,
-                });
-
-                [memory_read, memory_write].into_iter().flatten()
-            };
-            let buffer_resource =
-                |(index, buffer, range): (u32, Subbuffer<[u8]>, Range<DeviceSize>)| {
-                    memory_iter(index).map(move |memory| {
-                        (
-                            ResourceInCommand::DescriptorSet {
-                                set,
-                                binding,
-                                index,
-                            }
-                            .into(),
-                            Resource::Buffer {
-                                buffer: buffer.clone(),
-                                range: range.clone(),
-                                memory,
-                            },
-                        )
-                    })
-                };
-            let image_resource = |(index, image, layout, subresource_range): (
-                u32,
-                Arc<dyn ImageAccess>,
-                ImageLayout,
-                ImageSubresourceRange,
-            )| {
-                memory_iter(index).map(move |memory| {
-                    (
-                        ResourceInCommand::DescriptorSet {
-                            set,
-                            binding,
-                            index,
-                        }
-                        .into(),
-                        Resource::Image {
-                            image: image.clone(),
-                            subresource_range: subresource_range.clone(),
-                            memory,
-                            start_layout: layout,
-                            end_layout: layout,
+            let use_iter = move |index: u32| {
+                let (stages_read, stages_write) = [Some(index), None]
+                    .into_iter()
+                    .filter_map(|index| binding_reqs.descriptors.get(&index))
+                    .fold(
+                        (ShaderStages::empty(), ShaderStages::empty()),
+                        |(stages_read, stages_write), desc_reqs| {
+                            (
+                                stages_read | desc_reqs.memory_read,
+                                stages_write | desc_reqs.memory_write,
+                            )
                         },
-                    )
-                })
+                    );
+                let use_ref = ResourceUseRef2::from(ResourceInCommand::DescriptorSet {
+                    set,
+                    binding,
+                    index,
+                });
+                let memory_access = PipelineStageAccess::iter_descriptor_stages(
+                    descriptor_type,
+                    stages_read,
+                    stages_write,
+                )
+                .fold(PipelineStageAccessFlags::empty(), |total, val| {
+                    total | val.into()
+                });
+                (use_ref, memory_access)
             };
 
             let descriptor_set_state = &descriptor_sets_state.descriptor_sets[&set];
@@ -1995,100 +1932,126 @@ where
                         DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
                     ) {
                         let dynamic_offsets = descriptor_set_state.dynamic_offsets();
-                        used_resources.extend(
-                            (elements.iter().enumerate())
-                                .filter_map(|(index, element)| {
-                                    element.as_ref().map(|buffer_info| {
-                                        let DescriptorBufferInfo { buffer, range } = buffer_info;
 
-                                        let dynamic_offset = dynamic_offsets[index] as DeviceSize;
+                        for (index, element) in elements.iter().enumerate() {
+                            if let Some(buffer_info) = element {
+                                let DescriptorBufferInfo { buffer, range } = buffer_info;
 
-                                        (
-                                            index as u32,
-                                            buffer.clone(),
-                                            dynamic_offset + range.start
-                                                ..dynamic_offset + range.end,
-                                        )
-                                    })
-                                })
-                                .flat_map(buffer_resource),
-                        );
+                                let dynamic_offset = dynamic_offsets[index] as DeviceSize;
+                                let (use_ref, memory_access) = use_iter(index as u32);
+
+                                let mut range = range.clone();
+                                range.start += buffer.offset() + dynamic_offset;
+                                range.end += buffer.offset() + dynamic_offset;
+
+                                used_resources.push((
+                                    use_ref,
+                                    Resource::Buffer {
+                                        buffer: buffer.clone(),
+                                        range: range.clone(),
+                                        memory_access,
+                                    },
+                                ));
+                            }
+                        }
                     } else {
-                        used_resources.extend(
-                            (elements.iter().enumerate())
-                                .filter_map(|(index, element)| {
-                                    element.as_ref().map(|buffer_info| {
-                                        let DescriptorBufferInfo { buffer, range } = buffer_info;
-                                        (index as u32, buffer.clone(), range.clone())
-                                    })
-                                })
-                                .flat_map(buffer_resource),
-                        );
+                        for (index, element) in elements.iter().enumerate() {
+                            if let Some(buffer_info) = element {
+                                let DescriptorBufferInfo { buffer, range } = buffer_info;
+
+                                let (use_ref, memory_access) = use_iter(index as u32);
+
+                                let mut range = range.clone();
+                                range.start += buffer.offset();
+                                range.end += buffer.offset();
+
+                                used_resources.push((
+                                    use_ref,
+                                    Resource::Buffer {
+                                        buffer: buffer.clone(),
+                                        range: range.clone(),
+                                        memory_access,
+                                    },
+                                ));
+                            }
+                        }
                     }
                 }
                 DescriptorBindingResources::BufferView(elements) => {
-                    used_resources.extend(
-                        (elements.iter().enumerate())
-                            .filter_map(|(index, element)| {
-                                element.as_ref().map(|buffer_view| {
-                                    (
-                                        index as u32,
-                                        buffer_view.buffer().clone(),
-                                        buffer_view.range(),
-                                    )
-                                })
-                            })
-                            .flat_map(buffer_resource),
-                    );
+                    for (index, element) in elements.iter().enumerate() {
+                        if let Some(buffer_view) = element {
+                            let buffer = buffer_view.buffer();
+                            let (use_ref, memory_access) = use_iter(index as u32);
+
+                            let mut range = buffer_view.range();
+                            range.start += buffer.offset();
+                            range.end += buffer.offset();
+
+                            used_resources.push((
+                                use_ref,
+                                Resource::Buffer {
+                                    buffer: buffer.clone(),
+                                    range: range.clone(),
+                                    memory_access,
+                                },
+                            ));
+                        }
+                    }
                 }
                 DescriptorBindingResources::ImageView(elements) => {
-                    used_resources.extend(
-                        (elements.iter().enumerate())
-                            .filter_map(|(index, element)| {
-                                element.as_ref().map(|image_view_info| {
-                                    let &DescriptorImageViewInfo {
-                                        ref image_view,
-                                        image_layout,
-                                    } = image_view_info;
+                    for (index, element) in elements.iter().enumerate() {
+                        if let Some(image_view_info) = element {
+                            let &DescriptorImageViewInfo {
+                                ref image_view,
+                                image_layout,
+                            } = image_view_info;
 
-                                    (
-                                        index as u32,
-                                        image_view.image(),
-                                        image_layout,
-                                        image_view.subresource_range().clone(),
-                                    )
-                                })
-                            })
-                            .flat_map(image_resource),
-                    );
+                            let image = image_view.image();
+                            let (use_ref, memory_access) = use_iter(index as u32);
+
+                            used_resources.push((
+                                use_ref,
+                                Resource::Image {
+                                    image,
+                                    subresource_range: image_view.subresource_range().clone(),
+                                    memory_access,
+                                    start_layout: image_layout,
+                                    end_layout: image_layout,
+                                },
+                            ));
+                        }
+                    }
                 }
                 DescriptorBindingResources::ImageViewSampler(elements) => {
-                    used_resources.extend(
-                        (elements.iter().enumerate())
-                            .filter_map(|(index, element)| {
-                                element.as_ref().map(|(image_view_info, _sampler)| {
-                                    let &DescriptorImageViewInfo {
-                                        ref image_view,
-                                        image_layout,
-                                    } = image_view_info;
+                    for (index, element) in elements.iter().enumerate() {
+                        if let Some((image_view_info, _sampler)) = element {
+                            let &DescriptorImageViewInfo {
+                                ref image_view,
+                                image_layout,
+                            } = image_view_info;
 
-                                    (
-                                        index as u32,
-                                        image_view.image(),
-                                        image_layout,
-                                        image_view.subresource_range().clone(),
-                                    )
-                                })
-                            })
-                            .flat_map(image_resource),
-                    );
+                            let image = image_view.image();
+                            let (use_ref, memory_access) = use_iter(index as u32);
+
+                            used_resources.push((
+                                use_ref,
+                                Resource::Image {
+                                    image,
+                                    subresource_range: image_view.subresource_range().clone(),
+                                    memory_access,
+                                    start_layout: image_layout,
+                                    end_layout: image_layout,
+                                },
+                            ));
+                        }
+                    }
                 }
                 DescriptorBindingResources::Sampler(_) => (),
             }
         }
     }
 
-    fn add_vertex_buffers(
+    fn add_vertex_buffers_resources(
         &self,
         used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         pipeline: &GraphicsPipeline,
@@ -2101,34 +2064,27 @@ where
                     Resource::Buffer {
                         buffer: vertex_buffer.clone(),
                         range: 0..vertex_buffer.size(), // TODO:
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages::VERTEX_INPUT,
-                            access: AccessFlags::VERTEX_ATTRIBUTE_READ,
-                            exclusive: false,
-                        },
+                        memory_access:
+                            PipelineStageAccessFlags::VertexAttributeInput_VertexAttributeRead,
                     },
                 )
             },
         ));
     }
 
-    fn add_index_buffer(&self, used_resources: &mut Vec<(ResourceUseRef2, Resource)>) {
+    fn add_index_buffer_resources(&self, used_resources: &mut Vec<(ResourceUseRef2, Resource)>) {
         let index_buffer = &self.builder_state.index_buffer.as_ref().unwrap().0;
         used_resources.push((
             ResourceInCommand::IndexBuffer.into(),
             Resource::Buffer {
                 buffer: index_buffer.clone(),
                 range: 0..index_buffer.size(), // TODO:
-                memory: PipelineMemoryAccess {
-                    stages: PipelineStages::VERTEX_INPUT,
-                    access: AccessFlags::INDEX_READ,
-                    exclusive: false,
-                },
+                memory_access: PipelineStageAccessFlags::IndexInput_IndexRead,
             },
         ));
     }
 
-    fn add_indirect_buffer(
+    fn add_indirect_buffer_resources(
         &self,
         used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         indirect_buffer: &Subbuffer<[u8]>,
@@ -2138,11 +2094,7 @@ where
             Resource::Buffer {
                 buffer: indirect_buffer.clone(),
                 range: 0..indirect_buffer.size(), // TODO:
-                memory: PipelineMemoryAccess {
-                    stages: PipelineStages::DRAW_INDIRECT,
-                    access: AccessFlags::INDIRECT_COMMAND_READ,
-                    exclusive: false,
-                },
+                memory_access: PipelineStageAccessFlags::DrawIndirect_IndirectCommandRead,
             },
         ));
     }

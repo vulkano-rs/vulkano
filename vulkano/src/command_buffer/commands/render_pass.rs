@@ -25,7 +25,7 @@ use crate::{
         AttachmentDescription, Framebuffer, LoadOp, RenderPass, ResolveMode, StoreOp,
         SubpassDescription,
     },
-    sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
+    sync::PipelineStageAccessFlags,
     RequirementNotMet, RequiresOneOf, Version, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -432,15 +432,14 @@ where
                         Resource::Image {
                             image: image_view.image(),
                             subresource_range: image_view.subresource_range().clone(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                access: AccessFlags::INPUT_ATTACHMENT_READ
-                                    | AccessFlags::COLOR_ATTACHMENT_READ
-                                    | AccessFlags::COLOR_ATTACHMENT_WRITE
-                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                                exclusive: true, // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
-                            },
+                            // TODO: suboptimal
+                            memory_access: PipelineStageAccessFlags::FragmentShader_InputAttachmentRead
+                                | PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentRead
+                                | PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentWrite
+                                | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
+                                | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
+                                | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentRead
+                                | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentWrite,
                             start_layout: desc.initial_layout,
                             end_layout: desc.final_layout,
                         },
@@ -1269,12 +1268,9 @@ where
                             Resource::Image {
                                 image: image_view.image(),
                                 subresource_range: image_view.subresource_range().clone(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                    access: AccessFlags::COLOR_ATTACHMENT_READ
-                                        | AccessFlags::COLOR_ATTACHMENT_WRITE, // TODO: suboptimal
-                                    exclusive: true,                      // TODO: suboptimal
-                                },
+                                // TODO: suboptimal
+                                memory_access: PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentRead
+                                    | PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentWrite,
                                 start_layout: image_layout,
                                 end_layout: image_layout,
                             },
@@ -1291,12 +1287,9 @@ where
                                 Resource::Image {
                                     image: image_view.image(),
                                     subresource_range: image_view.subresource_range().clone(),
-                                    memory: PipelineMemoryAccess {
-                                        stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                        access: AccessFlags::COLOR_ATTACHMENT_READ
-                                            | AccessFlags::COLOR_ATTACHMENT_WRITE, // TODO: suboptimal
-                                        exclusive: true, // TODO: suboptimal
-                                    },
+                                    // TODO: suboptimal
+                                    memory_access: PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentRead
+                                        | PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentWrite,
                                     start_layout: image_layout,
                                     end_layout: image_layout,
                                 },
@@ -1323,12 +1316,11 @@ where
                         Resource::Image {
                             image: image_view.image(),
                             subresource_range: image_view.subresource_range().clone(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                                exclusive: true, // TODO: suboptimal
-                            },
+                            // TODO: suboptimal
+                            memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
+                                | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
+                                | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentRead
+                                | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentWrite,
                             start_layout: image_layout,
                             end_layout: image_layout,
                         },
@@ -1345,12 +1337,11 @@ where
                             Resource::Image {
                                 image: image_view.image(),
                                 subresource_range: image_view.subresource_range().clone(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                    access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                        | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                                    exclusive: true, // TODO: suboptimal
-                                },
+                                // TODO: suboptimal
+                                memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
+                                    | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
+                                    | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentRead
+                                    | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentWrite,
                                 start_layout: image_layout,
                                 end_layout: image_layout,
                             },
@@ -1377,12 +1368,11 @@ where
                         Resource::Image {
                             image: image_view.image(),
                             subresource_range: image_view.subresource_range().clone(),
-                            memory: PipelineMemoryAccess {
-                                stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                    | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                                exclusive: true, // TODO: suboptimal
-                            },
+                            // TODO: suboptimal
+                            memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
+                                | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
+                                | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentRead
+                                | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentWrite,
                             start_layout: image_layout,
                             end_layout: image_layout,
                         },
@@ -1399,12 +1389,11 @@ where
                             Resource::Image {
                                 image: image_view.image(),
                                 subresource_range: image_view.subresource_range().clone(),
-                                memory: PipelineMemoryAccess {
-                                    stages: PipelineStages::ALL_COMMANDS, // TODO: wrong!
-                                    access: AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                                        | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE, // TODO: suboptimal
-                                    exclusive: true, // TODO: suboptimal
-                                },
+                                // TODO: suboptimal
+                                memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
+                                    | PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentWrite
+                                    | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentRead
+                                    | PipelineStageAccessFlags::LateFragmentTests_DepthStencilAttachmentWrite,
                                 start_layout: image_layout,
                                 end_layout: image_layout,
                             },
