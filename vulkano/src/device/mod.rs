@@ -579,10 +579,9 @@ impl Device {
             })?;
 
         // VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-parameter
-        build_info.validate(self).map_err(|err| ValidationError {
-            context: format!("build_info.{}", err.context).into(),
-            ..err
-        })?;
+        build_info
+            .validate(self)
+            .map_err(|err| err.add_context("build_info"))?;
 
         let max_primitive_count = self
             .physical_device()

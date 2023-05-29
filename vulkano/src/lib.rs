@@ -354,6 +354,20 @@ impl ValidationError {
             vuids: &[],
         }
     }
+
+    fn add_context(self, context: impl Into<Cow<'static, str>>) -> Self {
+        if self.context.is_empty() {
+            Self {
+                context: context.into(),
+                ..self
+            }
+        } else {
+            Self {
+                context: format!("{}.{}", context.into(), self.context).into(),
+                ..self
+            }
+        }
+    }
 }
 
 impl Debug for ValidationError {

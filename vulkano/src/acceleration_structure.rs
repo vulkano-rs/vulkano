@@ -168,10 +168,7 @@ impl AccelerationStructure {
         // VUID-vkCreateAccelerationStructureKHR-pCreateInfo-parameter
         create_info
             .validate(device)
-            .map_err(|err| ValidationError {
-                context: format!("create_info.{}", err.context).into(),
-                ..err
-            })?;
+            .map_err(|err| err.add_context("create_info"))?;
 
         Ok(())
     }
@@ -551,10 +548,7 @@ impl AccelerationStructureBuildGeometryInfo {
                 for (index, triangles_data) in geometries.iter().enumerate() {
                     triangles_data
                         .validate(device)
-                        .map_err(|err| ValidationError {
-                            context: format!("geometries[{}].{}", index, err.context).into(),
-                            ..err
-                        })?;
+                        .map_err(|err| err.add_context(format!("geometries[{}]", index)))?;
                 }
 
                 if geometries.len() as u64 > max_geometry_count {
@@ -573,10 +567,9 @@ impl AccelerationStructureBuildGeometryInfo {
             // VUID-VkAccelerationStructureGeometryKHR-aabbs-parameter
             AccelerationStructureGeometries::Aabbs(geometries) => {
                 for (index, aabbs_data) in geometries.iter().enumerate() {
-                    aabbs_data.validate(device).map_err(|err| ValidationError {
-                        context: format!("geometries[{}].{}", index, err.context).into(),
-                        ..err
-                    })?;
+                    aabbs_data
+                        .validate(device)
+                        .map_err(|err| err.add_context(format!("geometries[{}]", index)))?;
                 }
 
                 if geometries.len() as u64 > max_geometry_count {
@@ -596,10 +589,7 @@ impl AccelerationStructureBuildGeometryInfo {
             AccelerationStructureGeometries::Instances(instances_data) => {
                 instances_data
                     .validate(device)
-                    .map_err(|err| ValidationError {
-                        context: format!("geometries.{}", err.context).into(),
-                        ..err
-                    })?;
+                    .map_err(|err| err.add_context("geometries"))?;
             }
         }
 

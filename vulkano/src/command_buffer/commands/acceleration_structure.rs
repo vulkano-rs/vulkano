@@ -129,10 +129,7 @@ where
 
         // VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-parameter
         info.validate(self.device())
-            .map_err(|err| ValidationError {
-                context: format!("info.{}", err.context).into(),
-                ..err
-            })?;
+            .map_err(|err| err.add_context("info"))?;
 
         let &AccelerationStructureBuildGeometryInfo {
             flags: _,
@@ -929,10 +926,7 @@ where
 
         // VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-parameter
         info.validate(self.device())
-            .map_err(|err| ValidationError {
-                context: format!("info.{}", err.context).into(),
-                ..err
-            })?;
+            .map_err(|err| err.add_context("info"))?;
 
         let &AccelerationStructureBuildGeometryInfo {
             flags: _,
@@ -1484,10 +1478,7 @@ where
 
         // VUID-vkCmdCopyAccelerationStructureKHR-pInfo-parameter
         info.validate(self.device())
-            .map_err(|err| ValidationError {
-                context: format!("info.{}", err.context).into(),
-                ..err
-            })?;
+            .map_err(|err| err.add_context("info"))?;
 
         Ok(())
     }
@@ -1595,10 +1586,7 @@ where
 
         // VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-parameter
         info.validate(self.device())
-            .map_err(|err| ValidationError {
-                context: format!("info.{}", err.context).into(),
-                ..err
-            })?;
+            .map_err(|err| err.add_context("info"))?;
 
         Ok(())
     }
@@ -1708,10 +1696,7 @@ where
 
         // VUID-vkCmdCopyMemoryToAccelerationStructureKHR-pInfo-parameter
         info.validate(self.device())
-            .map_err(|err| ValidationError {
-                context: format!("info.{}", err.context).into(),
-                ..err
-            })?;
+            .map_err(|err| err.add_context("info"))?;
 
         Ok(())
     }
