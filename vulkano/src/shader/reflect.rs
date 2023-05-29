@@ -925,6 +925,12 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                 Some(image_type)
             }
 
+            Instruction::TypeAccelerationStructureKHR { .. } => {
+                reqs.descriptor_types = vec![DescriptorType::AccelerationStructure];
+
+                None
+            }
+
             Instruction::TypeArray {
                 element_type,
                 length,
@@ -949,8 +955,6 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 
                 Some(element_type)
             }
-
-            Instruction::TypeAccelerationStructureKHR { .. } => None, // FIXME temporary workaround
 
             _ => {
                 let name = variable_id_info

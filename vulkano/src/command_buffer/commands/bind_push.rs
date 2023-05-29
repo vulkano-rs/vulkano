@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    buffer::{BufferContents, BufferUsage, Subbuffer},
+    buffer::{BufferContents, BufferUsage, IndexBuffer, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
         auto::{RenderPassStateType, SetOrPush},
@@ -24,11 +24,7 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     memory::{is_aligned, DeviceAlignment},
     pipeline::{
-        graphics::{
-            input_assembly::{Index, IndexType},
-            subpass::PipelineSubpassType,
-            vertex_input::VertexBuffersCollection,
-        },
+        graphics::{subpass::PipelineSubpassType, vertex_input::VertexBuffersCollection},
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
     DeviceSize, RequirementNotMet, RequiresOneOf, VulkanObject,
@@ -276,9 +272,9 @@ where
     ///
     /// [`BufferUsage::INDEX_BUFFER`]: crate::buffer::BufferUsage::INDEX_BUFFER
     /// [`index_type_uint8`]: crate::device::Features::index_type_uint8
-    pub fn bind_index_buffer<I: Index>(&mut self, index_buffer: Subbuffer<[I]>) -> &mut Self {
-        self.validate_bind_index_buffer(index_buffer.as_bytes(), I::ty())
-            .unwrap();
+    pub fn bind_index_buffer(&mut self, index_buffer: impl Into<IndexBuffer>) -> &mut Self {
+        let index_buffer = index_buffer.into();
+        self.validate_bind_index_buffer(&index_buffer).unwrap();
 
         unsafe {
             self.bind_index_buffer_unchecked(index_buffer);
@@ -287,11 +283,7 @@ where
         self
     }
 
-    fn validate_bind_index_buffer(
-        &self,
-        index_buffer: &Subbuffer<[u8]>,
-        index_type: IndexType,
-    ) -> Result<(), BindPushError> {
+    fn validate_bind_index_buffer(&self, index_buffer: &IndexBuffer) -> Result<(), BindPushError> {
         let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBindIndexBuffer-commandBuffer-cmdpool
@@ -302,11 +294,13 @@ where
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
+        let index_buffer_bytes = index_buffer.as_bytes();
+
         // VUID-vkCmdBindIndexBuffer-commonparent
-        assert_eq!(self.device(), index_buffer.device());
+        assert_eq!(self.device(), index_buffer_bytes.device());
 
         // VUID-vkCmdBindIndexBuffer-buffer-00433
-        if !index_buffer
+        if !index_buffer_bytes
             .buffer()
             .usage()
             .intersects(BufferUsage::INDEX_BUFFER)
@@ -315,9 +309,11 @@ where
         }
 
         // VUID-vkCmdBindIndexBuffer-indexType-02765
-        if index_type == IndexType::U8 && !self.device().enabled_features().index_type_uint8 {
+        if matches!(index_buffer, IndexBuffer::U8(_))
+            && !self.device().enabled_features().index_type_uint8
+        {
             return Err(BindPushError::RequirementNotMet {
-                required_for: "`index_type` is `IndexType::U8`",
+                required_for: "`index_buffer` is `IndexBuffer::U8`",
                 requires_one_of: RequiresOneOf {
                     features: &["index_type_uint8"],
                     ..Default::default()
@@ -332,16 +328,17 @@ where
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn bind_index_buffer_unchecked<I: Index>(
+    pub unsafe fn bind_index_buffer_unchecked(
         &mut self,
-        buffer: Subbuffer<[I]>,
+        index_buffer: impl Into<IndexBuffer>,
     ) -> &mut Self {
-        self.builder_state.index_buffer = Some((buffer.clone().into_bytes(), I::ty()));
+        let index_buffer = index_buffer.into();
+        self.builder_state.index_buffer = Some(index_buffer.clone());
         self.add_command(
             "bind_index_buffer",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_index_buffer(&buffer);
+                out.bind_index_buffer(&index_buffer);
             },
         );
 
@@ -940,13 +937,15 @@ where
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer<I: Index>(&mut self, buffer: &Subbuffer<[I]>) -> &mut Self {
+    pub unsafe fn bind_index_buffer(&mut self, index_buffer: &IndexBuffer) -> &mut Self {
+        let index_buffer_bytes = index_buffer.as_bytes();
+
         let fns = self.device().fns();
         (fns.v1_0.cmd_bind_index_buffer)(
             self.handle(),
-            buffer.buffer().handle(),
-            buffer.offset(),
-            I::ty().into(),
+            index_buffer_bytes.buffer().handle(),
+            index_buffer_bytes.offset(),
+            index_buffer.index_type().into(),
         );
 
         self
@@ -1083,26 +1082,40 @@ where
         set_num: u32,
         descriptor_writes: &[WriteDescriptorSet],
     ) -> &mut Self {
-        let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
-
-        let (infos_vk, mut writes_vk): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = descriptor_writes
-            .iter()
-            .map(|write| {
-                let binding = &set_layout.bindings()[&write.binding()];
-
-                (
-                    write.to_vulkan_info(binding.descriptor_type),
-                    write.to_vulkan(ash::vk::DescriptorSet::null(), binding.descriptor_type),
-                )
-            })
-            .unzip();
-
-        if writes_vk.is_empty() {
+        if descriptor_writes.is_empty() {
             return self;
         }
 
-        // Set the info pointers separately.
-        for (info_vk, write_vk) in infos_vk.iter().zip(writes_vk.iter_mut()) {
+        let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
+
+        struct PerDescriptorWrite {
+            acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR,
+        }
+
+        let descriptor_writes_iter = descriptor_writes.iter();
+        let (lower_size_bound, _) = descriptor_writes_iter.size_hint();
+        let mut infos_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+
+        for write in descriptor_writes_iter {
+            let layout_binding = &set_layout.bindings()[&write.binding()];
+
+            infos_vk.push(write.to_vulkan_info(layout_binding.descriptor_type));
+            writes_vk.push(write.to_vulkan(
+                ash::vk::DescriptorSet::null(),
+                layout_binding.descriptor_type,
+            ));
+            per_writes_vk.push(PerDescriptorWrite {
+                acceleration_structures: Default::default(),
+            });
+        }
+
+        for ((info_vk, write_vk), per_write_vk) in infos_vk
+            .iter()
+            .zip(writes_vk.iter_mut())
+            .zip(per_writes_vk.iter_mut())
+        {
             match info_vk {
                 DescriptorWriteInfo::Image(info) => {
                     write_vk.descriptor_count = info.len() as u32;
@@ -1115,6 +1128,16 @@ where
                 DescriptorWriteInfo::BufferView(info) => {
                     write_vk.descriptor_count = info.len() as u32;
                     write_vk.p_texel_buffer_view = info.as_ptr();
+                }
+                DescriptorWriteInfo::AccelerationStructure(info) => {
+                    write_vk.descriptor_count = info.len() as u32;
+                    write_vk.p_next = &per_write_vk.acceleration_structures as *const _ as _;
+                    per_write_vk
+                        .acceleration_structures
+                        .acceleration_structure_count = write_vk.descriptor_count;
+                    per_write_vk
+                        .acceleration_structures
+                        .p_acceleration_structures = info.as_ptr();
                 }
             }
 

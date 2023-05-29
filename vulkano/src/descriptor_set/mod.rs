@@ -91,8 +91,9 @@ pub use self::{
 };
 use self::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
 use crate::{
-    buffer::view::BufferView, descriptor_set::layout::DescriptorType, device::DeviceOwned,
-    sampler::Sampler, OomError, VulkanObject,
+    acceleration_structure::AccelerationStructure, buffer::view::BufferView,
+    descriptor_set::layout::DescriptorType, device::DeviceOwned, sampler::Sampler, OomError,
+    VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::{smallvec, SmallVec};
@@ -184,41 +185,59 @@ impl DescriptorSetInner {
             max_count,
         );
 
+        struct PerDescriptorWrite {
+            acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR,
+        }
+
         let mut resources = DescriptorSetResources::new(&layout, variable_descriptor_count);
 
-        let descriptor_writes = descriptor_writes.into_iter();
-        let (lower_size_bound, _) = descriptor_writes.size_hint();
-        let mut descriptor_write_infos_vk: SmallVec<[_; 8]> =
-            SmallVec::with_capacity(lower_size_bound);
-        let mut descriptor_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let writes_iter = descriptor_writes.into_iter();
+        let (lower_size_bound, _) = writes_iter.size_hint();
+        let mut write_infos_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
 
-        for mut write in descriptor_writes {
+        for mut write in writes_iter {
             set_descriptor_write_image_layouts(&mut write, &layout);
             let layout_binding =
                 validate_descriptor_write(&write, &layout, variable_descriptor_count)?;
 
             resources.update(&write);
-            descriptor_write_infos_vk.push(write.to_vulkan_info(layout_binding.descriptor_type));
-            descriptor_writes_vk.push(write.to_vulkan(handle, layout_binding.descriptor_type));
+            write_infos_vk.push(write.to_vulkan_info(layout_binding.descriptor_type));
+            writes_vk.push(write.to_vulkan(handle, layout_binding.descriptor_type));
+            per_writes_vk.push(PerDescriptorWrite {
+                acceleration_structures: Default::default(),
+            });
         }
 
-        if !descriptor_writes_vk.is_empty() {
-            for (info, write) in descriptor_write_infos_vk
+        if !writes_vk.is_empty() {
+            for ((info_vk, write_vk), per_write_vk) in write_infos_vk
                 .iter()
-                .zip(descriptor_writes_vk.iter_mut())
+                .zip(writes_vk.iter_mut())
+                .zip(per_writes_vk.iter_mut())
             {
-                match info {
+                match info_vk {
                     DescriptorWriteInfo::Image(info) => {
-                        write.descriptor_count = info.len() as u32;
-                        write.p_image_info = info.as_ptr();
+                        write_vk.descriptor_count = info.len() as u32;
+                        write_vk.p_image_info = info.as_ptr();
                     }
                     DescriptorWriteInfo::Buffer(info) => {
-                        write.descriptor_count = info.len() as u32;
-                        write.p_buffer_info = info.as_ptr();
+                        write_vk.descriptor_count = info.len() as u32;
+                        write_vk.p_buffer_info = info.as_ptr();
                     }
                     DescriptorWriteInfo::BufferView(info) => {
-                        write.descriptor_count = info.len() as u32;
-                        write.p_texel_buffer_view = info.as_ptr();
+                        write_vk.descriptor_count = info.len() as u32;
+                        write_vk.p_texel_buffer_view = info.as_ptr();
+                    }
+                    DescriptorWriteInfo::AccelerationStructure(info) => {
+                        write_vk.descriptor_count = info.len() as u32;
+                        write_vk.p_next = &per_write_vk.acceleration_structures as *const _ as _;
+                        per_write_vk
+                            .acceleration_structures
+                            .acceleration_structure_count = write_vk.descriptor_count;
+                        per_write_vk
+                            .acceleration_structures
+                            .p_acceleration_structures = info.as_ptr();
                     }
                 }
             }
@@ -229,8 +248,8 @@ impl DescriptorSetInner {
 
             (fns.v1_0.update_descriptor_sets)(
                 layout.device().handle(),
-                descriptor_writes_vk.len() as u32,
-                descriptor_writes_vk.as_ptr(),
+                writes_vk.len() as u32,
+                writes_vk.as_ptr(),
                 0,
                 ptr::null(),
             );
@@ -310,6 +329,9 @@ impl DescriptorSetResources {
                             DescriptorBindingResources::None(smallvec![Some(()); count])
                         }
                     }
+                    DescriptorType::AccelerationStructure => {
+                        DescriptorBindingResources::AccelerationStructure(smallvec![None; count])
+                    }
                 };
                 (binding_num, binding_resources)
             })
@@ -349,6 +371,7 @@ pub enum DescriptorBindingResources {
     ImageView(Elements<DescriptorImageViewInfo>),
     ImageViewSampler(Elements<(DescriptorImageViewInfo, Arc<Sampler>)>),
     Sampler(Elements<Arc<Sampler>>),
+    AccelerationStructure(Elements<Arc<AccelerationStructure>>),
 }
 
 type Elements<T> = SmallVec<[Option<T>; 1]>;

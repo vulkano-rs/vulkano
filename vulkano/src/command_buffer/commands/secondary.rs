@@ -311,7 +311,7 @@ where
         }
 
         for state in self.builder_state.queries.values() {
-            match state.ty {
+            match state.query_pool.query_type() {
                 QueryType::Occlusion => {
                     // VUID-vkCmdExecuteCommands-commandBuffer-00102
                     let inherited_flags = command_buffer.inheritance_info().occlusion_query.ok_or(
@@ -332,7 +332,7 @@ where
                         });
                     }
                 }
-                QueryType::PipelineStatistics(state_flags) => {
+                &QueryType::PipelineStatistics(state_flags) => {
                     let inherited_flags = command_buffer.inheritance_info().query_statistics_flags;
                     let inherited_flags_vk =
                         ash::vk::QueryPipelineStatisticFlags::from(inherited_flags);
@@ -349,7 +349,7 @@ where
                         );
                     }
                 }
-                QueryType::Timestamp => (),
+                _ => (),
             }
         }
 

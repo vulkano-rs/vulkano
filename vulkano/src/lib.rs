@@ -154,6 +154,7 @@
 )]
 
 pub use ash::vk::Handle;
+use bytemuck::{Pod, Zeroable};
 pub use half;
 pub use library::{LoadingError, VulkanLibrary};
 use std::{
@@ -170,6 +171,7 @@ pub use {extensions::ExtensionProperties, version::Version};
 mod tests;
 #[macro_use]
 mod extensions;
+pub mod acceleration_structure;
 pub mod buffer;
 pub mod command_buffer;
 pub mod deferred;
@@ -202,6 +204,34 @@ pub use ash::vk::DeviceSize;
 
 /// A [`DeviceSize`] that is known not to equal zero.
 pub type NonZeroDeviceSize = NonZeroU64;
+
+/// Holds 24 bits in the least significant bits of memory,
+/// and 8 bytes in the most significant bits of that memory,
+/// occupying a single [`u32`] in total.
+// Note: This is copied from Ash, but duplicated here so that we can implement traits on it.
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Debug, Zeroable, Pod)]
+#[repr(transparent)]
+pub struct Packed24_8(u32);
+
+impl Packed24_8 {
+    /// Returns a new `Packed24_8` value.
+    #[inline]
+    pub fn new(low_24: u32, high_8: u8) -> Self {
+        Self((low_24 & 0x00ff_ffff) | (u32::from(high_8) << 24))
+    }
+
+    /// Returns the least-significant 24 bits (3 bytes) of this integer.
+    #[inline]
+    pub fn low_24(&self) -> u32 {
+        self.0 & 0xffffff
+    }
+
+    /// Returns the most significant 8 bits (single byte) of this integer.
+    #[inline]
+    pub fn high_8(&self) -> u8 {
+        (self.0 >> 24) as u8
+    }
+}
 
 // Allow refering to crate by its name to work around limitations of proc-macros
 // in doctests.
@@ -328,10 +358,18 @@ impl ValidationError {
 
 impl Debug for ValidationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(f, "{}: {}", self.context, self.problem)?;
+        if self.context.is_empty() {
+            write!(f, "{}", self.problem)?;
+        } else {
+            write!(f, "{}: {}", self.context, self.problem)?;
+        }
 
         if let Some(requires_one_of) = self.requires_one_of {
-            write!(f, "\n\n{:?}", requires_one_of)?;
+            if self.context.is_empty() && self.problem.is_empty() {
+                write!(f, "{:?}", requires_one_of)?;
+            } else {
+                write!(f, "\n\n{:?}", requires_one_of)?;
+            }
         }
 
         if !self.vuids.is_empty() {
@@ -348,10 +386,18 @@ impl Debug for ValidationError {
 
 impl Display for ValidationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(f, "{}: {}", self.context, self.problem)?;
+        if self.context.is_empty() {
+            write!(f, "{}", self.problem)?;
+        } else {
+            write!(f, "{}: {}", self.context, self.problem)?;
+        }
 
         if let Some(requires_one_of) = self.requires_one_of {
-            write!(f, " -- {}", requires_one_of)?;
+            if self.problem.is_empty() {
+                write!(f, "{}", requires_one_of)?;
+            } else {
+                write!(f, " -- {}", requires_one_of)?;
+            }
         }
 
         if let Some((first, rest)) = self.vuids.split_first() {

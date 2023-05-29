@@ -61,50 +61,74 @@ impl UnsafeDescriptorSet {
         layout: &DescriptorSetLayout,
         writes: impl IntoIterator<Item = &'a WriteDescriptorSet>,
     ) {
-        let (infos, mut writes): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = writes
-            .into_iter()
-            .map(|write| {
-                let descriptor_type = layout.bindings()[&write.binding()].descriptor_type;
+        struct PerDescriptorWrite {
+            acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR,
+        }
 
-                (
-                    write.to_vulkan_info(descriptor_type),
-                    write.to_vulkan(self.handle, descriptor_type),
-                )
-            })
-            .unzip();
+        let writes_iter = writes.into_iter();
+        let (lower_size_bound, _) = writes_iter.size_hint();
+        let mut infos_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+
+        for write in writes_iter {
+            let layout_binding = &layout.bindings()[&write.binding()];
+
+            infos_vk.push(write.to_vulkan_info(layout_binding.descriptor_type));
+            writes_vk.push(write.to_vulkan(
+                ash::vk::DescriptorSet::null(),
+                layout_binding.descriptor_type,
+            ));
+            per_writes_vk.push(PerDescriptorWrite {
+                acceleration_structures: Default::default(),
+            });
+        }
 
         // It is forbidden to call `vkUpdateDescriptorSets` with 0 writes, so we need to perform
         // this emptiness check.
-        if writes.is_empty() {
+        if writes_vk.is_empty() {
             return;
         }
 
-        // Set the info pointers separately.
-        for (info, write) in infos.iter().zip(writes.iter_mut()) {
-            match info {
+        for ((info_vk, write_vk), per_write_vk) in infos_vk
+            .iter()
+            .zip(writes_vk.iter_mut())
+            .zip(per_writes_vk.iter_mut())
+        {
+            match info_vk {
                 DescriptorWriteInfo::Image(info) => {
-                    write.descriptor_count = info.len() as u32;
-                    write.p_image_info = info.as_ptr();
+                    write_vk.descriptor_count = info.len() as u32;
+                    write_vk.p_image_info = info.as_ptr();
                 }
                 DescriptorWriteInfo::Buffer(info) => {
-                    write.descriptor_count = info.len() as u32;
-                    write.p_buffer_info = info.as_ptr();
+                    write_vk.descriptor_count = info.len() as u32;
+                    write_vk.p_buffer_info = info.as_ptr();
                 }
                 DescriptorWriteInfo::BufferView(info) => {
-                    write.descriptor_count = info.len() as u32;
-                    write.p_texel_buffer_view = info.as_ptr();
+                    write_vk.descriptor_count = info.len() as u32;
+                    write_vk.p_texel_buffer_view = info.as_ptr();
+                }
+                DescriptorWriteInfo::AccelerationStructure(info) => {
+                    write_vk.descriptor_count = info.len() as u32;
+                    write_vk.p_next = &per_write_vk.acceleration_structures as *const _ as _;
+                    per_write_vk
+                        .acceleration_structures
+                        .acceleration_structure_count = write_vk.descriptor_count;
+                    per_write_vk
+                        .acceleration_structures
+                        .p_acceleration_structures = info.as_ptr();
                 }
             }
 
-            debug_assert!(write.descriptor_count != 0);
+            debug_assert!(write_vk.descriptor_count != 0);
         }
 
         let fns = layout.device().fns();
 
         (fns.v1_0.update_descriptor_sets)(
             layout.device().handle(),
-            writes.len() as u32,
-            writes.as_ptr(),
+            writes_vk.len() as u32,
+            writes_vk.as_ptr(),
             0,
             ptr::null(),
         );

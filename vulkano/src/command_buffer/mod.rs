@@ -587,6 +587,7 @@ impl From<ResourceUseRef> for SecondaryResourceUseRef {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ResourceInCommand {
+    AccelerationStructure { index: u32 },
     ColorAttachment { index: u32 },
     ColorResolveAttachment { index: u32 },
     DepthStencilAttachment,
@@ -594,9 +595,15 @@ pub enum ResourceInCommand {
     DescriptorSet { set: u32, binding: u32, index: u32 },
     Destination,
     FramebufferAttachment { index: u32 },
+    GeometryAabbsData { index: u32 },
+    GeometryInstancesData,
+    GeometryTrianglesTransformData { index: u32 },
+    GeometryTrianglesIndexData { index: u32 },
+    GeometryTrianglesVertexData { index: u32 },
     ImageMemoryBarrier { index: u32 },
     IndexBuffer,
     IndirectBuffer,
+    ScratchData,
     SecondaryCommandBuffer { index: u32 },
     Source,
     VertexBuffer { binding: u32 },

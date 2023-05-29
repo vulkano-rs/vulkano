@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::{
+    acceleration_structure::AccelerationStructure,
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
@@ -705,13 +706,16 @@ where
         indices: Option<(u32, u32)>,
     ) -> Result<(), PipelineExecutionError> {
         // VUID?
-        let (index_buffer, index_type) = match &self.builder_state.index_buffer {
+        let index_buffer = match &self.builder_state.index_buffer {
             Some(x) => x,
             None => return Err(PipelineExecutionError::IndexBufferNotBound),
         };
 
+        let index_buffer_bytes = index_buffer.as_bytes();
+
         if let Some((first_index, index_count)) = indices {
-            let max_index_count = (index_buffer.size() / index_type.size()) as u32;
+            let max_index_count =
+                (index_buffer_bytes.size() / index_buffer.index_type().size()) as u32;
 
             // // VUID-vkCmdDrawIndexed-firstIndex-04932
             if first_index + index_count > max_index_count {
@@ -1102,6 +1106,9 @@ where
                 Ok(())
             };
 
+            let check_acceleration_structure =
+                |_index: u32, _acceleration_structure: &Arc<AccelerationStructure>| Ok(());
+
             let check_none = |index: u32, _: &()| {
                 if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
                     check_sampler(index, sampler)?;
@@ -1159,6 +1166,15 @@ where
                         binding_reqs,
                         elements,
                         check_sampler,
+                    )?;
+                }
+                DescriptorBindingResources::AccelerationStructure(elements) => {
+                    validate_resources(
+                        set_num,
+                        binding_num,
+                        binding_reqs,
+                        elements,
+                        check_acceleration_structure,
                     )?;
                 }
             }
@@ -2047,6 +2063,23 @@ where
                     }
                 }
                 DescriptorBindingResources::Sampler(_) => (),
+                DescriptorBindingResources::AccelerationStructure(elements) => {
+                    for (index, element) in elements.iter().enumerate() {
+                        if let Some(acceleration_structure) = element {
+                            let buffer = acceleration_structure.buffer();
+                            let (use_ref, memory_access) = use_iter(index as u32);
+
+                            used_resources.push((
+                                use_ref,
+                                Resource::Buffer {
+                                    buffer: buffer.clone(),
+                                    range: 0..buffer.size(),
+                                    memory_access,
+                                },
+                            ));
+                        }
+                    }
+                }
             }
         }
     }
@@ -2073,12 +2106,12 @@ where
     }
 
     fn add_index_buffer_resources(&self, used_resources: &mut Vec<(ResourceUseRef2, Resource)>) {
-        let index_buffer = &self.builder_state.index_buffer.as_ref().unwrap().0;
+        let index_buffer_bytes = self.builder_state.index_buffer.as_ref().unwrap().as_bytes();
         used_resources.push((
             ResourceInCommand::IndexBuffer.into(),
             Resource::Buffer {
-                buffer: index_buffer.clone(),
-                range: 0..index_buffer.size(), // TODO:
+                buffer: index_buffer_bytes.clone(),
+                range: 0..index_buffer_bytes.size(), // TODO:
                 memory_access: PipelineStageAccessFlags::IndexInput_IndexRead,
             },
         ));
