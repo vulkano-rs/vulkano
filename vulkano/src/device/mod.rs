@@ -108,14 +108,21 @@ pub use self::{
     properties::Properties,
     queue::{Queue, QueueError, QueueFamilyProperties, QueueFlags, QueueGuard},
 };
+use crate::{
+    acceleration_structure::{
+        AccelerationStructureBuildGeometryInfo, AccelerationStructureBuildSizesInfo,
+        AccelerationStructureBuildType, AccelerationStructureGeometries,
+    },
+    instance::Instance,
+    macros::impl_id_counter,
+    memory::ExternalMemoryHandleType,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, ValidationError, Version,
+    VulkanObject,
+};
 pub use crate::{
     device::extensions::DeviceExtensions,
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
     fns::DeviceFunctions,
-};
-use crate::{
-    instance::Instance, macros::impl_id_counter, memory::ExternalMemoryHandleType, OomError,
-    RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::Mutex;
@@ -509,6 +516,234 @@ impl Device {
 
     pub(crate) fn event_pool(&self) -> &Mutex<Vec<ash::vk::Event>> {
         &self.event_pool
+    }
+
+    #[inline]
+    pub fn acceleration_structure_build_sizes(
+        &self,
+        build_type: AccelerationStructureBuildType,
+        build_info: &AccelerationStructureBuildGeometryInfo,
+        max_primitive_counts: &[u32],
+    ) -> Result<AccelerationStructureBuildSizesInfo, ValidationError> {
+        self.validate_acceleration_structure_build_sizes(
+            build_type,
+            build_info,
+            max_primitive_counts,
+        )?;
+
+        unsafe {
+            Ok(self.acceleration_structure_build_sizes_unchecked(
+                build_type,
+                build_info,
+                max_primitive_counts,
+            ))
+        }
+    }
+
+    fn validate_acceleration_structure_build_sizes(
+        &self,
+        build_type: AccelerationStructureBuildType,
+        build_info: &AccelerationStructureBuildGeometryInfo,
+        max_primitive_counts: &[u32],
+    ) -> Result<(), ValidationError> {
+        if !self.enabled_extensions().khr_acceleration_structure {
+            return Err(ValidationError {
+                requires_one_of: Some(RequiresOneOf {
+                    device_extensions: &["khr_acceleration_structure"],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+        }
+
+        if !(self.enabled_features().ray_tracing_pipeline || self.enabled_features().ray_query) {
+            return Err(ValidationError {
+                requires_one_of: Some(RequiresOneOf {
+                    features: &["ray_tracing_pipeline", "ray_query"],
+                    ..Default::default()
+                }),
+                vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-rayTracingPipeline-03617"],
+                ..Default::default()
+            });
+        }
+
+        build_type
+            .validate_device(self)
+            .map_err(|err| ValidationError {
+                context: "build_type".into(),
+                vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-buildType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-parameter
+        build_info.validate(self).map_err(|err| ValidationError {
+            context: format!("build_info.{}", err.context).into(),
+            ..err
+        })?;
+
+        let max_primitive_count = self
+            .physical_device()
+            .properties()
+            .max_primitive_count
+            .unwrap();
+        let max_instance_count = self
+            .physical_device()
+            .properties()
+            .max_instance_count
+            .unwrap();
+
+        let geometry_count = match &build_info.geometries {
+            AccelerationStructureGeometries::Triangles(geometries) => {
+                for (index, &primitive_count) in max_primitive_counts.iter().enumerate() {
+                    if primitive_count as u64 > max_primitive_count {
+                        return Err(ValidationError {
+                            context: format!("max_primitive_counts[{}]", index).into(),
+                            problem: "the max_primitive_count limit has been exceeded".into(),
+                            vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795"],
+                            ..Default::default()
+                        });
+                    }
+                }
+
+                geometries.len()
+            }
+            AccelerationStructureGeometries::Aabbs(geometries) => {
+                for (index, &primitive_count) in max_primitive_counts.iter().enumerate() {
+                    if primitive_count as u64 > max_primitive_count {
+                        return Err(ValidationError {
+                            context: format!("max_primitive_counts[{}]", index).into(),
+                            problem: "the max_primitive_count limit has been exceeded".into(),
+                            vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794"],
+                            ..Default::default()
+                        });
+                    }
+                }
+
+                geometries.len()
+            }
+            AccelerationStructureGeometries::Instances(_) => {
+                for (index, &instance_count) in max_primitive_counts.iter().enumerate() {
+                    if instance_count as u64 > max_instance_count {
+                        return Err(ValidationError {
+                            context: format!("max_primitive_counts[{}]", index).into(),
+                            problem: "the max_instance_count limit has been exceeded".into(),
+                            vuids: &[
+                                "VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-03785",
+                            ],
+                            ..Default::default()
+                        });
+                    }
+                }
+
+                1
+            }
+        };
+
+        if max_primitive_counts.len() != geometry_count {
+            return Err(ValidationError {
+                problem: "build_info.geometries and max_primitive_counts \
+                    do not have the same length"
+                    .into(),
+                vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-03619"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn acceleration_structure_build_sizes_unchecked(
+        &self,
+        build_type: AccelerationStructureBuildType,
+        build_info: &AccelerationStructureBuildGeometryInfo,
+        max_primitive_counts: &[u32],
+    ) -> AccelerationStructureBuildSizesInfo {
+        let (mut build_info_vk, geometries_vk) = build_info.to_vulkan();
+        build_info_vk = ash::vk::AccelerationStructureBuildGeometryInfoKHR {
+            geometry_count: geometries_vk.len() as u32,
+            p_geometries: geometries_vk.as_ptr(),
+            ..build_info_vk
+        };
+
+        let mut build_sizes_info_vk = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
+
+        let fns = self.fns();
+        (fns.khr_acceleration_structure
+            .get_acceleration_structure_build_sizes_khr)(
+            self.handle,
+            build_type.into(),
+            &build_info_vk,
+            max_primitive_counts.as_ptr(),
+            &mut build_sizes_info_vk,
+        );
+
+        AccelerationStructureBuildSizesInfo {
+            acceleration_structure_size: build_sizes_info_vk.acceleration_structure_size,
+            update_scratch_size: build_sizes_info_vk.update_scratch_size,
+            build_scratch_size: build_sizes_info_vk.build_scratch_size,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    #[inline]
+    pub fn acceleration_structure_is_compatible(
+        &self,
+        version_data: &[u8; 2 * ash::vk::UUID_SIZE],
+    ) -> Result<bool, ValidationError> {
+        self.validate_acceleration_structure_is_compatible(version_data)?;
+
+        unsafe { Ok(self.acceleration_structure_is_compatible_unchecked(version_data)) }
+    }
+
+    fn validate_acceleration_structure_is_compatible(
+        &self,
+        _version_data: &[u8; 2 * ash::vk::UUID_SIZE],
+    ) -> Result<(), ValidationError> {
+        if !self.enabled_extensions().khr_acceleration_structure {
+            return Err(ValidationError {
+                requires_one_of: Some(RequiresOneOf {
+                    device_extensions: &["khr_acceleration_structure"],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+        }
+
+        if !(self.enabled_features().ray_tracing_pipeline || self.enabled_features().ray_query) {
+            return Err(ValidationError {
+                requires_one_of: Some(RequiresOneOf {
+                    features: &["ray_tracing_pipeline", "ray_query"],
+                    ..Default::default()
+                }),
+                vuids: &["VUID-vkGetDeviceAccelerationStructureCompatibilityKHR-rayTracingPipeline-03661"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn acceleration_structure_is_compatible_unchecked(
+        &self,
+        version_data: &[u8; 2 * ash::vk::UUID_SIZE],
+    ) -> bool {
+        let version_info_vk = ash::vk::AccelerationStructureVersionInfoKHR {
+            p_version_data: version_data,
+            ..Default::default()
+        };
+        let mut compatibility_vk = ash::vk::AccelerationStructureCompatibilityKHR::default();
+
+        let fns = self.fns();
+        (fns.khr_acceleration_structure
+            .get_device_acceleration_structure_compatibility_khr)(
+            self.handle,
+            &version_info_vk,
+            &mut compatibility_vk,
+        );
+
+        compatibility_vk == ash::vk::AccelerationStructureCompatibilityKHR::COMPATIBLE
     }
 
     /// Retrieves the properties of an external file descriptor when imported as a given external

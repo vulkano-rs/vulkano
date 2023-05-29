@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+pub(super) mod acceleration_structure;
 pub(super) mod bind_push;
 pub(super) mod clear;
 pub(super) mod copy;

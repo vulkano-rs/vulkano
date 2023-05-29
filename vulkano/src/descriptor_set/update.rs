@@ -9,6 +9,7 @@
 
 use super::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorType};
 use crate::{
+    acceleration_structure::{AccelerationStructure, AccelerationStructureType},
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     device::DeviceOwned,
     image::{
@@ -309,6 +310,31 @@ impl WriteDescriptorSet {
         }
     }
 
+    /// Write a single acceleration structure to array element 0.
+    #[inline]
+    pub fn acceleration_structure(
+        binding: u32,
+        acceleration_structure: Arc<AccelerationStructure>,
+    ) -> Self {
+        Self::acceleration_structure_array(binding, 0, [acceleration_structure])
+    }
+
+    /// Write a number of consecutive acceleration structure elements.
+    pub fn acceleration_structure_array(
+        binding: u32,
+        first_array_element: u32,
+        elements: impl IntoIterator<Item = Arc<AccelerationStructure>>,
+    ) -> Self {
+        let elements: SmallVec<_> = elements.into_iter().collect();
+        assert!(!elements.is_empty());
+
+        Self {
+            binding,
+            first_array_element,
+            elements: WriteDescriptorSetElements::AccelerationStructure(elements),
+        }
+    }
+
     /// Returns the binding number that is updated by this descriptor write.
     #[inline]
     pub fn binding(&self) -> u32 {
@@ -442,6 +468,18 @@ impl WriteDescriptorSet {
                         .collect(),
                 )
             }
+            WriteDescriptorSetElements::AccelerationStructure(elements) => {
+                debug_assert!(matches!(
+                    descriptor_type,
+                    DescriptorType::AccelerationStructure
+                ));
+                DescriptorWriteInfo::AccelerationStructure(
+                    elements
+                        .iter()
+                        .map(|acceleration_structure| acceleration_structure.handle())
+                        .collect(),
+                )
+            }
         }
     }
 
@@ -473,6 +511,7 @@ pub enum WriteDescriptorSetElements {
     ImageView(SmallVec<[DescriptorImageViewInfo; 1]>),
     ImageViewSampler(SmallVec<[(DescriptorImageViewInfo, Arc<Sampler>); 1]>),
     Sampler(SmallVec<[Arc<Sampler>; 1]>),
+    AccelerationStructure(SmallVec<[Arc<AccelerationStructure>; 1]>),
 }
 
 impl WriteDescriptorSetElements {
@@ -486,6 +525,7 @@ impl WriteDescriptorSetElements {
             Self::ImageView(elements) => elements.len() as u32,
             Self::ImageViewSampler(elements) => elements.len() as u32,
             Self::Sampler(elements) => elements.len() as u32,
+            Self::AccelerationStructure(elements) => elements.len() as u32,
         }
     }
 }
@@ -538,6 +578,7 @@ pub(crate) enum DescriptorWriteInfo {
     Image(SmallVec<[ash::vk::DescriptorImageInfo; 1]>),
     Buffer(SmallVec<[ash::vk::DescriptorBufferInfo; 1]>),
     BufferView(SmallVec<[ash::vk::BufferView; 1]>),
+    AccelerationStructure(SmallVec<[ash::vk::AccelerationStructureKHR; 1]>),
 }
 
 pub(crate) fn set_descriptor_write_image_layouts(
@@ -598,6 +639,7 @@ pub(crate) fn validate_descriptor_write<'a>(
             WriteDescriptorSetElements::ImageView(_) => "image_view",
             WriteDescriptorSetElements::ImageViewSampler(_) => "image_view_sampler",
             WriteDescriptorSetElements::Sampler(_) => "sampler",
+            WriteDescriptorSetElements::AccelerationStructure(_) => "acceleration_structure",
         }
     }
 
@@ -1266,6 +1308,33 @@ pub(crate) fn validate_descriptor_write<'a>(
                 }
             }
         }
+
+        DescriptorType::AccelerationStructure => {
+            let elements =
+                if let WriteDescriptorSetElements::AccelerationStructure(elements) = elements {
+                    elements
+                } else {
+                    return Err(DescriptorSetUpdateError::IncompatibleElementType {
+                        binding,
+                        provided_element_type: provided_element_type(elements),
+                        allowed_element_types: &["acceleration_structure"],
+                    });
+                };
+
+            for (index, acceleration_structure) in elements.iter().enumerate() {
+                assert_eq!(device, acceleration_structure.device());
+
+                if !matches!(
+                    acceleration_structure.ty(),
+                    AccelerationStructureType::TopLevel | AccelerationStructureType::Generic
+                ) {
+                    return Err(DescriptorSetUpdateError::AccelerationStructureNotTopLevel {
+                        binding: write.binding(),
+                        index: descriptor_range_start + index as u32,
+                    });
+                }
+            }
+        }
     }
 
     Ok(layout_binding)
@@ -1278,6 +1347,12 @@ pub enum DescriptorSetUpdateError {
         index: u32,
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
+    },
+
+    /// Tried to write an acceleration structure that is not top-level or generic.
+    AccelerationStructureNotTopLevel {
+        binding: u32,
+        index: u32,
     },
 
     /// Tried to write more elements than were available in a binding.
@@ -1394,6 +1469,12 @@ impl Display for DescriptorSetUpdateError {
                 binding, index, required_for, requires_one_of,
             ),
 
+            Self::AccelerationStructureNotTopLevel { binding, index } => write!(
+                f,
+                "tried to write an acceleration structure to binding {} index {} that is not \
+                top-level or generic",
+                binding, index,
+            ),
             Self::ArrayIndexOutOfBounds {
                 binding,
                 available_count,

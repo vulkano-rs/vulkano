@@ -112,7 +112,7 @@ use self::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    macros::vulkan_bitflags,
+    macros::{vulkan_bitflags, vulkan_enum},
     memory::{
         allocator::{
             AllocationCreateInfo, AllocationCreationError, AllocationType, DeviceLayout,
@@ -1122,4 +1122,92 @@ impl ExternalBufferInfo {
 pub struct ExternalBufferProperties {
     /// The properties for external memory.
     pub external_memory_properties: ExternalMemoryProperties,
+}
+
+vulkan_enum! {
+    #[non_exhaustive]
+
+    /// An enumeration of all valid index types.
+    IndexType = IndexType(i32);
+
+    /// Indices are 8-bit unsigned integers.
+    U8 = UINT8_EXT {
+        device_extensions: [ext_index_type_uint8],
+    },
+
+    /// Indices are 16-bit unsigned integers.
+    U16 = UINT16,
+
+    /// Indices are 32-bit unsigned integers.
+    U32 = UINT32,
+}
+
+impl IndexType {
+    /// Returns the size in bytes of indices of this type.
+    #[inline]
+    pub fn size(self) -> DeviceSize {
+        match self {
+            IndexType::U8 => 1,
+            IndexType::U16 => 2,
+            IndexType::U32 => 4,
+        }
+    }
+}
+
+/// A buffer holding index values, which index into buffers holding vertex data.
+#[derive(Clone, Debug)]
+pub enum IndexBuffer {
+    /// An index buffer containing unsigned 8-bit indices.
+    ///
+    /// The [`index_type_uint8`] feature must be enabled on the device.
+    ///
+    /// [`index_type_uint8`]: crate::device::Features::index_type_uint8
+    U8(Subbuffer<[u8]>),
+
+    /// An index buffer containing unsigned 16-bit indices.
+    U16(Subbuffer<[u16]>),
+
+    /// An index buffer containing unsigned 32-bit indices.
+    U32(Subbuffer<[u32]>),
+}
+
+impl IndexBuffer {
+    #[inline]
+    pub fn index_type(&self) -> IndexType {
+        match self {
+            Self::U8(_) => IndexType::U8,
+            Self::U16(_) => IndexType::U16,
+            Self::U32(_) => IndexType::U32,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn as_bytes(&self) -> &Subbuffer<[u8]> {
+        match self {
+            IndexBuffer::U8(buffer) => buffer.as_bytes(),
+            IndexBuffer::U16(buffer) => buffer.as_bytes(),
+            IndexBuffer::U32(buffer) => buffer.as_bytes(),
+        }
+    }
+}
+
+impl From<Subbuffer<[u8]>> for IndexBuffer {
+    #[inline]
+    fn from(value: Subbuffer<[u8]>) -> Self {
+        Self::U8(value)
+    }
+}
+
+impl From<Subbuffer<[u16]>> for IndexBuffer {
+    #[inline]
+    fn from(value: Subbuffer<[u16]>) -> Self {
+        Self::U16(value)
+    }
+}
+
+impl From<Subbuffer<[u32]>> for IndexBuffer {
+    #[inline]
+    fn from(value: Subbuffer<[u32]>) -> Self {
+        Self::U32(value)
+    }
 }

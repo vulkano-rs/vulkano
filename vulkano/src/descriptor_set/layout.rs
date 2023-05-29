@@ -833,11 +833,10 @@ vulkan_enum! {
         device_extensions: [ext_inline_uniform_block],
     },*/
 
-    /* TODO: enable
-    // TODO: document
+    /// Gives read access to an acceleration structure, for performing ray queries and ray tracing.
     AccelerationStructure = ACCELERATION_STRUCTURE_KHR {
         device_extensions: [khr_acceleration_structure],
-    },*/
+    },
 
     /* TODO: enable
     // TODO: document
