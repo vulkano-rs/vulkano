@@ -1248,6 +1248,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
         if !self.dedicated_allocation {
             dedicated_allocation = None;
+            prefers_dedicated_allocation = false;
         }
 
         let export_handle_types = if self.export_handle_types.is_empty() {
