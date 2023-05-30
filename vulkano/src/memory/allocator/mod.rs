@@ -1356,16 +1356,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         &self,
         memory_type_index: u32,
         allocation_size: DeviceSize,
-        mut dedicated_allocation: Option<DedicatedAllocation<'_>>,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
     ) -> Result<MemoryAlloc, AllocationCreationError> {
-        // Providers of `VkMemoryDedicatedAllocateInfo`
-        if !(self.device.api_version() >= Version::V1_1
-            || self.device.enabled_extensions().khr_dedicated_allocation)
-        {
-            dedicated_allocation = None;
-        }
-
         let allocate_info = MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
