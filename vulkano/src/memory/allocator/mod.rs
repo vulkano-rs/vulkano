@@ -1246,7 +1246,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             .find_memory_type_index(memory_type_bits, filter)
             .expect("couldn't find a suitable memory type");
 
-        if !self.dedicated_allocation {
+        if !self.dedicated_allocation && !requires_dedicated_allocation {
             dedicated_allocation = None;
         }
 
@@ -1262,6 +1262,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
             let res = match allocate_preference {
                 MemoryAllocatePreference::Unknown => {
+                    // VUID-vkBindBufferMemory-buffer-01444
+                    // VUID-vkBindImageMemory-image-01445
                     if requires_dedicated_allocation {
                         self.allocate_dedicated_unchecked(
                             memory_type_index,
@@ -1354,16 +1356,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         &self,
         memory_type_index: u32,
         allocation_size: DeviceSize,
-        mut dedicated_allocation: Option<DedicatedAllocation<'_>>,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
     ) -> Result<MemoryAlloc, AllocationCreationError> {
-        // Providers of `VkMemoryDedicatedAllocateInfo`
-        if !(self.device.api_version() >= Version::V1_1
-            || self.device.enabled_extensions().khr_dedicated_allocation)
-        {
-            dedicated_allocation = None;
-        }
-
         let allocate_info = MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
