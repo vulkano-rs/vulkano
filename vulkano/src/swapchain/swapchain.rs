@@ -131,10 +131,9 @@ impl Swapchain {
             clipped,
             full_screen_exclusive,
             win32_monitor,
-            allow_single_image,
+            allow_single_image: _,
             _ne: _,
         } = create_info;
-        let min_image_count = if allow_single_image { min_image_count } else { min_image_count.max(2) };
 
         let swapchain = Arc::new(Swapchain {
             handle,
@@ -232,10 +231,9 @@ impl Swapchain {
             clipped,
             full_screen_exclusive,
             win32_monitor,
-            allow_single_image,
+            allow_single_image: _,
             _ne: _,
         } = create_info;
-        let min_image_count = if allow_single_image { min_image_count } else { min_image_count.max(2) };
 
         let swapchain = Arc::new(Swapchain {
             handle,
@@ -284,7 +282,7 @@ impl Swapchain {
         create_info: &mut SwapchainCreateInfo,
     ) -> Result<(), SwapchainCreationError> {
         let &mut SwapchainCreateInfo {
-            min_image_count,
+            ref mut min_image_count,
             ref mut image_format,
             image_color_space,
             ref mut image_extent,
@@ -300,7 +298,6 @@ impl Swapchain {
             allow_single_image,
             _ne: _,
         } = create_info;
-        let min_image_count = if allow_single_image { min_image_count } else { min_image_count.max(2) };
 
         if !device.enabled_extensions().khr_swapchain {
             return Err(SwapchainCreationError::RequirementNotMet {
@@ -427,16 +424,24 @@ impl Swapchain {
 
         // VUID-VkSwapchainCreateInfoKHR-minImageCount-01272
         // VUID-VkSwapchainCreateInfoKHR-presentMode-02839
-        if min_image_count < surface_capabilities.min_image_count
+        if *min_image_count < surface_capabilities.min_image_count
             || surface_capabilities
                 .max_image_count
-                .map_or(false, |c| min_image_count > c)
+                .map_or(false, |c| *min_image_count > c)
         {
             return Err(SwapchainCreationError::MinImageCountNotSupported {
-                provided: min_image_count,
+                provided: *min_image_count,
                 min_supported: surface_capabilities.min_image_count,
                 max_supported: surface_capabilities.max_image_count,
             });
+        }
+
+        // Some Vulkan drivers report SurfaceCapabilities::min_image_count to be 1. And then end
+        // up in a deadlock in fullscreen since they actually need at least two images to perform a flip.
+        if !allow_single_image && *min_image_count < 2 && surface_capabilities
+            .max_image_count
+            .map_or(true, |c| c >= 2) {
+            *min_image_count = 2;
         }
 
         if image_extent[0] == 0 || image_extent[1] == 0 {
@@ -587,10 +592,9 @@ impl Swapchain {
             clipped,
             full_screen_exclusive,
             win32_monitor,
-            allow_single_image,
+            allow_single_image: _,
             _ne: _,
         } = create_info;
-        let min_image_count = if allow_single_image { min_image_count } else { min_image_count.max(2) };
 
         let (image_sharing_mode, queue_family_index_count, p_queue_family_indices) =
             match image_sharing {
