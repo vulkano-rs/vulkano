@@ -438,9 +438,12 @@ impl Swapchain {
 
         // Some Vulkan drivers report SurfaceCapabilities::min_image_count to be 1. And then end
         // up in a deadlock in fullscreen since they actually need at least two images to perform a flip.
-        if !allow_single_image && *min_image_count < 2 && surface_capabilities
-            .max_image_count
-            .map_or(true, |c| c >= 2) {
+        if !allow_single_image
+            && *min_image_count < 2
+            && surface_capabilities
+                .max_image_count
+                .map_or(true, |c| c >= 2)
+        {
             *min_image_count = 2;
         }
 
