@@ -131,7 +131,6 @@ impl Swapchain {
             clipped,
             full_screen_exclusive,
             win32_monitor,
-            allow_single_image: _,
             _ne: _,
         } = create_info;
 
@@ -231,7 +230,6 @@ impl Swapchain {
             clipped,
             full_screen_exclusive,
             win32_monitor,
-            allow_single_image: _,
             _ne: _,
         } = create_info;
 
@@ -295,7 +293,6 @@ impl Swapchain {
             clipped: _,
             full_screen_exclusive,
             win32_monitor,
-            allow_single_image,
             _ne: _,
         } = create_info;
 
@@ -436,10 +433,9 @@ impl Swapchain {
             });
         }
 
-        // Some Vulkan drivers report SurfaceCapabilities::min_image_count to be 1. And then end
+        // Some Vulkan drivers report SurfaceCapabilities::min_image_count to be 1. And then they end
         // up in a deadlock in fullscreen since they actually need at least two images to perform a flip.
-        if !allow_single_image
-            && *min_image_count < 2
+        if *min_image_count < 2
             && surface_capabilities
                 .max_image_count
                 .map_or(true, |c| c >= 2)
@@ -595,7 +591,6 @@ impl Swapchain {
             clipped,
             full_screen_exclusive,
             win32_monitor,
-            allow_single_image: _,
             _ne: _,
         } = create_info;
 
@@ -722,7 +717,6 @@ impl Swapchain {
             clipped: self.clipped,
             full_screen_exclusive: self.full_screen_exclusive,
             win32_monitor: self.win32_monitor,
-            allow_single_image: self.min_image_count == 1,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -1013,8 +1007,7 @@ impl Debug for Swapchain {
 pub struct SwapchainCreateInfo {
     /// The minimum number of images that will be created.
     ///
-    /// The implementation is allowed to create more than this number, but never less. A minimum value
-    /// of 2 is used, see [`SwapchainCreateInfo::allow_single_image`].
+    /// The implementation is allowed to create more than this number, but never less.
     ///
     /// The default value is `2`.
     pub min_image_count: u32,
@@ -1097,19 +1090,6 @@ pub struct SwapchainCreateInfo {
     /// The default value is `None`.
     pub win32_monitor: Option<Win32Monitor>,
 
-    /// Whether the implementation is allowed to create a swapchain with only one image. You probably
-    /// don't need this.
-    ///
-    /// Certain drivers report [`SurfaceCapabilities::min_image_count`] to be `1`. Using that number
-    /// to specify [`SwapchainCreateInfo::min_image_count`] might lead to degraded performance or
-    /// even crash your app in fullscreen, as some common implementations need at least two images
-    /// in a flip model.
-    ///
-    /// Since a single image swapchain uses less memory, Vulkano offers that option behind this flag.
-    ///
-    /// The default value is `false`.
-    pub allow_single_image: bool,
-
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1130,7 +1110,6 @@ impl Default for SwapchainCreateInfo {
             clipped: true,
             full_screen_exclusive: FullScreenExclusive::Default,
             win32_monitor: None,
-            allow_single_image: false,
             _ne: crate::NonExhaustive(()),
         }
     }
