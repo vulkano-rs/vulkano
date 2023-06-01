@@ -893,10 +893,10 @@ where
             .acceleration_structure_indirect_build
         {
             return Err(ValidationError {
-                requires_one_of: Some(RequiresOneOf {
+                requires_one_of: RequiresOneOf {
                     features: &["acceleration_structure_indirect_build"],
                     ..Default::default()
-                }),
+                },
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-accelerationStructureIndirectBuild-03650"],
                 ..Default::default()
             });

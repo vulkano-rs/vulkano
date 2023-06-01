@@ -551,20 +551,20 @@ impl Device {
     ) -> Result<(), ValidationError> {
         if !self.enabled_extensions().khr_acceleration_structure {
             return Err(ValidationError {
-                requires_one_of: Some(RequiresOneOf {
+                requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_acceleration_structure"],
                     ..Default::default()
-                }),
+                },
                 ..Default::default()
             });
         }
 
         if !(self.enabled_features().ray_tracing_pipeline || self.enabled_features().ray_query) {
             return Err(ValidationError {
-                requires_one_of: Some(RequiresOneOf {
+                requires_one_of: RequiresOneOf {
                     features: &["ray_tracing_pipeline", "ray_query"],
                     ..Default::default()
-                }),
+                },
                 vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-rayTracingPipeline-03617"],
                 ..Default::default()
             });
@@ -706,20 +706,20 @@ impl Device {
     ) -> Result<(), ValidationError> {
         if !self.enabled_extensions().khr_acceleration_structure {
             return Err(ValidationError {
-                requires_one_of: Some(RequiresOneOf {
+                requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_acceleration_structure"],
                     ..Default::default()
-                }),
+                },
                 ..Default::default()
             });
         }
 
         if !(self.enabled_features().ray_tracing_pipeline || self.enabled_features().ray_query) {
             return Err(ValidationError {
-                requires_one_of: Some(RequiresOneOf {
+                requires_one_of: RequiresOneOf {
                     features: &["ray_tracing_pipeline", "ray_query"],
                     ..Default::default()
-                }),
+                },
                 vuids: &["VUID-vkGetDeviceAccelerationStructureCompatibilityKHR-rayTracingPipeline-03661"],
                 ..Default::default()
             });

@@ -330,7 +330,7 @@ pub struct ValidationError {
     pub problem: Cow<'static, str>,
 
     /// If applicable, settings that the user could enable to avoid the problem in the future.
-    pub requires_one_of: Option<RequiresOneOf>,
+    pub requires_one_of: RequiresOneOf,
 
     /// *Valid Usage IDs* (VUIDs) in the Vulkan specification that relate to the problem.
     pub vuids: &'static [&'static str],
@@ -342,7 +342,7 @@ impl ValidationError {
             context: "".into(),
             problem: err.required_for.into(),
             vuids: &[],
-            requires_one_of: Some(err.requires_one_of),
+            requires_one_of: err.requires_one_of,
         }
     }
 
@@ -350,7 +350,7 @@ impl ValidationError {
         Self {
             context: "".into(),
             problem: err.to_string().into(),
-            requires_one_of: None,
+            requires_one_of: RequiresOneOf::default(),
             vuids: &[],
         }
     }
@@ -378,11 +378,11 @@ impl Debug for ValidationError {
             write!(f, "{}: {}", self.context, self.problem)?;
         }
 
-        if let Some(requires_one_of) = self.requires_one_of {
+        if !self.requires_one_of.is_empty() {
             if self.context.is_empty() && self.problem.is_empty() {
-                write!(f, "{:?}", requires_one_of)?;
+                write!(f, "{:?}", self.requires_one_of)?;
             } else {
-                write!(f, "\n\n{:?}", requires_one_of)?;
+                write!(f, "\n\n{:?}", self.requires_one_of)?;
             }
         }
 
@@ -406,11 +406,11 @@ impl Display for ValidationError {
             write!(f, "{}: {}", self.context, self.problem)?;
         }
 
-        if let Some(requires_one_of) = self.requires_one_of {
+        if !self.requires_one_of.is_empty() {
             if self.problem.is_empty() {
-                write!(f, "{}", requires_one_of)?;
+                write!(f, "{}", self.requires_one_of)?;
             } else {
-                write!(f, " -- {}", requires_one_of)?;
+                write!(f, " -- {}", self.requires_one_of)?;
             }
         }
 
@@ -454,6 +454,14 @@ impl RequiresOneOf {
             + self.features.len()
             + self.device_extensions.len()
             + self.instance_extensions.len()
+    }
+
+    /// Returns whether there are any requirements.
+    pub fn is_empty(&self) -> bool {
+        self.api_version.is_none()
+            && self.features.is_empty()
+            && self.device_extensions.is_empty()
+            && self.instance_extensions.is_empty()
     }
 }
 

@@ -146,20 +146,20 @@ impl AccelerationStructure {
     ) -> Result<(), ValidationError> {
         if !device.enabled_extensions().khr_acceleration_structure {
             return Err(ValidationError {
-                requires_one_of: Some(RequiresOneOf {
+                requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_acceleration_structure"],
                     ..Default::default()
-                }),
+                },
                 ..Default::default()
             });
         }
 
         if !device.enabled_features().acceleration_structure {
             return Err(ValidationError {
-                requires_one_of: Some(RequiresOneOf {
+                requires_one_of: RequiresOneOf {
                     features: &["acceleration_structure"],
                     ..Default::default()
-                }),
+                },
                 vuids: &["VUID-vkCreateAccelerationStructureKHR-accelerationStructure-03611"],
                 ..Default::default()
             });
