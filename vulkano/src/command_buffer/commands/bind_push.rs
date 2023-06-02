@@ -1092,13 +1092,11 @@ where
             acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR,
         }
 
-        let descriptor_writes_iter = descriptor_writes.iter();
-        let (lower_size_bound, _) = descriptor_writes_iter.size_hint();
-        let mut infos_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
-        let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
-        let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut infos_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
+        let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
+        let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
 
-        for write in descriptor_writes_iter {
+        for write in descriptor_writes {
             let layout_binding = &set_layout.bindings()[&write.binding()];
 
             infos_vk.push(write.to_vulkan_info(layout_binding.descriptor_type));
