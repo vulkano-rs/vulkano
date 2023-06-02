@@ -10,10 +10,8 @@
 //! Configures how input vertices are assembled into primitives.
 
 use crate::{
-    buffer::BufferContents,
     macros::vulkan_enum,
     pipeline::{PartialStateMode, StateMode},
-    DeviceSize,
 };
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
@@ -194,69 +192,6 @@ impl PrimitiveTopologyClass {
             Self::Line => PrimitiveTopology::LineList,
             Self::Triangle => PrimitiveTopology::TriangleList,
             Self::Patch => PrimitiveTopology::PatchList,
-        }
-    }
-}
-
-/// Trait for types that can be used as indices by the GPU.
-pub unsafe trait Index: BufferContents + Sized {
-    /// Returns the type of data.
-    fn ty() -> IndexType;
-}
-
-unsafe impl Index for u8 {
-    #[inline(always)]
-    fn ty() -> IndexType {
-        IndexType::U8
-    }
-}
-
-unsafe impl Index for u16 {
-    #[inline(always)]
-    fn ty() -> IndexType {
-        IndexType::U16
-    }
-}
-
-unsafe impl Index for u32 {
-    #[inline(always)]
-    fn ty() -> IndexType {
-        IndexType::U32
-    }
-}
-
-vulkan_enum! {
-    #[non_exhaustive]
-
-    /// An enumeration of all valid index types.
-    IndexType = IndexType(i32);
-
-    // TODO: document
-    U8 = UINT8_EXT {
-        device_extensions: [ext_index_type_uint8],
-    },
-
-    // TODO: document
-    U16 = UINT16,
-
-    // TODO: document
-    U32 = UINT32,
-
-    /* TODO: enable
-    // TODO: document
-    None = NONE_KHR {
-        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
-    },*/
-}
-
-impl IndexType {
-    /// Returns the size in bytes of indices of this type.
-    #[inline]
-    pub fn size(self) -> DeviceSize {
-        match self {
-            IndexType::U8 => 1,
-            IndexType::U16 => 2,
-            IndexType::U32 => 4,
         }
     }
 }

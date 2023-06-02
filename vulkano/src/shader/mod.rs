@@ -148,8 +148,7 @@ use std::{
     collections::hash_map::Entry,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    mem,
-    mem::MaybeUninit,
+    mem::{align_of, discriminant, size_of, size_of_val, MaybeUninit},
     num::NonZeroU64,
     ptr,
     sync::Arc,
@@ -210,15 +209,12 @@ impl ShaderModule {
         device: Arc<Device>,
         bytes: &[u8],
     ) -> Result<Arc<ShaderModule>, ShaderModuleCreationError> {
-        assert!(bytes.as_ptr() as usize % mem::align_of::<u32>() == 0);
-        assert!(bytes.len() % mem::size_of::<u32>() == 0);
+        assert!(bytes.as_ptr() as usize % align_of::<u32>() == 0);
+        assert!(bytes.len() % size_of::<u32>() == 0);
 
         Self::from_words(
             device,
-            std::slice::from_raw_parts(
-                bytes.as_ptr() as *const _,
-                bytes.len() / mem::size_of::<u32>(),
-            ),
+            std::slice::from_raw_parts(bytes.as_ptr() as *const _, bytes.len() / size_of::<u32>()),
         )
     }
 
@@ -266,7 +262,7 @@ impl ShaderModule {
         let handle = {
             let infos = ash::vk::ShaderModuleCreateInfo {
                 flags: ash::vk::ShaderModuleCreateFlags::empty(),
-                code_size: words.len() * mem::size_of::<u32>(),
+                code_size: size_of_val(words),
                 p_code: words.as_ptr(),
                 ..Default::default()
             };
@@ -321,15 +317,12 @@ impl ShaderModule {
         spirv_extensions: impl IntoIterator<Item = &'a str>,
         entry_points: impl IntoIterator<Item = EntryPointInfo>,
     ) -> Result<Arc<ShaderModule>, ShaderModuleCreationError> {
-        assert!(bytes.as_ptr() as usize % mem::align_of::<u32>() == 0);
-        assert!(bytes.len() % mem::size_of::<u32>() == 0);
+        assert!(bytes.as_ptr() as usize % align_of::<u32>() == 0);
+        assert!(bytes.len() % size_of::<u32>() == 0);
 
         Self::from_words_with_data(
             device,
-            std::slice::from_raw_parts(
-                bytes.as_ptr() as *const _,
-                bytes.len() / mem::size_of::<u32>(),
-            ),
+            std::slice::from_raw_parts(bytes.as_ptr() as *const _, bytes.len() / size_of::<u32>()),
             spirv_version,
             spirv_capabilities,
             spirv_extensions,
@@ -837,7 +830,7 @@ impl SpecializationConstant {
     /// Returns whether `self` and `other` have the same type, ignoring the value.
     #[inline]
     pub fn eq_type(&self, other: &Self) -> bool {
-        mem::discriminant(self) == mem::discriminant(other)
+        discriminant(self) == discriminant(other)
     }
 }
 

@@ -87,17 +87,15 @@ vulkan_bitflags! {
         device_extensions: [ext_conditional_rendering],
     },*/
 
-    /* TODO: enable
-    // TODO: document
-    ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR = ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR {
+    /// The buffer can be used as input data for an acceleration structure build operation.
+    ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR {
         device_extensions: [khr_acceleration_structure],
-    },*/
+    },
 
-    /* TODO: enable
-    // TODO: document
+    /// An acceleration structure can be created from the buffer.
     ACCELERATION_STRUCTURE_STORAGE = ACCELERATION_STRUCTURE_STORAGE_KHR {
         device_extensions: [khr_acceleration_structure],
-    },*/
+    },
 
     /* TODO: enable
     // TODO: document

@@ -967,7 +967,7 @@ vulkan_bitflags! {
     /// pipeline.
     VERTEX_BUFFER = VERTEX_BUFFER,
 
-    /// Can be used with the vertex buffer of an acceleration structure.
+    /// Can be used as the vertex format when building an acceleration structure.
     ACCELERATION_STRUCTURE_VERTEX_BUFFER = ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR {
         device_extensions: [khr_acceleration_structure],
     },

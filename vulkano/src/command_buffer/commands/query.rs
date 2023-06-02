@@ -126,7 +126,13 @@ where
                 }
             }
             // VUID-vkCmdBeginQuery-queryType-02804
-            QueryType::Timestamp => return Err(QueryError::NotPermitted),
+            // VUID-vkCmdBeginQuery-queryType-04728
+            // VUID-vkCmdBeginQuery-queryType-06741
+            QueryType::Timestamp
+            | QueryType::AccelerationStructureCompactedSize
+            | QueryType::AccelerationStructureSerializationSize
+            | QueryType::AccelerationStructureSerializationBottomLevelPointers
+            | QueryType::AccelerationStructureSize => return Err(QueryError::NotPermitted),
         }
 
         // VUID-vkCmdBeginQuery-queryPool-01922
@@ -161,14 +167,11 @@ where
         query: u32,
         flags: QueryControlFlags,
     ) -> &mut Self {
-        let ty = query_pool.query_type();
-        let raw_query_pool = query_pool.handle();
         self.builder_state.queries.insert(
-            ty.into(),
+            query_pool.query_type().into(),
             QueryState {
-                query_pool: raw_query_pool,
+                query_pool: query_pool.clone(),
                 query,
-                ty,
                 flags,
                 in_subpass: self.builder_state.render_pass.is_some(),
             },
@@ -222,7 +225,7 @@ where
             .queries
             .get(&query_pool.query_type().into())
             .map_or(false, |state| {
-                state.query_pool == query_pool.handle() && state.query == query
+                *state.query_pool == *query_pool && state.query == query
             })
         {
             return Err(QueryError::QueryNotActive);
@@ -696,7 +699,7 @@ where
             .builder_state
             .queries
             .values()
-            .any(|state| state.query_pool == query_pool.handle() && queries.contains(&state.query))
+            .any(|state| *state.query_pool == *query_pool && queries.contains(&state.query))
         {
             return Err(QueryError::QueryIsActive);
         }

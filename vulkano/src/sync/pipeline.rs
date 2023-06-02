@@ -102,6 +102,13 @@ vulkan_bitflags_enum! {
 
         /// Replaces unsupported flags with more general supported ones.
         pub(crate) fn into_supported(mut self, device: &Device) -> Self {
+            if !device.enabled_features().ray_tracing_maintenance1 {
+                if self.intersects(PipelineStages::ACCELERATION_STRUCTURE_COPY) {
+                    self -= PipelineStages::ACCELERATION_STRUCTURE_COPY;
+                    self |= PipelineStages::ACCELERATION_STRUCTURE_BUILD;
+                }
+            }
+
             if !device.enabled_features().synchronization2 {
                 if self.intersects(
                     PipelineStages::INDEX_INPUT
@@ -116,13 +123,11 @@ vulkan_bitflags_enum! {
                     | PipelineStages::RESOLVE
                     | PipelineStages::BLIT
                     | PipelineStages::CLEAR
-                    | PipelineStages::ACCELERATION_STRUCTURE_COPY
                 ) {
                     self -= PipelineStages::COPY
                         | PipelineStages::RESOLVE
                         | PipelineStages::BLIT
-                        | PipelineStages::CLEAR
-                        | PipelineStages::ACCELERATION_STRUCTURE_COPY;
+                        | PipelineStages::CLEAR;
                     self |= PipelineStages::ALL_TRANSFER;
                 }
 
@@ -1253,6 +1258,8 @@ pipeline_stage_access! {
     MeshShader_AccelerationStructureRead, MESH_SHADER, ACCELERATION_STRUCTURE_READ;
     SubpassShading_InputAttachmentRead, SUBPASS_SHADING, INPUT_ATTACHMENT_READ;
     InvocationMask_InvocationMaskRead, INVOCATION_MASK, INVOCATION_MASK_READ;
+    AccelerationStructureCopy_AccelerationStructureRead, ACCELERATION_STRUCTURE_COPY, ACCELERATION_STRUCTURE_READ;
+    AccelerationStructureCopy_AccelerationStructureWrite, ACCELERATION_STRUCTURE_COPY, ACCELERATION_STRUCTURE_WRITE;
     AccelerationStructureCopy_TransferRead, ACCELERATION_STRUCTURE_COPY, TRANSFER_READ;
     AccelerationStructureCopy_TransferWrite, ACCELERATION_STRUCTURE_COPY, TRANSFER_WRITE;
     OpticalFlow_OpticalFlowRead, OPTICAL_FLOW, OPTICAL_FLOW_READ;
@@ -1560,6 +1567,7 @@ impl PipelineStageAccessFlags {
                 | PipelineStageAccessFlags::CommandPreprocess_CommandPreprocessWrite
                 | PipelineStageAccessFlags::TaskShader_ShaderStorageWrite
                 | PipelineStageAccessFlags::MeshShader_ShaderStorageWrite
+                | PipelineStageAccessFlags::AccelerationStructureCopy_AccelerationStructureWrite
                 | PipelineStageAccessFlags::AccelerationStructureCopy_TransferWrite
                 | PipelineStageAccessFlags::OpticalFlow_OpticalFlowWrite
                 | PipelineStageAccessFlags::MicromapBuild_MicromapWrite,

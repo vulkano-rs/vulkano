@@ -70,7 +70,9 @@ use crate::{
     },
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
-    shader::{DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderStages},
+    shader::{
+        DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderStage, ShaderStages,
+    },
     OomError, RequirementNotMet, RequiresOneOf, RuntimeError, VulkanObject,
 };
 use ahash::HashMap;
@@ -150,6 +152,7 @@ impl PipelineLayout {
             let mut num_sampled_images = Counter::default();
             let mut num_storage_images = Counter::default();
             let mut num_input_attachments = Counter::default();
+            let mut num_acceleration_structures = Counter::default();
             let mut push_descriptor_set = None;
 
             for (set_num, set_layout) in set_layouts.iter().enumerate() {
@@ -206,6 +209,10 @@ impl PipelineLayout {
                         }
                         DescriptorType::InputAttachment => {
                             num_input_attachments
+                                .increment(layout_binding.descriptor_count, layout_binding.stages);
+                        }
+                        DescriptorType::AccelerationStructure => {
+                            num_acceleration_structures
                                 .increment(layout_binding.descriptor_count, layout_binding.stages);
                         }
                     }
@@ -289,21 +296,37 @@ impl PipelineLayout {
                 );
             }
 
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03571
+            if num_acceleration_structures.max_per_stage()
+                > properties
+                    .max_per_stage_descriptor_acceleration_structures
+                    .unwrap_or(0)
+            {
+                return Err(
+                    PipelineLayoutCreationError::MaxPerStageDescriptorAccelerationStructuresExceeded {
+                        provided: num_acceleration_structures.max_per_stage(),
+                        max_supported: properties
+                            .max_per_stage_descriptor_acceleration_structures
+                            .unwrap_or(0),
+                    },
+                );
+            }
+
             // VUID-VkPipelineLayoutCreateInfo-descriptorType-03028
-            if num_samplers.total > properties.max_descriptor_set_samplers {
+            if num_samplers.total() > properties.max_descriptor_set_samplers {
                 return Err(
                     PipelineLayoutCreationError::MaxDescriptorSetSamplersExceeded {
-                        provided: num_samplers.total,
+                        provided: num_samplers.total(),
                         max_supported: properties.max_descriptor_set_samplers,
                     },
                 );
             }
 
             // VUID-VkPipelineLayoutCreateInfo-descriptorType-03029
-            if num_uniform_buffers.total > properties.max_descriptor_set_uniform_buffers {
+            if num_uniform_buffers.total() > properties.max_descriptor_set_uniform_buffers {
                 return Err(
                     PipelineLayoutCreationError::MaxDescriptorSetUniformBuffersExceeded {
-                        provided: num_uniform_buffers.total,
+                        provided: num_uniform_buffers.total(),
                         max_supported: properties.max_descriptor_set_uniform_buffers,
                     },
                 );
@@ -320,10 +343,10 @@ impl PipelineLayout {
             }
 
             // VUID-VkPipelineLayoutCreateInfo-descriptorType-03031
-            if num_storage_buffers.total > properties.max_descriptor_set_storage_buffers {
+            if num_storage_buffers.total() > properties.max_descriptor_set_storage_buffers {
                 return Err(
                     PipelineLayoutCreationError::MaxDescriptorSetStorageBuffersExceeded {
-                        provided: num_storage_buffers.total,
+                        provided: num_storage_buffers.total(),
                         max_supported: properties.max_descriptor_set_storage_buffers,
                     },
                 );
@@ -340,31 +363,47 @@ impl PipelineLayout {
             }
 
             // VUID-VkPipelineLayoutCreateInfo-descriptorType-03033
-            if num_sampled_images.total > properties.max_descriptor_set_sampled_images {
+            if num_sampled_images.total() > properties.max_descriptor_set_sampled_images {
                 return Err(
                     PipelineLayoutCreationError::MaxDescriptorSetSampledImagesExceeded {
-                        provided: num_sampled_images.total,
+                        provided: num_sampled_images.total(),
                         max_supported: properties.max_descriptor_set_sampled_images,
                     },
                 );
             }
 
             // VUID-VkPipelineLayoutCreateInfo-descriptorType-03034
-            if num_storage_images.total > properties.max_descriptor_set_storage_images {
+            if num_storage_images.total() > properties.max_descriptor_set_storage_images {
                 return Err(
                     PipelineLayoutCreationError::MaxDescriptorSetStorageImagesExceeded {
-                        provided: num_storage_images.total,
+                        provided: num_storage_images.total(),
                         max_supported: properties.max_descriptor_set_storage_images,
                     },
                 );
             }
 
             // VUID-VkPipelineLayoutCreateInfo-descriptorType-03035
-            if num_input_attachments.total > properties.max_descriptor_set_input_attachments {
+            if num_input_attachments.total() > properties.max_descriptor_set_input_attachments {
                 return Err(
                     PipelineLayoutCreationError::MaxDescriptorSetInputAttachmentsExceeded {
-                        provided: num_input_attachments.total,
+                        provided: num_input_attachments.total(),
                         max_supported: properties.max_descriptor_set_input_attachments,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03573
+            if num_acceleration_structures.total()
+                > properties
+                    .max_descriptor_set_acceleration_structures
+                    .unwrap_or(0)
+            {
+                return Err(
+                    PipelineLayoutCreationError::MaxDescriptorSetAccelerationStructuresExceeded {
+                        provided: num_acceleration_structures.total(),
+                        max_supported: properties
+                            .max_descriptor_set_acceleration_structures
+                            .unwrap_or(0),
                     },
                 );
             }
@@ -736,6 +775,11 @@ pub enum PipelineLayoutCreationError {
     /// limit.
     MaxDescriptorSetInputAttachmentsExceeded { provided: u32, max_supported: u32 },
 
+    /// The `set_layouts` contain more [`DescriptorType::AccelerationStructure`] descriptors than the
+    /// [`max_descriptor_set_acceleration_structures`](crate::device::Properties::max_descriptor_set_acceleration_structures)
+    /// limit.
+    MaxDescriptorSetAccelerationStructuresExceeded { provided: u32, max_supported: u32 },
+
     /// The `set_layouts` contain more bound resources in a single stage than the
     /// [`max_per_stage_resources`](crate::device::Properties::max_per_stage_resources)
     /// limit.
@@ -777,6 +821,12 @@ pub enum PipelineLayoutCreationError {
     /// [`max_per_stage_descriptor_input_attachments`](crate::device::Properties::max_per_stage_descriptor_input_attachments)
     /// limit.
     MaxPerStageDescriptorInputAttachmentsExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::AccelerationStructure`] descriptors in a single
+    /// stage than the
+    /// [`max_per_stage_descriptor_acceleration_structures`](crate::device::Properties::max_per_stage_descriptor_acceleration_structures)
+    /// limit.
+    MaxPerStageDescriptorAccelerationStructuresExceeded { provided: u32, max_supported: u32 },
 
     /// An element in `push_constant_ranges` has an `offset + size` greater than the
     /// [`max_push_constants_size`](crate::device::Properties::max_push_constants_size) limit.
@@ -894,6 +944,15 @@ impl Display for PipelineLayoutCreationError {
                 than the `max_descriptor_set_input_attachments` limit ({})",
                 provided, max_supported,
             ),
+            Self::MaxDescriptorSetAccelerationStructuresExceeded {
+                provided,
+                max_supported,
+            } => write!(
+                f,
+                "the `set_layouts` contain more `DescriptorType::AccelerationStructure` descriptors ({}) \
+                than the `max_descriptor_set_acceleration_structures` limit ({})",
+                provided, max_supported,
+            ),
             Self::MaxPerStageResourcesExceeded {
                 provided,
                 max_supported,
@@ -961,6 +1020,16 @@ impl Display for PipelineLayoutCreationError {
                 f,
                 "the `set_layouts` contain more `DescriptorType::InputAttachment` descriptors ({}) \
                 in a single stage than the `max_per_stage_descriptor_set_input_attachments` limit \
+                ({})",
+                provided, max_supported,
+            ),
+            Self::MaxPerStageDescriptorAccelerationStructuresExceeded {
+                provided,
+                max_supported,
+            } => write!(
+                f,
+                "the `set_layouts` contain more `DescriptorType::AccelerationStructure` descriptors ({}) \
+                in a single stage than the `max_per_stage_descriptor_set_acceleration_structures` limit \
                 ({})",
                 provided, max_supported,
             ),
@@ -1286,50 +1355,22 @@ impl Default for PushConstantRange {
 // Helper struct for the main function.
 #[derive(Default)]
 struct Counter {
-    total: u32,
-    compute: u32,
-    vertex: u32,
-    geometry: u32,
-    tess_ctl: u32,
-    tess_eval: u32,
-    frag: u32,
+    count: HashMap<ShaderStage, u32>,
 }
 
 impl Counter {
     fn increment(&mut self, num: u32, stages: ShaderStages) {
-        self.total += num;
-        if stages.intersects(ShaderStages::COMPUTE) {
-            self.compute += num;
-        }
-        if stages.intersects(ShaderStages::VERTEX) {
-            self.vertex += num;
-        }
-        if stages.intersects(ShaderStages::TESSELLATION_CONTROL) {
-            self.tess_ctl += num;
-        }
-        if stages.intersects(ShaderStages::TESSELLATION_EVALUATION) {
-            self.tess_eval += num;
-        }
-        if stages.intersects(ShaderStages::GEOMETRY) {
-            self.geometry += num;
-        }
-        if stages.intersects(ShaderStages::FRAGMENT) {
-            self.frag += num;
+        for stage in stages {
+            *self.count.entry(stage).or_default() += num;
         }
     }
 
+    fn total(&self) -> u32 {
+        self.count.values().copied().sum()
+    }
+
     fn max_per_stage(&self) -> u32 {
-        [
-            self.compute,
-            self.vertex,
-            self.tess_ctl,
-            self.tess_eval,
-            self.geometry,
-            self.frag,
-        ]
-        .into_iter()
-        .max()
-        .unwrap_or(0)
+        self.count.values().copied().max().unwrap_or(0)
     }
 }
 

@@ -12,7 +12,7 @@ use super::{
     SubmitState,
 };
 use crate::{
-    buffer::{Buffer, Subbuffer},
+    buffer::{Buffer, IndexBuffer, Subbuffer},
     command_buffer::{
         allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
         sys::{CommandBufferBeginInfo, UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
@@ -35,14 +35,14 @@ use crate::{
         graphics::{
             color_blend::LogicOp,
             depth_stencil::{CompareOp, StencilOps},
-            input_assembly::{IndexType, PrimitiveTopology},
+            input_assembly::PrimitiveTopology,
             rasterization::{CullMode, DepthBias, FrontFace, LineStipple},
             subpass::PipelineRenderingCreateInfo,
             viewport::{Scissor, Viewport},
         },
         ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
-    query::{QueryControlFlags, QueryType},
+    query::{QueryControlFlags, QueryPool},
     range_map::RangeMap,
     range_set::RangeSet,
     render_pass::{Framebuffer, Subpass},
@@ -1664,7 +1664,7 @@ pub(in crate::command_buffer) struct CommandBufferBuilderState {
 
     // Bind/push
     pub(in crate::command_buffer) descriptor_sets: HashMap<PipelineBindPoint, DescriptorSetState>,
-    pub(in crate::command_buffer) index_buffer: Option<(Subbuffer<[u8]>, IndexType)>,
+    pub(in crate::command_buffer) index_buffer: Option<IndexBuffer>,
     pub(in crate::command_buffer) pipeline_compute: Option<Arc<ComputePipeline>>,
     pub(in crate::command_buffer) pipeline_graphics: Option<Arc<GraphicsPipeline>>,
     pub(in crate::command_buffer) vertex_buffers: HashMap<u32, Subbuffer<[u8]>>,
@@ -2080,9 +2080,8 @@ pub(in crate::command_buffer) struct StencilOpStateDynamic {
 }
 
 pub(in crate::command_buffer) struct QueryState {
-    pub(in crate::command_buffer) query_pool: ash::vk::QueryPool,
+    pub(in crate::command_buffer) query_pool: Arc<QueryPool>,
     pub(in crate::command_buffer) query: u32,
-    pub(in crate::command_buffer) ty: QueryType,
     pub(in crate::command_buffer) flags: QueryControlFlags,
     pub(in crate::command_buffer) in_subpass: bool,
 }

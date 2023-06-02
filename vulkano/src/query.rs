@@ -57,11 +57,14 @@ impl QueryPool {
             _ne: _,
         } = create_info;
 
+        // VUID-VkQueryPoolCreateInfo-queryType-parameter
+        query_type.validate_device(&device)?;
+
         // VUID-VkQueryPoolCreateInfo-queryCount-02763
         assert!(query_count != 0);
 
-        let pipeline_statistics = match query_type {
-            QueryType::PipelineStatistics(flags) => {
+        let pipeline_statistics = match &query_type {
+            &QueryType::PipelineStatistics(flags) => {
                 // VUID-VkQueryPoolCreateInfo-queryType-00791
                 if !device.enabled_features().pipeline_statistics_query {
                     return Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled);
@@ -70,14 +73,12 @@ impl QueryPool {
                 // VUID-VkQueryPoolCreateInfo-queryType-00792
                 flags.into()
             }
-            QueryType::Occlusion | QueryType::Timestamp => {
-                ash::vk::QueryPipelineStatisticFlags::empty()
-            }
+            _ => ash::vk::QueryPipelineStatisticFlags::empty(),
         };
 
         let create_info = ash::vk::QueryPoolCreateInfo {
             flags: ash::vk::QueryPoolCreateFlags::empty(),
-            query_type: query_type.into(),
+            query_type: (&query_type).into(),
             query_count,
             pipeline_statistics,
             ..Default::default()
@@ -135,8 +136,8 @@ impl QueryPool {
 
     /// Returns the query type of the pool.
     #[inline]
-    pub fn query_type(&self) -> QueryType {
-        self.query_type
+    pub fn query_type(&self) -> &QueryType {
+        &self.query_type
     }
 
     /// Returns the number of query slots of this query pool.
@@ -233,6 +234,12 @@ impl QueryPoolCreateInfo {
 pub enum QueryPoolCreationError {
     /// Not enough memory.
     OomError(OomError),
+
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
     /// A pipeline statistics pool was requested but the corresponding feature wasn't enabled.
     PipelineStatisticsQueryFeatureNotEnabled,
 }
@@ -248,23 +255,37 @@ impl Error for QueryPoolCreationError {
 
 impl Display for QueryPoolCreationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                QueryPoolCreationError::OomError(_) => "not enough memory available",
-                QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
-                    "a pipeline statistics pool was requested but the corresponding feature \
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+            Self::PipelineStatisticsQueryFeatureNotEnabled => write!(
+                f,
+                "a pipeline statistics pool was requested but the corresponding feature \
                     wasn't enabled"
-                }
-            }
-        )
+            ),
+        }
     }
 }
 
 impl From<OomError> for QueryPoolCreationError {
     fn from(err: OomError) -> QueryPoolCreationError {
         QueryPoolCreationError::OomError(err)
+    }
+}
+
+impl From<RequirementNotMet> for QueryPoolCreationError {
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
     }
 }
 
@@ -350,11 +371,39 @@ impl<'a> QueriesRange<'a> {
     where
         T: QueryResultElement,
     {
-        let stride = self.check_query_pool_results::<T>(
-            destination.as_ptr() as DeviceSize,
-            destination.len() as DeviceSize,
-            flags,
-        )?;
+        // VUID-vkGetQueryPoolResults-flags-parameter
+        // VUID-vkCmdCopyQueryPoolResults-flags-parameter
+        flags.validate_device(&self.pool.device)?;
+
+        assert!(!destination.is_empty());
+
+        // VUID-vkGetQueryPoolResults-flags-02828
+        // VUID-vkGetQueryPoolResults-flags-00815
+        debug_assert!(
+            destination.as_ptr() as DeviceSize % std::mem::size_of::<T>() as DeviceSize == 0
+        );
+
+        let count = self.range.end - self.range.start;
+        let per_query_len = self.pool.query_type.result_len()
+            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
+        let required_len = per_query_len * count as DeviceSize;
+
+        // VUID-vkGetQueryPoolResults-dataSize-00817
+        if (destination.len() as DeviceSize) < required_len {
+            return Err(GetResultsError::BufferTooSmall {
+                required_len: required_len as DeviceSize,
+                actual_len: destination.len() as DeviceSize,
+            });
+        }
+
+        if let QueryType::Timestamp = &self.pool.query_type {
+            // VUID-vkGetQueryPoolResults-queryType-00818
+            if flags.intersects(QueryResultFlags::PARTIAL) {
+                return Err(GetResultsError::InvalidFlags);
+            }
+        }
+
+        let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
 
         let result = unsafe {
             let fns = self.pool.device.fns();
@@ -375,52 +424,6 @@ impl<'a> QueriesRange<'a> {
             ash::vk::Result::NOT_READY => Ok(false),
             err => Err(RuntimeError::from(err).into()),
         }
-    }
-
-    pub(crate) fn check_query_pool_results<T>(
-        &self,
-        buffer_start: DeviceSize,
-        buffer_len: DeviceSize,
-        flags: QueryResultFlags,
-    ) -> Result<DeviceSize, GetResultsError>
-    where
-        T: QueryResultElement,
-    {
-        // VUID-vkGetQueryPoolResults-flags-parameter
-        // VUID-vkCmdCopyQueryPoolResults-flags-parameter
-        flags.validate_device(&self.pool.device)?;
-
-        assert!(buffer_len > 0);
-
-        // VUID-vkGetQueryPoolResults-flags-02828
-        // VUID-vkGetQueryPoolResults-flags-00815
-        debug_assert!(buffer_start % std::mem::size_of::<T>() as DeviceSize == 0);
-
-        let count = self.range.end - self.range.start;
-        let per_query_len = self.pool.query_type.result_len()
-            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
-        let required_len = per_query_len * count as DeviceSize;
-
-        // VUID-vkGetQueryPoolResults-dataSize-00817
-        if buffer_len < required_len {
-            return Err(GetResultsError::BufferTooSmall {
-                required_len: required_len as DeviceSize,
-                actual_len: buffer_len as DeviceSize,
-            });
-        }
-
-        match self.pool.query_type {
-            QueryType::Occlusion => (),
-            QueryType::PipelineStatistics(_) => (),
-            QueryType::Timestamp => {
-                // VUID-vkGetQueryPoolResults-queryType-00818
-                if flags.intersects(QueryResultFlags::PARTIAL) {
-                    return Err(GetResultsError::InvalidFlags);
-                }
-            }
-        }
-
-        Ok(per_query_len * std::mem::size_of::<T>() as DeviceSize)
     }
 }
 
@@ -526,14 +529,71 @@ unsafe impl QueryResultElement for u64 {
 }
 
 /// The type of query that a query pool should perform.
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Debug)]
+#[repr(i32)]
+#[non_exhaustive]
 pub enum QueryType {
     /// Tracks the number of samples that pass per-fragment tests (e.g. the depth test).
-    Occlusion,
+    ///
+    /// Used with the [`begin_query`] and [`end_query`] commands.
+    ///
+    /// [`begin_query`]: crate::command_buffer::AutoCommandBufferBuilder::begin_query
+    /// [`end_query`]: crate::command_buffer::AutoCommandBufferBuilder::end_query
+    Occlusion = ash::vk::QueryType::OCCLUSION.as_raw(),
+
     /// Tracks statistics on pipeline invocations and their input data.
-    PipelineStatistics(QueryPipelineStatisticFlags),
+    ///
+    /// Used with the [`begin_query`] and [`end_query`] commands.
+    ///
+    /// [`begin_query`]: crate::command_buffer::AutoCommandBufferBuilder::begin_query
+    /// [`end_query`]: crate::command_buffer::AutoCommandBufferBuilder::end_query
+    PipelineStatistics(QueryPipelineStatisticFlags) =
+        ash::vk::QueryType::PIPELINE_STATISTICS.as_raw(),
+
     /// Writes timestamps at chosen points in a command buffer.
-    Timestamp,
+    ///
+    /// Used with the [`write_timestamp`] command.
+    ///
+    /// [`write_timestamp`]: crate::command_buffer::AutoCommandBufferBuilder::write_timestamp
+    Timestamp = ash::vk::QueryType::TIMESTAMP.as_raw(),
+
+    /// Queries the size of data resulting from a
+    /// [`CopyAccelerationStructureMode::Compact`] operation.
+    ///
+    /// Used with the [`write_acceleration_structures_properties`] command.
+    ///
+    /// [`CopyAccelerationStructureMode::Compact`]: crate::acceleration_structure::CopyAccelerationStructureMode::Compact
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
+    AccelerationStructureCompactedSize =
+        ash::vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR.as_raw(),
+
+    /// Queries the size of data resulting from a
+    /// [`CopyAccelerationStructureMode::Serialize`] operation.
+    ///
+    /// Used with the [`write_acceleration_structures_properties`] command.
+    ///
+    /// [`CopyAccelerationStructureMode::Serialize`]: crate::acceleration_structure::CopyAccelerationStructureMode::Serialize
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
+    AccelerationStructureSerializationSize =
+        ash::vk::QueryType::ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR.as_raw(),
+
+    /// For a top-level acceleration structure, queries the number of bottom-level acceleration
+    /// structure handles that will be written during a
+    /// [`CopyAccelerationStructureMode::Serialize`] operation.
+    ///
+    /// Used with the [`write_acceleration_structures_properties`] command.
+    ///
+    /// [`CopyAccelerationStructureMode::Serialize`]: crate::acceleration_structure::CopyAccelerationStructureMode::Serialize
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
+    AccelerationStructureSerializationBottomLevelPointers =
+        ash::vk::QueryType::ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR.as_raw(),
+
+    /// Queries the total size of an acceleration structure.
+    ///
+    /// Used with the [`write_acceleration_structures_properties`] command.
+    ///
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
+    AccelerationStructureSize = ash::vk::QueryType::ACCELERATION_STRUCTURE_SIZE_KHR.as_raw(),
 }
 
 impl QueryType {
@@ -551,21 +611,93 @@ impl QueryType {
     /// [`PipelineStatistics`]: QueryType::PipelineStatistics
     /// [`WITH_AVAILABILITY`]: QueryResultFlags::WITH_AVAILABILITY
     #[inline]
-    pub const fn result_len(self) -> DeviceSize {
+    pub const fn result_len(&self) -> DeviceSize {
         match self {
-            Self::Occlusion | Self::Timestamp => 1,
+            Self::Occlusion
+            | Self::Timestamp
+            | Self::AccelerationStructureCompactedSize
+            | Self::AccelerationStructureSerializationSize
+            | Self::AccelerationStructureSerializationBottomLevelPointers
+            | Self::AccelerationStructureSize => 1,
             Self::PipelineStatistics(flags) => flags.count() as DeviceSize,
         }
     }
+
+    pub(crate) fn validate_device(&self, device: &Device) -> Result<(), RequirementNotMet> {
+        match self {
+            QueryType::Occlusion => (),
+            QueryType::PipelineStatistics(_) => (),
+            QueryType::Timestamp => (),
+            QueryType::AccelerationStructureCompactedSize => {
+                if !device.enabled_extensions().khr_acceleration_structure {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "QueryType::AccelerationStructureCompactedSize",
+                        requires_one_of: RequiresOneOf {
+                            device_extensions: &["khr_acceleration_structure"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueryType::AccelerationStructureSerializationSize => {
+                if !device.enabled_extensions().khr_acceleration_structure {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "QueryType::AccelerationStructureSerializationSize",
+                        requires_one_of: RequiresOneOf {
+                            device_extensions: &["khr_acceleration_structure"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueryType::AccelerationStructureSerializationBottomLevelPointers => {
+                if !device.enabled_extensions().khr_ray_tracing_maintenance1 {
+                    return Err(crate::RequirementNotMet {
+                        required_for:
+                            "QueryType::AccelerationStructureSerializationBottomLevelPointers",
+                        requires_one_of: RequiresOneOf {
+                            device_extensions: &["khr_ray_tracing_maintenance1"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+            QueryType::AccelerationStructureSize => {
+                if !device.enabled_extensions().khr_ray_tracing_maintenance1 {
+                    return Err(crate::RequirementNotMet {
+                        required_for: "QueryType::AccelerationStructureSize",
+                        requires_one_of: RequiresOneOf {
+                            device_extensions: &["khr_ray_tracing_maintenance1"],
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
-impl From<QueryType> for ash::vk::QueryType {
+impl From<&QueryType> for ash::vk::QueryType {
     #[inline]
-    fn from(value: QueryType) -> Self {
+    fn from(value: &QueryType) -> Self {
         match value {
             QueryType::Occlusion => ash::vk::QueryType::OCCLUSION,
             QueryType::PipelineStatistics(_) => ash::vk::QueryType::PIPELINE_STATISTICS,
             QueryType::Timestamp => ash::vk::QueryType::TIMESTAMP,
+            QueryType::AccelerationStructureCompactedSize => {
+                ash::vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR
+            }
+            QueryType::AccelerationStructureSerializationSize => {
+                ash::vk::QueryType::ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR
+            }
+            QueryType::AccelerationStructureSerializationBottomLevelPointers => {
+                ash::vk::QueryType::ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR
+            }
+            QueryType::AccelerationStructureSize => {
+                ash::vk::QueryType::ACCELERATION_STRUCTURE_SIZE_KHR
+            }
         }
     }
 }
