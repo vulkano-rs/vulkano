@@ -798,7 +798,8 @@ where
         self
     }
 
-    /// Builds or updates an acceleration structure, using range info stored in an indirect buffer.
+    /// Builds or updates an acceleration structure, using [`AccelerationStructureBuildRangeInfo`]
+    /// elements stored in an indirect buffer.
     ///
     /// # Safety
     ///
@@ -861,7 +862,7 @@ where
     pub unsafe fn build_acceleration_structure_indirect(
         &mut self,
         info: AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: Subbuffer<[AccelerationStructureBuildRangeInfo]>,
+        indirect_buffer: Subbuffer<[u8]>,
         stride: u32,
         max_primitive_counts: SmallVec<[u32; 8]>,
     ) -> Result<&mut Self, ValidationError> {
@@ -883,7 +884,7 @@ where
     fn validate_build_acceleration_structure_indirect(
         &self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[AccelerationStructureBuildRangeInfo]>,
+        indirect_buffer: &Subbuffer<[u8]>,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> Result<(), ValidationError> {
@@ -1406,7 +1407,7 @@ where
     pub unsafe fn build_acceleration_structure_indirect_unchecked(
         &mut self,
         info: AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: Subbuffer<[AccelerationStructureBuildRangeInfo]>,
+        indirect_buffer: Subbuffer<[u8]>,
         stride: u32,
         max_primitive_counts: SmallVec<[u32; 8]>,
     ) -> &mut Self {
@@ -2051,7 +2052,7 @@ fn add_build_geometry_resources(
 
 fn add_indirect_buffer_resources(
     used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
-    indirect_buffer: &Subbuffer<[AccelerationStructureBuildRangeInfo]>,
+    indirect_buffer: &Subbuffer<[u8]>,
 ) {
     used_resources.push((
         ResourceInCommand::IndirectBuffer.into(),
@@ -2117,7 +2118,7 @@ where
     pub unsafe fn build_acceleration_structure_indirect(
         &mut self,
         info: &AccelerationStructureBuildGeometryInfo,
-        indirect_buffer: &Subbuffer<[AccelerationStructureBuildRangeInfo]>,
+        indirect_buffer: &Subbuffer<[u8]>,
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {

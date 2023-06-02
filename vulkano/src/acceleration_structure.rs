@@ -1089,7 +1089,7 @@ pub struct AccelerationStructureGeometryAabbsData {
     /// The AABB data itself, consisting of an array of [`AabbPositions`] structs.
     ///
     /// There is no default value.
-    pub data: Subbuffer<[AabbPositions]>,
+    pub data: Subbuffer<[u8]>,
 
     /// The number of bytes between the start of successive elements in `data`.
     ///
@@ -1104,7 +1104,7 @@ pub struct AccelerationStructureGeometryAabbsData {
 impl AccelerationStructureGeometryAabbsData {
     /// Returns a `AccelerationStructureGeometryAabbsData` with the specified `data`.
     #[inline]
-    pub fn new(data: Subbuffer<[AabbPositions]>) -> Self {
+    pub fn new(data: Subbuffer<[u8]>) -> Self {
         Self {
             flags: GeometryFlags::empty(),
             data,
