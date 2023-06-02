@@ -26,6 +26,7 @@ Changes to images:
 Changes to buffers:
 - The `Subbuffer::{try_cast, try_cast_slice, try_from_bytes}` functions were replaced by `Subbuffer::reinterpret[_ref]`.
 - The `buffer_with_range(_array)` constructor of `WriteDescriptorSet` now takes `DescriptorBufferInfo` structs.
+- Index buffers are now specified using the `IndexBuffer` enum instead of the `Index` trait.
 
 Changes to error reporting:
 - `VulkanError` is renamed to `RuntimeError`.
@@ -43,6 +44,7 @@ Changes to command buffers:
 - Support for the `khr_deferred_host_operations` extension.
 - Added `image_view_with_layout(_array)` and `image_view_with_layout_sampler(_array)` constructors to `WriteDescriptorSet`, which let you control the image layouts used for image views bound to a descriptor.
 - Added `Surface::from_window[_ref]` and `Surface::required_extensions`. This is now the preferred way of creating a surface, vulkano-win has been deprecated.
+- Added support for the `khr_acceleration_structure` and `khr_ray_query` extensions.
 
 ### Bugs fixed
 
