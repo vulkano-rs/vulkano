@@ -95,24 +95,19 @@ use crate::{
     buffer::{BufferUsage, IndexBuffer, Subbuffer},
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
-    macros::{vulkan_bitflags, vulkan_enum},
+    macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     DeviceSize, NonZeroDeviceSize, Packed24_8, RequiresOneOf, RuntimeError, ValidationError,
     VulkanError, VulkanObject,
 };
 use bytemuck::{Pod, Zeroable};
-use std::{
-    fmt::Debug,
-    hash::{Hash, Hasher},
-    mem::MaybeUninit,
-    ptr,
-    sync::Arc,
-};
+use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// An opaque data structure that is used to accelerate spatial queries on geometry data.
 #[derive(Debug)]
 pub struct AccelerationStructure {
     device: Arc<Device>,
     handle: ash::vk::AccelerationStructureKHR,
+    id: NonZeroU64,
 
     create_flags: AccelerationStructureCreateFlags,
     buffer: Subbuffer<[u8]>,
@@ -234,6 +229,8 @@ impl AccelerationStructure {
         Arc::new(Self {
             device,
             handle,
+            id: Self::next_id(),
+
             create_flags,
             buffer,
             ty,
@@ -314,20 +311,7 @@ unsafe impl DeviceOwned for AccelerationStructure {
     }
 }
 
-impl PartialEq for AccelerationStructure {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle
-    }
-}
-
-impl Eq for AccelerationStructure {}
-
-impl Hash for AccelerationStructure {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-    }
-}
+impl_id_counter!(AccelerationStructure);
 
 vulkan_enum! {
     #[non_exhaustive]
