@@ -149,7 +149,8 @@ fn main() {
             device.clone(),
             surface,
             SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count,
+                // Some drivers report `min_image_count=1` but fullscreen mode requires at least 2.
+                min_image_count: surface_capabilities.min_image_count.max(2),
                 image_format,
                 image_extent: window.inner_size().into(),
                 image_usage: ImageUsage::COLOR_ATTACHMENT,

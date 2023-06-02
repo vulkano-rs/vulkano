@@ -115,7 +115,7 @@ impl VulkanoWindowRenderer {
         );
         let (swapchain, images) = Swapchain::new(device, surface, {
             let mut create_info = SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count,
+                min_image_count: surface_capabilities.min_image_count.max(2),
                 image_format,
                 image_extent: window.inner_size().into(),
                 image_usage: ImageUsage::COLOR_ATTACHMENT,
