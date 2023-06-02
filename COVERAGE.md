@@ -151,6 +151,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_present_id`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_present_id.html)
 - [`VK_KHR_present_wait`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_present_wait.html)
 - [`VK_KHR_push_descriptor`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_push_descriptor.html)
+- [`VK_KHR_ray_query`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_query.html)
 - [`VK_KHR_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_surface.html)
 - [`VK_KHR_surface_protected_capabilities`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_surface_protected_capabilities.html)
 - [`VK_KHR_swapchain`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_swapchain.html)
@@ -183,6 +184,8 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 ### Partially supported
 
+- [`VK_KHR_acceleration_structure`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_acceleration_structure.html)
+	- Host acceleration structure operations
 - [`VK_KHR_display`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_display.html)
 	- `vkCreateDisplayModeKHR` / `VkDisplayModeCreateInfoKHR` / `VkDisplayModeParametersKHR`
 	- `vkGetDisplayPlaneCapabilitiesKHR` / `VkDisplayPlaneCapabilitiesKHR`
@@ -195,6 +198,9 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_portability_subset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_portability_subset.html) (provisional)
 	- Check for `tessellationIsolines`
 	- Check for `tessellationPointMode`
+- [`VK_KHR_ray_tracing_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_tracing_maintenance1.html)
+	- `vkCmdTraceRaysIndirect2KHR`
+	- `VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR`
 - [`VK_EXT_buffer_device_address`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_buffer_device_address.html) (deprecated)
 	- `VkBufferDeviceAddressCreateInfoEXT`
 - [`VK_EXT_debug_utils`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_debug_utils.html)
@@ -212,7 +218,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 ### Unsupported
 
-- [`VK_KHR_acceleration_structure`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_acceleration_structure.html)
 - [`VK_KHR_display_swapchain`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_display_swapchain.html)
 - [`VK_KHR_fragment_shader_barycentric`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shader_barycentric.html)
 - [`VK_KHR_fragment_shading_rate`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shading_rate.html)
@@ -221,8 +226,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_performance_query`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_performance_query.html)
 - [`VK_KHR_pipeline_executable_properties`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_pipeline_executable_properties.html)
 - [`VK_KHR_pipeline_library`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_pipeline_library.html)
-- [`VK_KHR_ray_query`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_query.html)
-- [`VK_KHR_ray_tracing_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_tracing_maintenance1.html)
 - [`VK_KHR_ray_tracing_pipeline`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_tracing_pipeline.html)
 - [`VK_KHR_shader_clock`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_clock.html)
 - [`VK_KHR_shader_subgroup_uniform_control_flow`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_subgroup_uniform_control_flow.html)
