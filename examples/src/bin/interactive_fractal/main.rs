@@ -29,7 +29,6 @@ use vulkano_util::{
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
 };
 
 mod app;
@@ -39,7 +38,7 @@ mod place_over_frame;
 
 fn main() {
     // Create the event loop.
-    let mut event_loop = EventLoop::new();
+    let event_loop = EventLoop::new();
     let context = VulkanoContext::new(VulkanoConfig::default());
     let mut windows = VulkanoWindows::default();
     let _id = windows.create_window(
@@ -75,68 +74,69 @@ fn main() {
     );
     app.print_guide();
 
-    // Basic loop for our runtime:
-    // 1. Handle events
-    // 2. Update state based on events
-    // 3. Compute & Render
-    // 4. Reset input state
-    // 5. Update time & title
-    loop {
-        if !handle_events(&mut event_loop, primary_window_renderer, &mut app) {
-            break;
-        }
-
-        match primary_window_renderer.window_size() {
-            [w, h] => {
-                // Skip this frame when minimized.
-                if w == 0.0 || h == 0.0 {
-                    continue;
-                }
-            }
-        }
-
-        app.update_state_after_inputs(primary_window_renderer);
-        compute_then_render(primary_window_renderer, &mut app, render_target_id);
-        app.reset_input_state();
-        app.update_time();
-        primary_window_renderer.window().set_title(&format!(
-            "{} fps: {:.2} dt: {:.2}, Max Iterations: {}",
-            if app.is_julia { "Julia" } else { "Mandelbrot" },
-            app.avg_fps(),
-            app.dt(),
-            app.max_iters
-        ));
-    }
-}
-
-/// Handles events and returns a `bool` indicating if we should quit.
-fn handle_events(
-    event_loop: &mut EventLoop<()>,
-    renderer: &mut VulkanoWindowRenderer,
-    app: &mut FractalApp,
-) -> bool {
-    let mut is_running = true;
-
-    event_loop.run_return(|event, _, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
-        match &event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => is_running = false,
-                WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
-                    renderer.resize()
-                }
-                _ => (),
-            },
-            Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
-            _ => (),
+        let renderer = windows.get_primary_renderer_mut().unwrap();
+
+        if process_event(renderer, &event, &mut app, render_target_id) {
+            *control_flow = ControlFlow::Exit;
+            return;
         }
 
         // Pass event for the app to handle our inputs.
         app.handle_input(renderer.window_size(), &event);
-    });
+    })
+}
 
-    is_running && app.is_running()
+/// Processes a single event for an event loop.
+/// Returns true only if the window is to be closed.
+pub fn process_event(
+    renderer: &mut VulkanoWindowRenderer,
+    event: &Event<()>,
+    app: &mut FractalApp,
+    render_target_id: usize,
+) -> bool {
+    match &event {
+        Event::WindowEvent { event, .. } => match event {
+            WindowEvent::CloseRequested => {
+                return true;
+            }
+            WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => renderer.resize(),
+            _ => (),
+        },
+        Event::MainEventsCleared => renderer.window().request_redraw(),
+        Event::RedrawRequested(_) => 'redraw: {
+            // Tasks for redrawing:
+            // 1. Update state based on events
+            // 2. Compute & Render
+            // 3. Reset input state
+            // 4. Update time & title
+
+            // The rendering part goes here:
+            match renderer.window_size() {
+                [w, h] => {
+                    // Skip this frame when minimized.
+                    if w == 0.0 || h == 0.0 {
+                        break 'redraw;
+                    }
+                }
+            }
+            app.update_state_after_inputs(renderer);
+            compute_then_render(renderer, app, render_target_id);
+            app.reset_input_state();
+            app.update_time();
+            renderer.window().set_title(&format!(
+                "{} fps: {:.2} dt: {:.2}, Max Iterations: {}",
+                if app.is_julia { "Julia" } else { "Mandelbrot" },
+                app.avg_fps(),
+                app.dt(),
+                app.max_iters
+            ));
+        }
+        _ => (),
+    }
+    !app.is_running()
 }
 
 /// Orchestrates rendering.
