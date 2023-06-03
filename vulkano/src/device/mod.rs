@@ -782,11 +782,11 @@ impl Device {
     ) -> Result<(), ValidationError> {
         if !(self.api_version() >= Version::V1_1 || self.enabled_extensions().khr_maintenance3) {
             return Err(ValidationError {
-                requires_one_of: Some(RequiresOneOf {
+                requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_1),
                     device_extensions: &["khr_maintenance3"],
                     ..Default::default()
-                }),
+                },
                 ..Default::default()
             });
         }

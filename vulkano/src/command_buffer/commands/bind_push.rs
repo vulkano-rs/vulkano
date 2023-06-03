@@ -774,10 +774,10 @@ where
     ) -> Result<(), ValidationError> {
         if !self.device().enabled_extensions().khr_push_descriptor {
             return Err(ValidationError {
-                requires_one_of: Some(RequiresOneOf {
+                requires_one_of: RequiresOneOf {
                     device_extensions: &["khr_push_descriptor"],
                     ..Default::default()
-                }),
+                },
                 ..Default::default()
             });
         }

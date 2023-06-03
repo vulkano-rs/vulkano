@@ -703,10 +703,10 @@ impl DescriptorSetLayoutBinding {
                 return Err(ValidationError {
                     context: "binding_flags".into(),
                     problem: "contains DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT".into(),
-                    requires_one_of: Some(RequiresOneOf {
+                    requires_one_of: RequiresOneOf {
                         features: &["descriptor_binding_variable_descriptor_count"],
                         ..Default::default()
-                    }),
+                    },
                     vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014"],
                 });
             }

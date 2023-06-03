@@ -440,10 +440,10 @@ impl WriteDescriptorSet {
                                             layout_binding.descriptor_type,
                                         )
                                         .into(),
-                                        requires_one_of: Some(RequiresOneOf {
+                                        requires_one_of: RequiresOneOf {
                                             features: &["image2_d_view_of3_d"],
                                             ..Default::default()
-                                        }),
+                                        },
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06713"],
                                     });
                                 }
@@ -459,10 +459,10 @@ impl WriteDescriptorSet {
                                             layout_binding.descriptor_type,
                                         )
                                         .into(),
-                                        requires_one_of: Some(RequiresOneOf {
+                                        requires_one_of: RequiresOneOf {
                                             features: &["sampler2_d_view_of3_d"],
                                             ..Default::default()
-                                        }),
+                                        },
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06714"],
                                     });
                                 }
@@ -581,10 +581,10 @@ impl WriteDescriptorSet {
                             problem: "this device is a portability subset device, and \
                                 the sampler has depth comparison enabled"
                                 .into(),
-                            requires_one_of: Some(RequiresOneOf {
+                            requires_one_of: RequiresOneOf {
                                 features: &["mutable_comparison_samplers"],
                                 ..Default::default()
-                            }),
+                            },
                             vuids: &["VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450"],
                         });
                     }
@@ -666,10 +666,10 @@ impl WriteDescriptorSet {
                                 problem: "this device is a portability subset device, and \
                                     the sampler has depth comparison enabled"
                                     .into(),
-                                requires_one_of: Some(RequiresOneOf {
+                                requires_one_of: RequiresOneOf {
                                     features: &["mutable_comparison_samplers"],
                                     ..Default::default()
-                                }),
+                                },
                                 vuids: &[
                                     "VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450",
                                 ],
