@@ -29,7 +29,6 @@ use vulkano_util::renderer::VulkanoWindowRenderer;
 use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
 };
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
@@ -42,7 +41,7 @@ fn main() {
     println!("Welcome to Vulkano Game of Life\nUse the mouse to draw life on the grid(s)\n");
 
     // Create event loop.
-    let mut event_loop = EventLoop::new();
+    let event_loop = EventLoop::new();
 
     // Create app with vulkano context.
     let mut app = App::default();
@@ -56,16 +55,18 @@ fn main() {
     let mut mouse_is_pressed_w1 = false;
     let mut mouse_is_pressed_w2 = false;
 
-    loop {
-        // Event handling.
-        if !handle_events(
-            &mut event_loop,
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Poll;
+
+        if process_event(
+            &event,
             &mut app,
             &mut cursor_pos,
             &mut mouse_is_pressed_w1,
             &mut mouse_is_pressed_w2,
         ) {
-            break;
+            *control_flow = ControlFlow::Exit;
+            return;
         }
 
         // Draw life on windows if mouse is down.
@@ -81,66 +82,60 @@ fn main() {
             compute_then_render_per_window(&mut app);
             time = Instant::now();
         }
-    }
+    })
 }
 
-/// Handles events and returns a `bool` indicating if we should quit.
-fn handle_events(
-    event_loop: &mut EventLoop<()>,
+/// Processes a single event for an event loop.
+/// Returns true only if the window is to be closed.
+pub fn process_event(
+    event: &Event<()>,
     app: &mut App,
     cursor_pos: &mut Vector2<f32>,
     mouse_pressed_w1: &mut bool,
     mouse_pressed_w2: &mut bool,
 ) -> bool {
-    let mut is_running = true;
-
-    event_loop.run_return(|event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
-        match &event {
-            Event::WindowEvent {
-                event, window_id, ..
-            } => match event {
-                WindowEvent::CloseRequested => {
-                    if *window_id == app.windows.primary_window_id().unwrap() {
-                        is_running = false;
-                    } else {
-                        // Destroy window by removing its renderer.
-                        app.windows.remove_renderer(*window_id);
-                        app.pipelines.remove(window_id);
-                    }
+    match &event {
+        Event::WindowEvent {
+            event, window_id, ..
+        } => match event {
+            WindowEvent::CloseRequested => {
+                if *window_id == app.windows.primary_window_id().unwrap() {
+                    return true;
+                } else {
+                    // Destroy window by removing its renderer.
+                    app.windows.remove_renderer(*window_id);
+                    app.pipelines.remove(window_id);
                 }
-                // Resize window and its images.
-                WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
-                    let vulkano_window = app.windows.get_renderer_mut(*window_id).unwrap();
-                    vulkano_window.resize();
+            }
+            // Resize window and its images.
+            WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
+                let vulkano_window = app.windows.get_renderer_mut(*window_id).unwrap();
+                vulkano_window.resize();
+            }
+            // Handle mouse position events.
+            WindowEvent::CursorMoved { position, .. } => {
+                *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
+            }
+            // Handle mouse button events.
+            WindowEvent::MouseInput { state, button, .. } => {
+                let mut mouse_pressed = false;
+                if button == &MouseButton::Left && state == &ElementState::Pressed {
+                    mouse_pressed = true;
                 }
-                // Handle mouse position events.
-                WindowEvent::CursorMoved { position, .. } => {
-                    *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
+                if button == &MouseButton::Left && state == &ElementState::Released {
+                    mouse_pressed = false;
                 }
-                // Handle mouse button events.
-                WindowEvent::MouseInput { state, button, .. } => {
-                    let mut mouse_pressed = false;
-                    if button == &MouseButton::Left && state == &ElementState::Pressed {
-                        mouse_pressed = true;
-                    }
-                    if button == &MouseButton::Left && state == &ElementState::Released {
-                        mouse_pressed = false;
-                    }
-                    if window_id == &app.windows.primary_window_id().unwrap() {
-                        *mouse_pressed_w1 = mouse_pressed;
-                    } else {
-                        *mouse_pressed_w2 = mouse_pressed;
-                    }
+                if window_id == &app.windows.primary_window_id().unwrap() {
+                    *mouse_pressed_w1 = mouse_pressed;
+                } else {
+                    *mouse_pressed_w2 = mouse_pressed;
                 }
-                _ => (),
-            },
-            Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
+            }
             _ => (),
-        }
-    });
-
-    is_running
+        },
+        _ => (),
+    }
+    false
 }
 
 fn draw_life(
