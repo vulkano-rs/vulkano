@@ -54,7 +54,7 @@ use crate::{
     macros::{impl_id_counter, vulkan_enum},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, ValidationError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -514,7 +514,7 @@ impl Sampler {
     pub fn check_can_sample(
         &self,
         image_view: &(impl ImageViewAbstract + ?Sized),
-    ) -> Result<(), SamplerImageViewIncompatibleError> {
+    ) -> Result<(), ValidationError> {
         /*
             Note: Most of these checks come from the Instruction/Sampler/Image View Validation
             section, and are not strictly VUIDs.
@@ -527,7 +527,13 @@ impl Sampler {
                 .format_features()
                 .intersects(FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON)
             {
-                return Err(SamplerImageViewIncompatibleError::DepthComparisonNotSupported);
+                return Err(ValidationError {
+                    problem: "the sampler has depth comparison enabled, and \
+                        the image view's format features do not include \
+                        FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON"
+                        .into(),
+                    ..Default::default()
+                });
             }
 
             // The SPIR-V instruction is one of the OpImage*Dref* instructions, the image
@@ -538,7 +544,12 @@ impl Sampler {
                 .aspects
                 .intersects(ImageAspects::DEPTH)
             {
-                return Err(SamplerImageViewIncompatibleError::DepthComparisonWrongAspect);
+                return Err(ValidationError {
+                    problem: "the sampler has depth comparison enabled, and \
+                        the image view's aspects do not include ImageAspects::DEPTH"
+                        .into(),
+                    ..Default::default()
+                });
             }
         } else {
             if !image_view
@@ -547,12 +558,24 @@ impl Sampler {
             {
                 // VUID-vkCmdDispatch-magFilter-04553
                 if self.mag_filter == Filter::Linear || self.min_filter == Filter::Linear {
-                    return Err(SamplerImageViewIncompatibleError::FilterLinearNotSupported);
+                    return Err(ValidationError {
+                        problem: "the sampler's mag_filter or min_filter is Filter::Linear, and \
+                            the image view's format features do not include \
+                            FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR"
+                            .into(),
+                        ..Default::default()
+                    });
                 }
 
                 // VUID-vkCmdDispatch-mipmapMode-04770
                 if self.mipmap_mode == SamplerMipmapMode::Linear {
-                    return Err(SamplerImageViewIncompatibleError::MipmapModeLinearNotSupported);
+                    return Err(ValidationError {
+                        problem: "the sampler's mipmap_mode is SamplerMipmapMpde::Linear, and \
+                            the image view's format features do not include \
+                            FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR"
+                            .into(),
+                        ..Default::default()
+                    });
                 }
             }
         }
@@ -563,12 +586,24 @@ impl Sampler {
                 .format_features()
                 .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC)
             {
-                return Err(SamplerImageViewIncompatibleError::FilterCubicNotSupported);
+                return Err(ValidationError {
+                    problem: "the sampler's mag_filter or min_filter is Filter::Cubic, and \
+                        the image view's format features do not include \
+                        FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC"
+                        .into(),
+                    ..Default::default()
+                });
             }
 
             // VUID-vkCmdDispatch-filterCubic-02694
             if !image_view.filter_cubic() {
-                return Err(SamplerImageViewIncompatibleError::FilterCubicNotSupported);
+                return Err(ValidationError {
+                    problem: "the sampler's mag_filter or min_filter is Filter::Cubic, and \
+                        the image view does not support this, as returned by \
+                        PhysicalDevice::image_format_properties"
+                        .into(),
+                    ..Default::default()
+                });
             }
 
             // VUID-vkCmdDispatch-filterCubicMinmax-02695
@@ -577,7 +612,15 @@ impl Sampler {
                 SamplerReductionMode::Min | SamplerReductionMode::Max
             ) && !image_view.filter_cubic_minmax()
             {
-                return Err(SamplerImageViewIncompatibleError::FilterCubicMinmaxNotSupported);
+                return Err(ValidationError {
+                    problem: "the sampler's mag_filter or min_filter is Filter::Cubic, and \
+                        the its reduction_mode is SamplerReductionMode::Min or \
+                        SamplerReductionMode::Max, and
+                        the image view does not support this, as returned by \
+                        PhysicalDevice::image_format_properties"
+                        .into(),
+                    ..Default::default()
+                });
             }
         }
 
@@ -613,9 +656,12 @@ impl Sampler {
                         view_scalar_type,
                         ShaderScalarType::Sint | ShaderScalarType::Uint
                     ) {
-                        return Err(
-                            SamplerImageViewIncompatibleError::BorderColorFormatNotCompatible,
-                        );
+                        return Err(ValidationError {
+                            problem: "the sampler has an integer border color, and \
+                                the image view does not have an integer format"
+                                .into(),
+                            ..Default::default()
+                        });
                     }
                 }
                 BorderColor::FloatTransparentBlack
@@ -625,9 +671,12 @@ impl Sampler {
                     // format is not one of the VkFormat float types or a depth
                     // component of a depth/stencil format.
                     if !matches!(view_scalar_type, ShaderScalarType::Float) {
-                        return Err(
-                            SamplerImageViewIncompatibleError::BorderColorFormatNotCompatible,
-                        );
+                        return Err(ValidationError {
+                            problem: "the sampler has an floating-point border color, and \
+                                the image view does not have a floating-point format"
+                                .into(),
+                            ..Default::default()
+                        });
                     }
                 }
             }
@@ -644,9 +693,12 @@ impl Sampler {
                 BorderColor::FloatOpaqueBlack | BorderColor::IntOpaqueBlack
             ) && !image_view.component_mapping().is_identity()
             {
-                return Err(
-                    SamplerImageViewIncompatibleError::BorderColorOpaqueBlackNotIdentitySwizzled,
-                );
+                return Err(ValidationError {
+                    problem: "the sampler has an opaque black border color, and \
+                        the image view is not identity swizzled"
+                        .into(),
+                    ..Default::default()
+                });
             }
         }
 
@@ -661,9 +713,12 @@ impl Sampler {
                 image_view.view_type(),
                 ImageViewType::Dim1d | ImageViewType::Dim2d
             ) {
-                return Err(
-                    SamplerImageViewIncompatibleError::UnnormalizedCoordinatesViewTypeNotCompatible,
-                );
+                return Err(ValidationError {
+                    problem: "the sampler uses unnormalized coordinates, and \
+                        the image view's type is not ImageViewtype::Dim1d or ImageViewType::Dim2d"
+                        .into(),
+                    ..Default::default()
+                });
             }
 
             // The image view must have a single layer and a single mip level.
@@ -671,9 +726,12 @@ impl Sampler {
                 - image_view.subresource_range().mip_levels.start
                 != 1
             {
-                return Err(
-                    SamplerImageViewIncompatibleError::UnnormalizedCoordinatesMultipleMipLevels,
-                );
+                return Err(ValidationError {
+                    problem: "the sampler uses unnormalized coordinates, and \
+                        the image view has more than one mip level"
+                        .into(),
+                    ..Default::default()
+                });
             }
         }
 
@@ -1481,103 +1539,6 @@ vulkan_enum! {
     /// [`ext_sampler_filter_minmax`](crate::device::DeviceExtensions::ext_sampler_filter_minmax)
     /// extension must be enabled on the device.
     Max = MAX,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum SamplerImageViewIncompatibleError {
-    /// The sampler has a border color with a numeric type different from the image view.
-    BorderColorFormatNotCompatible,
-
-    /// The sampler has an opaque black border color, but the image view is not identity swizzled.
-    BorderColorOpaqueBlackNotIdentitySwizzled,
-
-    /// The sampler has depth comparison enabled, but this is not supported by the image view.
-    DepthComparisonNotSupported,
-
-    /// The sampler has depth comparison enabled, but the image view does not select the `depth`
-    /// aspect.
-    DepthComparisonWrongAspect,
-
-    /// The sampler uses a linear filter, but this is not supported by the image view's format
-    /// features.
-    FilterLinearNotSupported,
-
-    /// The sampler uses a cubic filter, but this is not supported by the image view's format
-    /// features.
-    FilterCubicNotSupported,
-
-    /// The sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is not
-    /// supported by the image view's format features.
-    FilterCubicMinmaxNotSupported,
-
-    /// The sampler uses a linear mipmap mode, but this is not supported by the image view's format
-    /// features.
-    MipmapModeLinearNotSupported,
-
-    /// The sampler uses unnormalized coordinates, but the image view has multiple mip levels.
-    UnnormalizedCoordinatesMultipleMipLevels,
-
-    /// The sampler uses unnormalized coordinates, but the image view has a type other than `Dim1d`
-    /// or `Dim2d`.
-    UnnormalizedCoordinatesViewTypeNotCompatible,
-}
-
-impl Error for SamplerImageViewIncompatibleError {}
-
-impl Display for SamplerImageViewIncompatibleError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::BorderColorFormatNotCompatible => write!(
-                f,
-                "the sampler has a border color with a numeric type different from the image view",
-            ),
-            Self::BorderColorOpaqueBlackNotIdentitySwizzled => write!(
-                f,
-                "the sampler has an opaque black border color, but the image view is not identity \
-                swizzled",
-            ),
-            Self::DepthComparisonNotSupported => write!(
-                f,
-                "the sampler has depth comparison enabled, but this is not supported by the image \
-                view",
-            ),
-            Self::DepthComparisonWrongAspect => write!(
-                f,
-                "the sampler has depth comparison enabled, but the image view does not select the \
-                `depth` aspect",
-            ),
-            Self::FilterLinearNotSupported => write!(
-                f,
-                "the sampler uses a linear filter, but this is not supported by the image view's \
-                format features",
-            ),
-            Self::FilterCubicNotSupported => write!(
-                f,
-                "the sampler uses a cubic filter, but this is not supported by the image view's \
-                format features",
-            ),
-            Self::FilterCubicMinmaxNotSupported => write!(
-                f,
-                "the sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is \
-                not supported by the image view's format features",
-            ),
-            Self::MipmapModeLinearNotSupported => write!(
-                f,
-                "the sampler uses a linear mipmap mode, but this is not supported by the image \
-                view's format features",
-            ),
-            Self::UnnormalizedCoordinatesMultipleMipLevels => write!(
-                f,
-                "the sampler uses unnormalized coordinates, but the image view has multiple mip \
-                levels",
-            ),
-            Self::UnnormalizedCoordinatesViewTypeNotCompatible => write!(
-                f,
-                "the sampler uses unnormalized coordinates, but the image view has a type other \
-                than `Dim1d` or `Dim2d`",
-            ),
-        }
-    }
 }
 
 #[cfg(test)]

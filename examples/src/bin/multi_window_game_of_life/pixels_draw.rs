@@ -193,6 +193,7 @@ impl PixelsDrawPipeline {
                 image.clone(),
                 sampler,
             )],
+            [],
         )
         .unwrap()
     }

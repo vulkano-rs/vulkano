@@ -174,6 +174,7 @@ impl AmbientLightingSystem {
             &self.descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::image_view(0, color_input)],
+            [],
         )
         .unwrap();
 

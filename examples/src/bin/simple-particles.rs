@@ -453,6 +453,7 @@ fn main() {
             // 0 is the binding of the data in this set. We bind the `Buffer` of vertices here.
             WriteDescriptorSet::buffer(0, vertex_buffer.clone()),
         ],
+        [],
     )
     .unwrap();
 

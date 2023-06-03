@@ -24,25 +24,18 @@
 
 use super::PipelineCreateFlags;
 use crate::{
-    descriptor_set::layout::DescriptorSetLayoutCreationError,
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
-    pipeline::{
-        cache::PipelineCache,
-        layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutSupersetError},
-        Pipeline, PipelineBindPoint,
-    },
+    pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
     shader::{
         DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderExecution, ShaderStage,
-        SpecializationConstant,
     },
-    OomError, RequiresOneOf, RuntimeError, ValidationError, VulkanError, VulkanObject,
+    RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use std::{
-    error::Error,
     ffi::CString,
-    fmt::{Debug, Display, Error as FmtError, Formatter},
+    fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -417,91 +410,6 @@ impl ComputePipelineCreateInfo {
     }
 }
 
-/// Error that can happen when creating a compute pipeline.
-#[derive(Clone, Debug, PartialEq)]
-pub enum ComputePipelineCreationError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// Error while creating a descriptor set layout object.
-    DescriptorSetLayoutCreationError(DescriptorSetLayoutCreationError),
-
-    /// Error while creating the pipeline layout object.
-    PipelineLayoutCreationError(PipelineLayoutCreationError),
-
-    /// The pipeline layout is not compatible with what the shader expects.
-    IncompatiblePipelineLayout(PipelineLayoutSupersetError),
-
-    /// The value provided for a shader specialization constant has a
-    /// different type than the constant's default value.
-    ShaderSpecializationConstantTypeMismatch {
-        constant_id: u32,
-        default_value: SpecializationConstant,
-        provided_value: SpecializationConstant,
-    },
-
-    /// The provided shader stage is not a compute shader.
-    ShaderStageInvalid { stage: ShaderStage },
-}
-
-impl Error for ComputePipelineCreationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OomError(err) => Some(err),
-            Self::DescriptorSetLayoutCreationError(err) => Some(err),
-            Self::PipelineLayoutCreationError(err) => Some(err),
-            Self::IncompatiblePipelineLayout(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for ComputePipelineCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::DescriptorSetLayoutCreationError(_) => {
-                write!(f, "error while creating a descriptor set layout object",)
-            }
-            Self::PipelineLayoutCreationError(_) => {
-                write!(f, "error while creating the pipeline layout object",)
-            }
-            Self::IncompatiblePipelineLayout(_) => write!(
-                f,
-                "the pipeline layout is not compatible with what the shader expects",
-            ),
-            Self::ShaderSpecializationConstantTypeMismatch {
-                constant_id,
-                default_value,
-                provided_value,
-            } => write!(
-                f,
-                "the value provided for shader specialization constant id {} ({:?}) has a \
-                different type than the constant's default value ({:?})",
-                constant_id, provided_value, default_value,
-            ),
-            Self::ShaderStageInvalid { stage } => write!(
-                f,
-                "the provided shader stage ({:?}) is not a compute shader",
-                stage,
-            ),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -602,6 +510,7 @@ mod tests {
             &ds_allocator,
             pipeline.layout().set_layouts().get(0).unwrap().clone(),
             [WriteDescriptorSet::buffer(0, data_buffer.clone())],
+            [],
         )
         .unwrap();
 

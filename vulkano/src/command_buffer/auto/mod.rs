@@ -779,6 +779,7 @@ mod tests {
                     Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear())
                         .unwrap(),
                 )],
+                [],
             )
             .unwrap();
 
@@ -848,6 +849,7 @@ mod tests {
                     0,
                     Sampler::new(device, SamplerCreateInfo::simple_repeat_linear()).unwrap(),
                 )],
+                [],
             )
             .unwrap();
 

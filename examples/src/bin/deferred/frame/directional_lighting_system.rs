@@ -190,6 +190,7 @@ impl DirectionalLightingSystem {
                 WriteDescriptorSet::image_view(0, color_input),
                 WriteDescriptorSet::image_view(1, normals_input),
             ],
+            [],
         )
         .unwrap();
 

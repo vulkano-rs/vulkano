@@ -14,7 +14,7 @@ use vulkano::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
     },
-    descriptor_set::WriteDescriptorSet,
+    descriptor_set::{layout::DescriptorSetLayoutCreateFlags, WriteDescriptorSet},
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
         QueueFlags,
@@ -276,7 +276,7 @@ fn main() {
             let mut layout_create_info =
                 PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages);
             let set_layout = &mut layout_create_info.set_layouts[0];
-            set_layout.push_descriptor = true;
+            set_layout.flags |= DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR;
             set_layout.bindings.get_mut(&0).unwrap().immutable_samplers = vec![sampler];
 
             PipelineLayout::new(

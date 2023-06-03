@@ -15,7 +15,8 @@ use vulkano::{
         PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, layout::DescriptorBindingFlags,
+        PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
@@ -374,7 +375,7 @@ fn main() {
                 .bindings
                 .get_mut(&0)
                 .unwrap();
-            binding.variable_descriptor_count = true;
+            binding.binding_flags |= DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT;
             binding.descriptor_count = 2;
 
             PipelineLayout::new(
@@ -419,6 +420,7 @@ fn main() {
                 (vulkano_texture as _, sampler),
             ],
         )],
+        [],
     )
     .unwrap();
 

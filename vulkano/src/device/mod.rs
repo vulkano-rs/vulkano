@@ -113,6 +113,9 @@ use crate::{
         AccelerationStructureBuildGeometryInfo, AccelerationStructureBuildSizesInfo,
         AccelerationStructureBuildType, AccelerationStructureGeometries,
     },
+    descriptor_set::layout::{
+        DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutSupport,
+    },
     instance::Instance,
     macros::impl_id_counter,
     memory::ExternalMemoryHandleType,
@@ -748,6 +751,153 @@ impl Device {
         );
 
         compatibility_vk == ash::vk::AccelerationStructureCompatibilityKHR::COMPATIBLE
+    }
+
+    /// Returns whether a descriptor set layout with the given `create_info` could be created
+    /// on the device, and additional supported properties where relevant. `Some` is returned if
+    /// the descriptor set layout is supported, `None` if it is not.
+    ///
+    /// This is primarily useful for checking whether the device supports a descriptor set layout
+    /// that goes beyond the [`max_per_set_descriptors`] limit. A layout that does not exceed
+    /// that limit is guaranteed to be supported, otherwise this function can be called.
+    ///
+    /// The device API version must be at least 1.1, or the [`khr_maintenance3`] extension must
+    /// be enabled on the device.
+    ///
+    /// [`max_per_set_descriptors`]: crate::device::Properties::max_per_set_descriptors
+    /// [`khr_maintenance3`]: crate::device::DeviceExtensions::khr_maintenance3
+    #[inline]
+    pub fn descriptor_set_layout_support(
+        &self,
+        create_info: &DescriptorSetLayoutCreateInfo,
+    ) -> Result<Option<DescriptorSetLayoutSupport>, ValidationError> {
+        self.validate_descriptor_set_layout_support(create_info)?;
+
+        unsafe { Ok(self.descriptor_set_layout_support_unchecked(create_info)) }
+    }
+
+    fn validate_descriptor_set_layout_support(
+        &self,
+        create_info: &DescriptorSetLayoutCreateInfo,
+    ) -> Result<(), ValidationError> {
+        if !(self.api_version() >= Version::V1_1 || self.enabled_extensions().khr_maintenance3) {
+            return Err(ValidationError {
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_1),
+                    device_extensions: &["khr_maintenance3"],
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+        }
+
+        // VUID-vkGetDescriptorSetLayoutSupport-pCreateInfo-parameter
+        create_info
+            .validate(self)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn descriptor_set_layout_support_unchecked(
+        &self,
+        create_info: &DescriptorSetLayoutCreateInfo,
+    ) -> Option<DescriptorSetLayoutSupport> {
+        let &DescriptorSetLayoutCreateInfo {
+            flags,
+            ref bindings,
+            _ne: _,
+        } = create_info;
+
+        struct PerBinding {
+            immutable_samplers_vk: Vec<ash::vk::Sampler>,
+        }
+
+        let mut bindings_vk = Vec::with_capacity(bindings.len());
+        let mut per_binding_vk = Vec::with_capacity(bindings.len());
+        let mut binding_flags_info_vk = None;
+        let mut binding_flags_vk = Vec::with_capacity(bindings.len());
+
+        let mut support_vk = ash::vk::DescriptorSetLayoutSupport::default();
+        let mut variable_descriptor_count_support_vk = None;
+
+        for (&binding_num, binding) in bindings.iter() {
+            let &DescriptorSetLayoutBinding {
+                binding_flags,
+                descriptor_type,
+                descriptor_count,
+                stages,
+                ref immutable_samplers,
+                _ne: _,
+            } = binding;
+
+            bindings_vk.push(ash::vk::DescriptorSetLayoutBinding {
+                binding: binding_num,
+                descriptor_type: descriptor_type.into(),
+                descriptor_count,
+                stage_flags: stages.into(),
+                p_immutable_samplers: ptr::null(),
+            });
+            per_binding_vk.push(PerBinding {
+                immutable_samplers_vk: immutable_samplers
+                    .iter()
+                    .map(VulkanObject::handle)
+                    .collect(),
+            });
+            binding_flags_vk.push(binding_flags.into());
+        }
+
+        for (binding_vk, per_binding_vk) in bindings_vk.iter_mut().zip(per_binding_vk.iter_mut()) {
+            binding_vk.p_immutable_samplers = per_binding_vk.immutable_samplers_vk.as_ptr();
+        }
+
+        let mut create_info_vk = ash::vk::DescriptorSetLayoutCreateInfo {
+            flags: flags.into(),
+            binding_count: bindings_vk.len() as u32,
+            p_bindings: bindings_vk.as_ptr(),
+            ..Default::default()
+        };
+
+        if self.api_version() >= Version::V1_2 || self.enabled_extensions().ext_descriptor_indexing
+        {
+            let next =
+                binding_flags_info_vk.insert(ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
+                    binding_count: binding_flags_vk.len() as u32,
+                    p_binding_flags: binding_flags_vk.as_ptr(),
+                    ..Default::default()
+                });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+
+            let next = variable_descriptor_count_support_vk
+                .insert(ash::vk::DescriptorSetVariableDescriptorCountLayoutSupport::default());
+
+            next.p_next = support_vk.p_next;
+            support_vk.p_next = next as *mut _ as *mut _;
+        }
+
+        let fns = self.fns();
+
+        if self.api_version() >= Version::V1_1 {
+            (fns.v1_1.get_descriptor_set_layout_support)(
+                self.handle(),
+                &create_info_vk,
+                &mut support_vk,
+            )
+        } else {
+            (fns.khr_maintenance3.get_descriptor_set_layout_support_khr)(
+                self.handle(),
+                &create_info_vk,
+                &mut support_vk,
+            )
+        }
+
+        (support_vk.supported != ash::vk::FALSE).then(|| DescriptorSetLayoutSupport {
+            max_variable_descriptor_count: variable_descriptor_count_support_vk
+                .map_or(0, |s| s.max_variable_descriptor_count),
+        })
     }
 
     /// Retrieves the properties of an external file descriptor when imported as a given external

@@ -9,12 +9,12 @@
 
 use crate::{
     descriptor_set::{
-        layout::{DescriptorSetLayout, DescriptorType},
+        layout::{DescriptorSetLayout, DescriptorSetLayoutCreateFlags, DescriptorType},
         sys::UnsafeDescriptorSet,
     },
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
-    OomError, RuntimeError, Version, VulkanObject,
+    RuntimeError, Version, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -57,7 +57,7 @@ impl DescriptorPool {
     pub fn new(
         device: Arc<Device>,
         create_info: DescriptorPoolCreateInfo,
-    ) -> Result<DescriptorPool, OomError> {
+    ) -> Result<DescriptorPool, RuntimeError> {
         let DescriptorPoolCreateInfo {
             max_sets,
             pool_sizes,
@@ -200,7 +200,10 @@ impl DescriptorPool {
                 .into_iter()
                 .map(|info| {
                     assert_eq!(self.device.handle(), info.layout.device().handle(),);
-                    debug_assert!(!info.layout.push_descriptor());
+                    debug_assert!(!info
+                        .layout
+                        .flags()
+                        .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR));
                     debug_assert!(
                         info.variable_descriptor_count <= info.layout.variable_descriptor_count()
                     );
@@ -286,7 +289,7 @@ impl DescriptorPool {
     pub unsafe fn free_descriptor_sets(
         &self,
         descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
-    ) -> Result<(), OomError> {
+    ) -> Result<(), RuntimeError> {
         let sets: SmallVec<[_; 8]> = descriptor_sets.into_iter().map(|s| s.handle()).collect();
         if !sets.is_empty() {
             let fns = self.device.fns();
@@ -307,7 +310,7 @@ impl DescriptorPool {
     ///
     /// This destroys all descriptor sets and empties the pool.
     #[inline]
-    pub unsafe fn reset(&self) -> Result<(), OomError> {
+    pub unsafe fn reset(&self) -> Result<(), RuntimeError> {
         let fns = self.device.fns();
         (fns.v1_0.reset_descriptor_pool)(
             self.device.handle(),

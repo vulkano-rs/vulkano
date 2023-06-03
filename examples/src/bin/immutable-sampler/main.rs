@@ -333,6 +333,7 @@ fn main() {
         &descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::image_view(0, texture)],
+        [],
     )
     .unwrap();
 

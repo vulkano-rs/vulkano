@@ -233,6 +233,7 @@ mod linux {
             [WriteDescriptorSet::image_view_sampler(
                 0, image_view, sampler,
             )],
+            [],
         )
         .unwrap();
 

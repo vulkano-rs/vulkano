@@ -86,6 +86,7 @@
 //!     &descriptor_set_allocator,
 //!     descriptor_set_layout.clone(),
 //!     [WriteDescriptorSet::image_view(0, image_view)],
+//!     [],
 //! ).unwrap();
 //! ```
 
