@@ -1609,7 +1609,7 @@ impl CopyDescriptorSet {
 
         if src_layout_binding.descriptor_type != dst_layout_binding.descriptor_type {
             return Err(ValidationError {
-                problem: "the descriptor type of dst_binding within dst_set does not equal the \
+                problem: "the descriptor type of src_binding within src_set does not equal the \
                     descriptor type of dst_binding within dst_set"
                     .into(),
                 vuids: &["VUID-VkCopyDescriptorSet-dstBinding-02632"],
