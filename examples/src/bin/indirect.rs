@@ -459,6 +459,7 @@ fn main() {
                         WriteDescriptorSet::buffer(0, vertices.clone()),
                         WriteDescriptorSet::buffer(1, indirect_buffer.clone()),
                     ],
+                    [],
                 )
                 .unwrap();
 

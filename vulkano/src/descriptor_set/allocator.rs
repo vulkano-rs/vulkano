@@ -26,8 +26,9 @@ use super::{
     sys::UnsafeDescriptorSet,
 };
 use crate::{
+    descriptor_set::layout::DescriptorSetLayoutCreateFlags,
     device::{Device, DeviceOwned},
-    OomError,
+    RuntimeError,
 };
 use crossbeam_queue::ArrayQueue;
 use std::{cell::UnsafeCell, mem::ManuallyDrop, num::NonZeroU64, sync::Arc, thread};
@@ -61,7 +62,7 @@ pub unsafe trait DescriptorSetAllocator: DeviceOwned {
         &self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<Self::Alloc, OomError>;
+    ) -> Result<Self::Alloc, RuntimeError>;
 }
 
 /// An allocated descriptor set.
@@ -155,9 +156,11 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
         &self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<StandardDescriptorSetAlloc, OomError> {
+    ) -> Result<StandardDescriptorSetAlloc, RuntimeError> {
         assert!(
-            !layout.push_descriptor(),
+            !layout
+                .flags()
+                .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR),
             "the provided descriptor set layout is for push descriptors, and cannot be used to \
             build a descriptor set object",
         );
@@ -196,7 +199,7 @@ unsafe impl DescriptorSetAllocator for Arc<StandardDescriptorSetAllocator> {
         &self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<Self::Alloc, OomError> {
+    ) -> Result<Self::Alloc, RuntimeError> {
         (**self).allocate(layout, variable_descriptor_count)
     }
 }
@@ -220,7 +223,7 @@ struct FixedEntry {
 }
 
 impl FixedEntry {
-    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, OomError> {
+    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, RuntimeError> {
         Ok(FixedEntry {
             pool: FixedPool::new(&layout, MAX_SETS)?,
             set_count: MAX_SETS,
@@ -228,7 +231,7 @@ impl FixedEntry {
         })
     }
 
-    fn allocate(&mut self) -> Result<StandardDescriptorSetAlloc, OomError> {
+    fn allocate(&mut self) -> Result<StandardDescriptorSetAlloc, RuntimeError> {
         let inner = if let Some(inner) = self.pool.reserve.pop() {
             inner
         } else {
@@ -256,7 +259,7 @@ struct FixedPool {
 }
 
 impl FixedPool {
-    fn new(layout: &Arc<DescriptorSetLayout>, set_count: usize) -> Result<Arc<Self>, OomError> {
+    fn new(layout: &Arc<DescriptorSetLayout>, set_count: usize) -> Result<Arc<Self>, RuntimeError> {
         let inner = DescriptorPool::new(
             layout.device().clone(),
             DescriptorPoolCreateInfo {
@@ -285,10 +288,10 @@ impl FixedPool {
                 reserve
             }
             Err(DescriptorPoolAllocError::OutOfHostMemory) => {
-                return Err(OomError::OutOfHostMemory);
+                return Err(RuntimeError::OutOfHostMemory);
             }
             Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
-                return Err(OomError::OutOfDeviceMemory);
+                return Err(RuntimeError::OutOfDeviceMemory);
             }
             Err(DescriptorPoolAllocError::FragmentedPool) => {
                 // This can't happen as we don't free individual sets.
@@ -321,7 +324,7 @@ struct VariableEntry {
 }
 
 impl VariableEntry {
-    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, OomError> {
+    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, RuntimeError> {
         let reserve = Arc::new(ArrayQueue::new(MAX_POOLS));
 
         Ok(VariableEntry {
@@ -335,7 +338,7 @@ impl VariableEntry {
     fn allocate(
         &mut self,
         variable_descriptor_count: u32,
-    ) -> Result<StandardDescriptorSetAlloc, OomError> {
+    ) -> Result<StandardDescriptorSetAlloc, RuntimeError> {
         if self.allocations >= MAX_SETS {
             self.pool = if let Some(inner) = self.reserve.pop() {
                 Arc::new(VariablePool {
@@ -356,10 +359,10 @@ impl VariableEntry {
         let inner = match unsafe { self.pool.inner.allocate_descriptor_sets([allocate_info]) } {
             Ok(mut sets) => sets.next().unwrap(),
             Err(DescriptorPoolAllocError::OutOfHostMemory) => {
-                return Err(OomError::OutOfHostMemory);
+                return Err(RuntimeError::OutOfHostMemory);
             }
             Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
-                return Err(OomError::OutOfDeviceMemory);
+                return Err(RuntimeError::OutOfDeviceMemory);
             }
             Err(DescriptorPoolAllocError::FragmentedPool) => {
                 // This can't happen as we don't free individual sets.
@@ -392,7 +395,7 @@ impl VariablePool {
     fn new(
         layout: &Arc<DescriptorSetLayout>,
         reserve: Arc<ArrayQueue<DescriptorPool>>,
-    ) -> Result<Arc<Self>, OomError> {
+    ) -> Result<Arc<Self>, RuntimeError> {
         DescriptorPool::new(
             layout.device().clone(),
             DescriptorPoolCreateInfo {

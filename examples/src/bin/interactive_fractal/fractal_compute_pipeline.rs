@@ -153,6 +153,7 @@ impl FractalComputePipeline {
                 WriteDescriptorSet::image_view(0, image),
                 WriteDescriptorSet::buffer(1, self.palette.clone()),
             ],
+            [],
         )
         .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(

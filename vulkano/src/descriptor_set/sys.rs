@@ -9,6 +9,7 @@
 
 //! Low-level descriptor set.
 
+use super::CopyDescriptorSet;
 use crate::{
     descriptor_set::{
         layout::DescriptorSetLayout,
@@ -22,7 +23,6 @@ use smallvec::SmallVec;
 use std::{
     fmt::{Debug, Error as FmtError, Formatter},
     num::NonZeroU64,
-    ptr,
 };
 
 /// Low-level descriptor set.
@@ -56,30 +56,27 @@ impl UnsafeDescriptorSet {
     /// - Updating a descriptor set obeys synchronization rules that aren't checked here. Once a
     ///   command buffer contains a pointer/reference to a descriptor set, it is illegal to write
     ///   to it.
-    pub unsafe fn write<'a>(
+    pub unsafe fn update<'a>(
         &mut self,
         layout: &DescriptorSetLayout,
-        writes: impl IntoIterator<Item = &'a WriteDescriptorSet>,
+        descriptor_writes: impl IntoIterator<Item = &'a WriteDescriptorSet>,
+        descriptor_copies: impl IntoIterator<Item = &'a CopyDescriptorSet>,
     ) {
         struct PerDescriptorWrite {
+            write_info: DescriptorWriteInfo,
             acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR,
         }
 
-        let writes_iter = writes.into_iter();
+        let writes_iter = descriptor_writes.into_iter();
         let (lower_size_bound, _) = writes_iter.size_hint();
-        let mut infos_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
         let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
         let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
 
         for write in writes_iter {
             let layout_binding = &layout.bindings()[&write.binding()];
-
-            infos_vk.push(write.to_vulkan_info(layout_binding.descriptor_type));
-            writes_vk.push(write.to_vulkan(
-                ash::vk::DescriptorSet::null(),
-                layout_binding.descriptor_type,
-            ));
+            writes_vk.push(write.to_vulkan(self.handle, layout_binding.descriptor_type));
             per_writes_vk.push(PerDescriptorWrite {
+                write_info: write.to_vulkan_info(layout_binding.descriptor_type),
                 acceleration_structures: Default::default(),
             });
         }
@@ -90,12 +87,8 @@ impl UnsafeDescriptorSet {
             return;
         }
 
-        for ((info_vk, write_vk), per_write_vk) in infos_vk
-            .iter()
-            .zip(writes_vk.iter_mut())
-            .zip(per_writes_vk.iter_mut())
-        {
-            match info_vk {
+        for (write_vk, per_write_vk) in writes_vk.iter_mut().zip(per_writes_vk.iter_mut()) {
+            match &mut per_write_vk.write_info {
                 DescriptorWriteInfo::Image(info) => {
                     write_vk.descriptor_count = info.len() as u32;
                     write_vk.p_image_info = info.as_ptr();
@@ -123,20 +116,42 @@ impl UnsafeDescriptorSet {
             debug_assert!(write_vk.descriptor_count != 0);
         }
 
-        let fns = layout.device().fns();
+        let copies_iter = descriptor_copies.into_iter();
+        let (lower_size_bound, _) = copies_iter.size_hint();
+        let mut copies_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
 
+        for copy in copies_iter {
+            let &CopyDescriptorSet {
+                ref src_set,
+                src_binding,
+                src_first_array_element,
+                dst_binding,
+                dst_first_array_element,
+                descriptor_count,
+                _ne: _,
+            } = copy;
+
+            copies_vk.push(ash::vk::CopyDescriptorSet {
+                src_set: src_set.inner().handle(),
+                src_binding,
+                src_array_element: src_first_array_element,
+                dst_set: self.handle,
+                dst_binding,
+                dst_array_element: dst_first_array_element,
+                descriptor_count,
+                ..Default::default()
+            });
+        }
+
+        let fns = layout.device().fns();
         (fns.v1_0.update_descriptor_sets)(
             layout.device().handle(),
             writes_vk.len() as u32,
             writes_vk.as_ptr(),
-            0,
-            ptr::null(),
+            copies_vk.len() as u32,
+            copies_vk.as_ptr(),
         );
     }
-
-    // TODO: add copying from other descriptor sets
-    //       add a `copy` method that just takes a copy, and an `update` method that takes both
-    //       writes and copies and that actually performs the operation
 }
 
 unsafe impl VulkanObject for UnsafeDescriptorSet {

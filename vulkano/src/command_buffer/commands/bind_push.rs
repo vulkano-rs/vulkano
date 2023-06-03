@@ -16,10 +16,10 @@ use crate::{
         AutoCommandBufferBuilder,
     },
     descriptor_set::{
-        layout::DescriptorType, set_descriptor_write_image_layouts, validate_descriptor_write,
+        layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType},
         DescriptorBindingResources, DescriptorBufferInfo, DescriptorSetResources,
-        DescriptorSetUpdateError, DescriptorSetWithOffsets, DescriptorSetsCollection,
-        DescriptorWriteInfo, WriteDescriptorSet,
+        DescriptorSetWithOffsets, DescriptorSetsCollection, DescriptorWriteInfo,
+        WriteDescriptorSet,
     },
     device::{DeviceOwned, QueueFlags},
     memory::{is_aligned, DeviceAlignment},
@@ -27,7 +27,7 @@ use crate::{
         graphics::{subpass::PipelineSubpassType, vertex_input::VertexBuffersCollection},
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
-    DeviceSize, RequirementNotMet, RequiresOneOf, VulkanObject,
+    DeviceSize, RequirementNotMet, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -152,7 +152,10 @@ where
                     _ => continue,
                 };
 
-                let count = if binding.variable_descriptor_count {
+                let count = if binding
+                    .binding_flags
+                    .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+                {
                     set.variable_descriptor_count()
                 } else {
                     binding.descriptor_count
@@ -740,15 +743,8 @@ where
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        mut descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
+        descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
     ) -> &mut Self {
-        // Set the image layouts
-        if let Some(set_layout) = pipeline_layout.set_layouts().get(set_num as usize) {
-            for write in &mut descriptor_writes {
-                set_descriptor_write_image_layouts(write, set_layout);
-            }
-        }
-
         self.validate_push_descriptor_set(
             pipeline_bind_point,
             &pipeline_layout,
@@ -775,31 +771,44 @@ where
         pipeline_layout: &PipelineLayout,
         set_num: u32,
         descriptor_writes: &[WriteDescriptorSet],
-    ) -> Result<(), BindPushError> {
+    ) -> Result<(), ValidationError> {
         if !self.device().enabled_extensions().khr_push_descriptor {
-            return Err(BindPushError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::push_descriptor_set`",
-                requires_one_of: RequiresOneOf {
+            return Err(ValidationError {
+                requires_one_of: Some(RequiresOneOf {
                     device_extensions: &["khr_push_descriptor"],
                     ..Default::default()
-                },
+                }),
+                ..Default::default()
             });
         }
 
-        // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-parameter
-        pipeline_bind_point.validate_device(self.device())?;
+        pipeline_bind_point
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "pipeline_bind_point".into(),
+                vuids: &["VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
         let queue_family_properties = self.queue_family_properties();
 
-        // VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool
-        // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-00363
         match pipeline_bind_point {
             PipelineBindPoint::Compute => {
                 if !queue_family_properties
                     .queue_flags
                     .intersects(QueueFlags::COMPUTE)
                 {
-                    return Err(BindPushError::NotSupportedByQueueFamily);
+                    return Err(ValidationError {
+                        context: "self".into(),
+                        problem: "pipeline_bind_point is PipelineBindPoint::Compute, and the \
+                            queue family does not support compute operations"
+                            .into(),
+                        vuids: &[
+                            "VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-00363",
+                            "VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool",
+                        ],
+                        ..Default::default()
+                    });
                 }
             }
             PipelineBindPoint::Graphics => {
@@ -807,7 +816,17 @@ where
                     .queue_flags
                     .intersects(QueueFlags::GRAPHICS)
                 {
-                    return Err(BindPushError::NotSupportedByQueueFamily);
+                    return Err(ValidationError {
+                        context: "self".into(),
+                        problem: "pipeline_bind_point is PipelineBindPoint::Graphics, and the \
+                            queue family does not support graphics operations"
+                            .into(),
+                        vuids: &[
+                            "VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-00363",
+                            "VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool",
+                        ],
+                        ..Default::default()
+                    });
                 }
             }
         }
@@ -815,23 +834,36 @@ where
         // VUID-vkCmdPushDescriptorSetKHR-commonparent
         assert_eq!(self.device(), pipeline_layout.device());
 
-        // VUID-vkCmdPushDescriptorSetKHR-set-00364
         if set_num as usize > pipeline_layout.set_layouts().len() {
-            return Err(BindPushError::DescriptorSetOutOfRange {
-                set_num,
-                pipeline_layout_set_count: pipeline_layout.set_layouts().len() as u32,
+            return Err(ValidationError {
+                problem: "set_num is greater than the number of descriptor set layouts in \
+                    pipeline_layout"
+                    .into(),
+                vuids: &["VUID-vkCmdPushDescriptorSetKHR-set-00364"],
+                ..Default::default()
             });
         }
 
         let descriptor_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 
-        // VUID-vkCmdPushDescriptorSetKHR-set-00365
-        if !descriptor_set_layout.push_descriptor() {
-            return Err(BindPushError::DescriptorSetNotPush { set_num });
+        if !descriptor_set_layout
+            .flags()
+            .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
+        {
+            return Err(ValidationError {
+                problem: "the descriptor set layout with the number set_num in pipeline_layout \
+                    was not created with the DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR \
+                    flag"
+                    .into(),
+                vuids: &["VUID-vkCmdPushDescriptorSetKHR-set-00365"],
+                ..Default::default()
+            });
         }
 
-        for write in descriptor_writes {
-            validate_descriptor_write(write, descriptor_set_layout, 0)?;
+        for (index, write) in descriptor_writes.iter().enumerate() {
+            write
+                .validate(descriptor_set_layout, 0)
+                .map_err(|err| err.add_context(format!("descriptor_writes[{}]", index)))?;
         }
 
         Ok(())
@@ -843,15 +875,8 @@ where
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        mut descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
+        descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
     ) -> &mut Self {
-        // Set the image layouts
-        if let Some(set_layout) = pipeline_layout.set_layouts().get(set_num as usize) {
-            for write in &mut descriptor_writes {
-                set_descriptor_write_image_layouts(write, set_layout);
-            }
-        }
-
         let state = self.builder_state.invalidate_descriptor_sets(
             pipeline_bind_point,
             pipeline_layout.clone(),
@@ -859,7 +884,9 @@ where
             1,
         );
         let layout = state.pipeline_layout.set_layouts()[set_num as usize].as_ref();
-        debug_assert!(layout.push_descriptor());
+        debug_assert!(layout
+            .flags()
+            .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR));
 
         let set_resources = match state
             .descriptor_sets
@@ -871,7 +898,7 @@ where
         };
 
         for write in &descriptor_writes {
-            set_resources.update(write);
+            set_resources.write(write, layout);
         }
 
         self.add_command(
@@ -1158,8 +1185,6 @@ where
 
 #[derive(Clone, Debug)]
 pub(in super::super) enum BindPushError {
-    DescriptorSetUpdateError(DescriptorSetUpdateError),
-
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
@@ -1167,15 +1192,7 @@ pub(in super::super) enum BindPushError {
 
     /// The element of `descriptor_sets` being bound to a slot is not compatible with the
     /// corresponding slot in `pipeline_layout`.
-    DescriptorSetNotCompatible {
-        set_num: u32,
-    },
-
-    /// The descriptor set number being pushed is not defined for push descriptor sets in the
-    /// pipeline layout.
-    DescriptorSetNotPush {
-        set_num: u32,
-    },
+    DescriptorSetNotCompatible { set_num: u32 },
 
     /// The highest descriptor set slot being bound is greater than the number of sets in
     /// `pipeline_layout`.
@@ -1221,10 +1238,7 @@ pub(in super::super) enum BindPushError {
     IndexBufferMissingUsage,
 
     /// The `max_vertex_input_bindings` limit has been exceeded.
-    MaxVertexInputBindingsExceeded {
-        _binding_count: u32,
-        _max: u32,
-    },
+    MaxVertexInputBindingsExceeded { _binding_count: u32, _max: u32 },
 
     /// The queue family doesn't allow this operation.
     NotSupportedByQueueFamily,
@@ -1243,9 +1257,7 @@ pub(in super::super) enum BindPushError {
 
     /// The push constants data to be written at an offset is not included in any push constant
     /// range of the pipeline layout.
-    PushConstantsDataOutOfRange {
-        offset: u32,
-    },
+    PushConstantsDataOutOfRange { offset: u32 },
 
     /// The push constants offset is not a multiple of 4.
     PushConstantsOffsetNotAligned,
@@ -1257,14 +1269,7 @@ pub(in super::super) enum BindPushError {
     VertexBufferMissingUsage,
 }
 
-impl error::Error for BindPushError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            BindPushError::DescriptorSetUpdateError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
+impl error::Error for BindPushError {}
 
 impl Display for BindPushError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
@@ -1277,17 +1282,10 @@ impl Display for BindPushError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-            Self::DescriptorSetUpdateError(_) => write!(f, "a DescriptorSetUpdateError"),
             Self::DescriptorSetNotCompatible { set_num } => write!(
                 f,
                 "the element of `descriptor_sets` being bound to slot {} is not compatible with \
                 the corresponding slot in `pipeline_layout`",
-                set_num,
-            ),
-            Self::DescriptorSetNotPush { set_num } => write!(
-                f,
-                "the descriptor set number being pushed ({}) is not defined for push descriptor \
-                sets in the pipeline layout",
                 set_num,
             ),
             Self::DescriptorSetOutOfRange {
@@ -1378,12 +1376,6 @@ impl Display for BindPushError {
                 write!(f, "a vertex buffer is missing the `vertex_buffer` usage")
             }
         }
-    }
-}
-
-impl From<DescriptorSetUpdateError> for BindPushError {
-    fn from(err: DescriptorSetUpdateError) -> Self {
-        Self::DescriptorSetUpdateError(err)
     }
 }
 

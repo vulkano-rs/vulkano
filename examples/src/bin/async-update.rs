@@ -488,6 +488,7 @@ fn main() {
                 &descriptor_set_allocator,
                 pipeline.layout().set_layouts()[0].clone(),
                 [WriteDescriptorSet::buffer(0, buffer.clone())],
+                [],
             )
             .unwrap()
         })
@@ -504,6 +505,7 @@ fn main() {
                 ImageView::new_default(texture).unwrap(),
                 sampler.clone(),
             )],
+            [],
         )
         .unwrap()
     });

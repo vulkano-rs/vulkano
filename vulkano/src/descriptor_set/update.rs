@@ -7,25 +7,23 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorType};
+use super::{
+    layout::{DescriptorSetLayout, DescriptorType},
+    DescriptorSet,
+};
 use crate::{
     acceleration_structure::{AccelerationStructure, AccelerationStructureType},
     buffer::{view::BufferView, BufferUsage, Subbuffer},
+    descriptor_set::layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags},
     device::DeviceOwned,
     image::{
         view::ImageViewType, ImageAspects, ImageLayout, ImageType, ImageUsage, ImageViewAbstract,
     },
-    sampler::{Sampler, SamplerImageViewIncompatibleError},
-    DeviceSize, RequiresOneOf, VulkanObject,
+    sampler::Sampler,
+    DeviceSize, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    ops::Range,
-    ptr,
-    sync::Arc,
-};
+use std::{ops::Range, ptr, sync::Arc};
 
 /// Represents a single write operation to the binding of a descriptor set.
 ///
@@ -40,7 +38,7 @@ use std::{
 pub struct WriteDescriptorSet {
     binding: u32,
     first_array_element: u32,
-    pub(crate) elements: WriteDescriptorSetElements, // public so that the image layouts can be changed
+    elements: WriteDescriptorSetElements,
 }
 
 impl WriteDescriptorSet {
@@ -353,7 +351,898 @@ impl WriteDescriptorSet {
         &self.elements
     }
 
+    pub(crate) fn validate(
+        &self,
+        layout: &DescriptorSetLayout,
+        variable_descriptor_count: u32,
+    ) -> Result<(), ValidationError> {
+        fn provided_element_type(elements: &WriteDescriptorSetElements) -> &'static str {
+            match elements {
+                WriteDescriptorSetElements::None(_) => "none",
+                WriteDescriptorSetElements::Buffer(_) => "buffer",
+                WriteDescriptorSetElements::BufferView(_) => "buffer_view",
+                WriteDescriptorSetElements::ImageView(_) => "image_view",
+                WriteDescriptorSetElements::ImageViewSampler(_) => "image_view_sampler",
+                WriteDescriptorSetElements::Sampler(_) => "sampler",
+                WriteDescriptorSetElements::AccelerationStructure(_) => "acceleration_structure",
+            }
+        }
+
+        let &Self {
+            binding,
+            first_array_element,
+            ref elements,
+        } = self;
+
+        let device = layout.device();
+
+        let layout_binding = match layout.bindings().get(&binding) {
+            Some(layout_binding) => layout_binding,
+            None => {
+                return Err(ValidationError {
+                    context: "binding".into(),
+                    problem: "does not exist in the descriptor set layout".into(),
+                    vuids: &["VUID-VkWriteDescriptorSet-dstBinding-00315"],
+                    ..Default::default()
+                });
+            }
+        };
+
+        let max_descriptor_count = if layout_binding
+            .binding_flags
+            .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+        {
+            variable_descriptor_count
+        } else {
+            layout_binding.descriptor_count
+        };
+
+        let array_element_count = elements.len();
+        debug_assert!(array_element_count != 0);
+
+        // VUID-VkWriteDescriptorSet-dstArrayElement-00321
+        if first_array_element + array_element_count > max_descriptor_count {
+            return Err(ValidationError {
+                problem: "first_array_element + the number of provided elements is greater than \
+                    the number of descriptors in the descriptor set binding"
+                    .into(),
+                vuids: &["VUID-VkWriteDescriptorSet-dstArrayElement-00321"],
+                ..Default::default()
+            });
+        }
+
+        let validate_image_view =
+            |image_view: &dyn ImageViewAbstract, index: usize| -> Result<(), ValidationError> {
+                if image_view.image().inner().dimensions().image_type() == ImageType::Dim3d {
+                    if image_view.view_type() == ImageViewType::Dim2dArray {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the image view's type is ImageViewType::Dim2dArray, and was \
+                            created from a 3D image"
+                                .into(),
+                            vuids: &["VUID-VkDescriptorImageInfo-imageView-00343"],
+                            ..Default::default()
+                        });
+                    } else if image_view.view_type() == ImageViewType::Dim2d {
+                        // VUID-VkDescriptorImageInfo-imageView-07796
+                        // Already checked at image view creation by
+                        // VUID-VkImageViewCreateInfo-image-06728
+
+                        match layout_binding.descriptor_type {
+                            DescriptorType::StorageImage => {
+                                if !device.enabled_features().image2_d_view_of3_d {
+                                    return Err(ValidationError {
+                                        context: format!("elements[{}]", index).into(),
+                                        problem: format!(
+                                            "the descriptor type is DescriptorType::{:?}, and the \
+                                            image view's type is ImageViewType::Dim2d,
+                                            and was created from a 3D image",
+                                            layout_binding.descriptor_type,
+                                        )
+                                        .into(),
+                                        requires_one_of: Some(RequiresOneOf {
+                                            features: &["image2_d_view_of3_d"],
+                                            ..Default::default()
+                                        }),
+                                        vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06713"],
+                                    });
+                                }
+                            }
+                            DescriptorType::SampledImage | DescriptorType::CombinedImageSampler => {
+                                if !device.enabled_features().sampler2_d_view_of3_d {
+                                    return Err(ValidationError {
+                                        context: format!("elements[{}]", index).into(),
+                                        problem: format!(
+                                            "the descriptor type is DescriptorType::{:?}, and the \
+                                            image view's type is ImageViewType::Dim2d,
+                                            and was created from a 3D image",
+                                            layout_binding.descriptor_type,
+                                        )
+                                        .into(),
+                                        requires_one_of: Some(RequiresOneOf {
+                                            features: &["sampler2_d_view_of3_d"],
+                                            ..Default::default()
+                                        }),
+                                        vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06714"],
+                                    });
+                                }
+                            }
+                            _ => {
+                                return Err(ValidationError {
+                                    context: format!("elements[{}]", index).into(),
+                                    problem: "the descriptor type is not \
+                                        DescriptorType::StorageImage, \
+                                        DescriptorType::SampledImage \
+                                        or DescriptorType::CombinedImageSampler,\
+                                        and the image view's type is ImageViewType::Dim2D, \
+                                        and was created from a 3D image"
+                                        .into(),
+                                    vuids: &["VUID-VkDescriptorImageInfo-imageView-07795"],
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if image_view
+                    .subresource_range()
+                    .aspects
+                    .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+                {
+                    return Err(ValidationError {
+                        context: format!("elements[{}]", index).into(),
+                        problem: "the image view's aspects include both a depth and a \
+                            stencil component"
+                            .into(),
+                        vuids: &["VUID-VkDescriptorImageInfo-imageView-01976"],
+                        ..Default::default()
+                    });
+                }
+
+                Ok(())
+            };
+
+        let default_image_layout = layout_binding.descriptor_type.default_image_layout();
+
+        match layout_binding.descriptor_type {
+            DescriptorType::Sampler => {
+                if !layout_binding.immutable_samplers.is_empty() {
+                    if layout
+                        .flags()
+                        .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
+                    {
+                        // For push descriptors, we must write a dummy element.
+                        if let WriteDescriptorSetElements::None(_) = elements {
+                            // Do nothing
+                        } else {
+                            return Err(ValidationError {
+                                context: "elements".into(),
+                                problem: format!(
+                                    "contains `{}` elements, but the descriptor set \
+                                    binding requires `none` elements",
+                                    provided_element_type(elements)
+                                )
+                                .into(),
+                                // vuids?
+                                ..Default::default()
+                            });
+                        }
+                    } else {
+                        // For regular descriptors, no element must be written.
+                        return Err(ValidationError {
+                            context: "binding".into(),
+                            problem: "no descriptors must be written to this \
+                                descriptor set binding"
+                                .into(),
+                            // vuids?
+                            ..Default::default()
+                        });
+                    }
+                }
+
+                let elements = if let WriteDescriptorSetElements::Sampler(elements) = elements {
+                    elements
+                } else {
+                    return Err(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but the descriptor set \
+                            binding requires `sampler` elements",
+                            provided_element_type(elements)
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    });
+                };
+
+                for (index, sampler) in elements.iter().enumerate() {
+                    assert_eq!(device, sampler.device());
+
+                    if sampler.sampler_ycbcr_conversion().is_some() {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is not \
+                                DescriptorType::CombinedImageSampler, and the sampler has a \
+                                sampler YCbCr conversion"
+                                .into(),
+                            // vuids?
+                            ..Default::default()
+                        });
+                    }
+
+                    if device.enabled_extensions().khr_portability_subset
+                        && !device.enabled_features().mutable_comparison_samplers
+                        && sampler.compare().is_some()
+                    {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "this device is a portability subset device, and \
+                                the sampler has depth comparison enabled"
+                                .into(),
+                            requires_one_of: Some(RequiresOneOf {
+                                features: &["mutable_comparison_samplers"],
+                                ..Default::default()
+                            }),
+                            vuids: &["VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450"],
+                        });
+                    }
+                }
+            }
+
+            DescriptorType::CombinedImageSampler => {
+                if layout_binding.immutable_samplers.is_empty() {
+                    let elements =
+                        if let WriteDescriptorSetElements::ImageViewSampler(elements) = elements {
+                            elements
+                        } else {
+                            return Err(ValidationError {
+                                context: "elements".into(),
+                                problem: format!(
+                                    "contains `{}` elements, but the descriptor set \
+                                    binding requires `image_view_sampler` elements",
+                                    provided_element_type(elements)
+                                )
+                                .into(),
+                                // vuids?
+                                ..Default::default()
+                            });
+                        };
+
+                    for (index, (image_view_info, sampler)) in elements.iter().enumerate() {
+                        let &DescriptorImageViewInfo {
+                            ref image_view,
+                            mut image_layout,
+                        } = image_view_info;
+
+                        if image_layout == ImageLayout::Undefined {
+                            image_layout = default_image_layout;
+                        }
+
+                        assert_eq!(device, image_view.device());
+                        assert_eq!(device, sampler.device());
+
+                        validate_image_view(image_view.as_ref(), index)?;
+
+                        if !image_view.usage().intersects(ImageUsage::SAMPLED) {
+                            return Err(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "the descriptor type is \
+                                    DescriptorType::SampledImage or \
+                                    DescriptorType::CombinedImageSampler, and the image was not \
+                                    created with the ImageUsage::SAMPLED usage"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00337"],
+                                ..Default::default()
+                            });
+                        }
+
+                        if !matches!(
+                            image_layout,
+                            ImageLayout::DepthStencilReadOnlyOptimal
+                                | ImageLayout::ShaderReadOnlyOptimal
+                                | ImageLayout::General
+                                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                        ) {
+                            return Err(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "the descriptor type is \
+                                    DescriptorType::CombinedImageSampler, and the image layout is \
+                                    not valid with this type"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04150"],
+                                ..Default::default()
+                            });
+                        }
+
+                        if device.enabled_extensions().khr_portability_subset
+                            && !device.enabled_features().mutable_comparison_samplers
+                            && sampler.compare().is_some()
+                        {
+                            return Err(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "this device is a portability subset device, and \
+                                    the sampler has depth comparison enabled"
+                                    .into(),
+                                requires_one_of: Some(RequiresOneOf {
+                                    features: &["mutable_comparison_samplers"],
+                                    ..Default::default()
+                                }),
+                                vuids: &[
+                                    "VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450",
+                                ],
+                            });
+                        }
+
+                        if image_view.sampler_ycbcr_conversion().is_some() {
+                            return Err(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "the image view has a sampler YCbCr conversion, and the \
+                                    descriptor set layout was not created with immutable samplers"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02738"],
+                                ..Default::default()
+                            });
+                        }
+
+                        if sampler.sampler_ycbcr_conversion().is_some() {
+                            return Err(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "the sampler has a sampler YCbCr conversion".into(),
+                                // vuids?
+                                ..Default::default()
+                            });
+                        }
+
+                        sampler
+                            .check_can_sample(image_view.as_ref())
+                            .map_err(|err| err.add_context(format!("elements[{}]", index)))?;
+                    }
+                } else {
+                    let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements
+                    {
+                        elements
+                    } else {
+                        return Err(ValidationError {
+                            context: "elements".into(),
+                            problem: format!(
+                                "contains `{}` elements, but the descriptor set \
+                                binding requires `image_view` elements",
+                                provided_element_type(elements)
+                            )
+                            .into(),
+                            ..Default::default()
+                        });
+                    };
+
+                    let immutable_samplers = &layout_binding.immutable_samplers
+                        [first_array_element as usize..][..array_element_count as usize];
+
+                    for (index, (image_view_info, sampler)) in
+                        elements.iter().zip(immutable_samplers).enumerate()
+                    {
+                        let &DescriptorImageViewInfo {
+                            ref image_view,
+                            mut image_layout,
+                        } = image_view_info;
+
+                        if image_layout == ImageLayout::Undefined {
+                            image_layout = default_image_layout;
+                        }
+
+                        assert_eq!(device, image_view.device());
+
+                        validate_image_view(image_view.as_ref(), index)?;
+
+                        if !image_view.usage().intersects(ImageUsage::SAMPLED) {
+                            return Err(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "the descriptor type is \
+                                    DescriptorType::SampledImage or \
+                                    DescriptorType::CombinedImageSampler, and the image was not \
+                                    created with the ImageUsage::SAMPLED usage"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00337"],
+                                ..Default::default()
+                            });
+                        }
+
+                        if !matches!(
+                            image_layout,
+                            ImageLayout::DepthStencilReadOnlyOptimal
+                                | ImageLayout::ShaderReadOnlyOptimal
+                                | ImageLayout::General
+                                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                        ) {
+                            return Err(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "the descriptor type is \
+                                    DescriptorType::CombinedImageSampler, and the image layout is \
+                                    not valid with this type"
+                                    .into(),
+                                vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04150"],
+                                ..Default::default()
+                            });
+                        }
+
+                        sampler
+                            .check_can_sample(image_view.as_ref())
+                            .map_err(|err| err.add_context(format!("elements[{}]", index)))?;
+                    }
+                }
+            }
+
+            DescriptorType::SampledImage => {
+                let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
+                    elements
+                } else {
+                    return Err(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but the descriptor set \
+                            binding requires `image_view` elements",
+                            provided_element_type(elements)
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    });
+                };
+
+                for (index, image_view_info) in elements.iter().enumerate() {
+                    let &DescriptorImageViewInfo {
+                        ref image_view,
+                        mut image_layout,
+                    } = image_view_info;
+
+                    if image_layout == ImageLayout::Undefined {
+                        image_layout = default_image_layout;
+                    }
+
+                    assert_eq!(device, image_view.device());
+
+                    validate_image_view(image_view.as_ref(), index)?;
+
+                    if !image_view.usage().intersects(ImageUsage::SAMPLED) {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is \
+                                DescriptorType::SampledImage or \
+                                DescriptorType::CombinedImageSampler, and the image was not \
+                                created with the ImageUsage::SAMPLED usage"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00337"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !matches!(
+                        image_layout,
+                        ImageLayout::DepthStencilReadOnlyOptimal
+                            | ImageLayout::ShaderReadOnlyOptimal
+                            | ImageLayout::General
+                            | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                    ) {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is \
+                                DescriptorType::SampledImage, and the image layout is \
+                                not valid with this type"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04149"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is DescriptorType::SampledImage, and \
+                                the image view has a sampler YCbCr conversion"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-01946"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            DescriptorType::StorageImage => {
+                let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
+                    elements
+                } else {
+                    return Err(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but the descriptor set \
+                            binding requires `image_view` elements",
+                            provided_element_type(elements)
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    });
+                };
+
+                for (index, image_view_info) in elements.iter().enumerate() {
+                    let &DescriptorImageViewInfo {
+                        ref image_view,
+                        mut image_layout,
+                    } = image_view_info;
+
+                    if image_layout == ImageLayout::Undefined {
+                        image_layout = default_image_layout;
+                    }
+
+                    assert_eq!(device, image_view.device());
+
+                    validate_image_view(image_view.as_ref(), index)?;
+
+                    if !image_view.usage().intersects(ImageUsage::STORAGE) {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is \
+                                DescriptorType::StorageImage, and the image was not \
+                                created with the ImageUsage::STORAGE usage"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00339"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !matches!(image_layout, ImageLayout::General) {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is \
+                                DescriptorType::StorageImage, and the image layout is \
+                                not valid with this type"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04152"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !image_view.component_mapping().is_identity() {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is DescriptorType::StorageImage or \
+                                DescriptorType::InputAttachment, and the image view is not \
+                                identity swizzled"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00336"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "image_view has a sampler YCbCr conversion".into(),
+                            // vuids?
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            DescriptorType::UniformTexelBuffer => {
+                let elements = if let WriteDescriptorSetElements::BufferView(elements) = elements {
+                    elements
+                } else {
+                    return Err(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but the descriptor set \
+                            binding requires `buffer_view` elements",
+                            provided_element_type(elements)
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    });
+                };
+
+                for (index, buffer_view) in elements.iter().enumerate() {
+                    assert_eq!(device, buffer_view.device());
+
+                    if !buffer_view
+                        .buffer()
+                        .buffer()
+                        .usage()
+                        .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
+                    {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is DescriptorType::UniformTexelBuffer, \
+                                and the buffer was not created with the \
+                                BufferUsage::UNIFORM_TEXEL_BUFFER usage"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00334"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            DescriptorType::StorageTexelBuffer => {
+                let elements = if let WriteDescriptorSetElements::BufferView(elements) = elements {
+                    elements
+                } else {
+                    return Err(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but the descriptor set \
+                            binding requires `buffer_view` elements",
+                            provided_element_type(elements)
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    });
+                };
+
+                for (index, buffer_view) in elements.iter().enumerate() {
+                    assert_eq!(device, buffer_view.device());
+
+                    // TODO: storage_texel_buffer_atomic
+                    if !buffer_view
+                        .buffer()
+                        .buffer()
+                        .usage()
+                        .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
+                    {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is DescriptorType::StorageTexelBuffer, \
+                                and the buffer was not created with the \
+                                BufferUsage::STORAGE_TEXEL_BUFFER usage"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00335"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
+                let elements = if let WriteDescriptorSetElements::Buffer(elements) = elements {
+                    elements
+                } else {
+                    return Err(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but the descriptor set \
+                            binding requires `buffer` elements",
+                            provided_element_type(elements)
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    });
+                };
+
+                for (index, buffer_info) in elements.iter().enumerate() {
+                    let DescriptorBufferInfo { buffer, range } = buffer_info;
+
+                    assert_eq!(device, buffer.device());
+
+                    if !buffer
+                        .buffer()
+                        .usage()
+                        .intersects(BufferUsage::UNIFORM_BUFFER)
+                    {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is DescriptorType::UniformBuffer or \
+                                DescriptorType::UniformBufferDynamic, and the buffer was not \
+                                created with the BufferUsage::UNIFORM_BUFFER usage"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00330"],
+                            ..Default::default()
+                        });
+                    }
+
+                    assert!(!range.is_empty());
+
+                    if range.end > buffer.size() {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the end of the range is greater than the size of the buffer"
+                                .into(),
+                            vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
+                let elements = if let WriteDescriptorSetElements::Buffer(elements) = elements {
+                    elements
+                } else {
+                    return Err(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but the descriptor set \
+                            binding requires `buffer` elements",
+                            provided_element_type(elements)
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    });
+                };
+
+                for (index, buffer_info) in elements.iter().enumerate() {
+                    let DescriptorBufferInfo { buffer, range } = buffer_info;
+
+                    assert_eq!(device, buffer.device());
+
+                    if !buffer
+                        .buffer()
+                        .usage()
+                        .intersects(BufferUsage::STORAGE_BUFFER)
+                    {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is DescriptorType::StorageBuffer or \
+                                DescriptorType::StorageBufferDynamic, and the buffer was not \
+                                created with the BufferUsage::STORAGE_BUFFER usage"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00331"],
+                            ..Default::default()
+                        });
+                    }
+
+                    assert!(!range.is_empty());
+
+                    if range.end > buffer.size() {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the end of the range is greater than the size of the buffer"
+                                .into(),
+                            vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            DescriptorType::InputAttachment => {
+                let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
+                    elements
+                } else {
+                    return Err(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but the descriptor set \
+                            binding requires `image_view` elements",
+                            provided_element_type(elements)
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    });
+                };
+
+                for (index, image_view_info) in elements.iter().enumerate() {
+                    let &DescriptorImageViewInfo {
+                        ref image_view,
+                        mut image_layout,
+                    } = image_view_info;
+
+                    if image_layout == ImageLayout::Undefined {
+                        image_layout = default_image_layout;
+                    }
+
+                    assert_eq!(device, image_view.device());
+
+                    validate_image_view(image_view.as_ref(), index)?;
+
+                    if !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT) {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is \
+                                DescriptorType::InputAttachment, and the image was not \
+                                created with the ImageUsage::INPUT_ATTACHMENT usage"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00338"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !matches!(
+                        image_layout,
+                        ImageLayout::DepthStencilReadOnlyOptimal
+                            | ImageLayout::ShaderReadOnlyOptimal
+                            | ImageLayout::General
+                            | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                    ) {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is \
+                                DescriptorType::InputAttachment, and the image layout is \
+                                not valid with this type"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04151"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !image_view.component_mapping().is_identity() {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is DescriptorType::StorageImage or \
+                                DescriptorType::InputAttachment, and the image view is not \
+                                identity swizzled"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00336"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the descriptor type is DescriptorType::InputAttachment, and \
+                                the image view has a sampler YCbCr conversion"
+                                .into(),
+                            // vuids?
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            DescriptorType::AccelerationStructure => {
+                let elements =
+                    if let WriteDescriptorSetElements::AccelerationStructure(elements) = elements {
+                        elements
+                    } else {
+                        return Err(ValidationError {
+                            context: "elements".into(),
+                            problem: format!(
+                                "contains `{}` elements, but the descriptor set \
+                                binding requires `acceleration_structure` elements",
+                                provided_element_type(elements)
+                            )
+                            .into(),
+                            ..Default::default()
+                        });
+                    };
+
+                for (index, acceleration_structure) in elements.iter().enumerate() {
+                    assert_eq!(device, acceleration_structure.device());
+
+                    if !matches!(
+                        acceleration_structure.ty(),
+                        AccelerationStructureType::TopLevel | AccelerationStructureType::Generic
+                    ) {
+                        return Err(ValidationError {
+                            context: format!("elements[{}]", index).into(),
+                            problem: "the acceleration structure's type is not \
+                                AccelerationStructureType::TopLevel or \
+                                AccelerationStructureType::Generic"
+                                .into(),
+                            vuids: &["VUID-VkWriteDescriptorSetAccelerationStructureKHR-pAccelerationStructures-03579"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn to_vulkan_info(&self, descriptor_type: DescriptorType) -> DescriptorWriteInfo {
+        let default_image_layout = descriptor_type.default_image_layout();
+
         match &self.elements {
             WriteDescriptorSetElements::None(num_elements) => {
                 debug_assert!(matches!(descriptor_type, DescriptorType::Sampler));
@@ -420,8 +1309,12 @@ impl WriteDescriptorSet {
                         .map(|image_view_info| {
                             let &DescriptorImageViewInfo {
                                 ref image_view,
-                                image_layout,
+                                mut image_layout,
                             } = image_view_info;
+
+                            if image_layout == ImageLayout::Undefined {
+                                image_layout = default_image_layout;
+                            }
 
                             ash::vk::DescriptorImageInfo {
                                 sampler: ash::vk::Sampler::null(),
@@ -443,8 +1336,12 @@ impl WriteDescriptorSet {
                         .map(|(image_view_info, sampler)| {
                             let &DescriptorImageViewInfo {
                                 ref image_view,
-                                image_layout,
+                                mut image_layout,
                             } = image_view_info;
+
+                            if image_layout == ImageLayout::Undefined {
+                                image_layout = default_image_layout;
+                            }
 
                             ash::vk::DescriptorImageInfo {
                                 sampler: sampler.handle(),
@@ -581,1007 +1478,161 @@ pub(crate) enum DescriptorWriteInfo {
     AccelerationStructure(SmallVec<[ash::vk::AccelerationStructureKHR; 1]>),
 }
 
-pub(crate) fn set_descriptor_write_image_layouts(
-    write: &mut WriteDescriptorSet,
-    layout: &DescriptorSetLayout,
-) {
-    let default_layout = if let Some(layout_binding) = layout.bindings().get(&write.binding()) {
-        match layout_binding.descriptor_type {
-            DescriptorType::CombinedImageSampler
-            | DescriptorType::SampledImage
-            | DescriptorType::InputAttachment => ImageLayout::ShaderReadOnlyOptimal,
-            DescriptorType::StorageImage => ImageLayout::General,
-            _ => return,
-        }
-    } else {
-        return;
-    };
+/// Represents a single copy operation to the binding of a descriptor set.
+#[derive(Clone)]
+pub struct CopyDescriptorSet {
+    /// The source descriptor set to copy from.
+    ///
+    /// There is no default value.
+    pub src_set: Arc<dyn DescriptorSet>,
 
-    match &mut write.elements {
-        WriteDescriptorSetElements::ImageView(elements) => {
-            for image_view_info in elements {
-                let DescriptorImageViewInfo {
-                    image_view: _,
-                    image_layout,
-                } = image_view_info;
+    /// The binding number in the source descriptor set to copy from.
+    ///
+    /// The default value is 0.
+    pub src_binding: u32,
 
-                if *image_layout == ImageLayout::Undefined {
-                    *image_layout = default_layout;
-                }
-            }
-        }
-        WriteDescriptorSetElements::ImageViewSampler(elements) => {
-            for (image_view_info, _sampler) in elements {
-                let DescriptorImageViewInfo {
-                    image_view: _,
-                    image_layout,
-                } = image_view_info;
+    /// The first array element in the source descriptor set to copy from.
+    ///
+    /// The default value is 0.
+    pub src_first_array_element: u32,
 
-                if *image_layout == ImageLayout::Undefined {
-                    *image_layout = default_layout;
-                }
-            }
-        }
-        _ => (),
-    }
+    /// The binding number in the destination descriptor set to copy into.
+    ///
+    /// The default value is 0.
+    pub dst_binding: u32,
+
+    /// The first array element in the destination descriptor set to copy into.
+    pub dst_first_array_element: u32,
+
+    /// The number of descriptors (array elements) to copy.
+    ///
+    /// The default value is 1.
+    pub descriptor_count: u32,
+
+    pub _ne: crate::NonExhaustive,
 }
 
-pub(crate) fn validate_descriptor_write<'a>(
-    write: &WriteDescriptorSet,
-    layout: &'a DescriptorSetLayout,
-    variable_descriptor_count: u32,
-) -> Result<&'a DescriptorSetLayoutBinding, DescriptorSetUpdateError> {
-    fn provided_element_type(elements: &WriteDescriptorSetElements) -> &'static str {
-        match elements {
-            WriteDescriptorSetElements::None(_) => "none",
-            WriteDescriptorSetElements::Buffer(_) => "buffer",
-            WriteDescriptorSetElements::BufferView(_) => "buffer_view",
-            WriteDescriptorSetElements::ImageView(_) => "image_view",
-            WriteDescriptorSetElements::ImageViewSampler(_) => "image_view_sampler",
-            WriteDescriptorSetElements::Sampler(_) => "sampler",
-            WriteDescriptorSetElements::AccelerationStructure(_) => "acceleration_structure",
+impl CopyDescriptorSet {
+    /// Returns a `CopyDescriptorSet` with the specified `src_set`.
+    #[inline]
+    pub fn new(src_set: Arc<dyn DescriptorSet>) -> Self {
+        Self {
+            src_set,
+            src_binding: 0,
+            src_first_array_element: 0,
+            dst_binding: 0,
+            dst_first_array_element: 0,
+            descriptor_count: 1,
+            _ne: crate::NonExhaustive(()),
         }
     }
 
-    let device = layout.device();
+    pub(crate) fn validate(
+        &self,
+        dst_set_layout: &DescriptorSetLayout,
+        dst_set_variable_descriptor_count: u32,
+    ) -> Result<(), ValidationError> {
+        let &Self {
+            ref src_set,
+            src_binding,
+            src_first_array_element,
+            dst_binding,
+            dst_first_array_element,
+            descriptor_count,
+            _ne,
+        } = self;
 
-    let layout_binding = match layout.bindings().get(&write.binding()) {
-        Some(binding) => binding,
-        None => {
-            return Err(DescriptorSetUpdateError::InvalidBinding {
-                binding: write.binding(),
-            })
-        }
-    };
+        // VUID-VkCopyDescriptorSet-commonparent
+        assert_eq!(src_set.device(), dst_set_layout.device());
 
-    let max_descriptor_count = if layout_binding.variable_descriptor_count {
-        variable_descriptor_count
-    } else {
-        layout_binding.descriptor_count
-    };
-
-    let binding = write.binding();
-    let elements = write.elements();
-    let num_elements = elements.len();
-    debug_assert!(num_elements != 0);
-
-    let descriptor_range_start = write.first_array_element();
-    let descriptor_range_end = descriptor_range_start + num_elements;
-
-    if descriptor_range_end > max_descriptor_count {
-        return Err(DescriptorSetUpdateError::ArrayIndexOutOfBounds {
-            binding,
-            available_count: max_descriptor_count,
-            written_count: descriptor_range_end,
-        });
-    }
-
-    match layout_binding.descriptor_type {
-        DescriptorType::Sampler => {
-            if layout_binding.immutable_samplers.is_empty() {
-                let elements = if let WriteDescriptorSetElements::Sampler(elements) = elements {
-                    elements
-                } else {
-                    return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                        binding,
-                        provided_element_type: provided_element_type(elements),
-                        allowed_element_types: &["sampler"],
-                    });
-                };
-
-                for (index, sampler) in elements.iter().enumerate() {
-                    assert_eq!(device, sampler.device());
-
-                    if sampler.sampler_ycbcr_conversion().is_some() {
-                        return Err(DescriptorSetUpdateError::SamplerHasSamplerYcbcrConversion {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        });
-                    }
-                }
-            } else if layout.push_descriptor() {
-                // For push descriptors, we must write a dummy element.
-                if let WriteDescriptorSetElements::None(_) = elements {
-                    // Do nothing
-                } else {
-                    return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                        binding,
-                        provided_element_type: provided_element_type(elements),
-                        allowed_element_types: &["none"],
-                    });
-                }
-            } else {
-                // For regular descriptors, no element must be written.
-                return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                    binding,
-                    provided_element_type: provided_element_type(elements),
-                    allowed_element_types: &[],
+        let src_layout_binding = match src_set.layout().bindings().get(&src_binding) {
+            Some(layout_binding) => layout_binding,
+            None => {
+                return Err(ValidationError {
+                    problem: "src_binding does not exist in the descriptor set layout of src_set"
+                        .into(),
+                    vuids: &["VUID-VkCopyDescriptorSet-srcBinding-00345"],
+                    ..Default::default()
                 });
             }
+        };
+
+        let src_max_descriptor_count = if src_layout_binding
+            .binding_flags
+            .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+        {
+            src_set.variable_descriptor_count()
+        } else {
+            src_layout_binding.descriptor_count
+        };
+
+        if src_first_array_element + descriptor_count > src_max_descriptor_count {
+            return Err(ValidationError {
+                problem: "src_first_array_element + descriptor_count is greater than \
+                    the number of descriptors in src_set's descriptor set binding"
+                    .into(),
+                vuids: &["VUID-VkCopyDescriptorSet-srcArrayElement-00346"],
+                ..Default::default()
+            });
         }
 
-        DescriptorType::CombinedImageSampler => {
-            if layout_binding.immutable_samplers.is_empty() {
-                let elements =
-                    if let WriteDescriptorSetElements::ImageViewSampler(elements) = elements {
-                        elements
-                    } else {
-                        return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                            binding,
-                            provided_element_type: provided_element_type(elements),
-                            allowed_element_types: &["image_view_sampler"],
-                        });
-                    };
-
-                for (index, (image_view_info, sampler)) in elements.iter().enumerate() {
-                    let &DescriptorImageViewInfo {
-                        ref image_view,
-                        image_layout,
-                    } = image_view_info;
-
-                    assert_eq!(device, image_view.device());
-                    assert_eq!(device, sampler.device());
-
-                    // VUID-VkWriteDescriptorSet-descriptorType-00337
-                    if !image_view.usage().intersects(ImageUsage::SAMPLED) {
-                        return Err(DescriptorSetUpdateError::MissingUsage {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                            usage: "sampled",
-                        });
-                    }
-
-                    // VUID-VkDescriptorImageInfo-imageView-00343
-                    if matches!(
-                        image_view.view_type(),
-                        ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                    ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
-                    {
-                        return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        });
-                    }
-
-                    // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view
-                        .subresource_range()
-                        .aspects
-                        .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
-                    {
-                        return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        });
-                    }
-
-                    // VUID-VkWriteDescriptorSet-descriptorType-04150
-                    if !matches!(
-                        image_layout,
-                        ImageLayout::DepthStencilReadOnlyOptimal
-                            | ImageLayout::ShaderReadOnlyOptimal
-                            | ImageLayout::General
-                            | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
-                    ) {
-                        return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        });
-                    }
-
-                    // VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450
-                    if device.enabled_extensions().khr_portability_subset
-                        && !device.enabled_features().mutable_comparison_samplers
-                        && sampler.compare().is_some()
-                    {
-                        return Err(DescriptorSetUpdateError::RequirementNotMet {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                            required_for: "this device is a portability subset device, and \
-                                `sampler.compare()` is `Some`",
-                            requires_one_of: RequiresOneOf {
-                                features: &["mutable_comparison_samplers"],
-                                ..Default::default()
-                            },
-                        });
-                    }
-
-                    if image_view.sampler_ycbcr_conversion().is_some() {
-                        return Err(
-                            DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
-                                binding: write.binding(),
-                                index: descriptor_range_start + index as u32,
-                            },
-                        );
-                    }
-
-                    if sampler.sampler_ycbcr_conversion().is_some() {
-                        return Err(DescriptorSetUpdateError::SamplerHasSamplerYcbcrConversion {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        });
-                    }
-
-                    if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
-                        return Err(DescriptorSetUpdateError::ImageViewIncompatibleSampler {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                            error,
-                        });
-                    }
-                }
-            } else {
-                let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
-                    elements
-                } else {
-                    return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                        binding,
-                        provided_element_type: provided_element_type(elements),
-                        allowed_element_types: &["image_view"],
-                    });
-                };
-
-                let immutable_samplers = &layout_binding.immutable_samplers
-                    [descriptor_range_start as usize..descriptor_range_end as usize];
-
-                for (index, (image_view_info, sampler)) in
-                    elements.iter().zip(immutable_samplers).enumerate()
-                {
-                    let &DescriptorImageViewInfo {
-                        ref image_view,
-                        image_layout,
-                    } = image_view_info;
-
-                    assert_eq!(device, image_view.device());
-
-                    // VUID-VkWriteDescriptorSet-descriptorType-00337
-                    if !image_view.usage().intersects(ImageUsage::SAMPLED) {
-                        return Err(DescriptorSetUpdateError::MissingUsage {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                            usage: "sampled",
-                        });
-                    }
-
-                    // VUID-VkDescriptorImageInfo-imageView-00343
-                    if matches!(
-                        image_view.view_type(),
-                        ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                    ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
-                    {
-                        return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        });
-                    }
-
-                    // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view
-                        .subresource_range()
-                        .aspects
-                        .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
-                    {
-                        return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        });
-                    }
-
-                    // VUID-VkWriteDescriptorSet-descriptorType-04150
-                    if !matches!(
-                        image_layout,
-                        ImageLayout::DepthStencilReadOnlyOptimal
-                            | ImageLayout::ShaderReadOnlyOptimal
-                            | ImageLayout::General
-                            | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
-                    ) {
-                        return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        });
-                    }
-
-                    if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
-                        return Err(DescriptorSetUpdateError::ImageViewIncompatibleSampler {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                            error,
-                        });
-                    }
-                }
-            }
-        }
-
-        DescriptorType::SampledImage => {
-            let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
-                elements
-            } else {
-                return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                    binding,
-                    provided_element_type: provided_element_type(elements),
-                    allowed_element_types: &["image_view"],
+        let dst_layout_binding = match dst_set_layout.bindings().get(&dst_binding) {
+            Some(layout_binding) => layout_binding,
+            None => {
+                return Err(ValidationError {
+                    problem: "dst_binding does not exist in the descriptor set layout of dst_set"
+                        .into(),
+                    vuids: &["VUID-VkCopyDescriptorSet-dstBinding-00347"],
+                    ..Default::default()
                 });
-            };
-
-            for (index, image_view_info) in elements.iter().enumerate() {
-                let &DescriptorImageViewInfo {
-                    ref image_view,
-                    image_layout,
-                } = image_view_info;
-
-                assert_eq!(device, image_view.device());
-
-                // VUID-VkWriteDescriptorSet-descriptorType-00337
-                if !image_view.usage().intersects(ImageUsage::SAMPLED) {
-                    return Err(DescriptorSetUpdateError::MissingUsage {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                        usage: "sampled",
-                    });
-                }
-
-                // VUID-VkDescriptorImageInfo-imageView-00343
-                if matches!(
-                    image_view.view_type(),
-                    ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
-                {
-                    return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID-VkDescriptorImageInfo-imageView-01976
-                if image_view
-                    .subresource_range()
-                    .aspects
-                    .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
-                {
-                    return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID-VkWriteDescriptorSet-descriptorType-04149
-                if !matches!(
-                    image_layout,
-                    ImageLayout::DepthStencilReadOnlyOptimal
-                        | ImageLayout::ShaderReadOnlyOptimal
-                        | ImageLayout::General
-                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
-                ) {
-                    return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID-VkWriteDescriptorSet-descriptorType-01946
-                if image_view.sampler_ycbcr_conversion().is_some() {
-                    return Err(
-                        DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        },
-                    );
-                }
             }
+        };
+
+        let dst_max_descriptor_count = if dst_layout_binding
+            .binding_flags
+            .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+        {
+            dst_set_variable_descriptor_count
+        } else {
+            dst_layout_binding.descriptor_count
+        };
+
+        if dst_first_array_element + descriptor_count > dst_max_descriptor_count {
+            return Err(ValidationError {
+                problem: "dst_first_array_element + descriptor_count is greater than \
+                    the number of descriptors in dst_set's descriptor set binding"
+                    .into(),
+                vuids: &["VUID-VkCopyDescriptorSet-dstArrayElement-00348"],
+                ..Default::default()
+            });
         }
 
-        DescriptorType::StorageImage => {
-            let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
-                elements
-            } else {
-                return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                    binding,
-                    provided_element_type: provided_element_type(elements),
-                    allowed_element_types: &["image_view"],
-                });
-            };
-
-            for (index, image_view_info) in elements.iter().enumerate() {
-                let &DescriptorImageViewInfo {
-                    ref image_view,
-                    image_layout,
-                } = image_view_info;
-
-                assert_eq!(device, image_view.device());
-
-                // VUID-VkWriteDescriptorSet-descriptorType-00339
-                if !image_view.usage().intersects(ImageUsage::STORAGE) {
-                    return Err(DescriptorSetUpdateError::MissingUsage {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                        usage: "storage",
-                    });
-                }
-
-                // VUID-VkDescriptorImageInfo-imageView-00343
-                if matches!(
-                    image_view.view_type(),
-                    ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
-                {
-                    return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID-VkDescriptorImageInfo-imageView-01976
-                if image_view
-                    .subresource_range()
-                    .aspects
-                    .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
-                {
-                    return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID-VkWriteDescriptorSet-descriptorType-04152
-                if !matches!(image_layout, ImageLayout::General) {
-                    return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID-VkWriteDescriptorSet-descriptorType-00336
-                if !image_view.component_mapping().is_identity() {
-                    return Err(DescriptorSetUpdateError::ImageViewNotIdentitySwizzled {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID??
-                if image_view.sampler_ycbcr_conversion().is_some() {
-                    return Err(
-                        DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        },
-                    );
-                }
-            }
+        if src_layout_binding.descriptor_type != dst_layout_binding.descriptor_type {
+            return Err(ValidationError {
+                problem: "the descriptor type of dst_binding within dst_set does not equal the \
+                    descriptor type of dst_binding within dst_set"
+                    .into(),
+                vuids: &["VUID-VkCopyDescriptorSet-dstBinding-02632"],
+                ..Default::default()
+            });
         }
 
-        DescriptorType::UniformTexelBuffer => {
-            let elements = if let WriteDescriptorSetElements::BufferView(elements) = elements {
-                elements
-            } else {
-                return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                    binding,
-                    provided_element_type: provided_element_type(elements),
-                    allowed_element_types: &["buffer_view"],
-                });
-            };
-
-            for (index, buffer_view) in elements.iter().enumerate() {
-                assert_eq!(device, buffer_view.device());
-
-                if !buffer_view
-                    .buffer()
-                    .buffer()
-                    .usage()
-                    .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
-                {
-                    return Err(DescriptorSetUpdateError::MissingUsage {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                        usage: "uniform_texel_buffer",
-                    });
-                }
-            }
+        if dst_layout_binding.descriptor_type == DescriptorType::Sampler
+            && !dst_layout_binding.immutable_samplers.is_empty()
+        {
+            return Err(ValidationError {
+                problem: "the descriptor type of dst_binding within dst_set is \
+                    DescriptorType::Sampler, and the layout was created with immutable samplers \
+                    for dst_binding"
+                    .into(),
+                vuids: &["VUID-VkCopyDescriptorSet-dstBinding-02753"],
+                ..Default::default()
+            });
         }
 
-        DescriptorType::StorageTexelBuffer => {
-            let elements = if let WriteDescriptorSetElements::BufferView(elements) = elements {
-                elements
-            } else {
-                return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                    binding,
-                    provided_element_type: provided_element_type(elements),
-                    allowed_element_types: &["buffer_view"],
-                });
-            };
+        // VUID-VkCopyDescriptorSet-srcSet-00349
+        // Ensured as long as copies can only occur during descriptor set construction.
 
-            for (index, buffer_view) in elements.iter().enumerate() {
-                assert_eq!(device, buffer_view.device());
-
-                // TODO: storage_texel_buffer_atomic
-                if !buffer_view
-                    .buffer()
-                    .buffer()
-                    .usage()
-                    .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
-                {
-                    return Err(DescriptorSetUpdateError::MissingUsage {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                        usage: "storage_texel_buffer",
-                    });
-                }
-            }
-        }
-
-        DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
-            let elements = if let WriteDescriptorSetElements::Buffer(elements) = elements {
-                elements
-            } else {
-                return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                    binding,
-                    provided_element_type: provided_element_type(elements),
-                    allowed_element_types: &["buffer"],
-                });
-            };
-
-            for (index, buffer_info) in elements.iter().enumerate() {
-                let DescriptorBufferInfo { buffer, range } = buffer_info;
-
-                assert_eq!(device, buffer.device());
-
-                if !buffer
-                    .buffer()
-                    .usage()
-                    .intersects(BufferUsage::UNIFORM_BUFFER)
-                {
-                    return Err(DescriptorSetUpdateError::MissingUsage {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                        usage: "uniform_buffer",
-                    });
-                }
-
-                assert!(!range.is_empty());
-
-                if range.end > buffer.size() {
-                    return Err(DescriptorSetUpdateError::RangeOutOfBufferBounds {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                        range_end: range.end,
-                        buffer_size: buffer.size(),
-                    });
-                }
-            }
-        }
-
-        DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
-            let elements = if let WriteDescriptorSetElements::Buffer(elements) = elements {
-                elements
-            } else {
-                return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                    binding,
-                    provided_element_type: provided_element_type(elements),
-                    allowed_element_types: &["buffer"],
-                });
-            };
-
-            for (index, buffer_info) in elements.iter().enumerate() {
-                let DescriptorBufferInfo { buffer, range } = buffer_info;
-
-                assert_eq!(device, buffer.device());
-
-                if !buffer
-                    .buffer()
-                    .usage()
-                    .intersects(BufferUsage::STORAGE_BUFFER)
-                {
-                    return Err(DescriptorSetUpdateError::MissingUsage {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                        usage: "storage_buffer",
-                    });
-                }
-
-                assert!(!range.is_empty());
-
-                if range.end > buffer.size() {
-                    return Err(DescriptorSetUpdateError::RangeOutOfBufferBounds {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                        range_end: range.end,
-                        buffer_size: buffer.size(),
-                    });
-                }
-            }
-        }
-
-        DescriptorType::InputAttachment => {
-            let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
-                elements
-            } else {
-                return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                    binding,
-                    provided_element_type: provided_element_type(elements),
-                    allowed_element_types: &["image_view"],
-                });
-            };
-
-            for (index, image_view_info) in elements.iter().enumerate() {
-                let &DescriptorImageViewInfo {
-                    ref image_view,
-                    image_layout,
-                } = image_view_info;
-
-                assert_eq!(device, image_view.device());
-
-                // VUID-VkWriteDescriptorSet-descriptorType-00338
-                if !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT) {
-                    return Err(DescriptorSetUpdateError::MissingUsage {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                        usage: "input_attachment",
-                    });
-                }
-
-                // VUID-VkDescriptorImageInfo-imageView-00343
-                if matches!(
-                    image_view.view_type(),
-                    ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                ) && image_view.image().inner().dimensions().image_type() == ImageType::Dim3d
-                {
-                    return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID-VkDescriptorImageInfo-imageView-01976
-                if image_view
-                    .subresource_range()
-                    .aspects
-                    .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
-                {
-                    return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID-VkWriteDescriptorSet-descriptorType-04151
-                if !matches!(
-                    image_layout,
-                    ImageLayout::DepthStencilReadOnlyOptimal
-                        | ImageLayout::ShaderReadOnlyOptimal
-                        | ImageLayout::General
-                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
-                ) {
-                    return Err(DescriptorSetUpdateError::ImageLayoutInvalid {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID-VkWriteDescriptorSet-descriptorType-00336
-                if !image_view.component_mapping().is_identity() {
-                    return Err(DescriptorSetUpdateError::ImageViewNotIdentitySwizzled {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-
-                // VUID??
-                if image_view.sampler_ycbcr_conversion().is_some() {
-                    return Err(
-                        DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
-                            binding: write.binding(),
-                            index: descriptor_range_start + index as u32,
-                        },
-                    );
-                }
-
-                // VUID??
-                if image_view.view_type().is_arrayed() {
-                    return Err(DescriptorSetUpdateError::ImageViewIsArrayed {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-            }
-        }
-
-        DescriptorType::AccelerationStructure => {
-            let elements =
-                if let WriteDescriptorSetElements::AccelerationStructure(elements) = elements {
-                    elements
-                } else {
-                    return Err(DescriptorSetUpdateError::IncompatibleElementType {
-                        binding,
-                        provided_element_type: provided_element_type(elements),
-                        allowed_element_types: &["acceleration_structure"],
-                    });
-                };
-
-            for (index, acceleration_structure) in elements.iter().enumerate() {
-                assert_eq!(device, acceleration_structure.device());
-
-                if !matches!(
-                    acceleration_structure.ty(),
-                    AccelerationStructureType::TopLevel | AccelerationStructureType::Generic
-                ) {
-                    return Err(DescriptorSetUpdateError::AccelerationStructureNotTopLevel {
-                        binding: write.binding(),
-                        index: descriptor_range_start + index as u32,
-                    });
-                }
-            }
-        }
-    }
-
-    Ok(layout_binding)
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum DescriptorSetUpdateError {
-    RequirementNotMet {
-        binding: u32,
-        index: u32,
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// Tried to write an acceleration structure that is not top-level or generic.
-    AccelerationStructureNotTopLevel {
-        binding: u32,
-        index: u32,
-    },
-
-    /// Tried to write more elements than were available in a binding.
-    ArrayIndexOutOfBounds {
-        /// Binding that is affected.
-        binding: u32,
-        /// Number of available descriptors in the binding.
-        available_count: u32,
-        /// The number of descriptors that were in the update.
-        written_count: u32,
-    },
-
-    ImageLayoutInvalid {
-        binding: u32,
-        index: u32,
-    },
-
-    /// Tried to write an image view with a 2D type and a 3D underlying image.
-    ImageView2dFrom3d {
-        binding: u32,
-        index: u32,
-    },
-
-    /// Tried to write an image view that has both the `depth` and `stencil` aspects.
-    ImageViewDepthAndStencil {
-        binding: u32,
-        index: u32,
-    },
-
-    /// Tried to write an image view with an attached sampler YCbCr conversion to a binding that
-    /// does not support it.
-    ImageViewHasSamplerYcbcrConversion {
-        binding: u32,
-        index: u32,
-    },
-
-    /// Tried to write an image view of an arrayed type to a descriptor type that does not support
-    /// it.
-    ImageViewIsArrayed {
-        binding: u32,
-        index: u32,
-    },
-
-    /// Tried to write an image view that was not compatible with the sampler that was provided as
-    /// part of the update or immutably in the layout.
-    ImageViewIncompatibleSampler {
-        binding: u32,
-        index: u32,
-        error: SamplerImageViewIncompatibleError,
-    },
-
-    /// Tried to write an image view to a descriptor type that requires it to be identity swizzled,
-    /// but it was not.
-    ImageViewNotIdentitySwizzled {
-        binding: u32,
-        index: u32,
-    },
-
-    /// Tried to write an element type that was not compatible with the descriptor type in the
-    /// layout.
-    IncompatibleElementType {
-        binding: u32,
-        provided_element_type: &'static str,
-        allowed_element_types: &'static [&'static str],
-    },
-
-    /// Tried to write to a nonexistent binding.
-    InvalidBinding {
-        binding: u32,
-    },
-
-    /// A resource was missing a usage flag that was required.
-    MissingUsage {
-        binding: u32,
-        index: u32,
-        usage: &'static str,
-    },
-
-    /// The end of the provided `range` for a buffer is larger than the size of the buffer.
-    RangeOutOfBufferBounds {
-        binding: u32,
-        index: u32,
-        range_end: DeviceSize,
-        buffer_size: DeviceSize,
-    },
-
-    /// Tried to write a sampler that has an attached sampler YCbCr conversion.
-    SamplerHasSamplerYcbcrConversion {
-        binding: u32,
-        index: u32,
-    },
-}
-
-impl Error for DescriptorSetUpdateError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::ImageViewIncompatibleSampler { error, .. } => Some(error),
-            _ => None,
-        }
-    }
-}
-
-impl Display for DescriptorSetUpdateError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                binding,
-                index,
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement on binding {} index {} was not met for: {}; requires one of: {}",
-                binding, index, required_for, requires_one_of,
-            ),
-
-            Self::AccelerationStructureNotTopLevel { binding, index } => write!(
-                f,
-                "tried to write an acceleration structure to binding {} index {} that is not \
-                top-level or generic",
-                binding, index,
-            ),
-            Self::ArrayIndexOutOfBounds {
-                binding,
-                available_count,
-                written_count,
-            } => write!(
-                f,
-                "tried to write up to element {} to binding {}, but only {} descriptors are \
-                available",
-                written_count, binding, available_count,
-            ),
-            Self::ImageLayoutInvalid { binding, index } => write!(
-                f,
-                "tried to write an image view to binding {} index {} with an image layout that is \
-                not valid for that descriptor type",
-                binding, index,
-            ),
-            Self::ImageView2dFrom3d { binding, index } => write!(
-                f,
-                "tried to write an image view to binding {} index {} with a 2D type and a 3D \
-                underlying image",
-                binding, index,
-            ),
-            Self::ImageViewDepthAndStencil { binding, index } => write!(
-                f,
-                "tried to write an image view to binding {} index {} that has both the `depth` and \
-                `stencil` aspects",
-                binding, index,
-            ),
-            Self::ImageViewHasSamplerYcbcrConversion { binding, index } => write!(
-                f,
-                "tried to write an image view to binding {} index {} with an attached sampler \
-                YCbCr conversion to binding that does not support it",
-                binding, index,
-            ),
-            Self::ImageViewIsArrayed { binding, index } => write!(
-                f,
-                "tried to write an image view of an arrayed type to binding {} index {}, but this \
-                binding has a descriptor type that does not support arrayed image views",
-                binding, index,
-            ),
-            Self::ImageViewIncompatibleSampler { binding, index, .. } => write!(
-                f,
-                "tried to write an image view to binding {} index {}, that was not compatible with \
-                the sampler that was provided as part of the update or immutably in the layout",
-                binding, index,
-            ),
-            Self::ImageViewNotIdentitySwizzled { binding, index } => write!(
-                f,
-                "tried to write an image view with non-identity swizzling to binding {} index {}, \
-                but this binding has a descriptor type that requires it to be identity swizzled",
-                binding, index,
-            ),
-            Self::IncompatibleElementType {
-                binding,
-                provided_element_type,
-                allowed_element_types,
-            } => write!(
-                f,
-                "tried to write a resource to binding {} whose type ({}) was not one of the \
-                resource types allowed for the descriptor type (",
-                binding, provided_element_type,
-            )
-            .and_then(|_| {
-                let mut first = true;
-
-                for elem_type in *allowed_element_types {
-                    if first {
-                        write!(f, "{}", elem_type)?;
-                        first = false;
-                    } else {
-                        write!(f, ", {}", elem_type)?;
-                    }
-                }
-
-                Ok(())
-            })
-            .and_then(|_| write!(f, ") that can be bound to this buffer")),
-            Self::InvalidBinding { binding } => {
-                write!(f, "tried to write to a nonexistent binding {}", binding,)
-            }
-            Self::MissingUsage {
-                binding,
-                index,
-                usage,
-            } => write!(
-                f,
-                "tried to write a resource to binding {} index {} that did not have the required \
-                usage {} enabled",
-                binding, index, usage,
-            ),
-            Self::RangeOutOfBufferBounds {
-                binding,
-                index,
-                range_end,
-                buffer_size,
-            } => write!(
-                f,
-                "the end of the provided `range` for the buffer at binding {} index {} ({:?}) is
-                larger than the size of the buffer ({})",
-                binding, index, range_end, buffer_size,
-            ),
-            Self::SamplerHasSamplerYcbcrConversion { binding, index } => write!(
-                f,
-                "tried to write a sampler to binding {} index {} that has an attached sampler \
-                YCbCr conversion",
-                binding, index,
-            ),
-        }
+        Ok(())
     }
 }

@@ -312,6 +312,7 @@ fn main() {
         &descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::image_view_sampler(0, texture, sampler)],
+        [],
     )
     .unwrap();
 

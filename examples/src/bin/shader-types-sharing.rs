@@ -197,6 +197,7 @@ fn main() {
             descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::buffer(0, data_buffer)],
+            [],
         )
         .unwrap();
 

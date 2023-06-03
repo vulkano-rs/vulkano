@@ -21,15 +21,17 @@
 //! # Examples
 //! TODO:
 
+use super::CopyDescriptorSet;
 use crate::{
     descriptor_set::{
         allocator::{DescriptorSetAlloc, DescriptorSetAllocator, StandardDescriptorSetAlloc},
+        layout::DescriptorSetLayoutCreateFlags,
         update::WriteDescriptorSet,
-        DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetLayout,
-        DescriptorSetResources, UnsafeDescriptorSet,
+        DescriptorSet, DescriptorSetInner, DescriptorSetLayout, DescriptorSetResources,
+        UnsafeDescriptorSet,
     },
     device::{Device, DeviceOwned},
-    VulkanObject,
+    VulkanError, VulkanObject,
 };
 use std::{
     hash::{Hash, Hasher},
@@ -51,11 +53,12 @@ impl PersistentDescriptorSet {
         allocator: &A,
         layout: Arc<DescriptorSetLayout>,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, DescriptorSetCreationError>
+        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, VulkanError>
     where
         A: DescriptorSetAllocator + ?Sized,
     {
-        Self::new_variable(allocator, layout, 0, descriptor_writes)
+        Self::new_variable(allocator, layout, 0, descriptor_writes, descriptor_copies)
     }
 
     /// Creates and returns a new descriptor set with the requested variable descriptor count,
@@ -70,12 +73,15 @@ impl PersistentDescriptorSet {
         layout: Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, DescriptorSetCreationError>
+        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, VulkanError>
     where
         A: DescriptorSetAllocator + ?Sized,
     {
         assert!(
-            !layout.push_descriptor(),
+            !layout
+                .flags()
+                .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR),
             "the provided descriptor set layout is for push descriptors, and cannot be used to \
             build a descriptor set object",
         );
@@ -96,6 +102,7 @@ impl PersistentDescriptorSet {
             layout,
             variable_descriptor_count,
             descriptor_writes,
+            descriptor_copies,
         )?;
 
         Ok(Arc::new(PersistentDescriptorSet { alloc, inner }))

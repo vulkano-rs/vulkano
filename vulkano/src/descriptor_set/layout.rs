@@ -13,10 +13,11 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    macros::{impl_id_counter, vulkan_enum},
+    image::ImageLayout,
+    macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     sampler::Sampler,
     shader::{DescriptorBindingRequirements, ShaderStages},
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use std::{
@@ -36,8 +37,8 @@ pub struct DescriptorSetLayout {
     device: Arc<Device>,
     id: NonZeroU64,
 
+    flags: DescriptorSetLayoutCreateFlags,
     bindings: BTreeMap<u32, DescriptorSetLayoutBinding>,
-    push_descriptor: bool,
 
     descriptor_counts: HashMap<DescriptorType, u32>,
 }
@@ -48,178 +49,49 @@ impl DescriptorSetLayout {
     pub fn new(
         device: Arc<Device>,
         create_info: DescriptorSetLayoutCreateInfo,
-    ) -> Result<Arc<DescriptorSetLayout>, DescriptorSetLayoutCreationError> {
+    ) -> Result<Arc<DescriptorSetLayout>, VulkanError> {
         Self::validate_new(&device, &create_info)?;
+
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
     }
 
     fn validate_new(
         device: &Device,
         create_info: &DescriptorSetLayoutCreateInfo,
-    ) -> Result<(), DescriptorSetLayoutCreationError> {
-        let &DescriptorSetLayoutCreateInfo {
-            ref bindings,
-            push_descriptor,
-            _ne: _,
-        } = create_info;
+    ) -> Result<(), ValidationError> {
+        // VUID-vkCreateDescriptorSetLayout-pCreateInfo-parameter
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
 
-        if push_descriptor {
-            if !device.enabled_extensions().khr_push_descriptor {
-                return Err(DescriptorSetLayoutCreationError::RequirementNotMet {
-                    required_for: "`create_info.push_descriptor` is set",
-                    requires_one_of: RequiresOneOf {
-                        device_extensions: &["khr_push_descriptor"],
-                        ..Default::default()
-                    },
+        if let Some(max_per_set_descriptors) = device
+            .physical_device()
+            .properties()
+            .max_per_set_descriptors
+        {
+            let total_descriptor_count: u32 = create_info
+                .bindings
+                .values()
+                .map(|binding| binding.descriptor_count)
+                .sum();
+
+            // Safety: create_info is validated, and we only enter here if the
+            // max_per_set_descriptors property exists (which means this function exists too).
+            if total_descriptor_count > max_per_set_descriptors
+                && unsafe {
+                    device
+                        .descriptor_set_layout_support_unchecked(create_info)
+                        .is_none()
+                }
+            {
+                return Err(ValidationError {
+                    problem: "the total number of descriptors across all bindings is greater than \
+                        the max_per_set_descriptors limit, and \
+                        device.descriptor_set_layout_support returned None"
+                        .into(),
+                    ..Default::default()
                 });
             }
-        }
-
-        let mut descriptor_counts: HashMap<DescriptorType, u32> = HashMap::default();
-        let highest_binding_num = bindings.keys().copied().next_back();
-
-        for (&binding_num, binding) in bindings.iter() {
-            let &DescriptorSetLayoutBinding {
-                descriptor_type,
-                descriptor_count,
-                variable_descriptor_count,
-                stages,
-                ref immutable_samplers,
-                _ne: _,
-            } = binding;
-
-            // VUID-VkDescriptorSetLayoutBinding-descriptorType-parameter
-            descriptor_type.validate_device(device)?;
-
-            if descriptor_count != 0 {
-                // VUID-VkDescriptorSetLayoutBinding-descriptorCount-00283
-                stages.validate_device(device)?;
-
-                *descriptor_counts.entry(descriptor_type).or_default() += descriptor_count;
-            }
-
-            if push_descriptor {
-                // VUID-VkDescriptorSetLayoutCreateInfo-flags-00280
-                if matches!(
-                    descriptor_type,
-                    DescriptorType::StorageBufferDynamic | DescriptorType::UniformBufferDynamic
-                ) {
-                    return Err(
-                        DescriptorSetLayoutCreationError::PushDescriptorDescriptorTypeIncompatible {
-                            binding_num,
-                        },
-                    );
-                }
-
-                // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-flags-03003
-                if variable_descriptor_count {
-                    return Err(
-                        DescriptorSetLayoutCreationError::PushDescriptorVariableDescriptorCount {
-                            binding_num,
-                        },
-                    );
-                }
-            }
-
-            if !immutable_samplers.is_empty() {
-                if immutable_samplers
-                    .iter()
-                    .any(|sampler| sampler.sampler_ycbcr_conversion().is_some())
-                {
-                    if !matches!(descriptor_type, DescriptorType::CombinedImageSampler) {
-                        return Err(
-                            DescriptorSetLayoutCreationError::ImmutableSamplersDescriptorTypeIncompatible {
-                                binding_num,
-                            },
-                        );
-                    }
-                } else {
-                    if !matches!(
-                        descriptor_type,
-                        DescriptorType::Sampler | DescriptorType::CombinedImageSampler
-                    ) {
-                        return Err(
-                            DescriptorSetLayoutCreationError::ImmutableSamplersDescriptorTypeIncompatible {
-                                binding_num,
-                            },
-                        );
-                    }
-                }
-
-                // VUID-VkDescriptorSetLayoutBinding-descriptorType-00282
-                if descriptor_count != immutable_samplers.len() as u32 {
-                    return Err(
-                        DescriptorSetLayoutCreationError::ImmutableSamplersCountMismatch {
-                            binding_num,
-                            sampler_count: immutable_samplers.len() as u32,
-                            descriptor_count,
-                        },
-                    );
-                }
-            }
-
-            // VUID-VkDescriptorSetLayoutBinding-descriptorType-01510
-            // If descriptorType is VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT and descriptorCount is not 0, then stageFlags must be 0 or VK_SHADER_STAGE_FRAGMENT_BIT
-
-            if variable_descriptor_count {
-                // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014
-                if !device
-                    .enabled_features()
-                    .descriptor_binding_variable_descriptor_count
-                {
-                    return Err(DescriptorSetLayoutCreationError::RequirementNotMet {
-                        required_for: "`create_info.bindings` has an element where \
-                            `variable_descriptor_count` is set",
-                        requires_one_of: RequiresOneOf {
-                            features: &["descriptor_binding_variable_descriptor_count"],
-                            ..Default::default()
-                        },
-                    });
-                }
-
-                // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03004
-                if Some(binding_num) != highest_binding_num {
-                    return Err(
-                        DescriptorSetLayoutCreationError::VariableDescriptorCountBindingNotHighest {
-                            binding_num,
-                            highest_binding_num: highest_binding_num.unwrap(),
-                        },
-                    );
-                }
-
-                // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03015
-                if matches!(
-                    descriptor_type,
-                    DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
-                ) {
-                    return Err(
-                        DescriptorSetLayoutCreationError::VariableDescriptorCountDescriptorTypeIncompatible {
-                            binding_num,
-                        },
-                    );
-                }
-            }
-        }
-
-        // VUID-VkDescriptorSetLayoutCreateInfo-flags-00281
-        if push_descriptor
-            && descriptor_counts.values().copied().sum::<u32>()
-                > device
-                    .physical_device()
-                    .properties()
-                    .max_push_descriptors
-                    .unwrap_or(0)
-        {
-            return Err(
-                DescriptorSetLayoutCreationError::MaxPushDescriptorsExceeded {
-                    provided: descriptor_counts.values().copied().sum(),
-                    max_supported: device
-                        .physical_device()
-                        .properties()
-                        .max_push_descriptors
-                        .unwrap_or(0),
-                },
-            );
         }
 
         Ok(())
@@ -231,77 +103,75 @@ impl DescriptorSetLayout {
         create_info: DescriptorSetLayoutCreateInfo,
     ) -> Result<Arc<DescriptorSetLayout>, RuntimeError> {
         let &DescriptorSetLayoutCreateInfo {
+            flags,
             ref bindings,
-            push_descriptor,
             _ne: _,
         } = &create_info;
 
-        let mut bindings_vk = Vec::with_capacity(bindings.len());
-        let mut binding_flags_vk = Vec::with_capacity(bindings.len());
-        let mut immutable_samplers_vk: Vec<Box<[ash::vk::Sampler]>> = Vec::new(); // only to keep the arrays of handles alive
-        let mut flags = ash::vk::DescriptorSetLayoutCreateFlags::empty();
-
-        if push_descriptor {
-            flags |= ash::vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR;
+        struct PerBinding {
+            immutable_samplers_vk: Vec<ash::vk::Sampler>,
         }
+
+        let mut bindings_vk = Vec::with_capacity(bindings.len());
+        let mut per_binding_vk = Vec::with_capacity(bindings.len());
+        let mut binding_flags_info_vk = None;
+        let mut binding_flags_vk = Vec::with_capacity(bindings.len());
 
         for (&binding_num, binding) in bindings.iter() {
-            let mut binding_flags = ash::vk::DescriptorBindingFlags::empty();
+            let &DescriptorSetLayoutBinding {
+                binding_flags,
+                descriptor_type,
+                descriptor_count,
+                stages,
+                ref immutable_samplers,
+                _ne: _,
+            } = binding;
 
-            let p_immutable_samplers = if !binding.immutable_samplers.is_empty() {
-                // VUID-VkDescriptorSetLayoutBinding-descriptorType-00282
-                let sampler_handles = binding
-                    .immutable_samplers
-                    .iter()
-                    .map(|s| s.handle())
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice();
-                let p_immutable_samplers = sampler_handles.as_ptr();
-                immutable_samplers_vk.push(sampler_handles);
-                p_immutable_samplers
-            } else {
-                ptr::null()
-            };
-
-            if binding.variable_descriptor_count {
-                binding_flags |= ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT;
-            }
-
-            // VUID-VkDescriptorSetLayoutCreateInfo-binding-00279
-            // Guaranteed by BTreeMap
             bindings_vk.push(ash::vk::DescriptorSetLayoutBinding {
                 binding: binding_num,
-                descriptor_type: binding.descriptor_type.into(),
-                descriptor_count: binding.descriptor_count,
-                stage_flags: binding.stages.into(),
-                p_immutable_samplers,
+                descriptor_type: descriptor_type.into(),
+                descriptor_count,
+                stage_flags: stages.into(),
+                p_immutable_samplers: ptr::null(),
             });
-            binding_flags_vk.push(binding_flags);
+            per_binding_vk.push(PerBinding {
+                immutable_samplers_vk: immutable_samplers
+                    .iter()
+                    .map(VulkanObject::handle)
+                    .collect(),
+            });
+            binding_flags_vk.push(binding_flags.into());
         }
 
-        let mut binding_flags_create_info = if device.api_version() >= Version::V1_2
-            || device.enabled_extensions().ext_descriptor_indexing
-        {
-            Some(ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
-                // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-bindingCount-03002
-                binding_count: binding_flags_vk.len() as u32,
-                p_binding_flags: binding_flags_vk.as_ptr(),
-                ..Default::default()
-            })
-        } else {
-            None
-        };
+        for (binding_vk, per_binding_vk) in bindings_vk.iter_mut().zip(per_binding_vk.iter()) {
+            let PerBinding {
+                immutable_samplers_vk,
+            } = per_binding_vk;
+
+            if !immutable_samplers_vk.is_empty() {
+                binding_vk.p_immutable_samplers = immutable_samplers_vk.as_ptr();
+            }
+        }
 
         let mut create_info_vk = ash::vk::DescriptorSetLayoutCreateInfo {
-            flags,
+            flags: flags.into(),
             binding_count: bindings_vk.len() as u32,
             p_bindings: bindings_vk.as_ptr(),
             ..Default::default()
         };
 
-        if let Some(binding_flags_create_info) = binding_flags_create_info.as_mut() {
-            binding_flags_create_info.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = binding_flags_create_info as *const _ as *const _;
+        if device.api_version() >= Version::V1_2
+            || device.enabled_extensions().ext_descriptor_indexing
+        {
+            let next =
+                binding_flags_info_vk.insert(ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
+                    binding_count: binding_flags_vk.len() as u32,
+                    p_binding_flags: binding_flags_vk.as_ptr(),
+                    ..Default::default()
+                });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
         }
 
         let handle = {
@@ -334,8 +204,8 @@ impl DescriptorSetLayout {
         create_info: DescriptorSetLayoutCreateInfo,
     ) -> Arc<DescriptorSetLayout> {
         let DescriptorSetLayoutCreateInfo {
+            flags,
             bindings,
-            push_descriptor,
             _ne: _,
         } = create_info;
 
@@ -352,8 +222,8 @@ impl DescriptorSetLayout {
             handle,
             device,
             id: Self::next_id(),
+            flags,
             bindings,
-            push_descriptor,
             descriptor_counts,
         })
     }
@@ -362,17 +232,16 @@ impl DescriptorSetLayout {
         self.id
     }
 
+    /// Returns the flags that the descriptor set layout was created with.
+    #[inline]
+    pub fn flags(&self) -> DescriptorSetLayoutCreateFlags {
+        self.flags
+    }
+
     /// Returns the bindings of the descriptor set layout.
     #[inline]
     pub fn bindings(&self) -> &BTreeMap<u32, DescriptorSetLayoutBinding> {
         &self.bindings
-    }
-
-    /// Returns whether the descriptor set layout is for push descriptors or regular descriptor
-    /// sets.
-    #[inline]
-    pub fn push_descriptor(&self) -> bool {
-        self.push_descriptor
     }
 
     /// Returns the number of descriptors of each type.
@@ -391,7 +260,10 @@ impl DescriptorSetLayout {
             .values()
             .next_back()
             .map(|binding| {
-                if binding.variable_descriptor_count {
+                if binding
+                    .binding_flags
+                    .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+                {
                     binding.descriptor_count
                 } else {
                     0
@@ -407,8 +279,7 @@ impl DescriptorSetLayout {
     /// or they must be identically defined to the Vulkan API.
     #[inline]
     pub fn is_compatible_with(&self, other: &DescriptorSetLayout) -> bool {
-        self == other
-            || (self.bindings == other.bindings && self.push_descriptor == other.push_descriptor)
+        self == other || (self.flags == other.flags && self.bindings == other.bindings)
     }
 }
 
@@ -444,139 +315,12 @@ unsafe impl DeviceOwned for DescriptorSetLayout {
 
 impl_id_counter!(DescriptorSetLayout);
 
-/// Error related to descriptor set layout.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DescriptorSetLayoutCreationError {
-    /// Out of Memory.
-    OomError(OomError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// A binding includes immutable samplers but their number differs from  `descriptor_count`.
-    ImmutableSamplersCountMismatch {
-        binding_num: u32,
-        sampler_count: u32,
-        descriptor_count: u32,
-    },
-
-    /// A binding includes immutable samplers but it has an incompatible `descriptor_type`.
-    ImmutableSamplersDescriptorTypeIncompatible { binding_num: u32 },
-
-    /// More descriptors were provided in all bindings than the
-    /// [`max_push_descriptors`](crate::device::Properties::max_push_descriptors) limit.
-    MaxPushDescriptorsExceeded { provided: u32, max_supported: u32 },
-
-    /// `push_descriptor` is enabled, but a binding has an incompatible `descriptor_type`.
-    PushDescriptorDescriptorTypeIncompatible { binding_num: u32 },
-
-    /// `push_descriptor` is enabled, but a binding has `variable_descriptor_count` enabled.
-    PushDescriptorVariableDescriptorCount { binding_num: u32 },
-
-    /// A binding has `variable_descriptor_count` enabled, but it is not the highest-numbered
-    /// binding.
-    VariableDescriptorCountBindingNotHighest {
-        binding_num: u32,
-        highest_binding_num: u32,
-    },
-
-    /// A binding has `variable_descriptor_count` enabled, but it has an incompatible
-    /// `descriptor_type`.
-    VariableDescriptorCountDescriptorTypeIncompatible { binding_num: u32 },
-}
-
-impl From<RuntimeError> for DescriptorSetLayoutCreationError {
-    fn from(error: RuntimeError) -> Self {
-        Self::OomError(error.into())
-    }
-}
-
-impl Error for DescriptorSetLayoutCreationError {}
-
-impl Display for DescriptorSetLayoutCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => {
-                write!(f, "out of memory")
-            }
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::ImmutableSamplersCountMismatch {
-                binding_num,
-                sampler_count,
-                descriptor_count,
-            } => write!(
-                f,
-                "binding {} includes immutable samplers but their number ({}) differs from \
-                `descriptor_count` ({})",
-                binding_num, sampler_count, descriptor_count,
-            ),
-            Self::ImmutableSamplersDescriptorTypeIncompatible { binding_num } => write!(
-                f,
-                "binding {} includes immutable samplers but it has an incompatible \
-                `descriptor_type`",
-                binding_num,
-            ),
-            Self::MaxPushDescriptorsExceeded {
-                provided,
-                max_supported,
-            } => write!(
-                f,
-                "more descriptors were provided in all bindings ({}) than the \
-                `max_push_descriptors` limit ({})",
-                provided, max_supported,
-            ),
-            Self::PushDescriptorDescriptorTypeIncompatible { binding_num } => write!(
-                f,
-                "`push_descriptor` is enabled, but binding {} has an incompatible \
-                `descriptor_type`",
-                binding_num,
-            ),
-            Self::PushDescriptorVariableDescriptorCount { binding_num } => write!(
-                f,
-                "`push_descriptor` is enabled, but binding {} has `variable_descriptor_count` \
-                enabled",
-                binding_num,
-            ),
-            Self::VariableDescriptorCountBindingNotHighest {
-                binding_num,
-                highest_binding_num,
-            } => write!(
-                f,
-                "binding {} has `variable_descriptor_count` enabled, but it is not the \
-                highest-numbered binding ({})",
-                binding_num, highest_binding_num,
-            ),
-            Self::VariableDescriptorCountDescriptorTypeIncompatible { binding_num } => write!(
-                f,
-                "binding {} has `variable_descriptor_count` enabled, but it has an incompatible \
-                `descriptor_type`",
-                binding_num,
-            ),
-        }
-    }
-}
-
-impl From<RequirementNotMet> for DescriptorSetLayoutCreationError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
 /// Parameters to create a new `DescriptorSetLayout`.
 #[derive(Clone, Debug)]
 pub struct DescriptorSetLayoutCreateInfo {
+    /// Specifies how to create the descriptor set layout.
+    pub flags: DescriptorSetLayoutCreateFlags,
+
     /// The bindings of the desriptor set layout. These are specified according to binding number.
     ///
     /// It is generally advisable to keep the binding numbers low. Higher binding numbers may
@@ -585,40 +329,187 @@ pub struct DescriptorSetLayoutCreateInfo {
     /// The default value is empty.
     pub bindings: BTreeMap<u32, DescriptorSetLayoutBinding>,
 
-    /// Whether the descriptor set layout should be created for push descriptors.
-    ///
-    /// If `true`, the layout can only be used for push descriptors, and if `false`, it can only
-    /// be used for regular descriptor sets.
-    ///
-    /// If set to `true`, the
-    /// [`khr_push_descriptor`](crate::device::DeviceExtensions::khr_push_descriptor) extension must
-    /// be enabled on the device, and there are several restrictions:
-    /// - There must be no bindings with a type of [`DescriptorType::UniformBufferDynamic`]
-    ///   or [`DescriptorType::StorageBufferDynamic`].
-    /// - There must be no bindings with `variable_descriptor_count` enabled.
-    /// - The total number of descriptors across all bindings must be less than the
-    ///   [`max_push_descriptors`](crate::device::Properties::max_push_descriptors) limit.
-    ///
-    /// The default value is `false`.
-    pub push_descriptor: bool,
-
     pub _ne: crate::NonExhaustive,
+}
+
+impl DescriptorSetLayoutCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            flags,
+            ref bindings,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-VkDescriptorSetLayoutCreateInfo-binding-00279
+        // Ensured because it is a map
+
+        let mut total_descriptor_count = 0;
+        let highest_binding_num = bindings.keys().copied().next_back();
+
+        for (&binding_num, binding) in bindings.iter() {
+            binding
+                .validate(device)
+                .map_err(|err| err.add_context(format!("bindings[{}]", binding_num)))?;
+
+            let &DescriptorSetLayoutBinding {
+                binding_flags,
+                descriptor_type,
+                descriptor_count,
+                stages: _,
+                immutable_samplers: _,
+                _ne: _,
+            } = binding;
+
+            total_descriptor_count += descriptor_count;
+
+            if flags.intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR) {
+                if matches!(
+                    descriptor_type,
+                    DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
+                ) {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "flags contains DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR, \
+                            and bindings[{}].descriptor_type is
+                            DescriptorType::UniformBufferDynamic or \
+                            DescriptorType::StorageBufferDynamic",
+                            binding_num
+                        )
+                        .into(),
+                        vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-00280"],
+                        ..Default::default()
+                    });
+                }
+
+                if binding_flags.intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT) {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "flags contains DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR, \
+                            and bindings[{}].flags contains \
+                            DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT",
+                            binding_num
+                        )
+                        .into(),
+                        vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-flags-03003"],
+                        ..Default::default()
+                    });
+                }
+            }
+
+            if binding_flags.intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+                && Some(binding_num) != highest_binding_num
+            {
+                return Err(ValidationError {
+                    problem: format!(
+                        "bindings[{}].flags contains \
+                        DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT, but {0} is not the
+                        highest binding number in bindings",
+                        binding_num
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03004",
+                    ],
+                    ..Default::default()
+                });
+            }
+        }
+
+        let max_push_descriptors = device
+            .physical_device()
+            .properties()
+            .max_push_descriptors
+            .unwrap_or(0);
+
+        if flags.intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
+            && total_descriptor_count > max_push_descriptors
+        {
+            return Err(ValidationError {
+                problem: "flags contains DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR, and the \
+                    total number of descriptors in bindings exceeds the max_push_descriptors \
+                    limit"
+                    .into(),
+                vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-00281"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for DescriptorSetLayoutCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: DescriptorSetLayoutCreateFlags::empty(),
             bindings: BTreeMap::new(),
-            push_descriptor: false,
             _ne: crate::NonExhaustive(()),
         }
     }
 }
 
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags that control how a descriptor set layout is created.
+    DescriptorSetLayoutCreateFlags = DescriptorSetLayoutCreateFlags(u32);
+
+    /* TODO: enable
+    // TODO: document
+    UPDATE_AFTER_BIND_POOL = UPDATE_AFTER_BIND_POOL {
+        api_version: V1_2,
+        device_extensions: [ext_descriptor_indexing],
+    }, */
+
+    /// Whether the descriptor set layout should be created for push descriptors.
+    ///
+    /// If set, the layout can only be used for push descriptors, and if not set, it can only
+    /// be used for regular descriptor sets.
+    ///
+    /// If set, there are several restrictions:
+    /// - There must be no bindings with a type of [`DescriptorType::UniformBufferDynamic`]
+    ///   or [`DescriptorType::StorageBufferDynamic`].
+    /// - There must be no bindings with `variable_descriptor_count` enabled.
+    /// - The total number of descriptors across all bindings must be less than the
+    ///   [`max_push_descriptors`](crate::device::Properties::max_push_descriptors) limit.
+    PUSH_DESCRIPTOR = PUSH_DESCRIPTOR_KHR {
+        device_extensions: [khr_push_descriptor],
+    },
+
+    /* TODO: enable
+    // TODO: document
+    DESCRIPTOR_BUFFER = DESCRIPTOR_BUFFER_EXT {
+        device_extensions: [ext_descriptor_buffer],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    EMBEDDED_IMMUTABLE_SAMPLERS = EMBEDDED_IMMUTABLE_SAMPLERS_EXT {
+        device_extensions: [ext_descriptor_buffer],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    HOST_ONLY_POOL = HOST_ONLY_POOL_EXT {
+        device_extensions: [ext_mutable_descriptor_type, valve_mutable_descriptor_type],
+    }, */
+}
+
 /// A binding in a descriptor set layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescriptorSetLayoutBinding {
+    /// Specifies how to create the binding.
+    pub binding_flags: DescriptorBindingFlags,
+
     /// The content and layout of each array element of a binding.
     ///
     /// There is no default value.
@@ -630,21 +521,6 @@ pub struct DescriptorSetLayoutBinding {
     ///
     /// The default value is `1`.
     pub descriptor_count: u32,
-
-    /// Whether the binding has a variable number of descriptors.
-    ///
-    /// If set to `true`, the [`descriptor_binding_variable_descriptor_count`] feature must be
-    /// enabled. The value of `descriptor_count` specifies the maximum number of descriptors
-    /// allowed.
-    ///
-    /// There may only be one binding with a variable count in a descriptor set, and it must be the
-    /// binding with the highest binding number. The `descriptor_type` must not be
-    /// [`DescriptorType::UniformBufferDynamic`] or [`DescriptorType::StorageBufferDynamic`].
-    ///
-    /// The default value is `false`.
-    ///
-    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
-    pub variable_descriptor_count: bool,
 
     /// Which shader stages are going to access the descriptors in this binding.
     ///
@@ -670,9 +546,9 @@ impl DescriptorSetLayoutBinding {
     #[inline]
     pub fn descriptor_type(descriptor_type: DescriptorType) -> Self {
         Self {
+            binding_flags: DescriptorBindingFlags::empty(),
             descriptor_type,
             descriptor_count: 1,
-            variable_descriptor_count: false,
             stages: ShaderStages::empty(),
             immutable_samplers: Vec::new(),
             _ne: crate::NonExhaustive(()),
@@ -722,15 +598,148 @@ impl DescriptorSetLayoutBinding {
 
         Ok(())
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            binding_flags,
+            descriptor_type,
+            descriptor_count,
+            stages,
+            ref immutable_samplers,
+            _ne: _,
+        } = self;
+
+        binding_flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "binding_flags".into(),
+                vuids: &[
+                    "VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-parameter",
+                ],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        descriptor_type
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "descriptor_type".into(),
+                vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if descriptor_count != 0 {
+            stages
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "stages".into(),
+                    vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorCount-00283"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if descriptor_type == DescriptorType::InputAttachment
+                && !(stages.is_empty() || stages == ShaderStages::FRAGMENT)
+            {
+                return Err(ValidationError {
+                    problem: "descriptor_type is DescriptorType::InputAttachment, but stages is not
+                        either empty or equal to ShaderStages::FRAGMENT"
+                        .into(),
+                    vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-01510"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if !immutable_samplers.is_empty() {
+            if descriptor_count != immutable_samplers.len() as u32 {
+                return Err(ValidationError {
+                    problem: "immutable_samplers is not empty, but its length does not equal \
+                        descriptor_count"
+                        .into(),
+                    vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-00282"],
+                    ..Default::default()
+                });
+            }
+
+            let mut has_sampler_ycbcr_conversion = false;
+
+            for sampler in immutable_samplers {
+                assert_eq!(device, sampler.device().as_ref());
+
+                has_sampler_ycbcr_conversion |= sampler.sampler_ycbcr_conversion().is_some();
+            }
+
+            if has_sampler_ycbcr_conversion {
+                if !matches!(descriptor_type, DescriptorType::CombinedImageSampler) {
+                    return Err(ValidationError {
+                        problem: "immutable_samplers contains a sampler with a \
+                            sampler YCbCr conversion, but descriptor_type is not \
+                            DescriptorType::CombinedImageSampler"
+                            .into(),
+                        vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-00282"],
+                        ..Default::default()
+                    });
+                }
+            } else {
+                if !matches!(
+                    descriptor_type,
+                    DescriptorType::Sampler | DescriptorType::CombinedImageSampler
+                ) {
+                    return Err(ValidationError {
+                        problem: "immutable_samplers is not empty, but descriptor_type is not \
+                            DescriptorType::Sampler or DescriptorType::CombinedImageSampler"
+                            .into(),
+                        vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-00282"],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        if binding_flags.intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT) {
+            if !device
+                .enabled_features()
+                .descriptor_binding_variable_descriptor_count
+            {
+                return Err(ValidationError {
+                    context: "binding_flags".into(),
+                    problem: "contains DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT".into(),
+                    requires_one_of: Some(RequiresOneOf {
+                        features: &["descriptor_binding_variable_descriptor_count"],
+                        ..Default::default()
+                    }),
+                    vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014"],
+                });
+            }
+
+            if matches!(
+                descriptor_type,
+                DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
+            ) {
+                return Err(ValidationError {
+                    problem: "binding_flags contains \
+                        DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT, and descriptor_type is
+                        DescriptorType::UniformBufferDynamic or \
+                        DescriptorType::StorageBufferDynamic"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03015",
+                    ],
+                    ..Default::default()
+                });
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl From<&DescriptorBindingRequirements> for DescriptorSetLayoutBinding {
     #[inline]
     fn from(reqs: &DescriptorBindingRequirements) -> Self {
         Self {
+            binding_flags: DescriptorBindingFlags::empty(),
             descriptor_type: reqs.descriptor_types[0],
             descriptor_count: reqs.descriptor_count.unwrap_or(0),
-            variable_descriptor_count: false,
             stages: reqs.stages,
             immutable_samplers: Vec::new(),
             _ne: crate::NonExhaustive(()),
@@ -738,46 +747,48 @@ impl From<&DescriptorBindingRequirements> for DescriptorSetLayoutBinding {
     }
 }
 
-/// Error when checking whether the requirements for a binding have been met.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DescriptorRequirementsNotMet {
-    /// The binding's `descriptor_type` is not one of those required.
-    DescriptorType {
-        required: Vec<DescriptorType>,
-        obtained: DescriptorType,
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags that control how a binding in a descriptor set layout is created.
+    DescriptorBindingFlags = DescriptorBindingFlags(u32);
+
+    /* TODO: enable
+    // TODO: document
+    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND {
+        api_version: V1_2,
+        device_extensions: [ext_descriptor_indexing],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    UPDATE_UNUSED_WHILE_PENDING = UPDATE_UNUSED_WHILE_PENDING {
+        api_version: V1_2,
+        device_extensions: [ext_descriptor_indexing],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    PARTIALLY_BOUND = PARTIALLY_BOUND {
+        api_version: V1_2,
+        device_extensions: [ext_descriptor_indexing],
+    }, */
+
+    /// Whether the binding has a variable number of descriptors.
+    ///
+    /// If set, the [`descriptor_binding_variable_descriptor_count`] feature must be
+    /// enabled. The value of `descriptor_count` specifies the maximum number of descriptors
+    /// allowed.
+    ///
+    /// There may only be one binding with a variable count in a descriptor set, and it must be the
+    /// binding with the highest binding number. The `descriptor_type` must not be
+    /// [`DescriptorType::UniformBufferDynamic`] or [`DescriptorType::StorageBufferDynamic`].
+    ///
+    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
+    VARIABLE_DESCRIPTOR_COUNT = VARIABLE_DESCRIPTOR_COUNT {
+        api_version: V1_2,
+        device_extensions: [ext_descriptor_indexing],
     },
-
-    /// The binding's `descriptor_count` is less than what is required.
-    DescriptorCount { required: u32, obtained: u32 },
-
-    /// The binding's `stages` does not contain the stages that are required.
-    ShaderStages {
-        required: ShaderStages,
-        obtained: ShaderStages,
-    },
-}
-
-impl Error for DescriptorRequirementsNotMet {}
-
-impl Display for DescriptorRequirementsNotMet {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::DescriptorType { required, obtained } => write!(
-                f,
-                "the descriptor's type ({:?}) is not one of those required ({:?})",
-                obtained, required,
-            ),
-            Self::DescriptorCount { required, obtained } => write!(
-                f,
-                "the descriptor count ({}) is less than what is required ({})",
-                obtained, required,
-            ),
-            Self::ShaderStages { .. } => write!(
-                f,
-                "the descriptor's shader stages do not contain the stages that are required",
-            ),
-        }
-    }
 }
 
 vulkan_enum! {
@@ -861,6 +872,84 @@ vulkan_enum! {
     Mutable = MUTABLE_VALVE {
         device_extensions: [valve_mutable_descriptor_type],
     },*/
+}
+
+impl DescriptorType {
+    pub(crate) fn default_image_layout(self) -> ImageLayout {
+        match self {
+            DescriptorType::CombinedImageSampler
+            | DescriptorType::SampledImage
+            | DescriptorType::InputAttachment => ImageLayout::ShaderReadOnlyOptimal,
+            DescriptorType::StorageImage => ImageLayout::General,
+            DescriptorType::Sampler
+            | DescriptorType::UniformTexelBuffer
+            | DescriptorType::StorageTexelBuffer
+            | DescriptorType::UniformBuffer
+            | DescriptorType::StorageBuffer
+            | DescriptorType::UniformBufferDynamic
+            | DescriptorType::StorageBufferDynamic
+            | DescriptorType::AccelerationStructure => ImageLayout::Undefined,
+        }
+    }
+}
+
+/// Contains information about the level of support a device has for a particular descriptor set.
+#[derive(Clone, Debug)]
+pub struct DescriptorSetLayoutSupport {
+    /// If the queried descriptor set layout has a binding with the
+    /// [`DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`] flag set, then this indicates the
+    /// maximum number of descriptors that binding could have. This is always at least as large
+    /// as the descriptor count of the create info that was queried; if the queried descriptor
+    /// count is higher than supported, `None` is returned instead of this structure.
+    ///
+    /// If the queried descriptor set layout does not have such a binding, or if the
+    /// [`descriptor_binding_variable_descriptor_count`] feature isn't enabled on the device, this
+    /// will be 0.
+    ///
+    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
+    pub max_variable_descriptor_count: u32,
+}
+
+/// Error when checking whether the requirements for a binding have been met.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescriptorRequirementsNotMet {
+    /// The binding's `descriptor_type` is not one of those required.
+    DescriptorType {
+        required: Vec<DescriptorType>,
+        obtained: DescriptorType,
+    },
+
+    /// The binding's `descriptor_count` is less than what is required.
+    DescriptorCount { required: u32, obtained: u32 },
+
+    /// The binding's `stages` does not contain the stages that are required.
+    ShaderStages {
+        required: ShaderStages,
+        obtained: ShaderStages,
+    },
+}
+
+impl Error for DescriptorRequirementsNotMet {}
+
+impl Display for DescriptorRequirementsNotMet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::DescriptorType { required, obtained } => write!(
+                f,
+                "the descriptor's type ({:?}) is not one of those required ({:?})",
+                obtained, required,
+            ),
+            Self::DescriptorCount { required, obtained } => write!(
+                f,
+                "the descriptor count ({}) is less than what is required ({})",
+                obtained, required,
+            ),
+            Self::ShaderStages { .. } => write!(
+                f,
+                "the descriptor's shader stages do not contain the stages that are required",
+            ),
+        }
+    }
 }
 
 #[cfg(test)]

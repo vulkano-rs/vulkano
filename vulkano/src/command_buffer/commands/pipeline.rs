@@ -23,7 +23,9 @@ use crate::{
     },
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
-    image::{view::ImageViewType, ImageAccess, ImageAspects, ImageViewAbstract, SampleCount},
+    image::{
+        view::ImageViewType, ImageAccess, ImageAspects, ImageLayout, ImageViewAbstract, SampleCount,
+    },
     pipeline::{
         graphics::{
             input_assembly::{PrimitiveTopology, PrimitiveTopologyClass},
@@ -32,10 +34,10 @@ use crate::{
         },
         DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineLayout,
     },
-    sampler::{Sampler, SamplerImageViewIncompatibleError},
+    sampler::Sampler,
     shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage, ShaderStages},
     sync::{PipelineStageAccess, PipelineStageAccessFlags},
-    DeviceSize, RequiresOneOf, VulkanObject,
+    DeviceSize, RequiresOneOf, ValidationError, VulkanObject,
 };
 use std::{
     cmp::min,
@@ -1909,6 +1911,8 @@ where
                 continue;
             }
 
+            let default_image_layout = descriptor_type.default_image_layout();
+
             let use_iter = move |index: u32| {
                 let (stages_read, stages_write) = [Some(index), None]
                     .into_iter()
@@ -2019,8 +2023,12 @@ where
                         if let Some(image_view_info) = element {
                             let &DescriptorImageViewInfo {
                                 ref image_view,
-                                image_layout,
+                                mut image_layout,
                             } = image_view_info;
+
+                            if image_layout == ImageLayout::Undefined {
+                                image_layout = default_image_layout;
+                            }
 
                             let image = image_view.image();
                             let (use_ref, memory_access) = use_iter(index as u32);
@@ -2043,8 +2051,12 @@ where
                         if let Some((image_view_info, _sampler)) = element {
                             let &DescriptorImageViewInfo {
                                 ref image_view,
-                                image_layout,
+                                mut image_layout,
                             } = image_view_info;
+
+                            if image_layout == ImageLayout::Undefined {
+                                image_layout = default_image_layout;
+                            }
 
                             let image = image_view.image();
                             let (use_ref, memory_access) = use_iter(index as u32);
@@ -2637,7 +2649,7 @@ impl Display for PipelineExecutionError {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum DescriptorResourceInvalidError {
     ImageViewFormatMismatch {
         required: Format,
@@ -2664,7 +2676,7 @@ pub enum DescriptorResourceInvalidError {
         image_view_set_num: u32,
         image_view_binding_num: u32,
         image_view_index: u32,
-        error: SamplerImageViewIncompatibleError,
+        error: ValidationError,
     },
     SamplerUnnormalizedCoordinatesNotAllowed,
     SamplerYcbcrConversionNotAllowed,

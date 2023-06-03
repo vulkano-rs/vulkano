@@ -346,6 +346,7 @@ fn main() {
                     &descriptor_set_allocator,
                     layout.clone(),
                     [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
+                    [],
                 )
                 .unwrap();
 

@@ -184,6 +184,7 @@ impl GameOfLifeComputePipeline {
                 WriteDescriptorSet::buffer(1, self.life_in.clone()),
                 WriteDescriptorSet::buffer(2, self.life_out.clone()),
             ],
+            [],
         )
         .unwrap();
 
