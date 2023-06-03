@@ -895,6 +895,7 @@ impl DescriptorType {
 
 /// Contains information about the level of support a device has for a particular descriptor set.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct DescriptorSetLayoutSupport {
     /// If the queried descriptor set layout has a binding with the
     /// [`DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`] flag set, then this indicates the
