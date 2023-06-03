@@ -29,6 +29,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_external_semaphore`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore.html)
 - [`VK_KHR_external_semaphore_capabilities`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_capabilities.html)
 - [`VK_KHR_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance1.html)
+- [`VK_KHR_maintenance3`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance3.html)
 - [`VK_KHR_multiview`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_multiview.html)
 - [`VK_KHR_relaxed_block_layout`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_relaxed_block_layout.html)
 - [`VK_KHR_shader_draw_parameters`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_draw_parameters.html)
@@ -51,7 +52,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_descriptor_update_template`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_descriptor_update_template.html)
 - [`VK_KHR_device_group`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_device_group.html)
 - [`VK_KHR_device_group_creation`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_device_group_creation.html)
-- [`VK_KHR_maintenance3`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance3.html)
 - Group operations, subgroup scope
 - Protected memory
 
