@@ -56,8 +56,6 @@ fn main() {
     let mut mouse_is_pressed_w2 = false;
 
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
-
         if process_event(
             &event,
             &mut app,
