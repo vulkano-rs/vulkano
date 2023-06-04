@@ -75,8 +75,6 @@ fn main() {
     app.print_guide();
 
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
-
         let renderer = windows.get_primary_renderer_mut().unwrap();
 
         if process_event(renderer, &event, &mut app, render_target_id) {
