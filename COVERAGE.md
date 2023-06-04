@@ -10,7 +10,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 - `vkGetImageSubresourceLayout` (used, but not exposed to the user)
 - `VkAllocationCallbacks`
-- `VkPipelineCreateFlags`
 - Possibly more?
 
 ## Vulkan 1.1
