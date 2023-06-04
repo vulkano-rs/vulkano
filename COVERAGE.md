@@ -8,8 +8,9 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 ### Unsupported
 
-- `vkGetImageSubresourceLayout` (used, but not exposed to the user)
+- Updating existing descriptor sets
 - `VkAllocationCallbacks`
+- Pipeline derivatives
 - Possibly more?
 
 ## Vulkan 1.1
