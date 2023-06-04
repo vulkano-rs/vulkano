@@ -1880,6 +1880,7 @@ impl RenderPassCreateInfo {
 vulkan_bitflags! {
     #[non_exhaustive]
 
+    /// Flags specifying additional properties of a render pass.
     RenderPassCreateFlags = RenderPassCreateFlags(u32);
 
     /* TODO: enable
