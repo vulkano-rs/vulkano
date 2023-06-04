@@ -23,6 +23,12 @@ pub struct TessellationState {
     pub patch_control_points: StateMode<u32>,
 
     /// The origin to use for the tessellation domain.
+    ///
+    /// If this is not [`TessellationDomainOrigin::UpperLeft`], the device API version must be at
+    /// least 1.1, or the [`khr_maintenance2`](crate::device::DeviceExtensions::khr_maintenance2)
+    /// extension must be enabled on the device.
+    ///
+    /// The default value is [`TessellationDomainOrigin::UpperLeft`].
     pub domain_origin: TessellationDomainOrigin,
 }
 
