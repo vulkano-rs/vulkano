@@ -373,7 +373,8 @@ fn main() {
             // We use the attachment named `color` as the one and only color attachment.
             color: [color],
             // No depth-stencil attachment is indicated with empty brackets.
-            depth_stencil: {},
+            depth: {},
+            stencil: {},
         },
     )
     .unwrap();

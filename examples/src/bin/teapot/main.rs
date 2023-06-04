@@ -230,7 +230,8 @@ fn main() {
         },
         pass: {
             color: [color],
-            depth_stencil: {depth},
+            depth: {depth},
+            stencil: {},
         },
     )
     .unwrap();

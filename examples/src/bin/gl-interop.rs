@@ -592,7 +592,8 @@ mod linux {
             },
             pass: {
                 color: [color],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
         )
         .unwrap();

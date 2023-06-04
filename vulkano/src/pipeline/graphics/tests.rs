@@ -310,7 +310,8 @@ mod simple_rp {
         },
         pass: {
             color: [color],
-            depth_stencil: {},
+            depth: {},
+            stencil: {},
         },
     }
 }

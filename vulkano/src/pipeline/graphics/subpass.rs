@@ -10,7 +10,6 @@
 use crate::{
     command_buffer::{CommandBufferInheritanceRenderingInfo, RenderingInfo},
     format::Format,
-    image::ImageAspects,
     render_pass::Subpass,
 };
 
@@ -93,18 +92,28 @@ impl PipelineRenderingCreateInfo {
         Self {
             view_mask: subpass_desc.view_mask,
             color_attachment_formats: (subpass_desc.color_attachments.iter())
-                .map(|atch_ref| {
-                    atch_ref.as_ref().map(|atch_ref| {
-                        rp_attachments[atch_ref.attachment as usize].format.unwrap()
+                .map(|resolvable_attachment| {
+                    resolvable_attachment.as_ref().map(|resolvable_attachment| {
+                        rp_attachments[resolvable_attachment.attachment_ref.attachment as usize]
+                            .format
+                            .unwrap()
                     })
                 })
                 .collect(),
-            depth_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
-                .map(|atch_ref| rp_attachments[atch_ref.attachment as usize].format.unwrap())
-                .filter(|format| format.aspects().intersects(ImageAspects::DEPTH)),
-            stencil_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
-                .map(|atch_ref| rp_attachments[atch_ref.attachment as usize].format.unwrap())
-                .filter(|format| format.aspects().intersects(ImageAspects::STENCIL)),
+            depth_attachment_format: (subpass_desc.depth_attachment.as_ref()).map(
+                |resolvable_attachment| {
+                    rp_attachments[resolvable_attachment.attachment_ref.attachment as usize]
+                        .format
+                        .unwrap()
+                },
+            ),
+            stencil_attachment_format: (subpass_desc.stencil_attachment.as_ref()).map(
+                |resolvable_attachment| {
+                    rp_attachments[resolvable_attachment.attachment_ref.attachment as usize]
+                        .format
+                        .unwrap()
+                },
+            ),
             _ne: crate::NonExhaustive(()),
         }
     }

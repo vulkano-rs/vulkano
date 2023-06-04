@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::ImageAspect;
 use crate::macros::vulkan_enum;
 
 vulkan_enum! {
@@ -51,11 +52,12 @@ vulkan_enum! {
     /// transitioned into this layout must have the `color_attachment` usage enabled.
     ColorAttachmentOptimal = COLOR_ATTACHMENT_OPTIMAL,
 
-    /// For a depth/stencil image used as a depth/stencil attachment in a framebuffer.
+    /// A combination of `DepthAttachmentOptimal` for the depth aspect of the image,
+    /// and `StencilAttachmentOptimal` for the stencil aspect of the image.
     DepthStencilAttachmentOptimal = DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 
-    /// For a depth/stencil image used as a read-only depth/stencil attachment in a framebuffer, or
-    /// as a (combined) sampled image or input attachment in a shader.
+    /// A combination of `DepthReadOnlyOptimal` for the depth aspect of the image,
+    /// and `StencilReadOnlyOptimal` for the stencil aspect of the image.
     DepthStencilReadOnlyOptimal = DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 
     /// For a color image used as a (combined) sampled image or input attachment in a shader.
@@ -75,47 +77,45 @@ vulkan_enum! {
     /// tiling, optimal tiling gives undefined results.
     Preinitialized = PREINITIALIZED,
 
-    /// A combination of `DepthStencilReadOnlyOptimal` for the depth aspect of the image,
-    /// and `DepthStencilAttachmentOptimal` for the stencil aspect of the image.
+    /// A combination of `DepthReadOnlyOptimal` for the depth aspect of the image,
+    /// and `StencilAttachmentOptimal` for the stencil aspect of the image.
     DepthReadOnlyStencilAttachmentOptimal = DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],
     },
 
-    /// A combination of `DepthStencilAttachmentOptimal` for the depth aspect of the image,
-    /// and `DepthStencilReadOnlyOptimal` for the stencil aspect of the image.
+    /// A combination of `DepthAttachmentOptimal` for the depth aspect of the image,
+    /// and `StencilReadOnlyOptimal` for the stencil aspect of the image.
     DepthAttachmentStencilReadOnlyOptimal = DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],
     },
 
-    /* TODO: enable
-    // TODO: document
+    /// For a depth image used as a depth attachment in a framebuffer.
     DepthAttachmentOptimal = DEPTH_ATTACHMENT_OPTIMAL {
         api_version: V1_2,
         device_extensions: [khr_separate_depth_stencil_layouts],
-    },*/
+    },
 
-    /* TODO: enable
-    // TODO: document
+    /// For a depth image used as a read-only depth attachment in a framebuffer, or
+    /// as a (combined) sampled image or input attachment in a shader.
     DepthReadOnlyOptimal = DEPTH_READ_ONLY_OPTIMAL {
         api_version: V1_2,
         device_extensions: [khr_separate_depth_stencil_layouts],
-    },*/
+    },
 
-    /* TODO: enable
-    // TODO: document
+    /// For a stencil image used as a stencil attachment in a framebuffer.
     StencilAttachmentOptimal = STENCIL_ATTACHMENT_OPTIMAL {
         api_version: V1_2,
         device_extensions: [khr_separate_depth_stencil_layouts],
-    },*/
+    },
 
-    /* TODO: enable
-    // TODO: document
+    /// For a stencil image used as a read-only stencil attachment in a framebuffer, or
+    /// as a (combined) sampled image or input attachment in a shader.
     StencilReadOnlyOptimal = STENCIL_READ_ONLY_OPTIMAL {
         api_version: V1_2,
         device_extensions: [khr_separate_depth_stencil_layouts],
-    },*/
+    },
 
     /* TODO: enable
     // TODO: document
@@ -203,5 +203,155 @@ impl Default for ImageLayout {
     #[inline]
     fn default() -> Self {
         ImageLayout::Undefined
+    }
+}
+
+impl ImageLayout {
+    /// If the layout can be used for `aspect`, returns the equivalent layout for that aspect.
+    /// The equivalent layout is always `self` for color and plane aspects; for the
+    /// depth and stencil aspects it's the layout that only specifies that aspect
+    /// and not the other aspect.
+    pub fn layout_for(self, aspect: ImageAspect) -> Option<ImageLayout> {
+        match aspect {
+            ImageAspect::Color
+            | ImageAspect::Plane0
+            | ImageAspect::Plane1
+            | ImageAspect::Plane2 => match self {
+                ImageLayout::Undefined
+                | ImageLayout::General
+                | ImageLayout::ShaderReadOnlyOptimal
+                | ImageLayout::TransferSrcOptimal
+                | ImageLayout::TransferDstOptimal
+                | ImageLayout::Preinitialized
+                | ImageLayout::PresentSrc
+                | ImageLayout::ColorAttachmentOptimal => Some(self),
+                ImageLayout::DepthStencilAttachmentOptimal
+                | ImageLayout::DepthStencilReadOnlyOptimal
+                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                | ImageLayout::DepthAttachmentOptimal
+                | ImageLayout::DepthReadOnlyOptimal
+                | ImageLayout::StencilAttachmentOptimal
+                | ImageLayout::StencilReadOnlyOptimal => None,
+            },
+            ImageAspect::Depth => match self {
+                ImageLayout::Undefined
+                | ImageLayout::General
+                | ImageLayout::ShaderReadOnlyOptimal
+                | ImageLayout::TransferSrcOptimal
+                | ImageLayout::TransferDstOptimal
+                | ImageLayout::Preinitialized
+                | ImageLayout::PresentSrc
+                | ImageLayout::DepthAttachmentOptimal
+                | ImageLayout::DepthReadOnlyOptimal => Some(self),
+                ImageLayout::DepthStencilAttachmentOptimal
+                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal => {
+                    Some(ImageLayout::DepthAttachmentOptimal)
+                }
+                ImageLayout::DepthStencilReadOnlyOptimal
+                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal => {
+                    Some(ImageLayout::DepthReadOnlyOptimal)
+                }
+                ImageLayout::StencilAttachmentOptimal
+                | ImageLayout::StencilReadOnlyOptimal
+                | ImageLayout::ColorAttachmentOptimal => None,
+            },
+            ImageAspect::Stencil => match self {
+                ImageLayout::Undefined
+                | ImageLayout::General
+                | ImageLayout::ShaderReadOnlyOptimal
+                | ImageLayout::TransferSrcOptimal
+                | ImageLayout::TransferDstOptimal
+                | ImageLayout::Preinitialized
+                | ImageLayout::PresentSrc
+                | ImageLayout::StencilAttachmentOptimal
+                | ImageLayout::StencilReadOnlyOptimal => Some(self),
+                ImageLayout::DepthStencilAttachmentOptimal
+                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal => {
+                    Some(ImageLayout::StencilAttachmentOptimal)
+                }
+                ImageLayout::DepthStencilReadOnlyOptimal
+                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal => {
+                    Some(ImageLayout::StencilReadOnlyOptimal)
+                }
+                ImageLayout::DepthAttachmentOptimal
+                | ImageLayout::DepthReadOnlyOptimal
+                | ImageLayout::ColorAttachmentOptimal => None,
+            },
+            ImageAspect::Metadata
+            | ImageAspect::MemoryPlane0
+            | ImageAspect::MemoryPlane1
+            | ImageAspect::MemoryPlane2 => None,
+        }
+    }
+
+    /// If the layout can be used for `aspect`, returns whether `aspect` can be written to if an
+    /// image is in that layout.
+    pub fn is_writable(self, aspect: ImageAspect) -> bool {
+        match aspect {
+            ImageAspect::Color
+            | ImageAspect::Plane0
+            | ImageAspect::Plane1
+            | ImageAspect::Plane2 => match self {
+                ImageLayout::General
+                | ImageLayout::ColorAttachmentOptimal
+                | ImageLayout::TransferDstOptimal => true,
+                ImageLayout::Undefined
+                | ImageLayout::DepthStencilAttachmentOptimal
+                | ImageLayout::DepthStencilReadOnlyOptimal
+                | ImageLayout::ShaderReadOnlyOptimal
+                | ImageLayout::TransferSrcOptimal
+                | ImageLayout::Preinitialized
+                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                | ImageLayout::DepthAttachmentOptimal
+                | ImageLayout::DepthReadOnlyOptimal
+                | ImageLayout::StencilAttachmentOptimal
+                | ImageLayout::StencilReadOnlyOptimal
+                | ImageLayout::PresentSrc => false,
+            },
+            ImageAspect::Depth => match self {
+                ImageLayout::General
+                | ImageLayout::DepthStencilAttachmentOptimal
+                | ImageLayout::TransferDstOptimal
+                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                | ImageLayout::DepthAttachmentOptimal => true,
+
+                ImageLayout::Undefined
+                | ImageLayout::ColorAttachmentOptimal
+                | ImageLayout::DepthStencilReadOnlyOptimal
+                | ImageLayout::ShaderReadOnlyOptimal
+                | ImageLayout::TransferSrcOptimal
+                | ImageLayout::Preinitialized
+                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                | ImageLayout::DepthReadOnlyOptimal
+                | ImageLayout::StencilAttachmentOptimal
+                | ImageLayout::StencilReadOnlyOptimal
+                | ImageLayout::PresentSrc => false,
+            },
+            ImageAspect::Stencil => match self {
+                ImageLayout::General
+                | ImageLayout::DepthStencilAttachmentOptimal
+                | ImageLayout::TransferDstOptimal
+                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                | ImageLayout::StencilAttachmentOptimal => true,
+
+                ImageLayout::Undefined
+                | ImageLayout::ColorAttachmentOptimal
+                | ImageLayout::DepthStencilReadOnlyOptimal
+                | ImageLayout::ShaderReadOnlyOptimal
+                | ImageLayout::TransferSrcOptimal
+                | ImageLayout::Preinitialized
+                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                | ImageLayout::DepthAttachmentOptimal
+                | ImageLayout::DepthReadOnlyOptimal
+                | ImageLayout::StencilReadOnlyOptimal
+                | ImageLayout::PresentSrc => false,
+            },
+            ImageAspect::Metadata
+            | ImageAspect::MemoryPlane0
+            | ImageAspect::MemoryPlane1
+            | ImageAspect::MemoryPlane2 => false,
+        }
     }
 }

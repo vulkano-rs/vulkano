@@ -130,7 +130,9 @@ impl Framebuffer {
                         .color_attachments
                         .iter()
                         .flatten()
-                        .any(|atch_ref| atch_ref.attachment == attachment_num)
+                        .any(|resolvable_attachment| {
+                            resolvable_attachment.attachment_ref.attachment == attachment_num
+                        })
                     {
                         if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
                             return Err(FramebufferCreationError::AttachmentMissingUsage {
@@ -141,8 +143,12 @@ impl Framebuffer {
                     }
 
                     // VUID-VkFramebufferCreateInfo-pAttachments-02633
-                    if let Some(atch_ref) = &subpass.depth_stencil_attachment {
-                        if atch_ref.attachment == attachment_num {
+                    if let Some(resolvable_attachment) = subpass
+                        .depth_attachment
+                        .as_ref()
+                        .or(subpass.stencil_attachment.as_ref())
+                    {
+                        if resolvable_attachment.attachment_ref.attachment == attachment_num {
                             if !image_view
                                 .usage()
                                 .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
@@ -160,7 +166,9 @@ impl Framebuffer {
                         .input_attachments
                         .iter()
                         .flatten()
-                        .any(|atch_ref| atch_ref.attachment == attachment_num)
+                        .any(|input_attachment| {
+                            input_attachment.attachment_ref.attachment == attachment_num
+                        })
                     {
                         if !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT) {
                             return Err(FramebufferCreationError::AttachmentMissingUsage {
@@ -712,7 +720,10 @@ mod tests {
         format::Format,
         image::{attachment::AttachmentImage, view::ImageView},
         memory::allocator::StandardMemoryAllocator,
-        render_pass::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError, RenderPass},
+        render_pass::{
+            Framebuffer, FramebufferCreateInfo, FramebufferCreationError, RenderPass,
+            RenderPassCreateInfo, SubpassDescription,
+        },
     };
 
     #[test]
@@ -731,7 +742,8 @@ mod tests {
             },
             pass: {
                 color: [color],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
         )
         .unwrap();
@@ -755,7 +767,14 @@ mod tests {
     fn check_device_limits() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = RenderPass::empty_single_pass(device).unwrap();
+        let render_pass = RenderPass::new(
+            device,
+            RenderPassCreateInfo {
+                subpasses: vec![SubpassDescription::default()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let res = Framebuffer::new(
             render_pass.clone(),
             FramebufferCreateInfo {
@@ -800,7 +819,8 @@ mod tests {
             },
             pass: {
                 color: [color],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
         )
         .unwrap();
@@ -841,7 +861,8 @@ mod tests {
             },
             pass: {
                 color: [color],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
         )
         .unwrap();
@@ -880,7 +901,8 @@ mod tests {
             },
             pass: {
                 color: [color],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
         )
         .unwrap();
@@ -927,7 +949,8 @@ mod tests {
             },
             pass: {
                 color: [a, b],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
         )
         .unwrap();
@@ -979,7 +1002,8 @@ mod tests {
             },
             pass: {
                 color: [a, b],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
         )
         .unwrap();
@@ -1023,7 +1047,8 @@ mod tests {
             },
             pass: {
                 color: [a],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
         )
         .unwrap();
@@ -1059,7 +1084,14 @@ mod tests {
     fn empty_working() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = RenderPass::empty_single_pass(device).unwrap();
+        let render_pass = RenderPass::new(
+            device,
+            RenderPassCreateInfo {
+                subpasses: vec![SubpassDescription::default()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let _ = Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
@@ -1075,7 +1107,14 @@ mod tests {
     fn cant_determine_dimensions_auto() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = RenderPass::empty_single_pass(device).unwrap();
+        let render_pass = RenderPass::new(
+            device,
+            RenderPassCreateInfo {
+                subpasses: vec![SubpassDescription::default()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let res = Framebuffer::new(render_pass, FramebufferCreateInfo::default());
         match res {
             Err(FramebufferCreationError::AutoExtentAttachmentsEmpty) => (),

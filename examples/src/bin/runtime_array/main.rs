@@ -268,7 +268,8 @@ fn main() {
         },
         pass: {
             color: [color],
-            depth_stencil: {},
+            depth: {},
+            stencil: {},
         },
     )
     .unwrap();

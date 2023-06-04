@@ -138,13 +138,15 @@ impl FrameSystem {
                 // Write to the diffuse, normals and depth attachments.
                 {
                     color: [diffuse, normals],
-                    depth_stencil: {depth},
+                    depth: {depth},
+                    stencil: {},
                     input: [],
                 },
                 // Apply lighting by reading these three attachments and writing to `final_color`.
                 {
                     color: [final_color],
-                    depth_stencil: {},
+                    depth: {},
+                    stencil: {},
                     input: [diffuse, normals, depth],
                 },
             ],

@@ -25,20 +25,25 @@
 //! Consequently you can create graphics pipelines from a render pass object alone.
 //! A `Framebuffer` object is only needed when you actually add draw commands to a command buffer.
 
-pub use self::{
-    create::RenderPassCreationError,
-    framebuffer::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError},
-};
+pub use self::framebuffer::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError};
 use crate::{
-    device::{Device, DeviceOwned},
-    format::Format,
-    image::{ImageAspects, ImageLayout, SampleCount},
-    macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
+    device::{Device, DeviceOwned, QueueFlags},
+    format::{Format, FormatFeatures, NumericType},
+    image::{ImageAspect, ImageAspects, ImageLayout, SampleCount},
+    macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     shader::ShaderInterface,
-    sync::{AccessFlags, DependencyFlags, PipelineStages},
-    Version, VulkanObject,
+    sync::{AccessFlags, DependencyFlags, MemoryBarrier, PipelineStages},
+    RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
 };
-use std::{cmp::max, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use ahash::HashMap;
+use std::{
+    cmp::max,
+    collections::hash_map::Entry,
+    mem::{replace, MaybeUninit},
+    num::NonZeroU64,
+    ptr,
+    sync::Arc,
+};
 
 #[macro_use]
 mod macros;
@@ -92,7 +97,8 @@ mod framebuffer;
 ///     },
 ///     pass: {
 ///         color: [foo],       // Repeat the attachment name here.
-///         depth_stencil: {},
+///         depth: {},
+///         stencil: {},
 ///     },
 /// )
 /// .unwrap();
@@ -106,6 +112,7 @@ pub struct RenderPass {
     device: Arc<Device>,
     id: NonZeroU64,
 
+    flags: RenderPassCreateFlags,
     attachments: Vec<AttachmentDescription>,
     subpasses: Vec<SubpassDescription>,
     dependencies: Vec<SubpassDependency>,
@@ -125,8 +132,54 @@ impl RenderPass {
     pub fn new(
         device: Arc<Device>,
         mut create_info: RenderPassCreateInfo,
-    ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
-        Self::validate(&device, &mut create_info)?;
+    ) -> Result<Arc<RenderPass>, VulkanError> {
+        for subpass in create_info.subpasses.iter_mut() {
+            for input_attachment in subpass.input_attachments.iter_mut().flatten() {
+                if input_attachment.aspects.is_empty() {
+                    if let Some(attachment_desc) = create_info
+                        .attachments
+                        .get(input_attachment.attachment_ref.attachment as usize)
+                    {
+                        input_attachment.aspects = attachment_desc.format.unwrap().aspects();
+                    }
+                }
+            }
+        }
+
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &RenderPassCreateInfo,
+    ) -> Result<(), ValidationError> {
+        // VUID-vkCreateRenderPass2-pCreateInfo-parameter
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        mut create_info: RenderPassCreateInfo,
+    ) -> Result<Arc<RenderPass>, RuntimeError> {
+        for subpass in create_info.subpasses.iter_mut() {
+            for input_attachment in subpass.input_attachments.iter_mut().flatten() {
+                if input_attachment.aspects.is_empty() {
+                    if let Some(attachment_desc) = create_info
+                        .attachments
+                        .get(input_attachment.attachment_ref.attachment as usize)
+                    {
+                        input_attachment.aspects = attachment_desc.format.unwrap().aspects();
+                    }
+                }
+            }
+        }
 
         let handle = unsafe {
             if device.api_version() >= Version::V1_2
@@ -141,35 +194,19 @@ impl RenderPass {
         unsafe { Ok(Self::from_handle(device, handle, create_info)) }
     }
 
-    /// Builds a render pass with one subpass and no attachment.
-    ///
-    /// This method is useful for quick tests.
-    #[inline]
-    pub fn empty_single_pass(
-        device: Arc<Device>,
-    ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
-        RenderPass::new(
-            device,
-            RenderPassCreateInfo {
-                subpasses: vec![SubpassDescription::default()],
-                ..Default::default()
-            },
-        )
-    }
-
     /// Creates a new `RenderPass` from a raw object handle.
     ///
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
-    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::RenderPass,
         create_info: RenderPassCreateInfo,
     ) -> Arc<RenderPass> {
         let RenderPassCreateInfo {
+            flags,
             attachments,
             subpasses,
             dependencies,
@@ -192,6 +229,7 @@ impl RenderPass {
             device,
             id: Self::next_id(),
 
+            flags,
             attachments,
             subpasses,
             dependencies,
@@ -211,6 +249,12 @@ impl RenderPass {
         debug_assert_ne!(out.width, 0);
         debug_assert_ne!(out.height, 0);
         [out.width, out.height]
+    }
+
+    /// Returns the flags that the render pass was created with.
+    #[inline]
+    pub fn flags(&self) -> RenderPassCreateFlags {
+        self.flags
     }
 
     /// Returns the attachments of the render pass.
@@ -274,10 +318,13 @@ impl RenderPass {
             handle: _,
             device: _,
             id: _,
+
+            flags: flags1,
             attachments: attachments1,
             subpasses: subpasses1,
             dependencies: dependencies1,
             correlated_view_masks: correlated_view_masks1,
+
             granularity: _,
             views_used: _,
         } = self;
@@ -285,13 +332,20 @@ impl RenderPass {
             handle: _,
             device: _,
             id: _,
+
+            flags: flags2,
             attachments: attachments2,
             subpasses: subpasses2,
             dependencies: dependencies2,
             correlated_view_masks: correlated_view_masks2,
+
             granularity: _,
             views_used: _,
         } = other;
+
+        if flags1 != flags2 {
+            return false;
+        }
 
         if attachments1.len() != attachments2.len() {
             return false;
@@ -302,77 +356,84 @@ impl RenderPass {
             .zip(attachments2)
             .all(|(attachment_desc1, attachment_desc2)| {
                 let AttachmentDescription {
+                    flags: flags1,
                     format: format1,
                     samples: samples1,
                     load_op: _,
                     store_op: _,
-                    stencil_load_op: _,
-                    stencil_store_op: _,
                     initial_layout: _,
                     final_layout: _,
+                    stencil_load_op: _,
+                    stencil_store_op: _,
+                    stencil_initial_layout: _,
+                    stencil_final_layout: _,
                     _ne: _,
                 } = attachment_desc1;
                 let AttachmentDescription {
+                    flags: flags2,
                     format: format2,
                     samples: samples2,
                     load_op: _,
                     store_op: _,
-                    stencil_load_op: _,
-                    stencil_store_op: _,
                     initial_layout: _,
                     final_layout: _,
+                    stencil_load_op: _,
+                    stencil_store_op: _,
+                    stencil_initial_layout: _,
+                    stencil_final_layout: _,
                     _ne: _,
                 } = attachment_desc2;
 
-                format1 == format2 && samples1 == samples2
+                flags1 == flags2 && format1 == format2 && samples1 == samples2
             })
         {
             return false;
         }
 
-        let are_atch_refs_compatible = |atch_ref1, atch_ref2| match (atch_ref1, atch_ref2) {
-            (None, None) => true,
-            (Some(atch_ref1), Some(atch_ref2)) => {
+        let are_atch_refs_compatible =
+            |atch_ref1: &AttachmentReference, atch_ref2: &AttachmentReference| {
                 let &AttachmentReference {
                     attachment: attachment1,
                     layout: _,
-                    aspects: aspects1,
                     _ne: _,
                 } = atch_ref1;
                 let AttachmentDescription {
+                    flags: flags1,
                     format: format1,
                     samples: samples1,
                     load_op: _,
                     store_op: _,
-                    stencil_load_op: _,
-                    stencil_store_op: _,
                     initial_layout: _,
                     final_layout: _,
+                    stencil_load_op: _,
+                    stencil_store_op: _,
+                    stencil_initial_layout: _,
+                    stencil_final_layout: _,
                     _ne: _,
                 } = &attachments1[attachment1 as usize];
 
                 let &AttachmentReference {
                     attachment: attachment2,
                     layout: _,
-                    aspects: aspects2,
                     _ne: _,
                 } = atch_ref2;
                 let AttachmentDescription {
+                    flags: flags2,
                     format: format2,
                     samples: samples2,
                     load_op: _,
                     store_op: _,
-                    stencil_load_op: _,
-                    stencil_store_op: _,
                     initial_layout: _,
                     final_layout: _,
+                    stencil_load_op: _,
+                    stencil_store_op: _,
+                    stencil_initial_layout: _,
+                    stencil_final_layout: _,
                     _ne: _,
                 } = &attachments2[attachment2 as usize];
 
-                format1 == format2 && samples1 == samples2 && aspects1 == aspects2
-            }
-            _ => false,
-        };
+                flags1 == flags2 && format1 == format2 && samples1 == samples2
+            };
 
         if subpasses1.len() != subpasses2.len() {
             return false;
@@ -382,57 +443,165 @@ impl RenderPass {
             .zip(subpasses2.iter())
             .all(|(subpass1, subpass2)| {
                 let SubpassDescription {
+                    flags: flags1,
                     view_mask: view_mask1,
                     input_attachments: input_attachments1,
                     color_attachments: color_attachments1,
-                    resolve_attachments: resolve_attachments1,
-                    depth_stencil_attachment: depth_stencil_attachment1,
+                    depth_attachment: depth_attachment1,
+                    stencil_attachment: stencil_attachment1,
                     preserve_attachments: _,
                     _ne: _,
                 } = subpass1;
                 let SubpassDescription {
+                    flags: flags2,
                     view_mask: view_mask2,
                     input_attachments: input_attachments2,
                     color_attachments: color_attachments2,
-                    resolve_attachments: resolve_attachments2,
-                    depth_stencil_attachment: depth_stencil_attachment2,
+                    depth_attachment: depth_attachment2,
+                    stencil_attachment: stencil_attachment2,
                     preserve_attachments: _,
                     _ne: _,
                 } = subpass2;
 
+                if flags1 != flags2 {
+                    return false;
+                }
+
                 if !(0..max(input_attachments1.len(), input_attachments2.len())).all(|i| {
-                    are_atch_refs_compatible(
+                    match (
                         input_attachments1.get(i).and_then(|x| x.as_ref()),
                         input_attachments2.get(i).and_then(|x| x.as_ref()),
-                    )
+                    ) {
+                        (None, None) => true,
+                        (Some(input_attachment1), Some(input_attachment2)) => {
+                            let &InputAttachmentReference {
+                                attachment_ref: ref attachment_ref1,
+                                aspects: aspects1,
+                            } = input_attachment1;
+                            let &InputAttachmentReference {
+                                attachment_ref: ref attachment_ref2,
+                                aspects: aspects2,
+                            } = input_attachment2;
+
+                            are_atch_refs_compatible(attachment_ref1, attachment_ref2)
+                                && aspects1 == aspects2
+                        }
+                        _ => false,
+                    }
                 }) {
                     return false;
                 }
 
                 if !(0..max(color_attachments1.len(), color_attachments2.len())).all(|i| {
-                    are_atch_refs_compatible(
+                    match (
                         color_attachments1.get(i).and_then(|x| x.as_ref()),
                         color_attachments2.get(i).and_then(|x| x.as_ref()),
-                    )
+                    ) {
+                        (None, None) => true,
+                        (Some(resolvable_attachment1), Some(resolvable_attachment2)) => {
+                            let &ResolvableAttachmentReference {
+                                attachment_ref: ref attachment_ref1,
+                                resolve: ref resolve1,
+                            } = resolvable_attachment1;
+                            let &ResolvableAttachmentReference {
+                                attachment_ref: ref attachment_ref2,
+                                resolve: ref resolve2,
+                            } = resolvable_attachment2;
+
+                            are_atch_refs_compatible(attachment_ref1, attachment_ref2)
+                                && match (resolve1, resolve2) {
+                                    (None, None) => true,
+                                    (Some(resolve_attachment1), Some(resolve_attachment2)) => {
+                                        let &ResolveAttachmentReference {
+                                            attachment_ref: ref attachment_ref1,
+                                            mode: mode1,
+                                        } = resolve_attachment1;
+                                        let &ResolveAttachmentReference {
+                                            attachment_ref: ref attachment_ref2,
+                                            mode: mode2,
+                                        } = resolve_attachment2;
+
+                                        are_atch_refs_compatible(attachment_ref1, attachment_ref2)
+                                            && mode1 == mode2
+                                    }
+                                    _ => false,
+                                }
+                        }
+                        _ => false,
+                    }
                 }) {
                     return false;
                 }
 
-                if subpasses1.len() > 1
-                    && !(0..max(resolve_attachments1.len(), resolve_attachments2.len())).all(|i| {
-                        are_atch_refs_compatible(
-                            resolve_attachments1.get(i).and_then(|x| x.as_ref()),
-                            resolve_attachments2.get(i).and_then(|x| x.as_ref()),
-                        )
-                    })
-                {
+                if !match (depth_attachment1.as_ref(), depth_attachment2.as_ref()) {
+                    (None, None) => true,
+                    (Some(resolvable_attachment1), Some(resolvable_attachment2)) => {
+                        let &ResolvableAttachmentReference {
+                            attachment_ref: ref attachment_ref1,
+                            resolve: ref resolve1,
+                        } = resolvable_attachment1;
+                        let &ResolvableAttachmentReference {
+                            attachment_ref: ref attachment_ref2,
+                            resolve: ref resolve2,
+                        } = resolvable_attachment2;
+
+                        are_atch_refs_compatible(attachment_ref1, attachment_ref2)
+                            && match (resolve1, resolve2) {
+                                (None, None) => true,
+                                (Some(resolve_attachment1), Some(resolve_attachment2)) => {
+                                    let &ResolveAttachmentReference {
+                                        attachment_ref: ref attachment_ref1,
+                                        mode: mode1,
+                                    } = resolve_attachment1;
+                                    let &ResolveAttachmentReference {
+                                        attachment_ref: ref attachment_ref2,
+                                        mode: mode2,
+                                    } = resolve_attachment2;
+
+                                    are_atch_refs_compatible(attachment_ref1, attachment_ref2)
+                                        && mode1 == mode2
+                                }
+                                _ => false,
+                            }
+                    }
+                    _ => false,
+                } {
                     return false;
                 }
 
-                if !are_atch_refs_compatible(
-                    depth_stencil_attachment1.as_ref(),
-                    depth_stencil_attachment2.as_ref(),
-                ) {
+                if !match (stencil_attachment1.as_ref(), stencil_attachment2.as_ref()) {
+                    (None, None) => true,
+                    (Some(resolvable_attachment1), Some(resolvable_attachment2)) => {
+                        let &ResolvableAttachmentReference {
+                            attachment_ref: ref attachment_ref1,
+                            resolve: ref resolve1,
+                        } = resolvable_attachment1;
+                        let &ResolvableAttachmentReference {
+                            attachment_ref: ref attachment_ref2,
+                            resolve: ref resolve2,
+                        } = resolvable_attachment2;
+
+                        are_atch_refs_compatible(attachment_ref1, attachment_ref2)
+                            && match (resolve1, resolve2) {
+                                (None, None) => true,
+                                (Some(resolve_attachment1), Some(resolve_attachment2)) => {
+                                    let &ResolveAttachmentReference {
+                                        attachment_ref: ref attachment_ref1,
+                                        mode: mode1,
+                                    } = resolve_attachment1;
+                                    let &ResolveAttachmentReference {
+                                        attachment_ref: ref attachment_ref2,
+                                        mode: mode2,
+                                    } = resolve_attachment2;
+
+                                    are_atch_refs_compatible(attachment_ref1, attachment_ref2)
+                                        && mode1 == mode2
+                                }
+                                _ => false,
+                            }
+                    }
+                    _ => false,
+                } {
                     return false;
                 }
 
@@ -475,7 +644,9 @@ impl RenderPass {
 
             for location in location_range {
                 let attachment_id = match subpass_descr.color_attachments.get(location as usize) {
-                    Some(Some(atch_ref)) => atch_ref.attachment,
+                    Some(Some(resolvable_atch_ref)) => {
+                        resolvable_atch_ref.attachment_ref.attachment
+                    }
                     _ => return false,
                 };
 
@@ -583,92 +754,10 @@ impl Subpass {
         self.subpass_id = next_id;
     }
 
-    #[inline]
-    fn attachment_desc(&self, atch_num: u32) -> &AttachmentDescription {
-        &self.render_pass.attachments()[atch_num as usize]
-    }
-
     /// Returns the number of color attachments in this subpass.
     #[inline]
     pub fn num_color_attachments(&self) -> u32 {
         self.subpass_desc().color_attachments.len() as u32
-    }
-
-    /// Returns true if the subpass has a depth attachment or a depth-stencil attachment.
-    #[inline]
-    pub fn has_depth(&self) -> bool {
-        let subpass_desc = self.subpass_desc();
-        let atch_num = match &subpass_desc.depth_stencil_attachment {
-            Some(atch_ref) => atch_ref.attachment,
-            None => return false,
-        };
-
-        self.attachment_desc(atch_num)
-            .format
-            .map_or(false, |f| f.aspects().intersects(ImageAspects::DEPTH))
-    }
-
-    /// Returns true if the subpass has a depth attachment or a depth-stencil attachment whose
-    /// layout does not have a read-only depth layout.
-    #[inline]
-    pub fn has_writable_depth(&self) -> bool {
-        let subpass_desc = self.subpass_desc();
-        let atch_num = match &subpass_desc.depth_stencil_attachment {
-            Some(atch_ref) => {
-                if matches!(
-                    atch_ref.layout,
-                    ImageLayout::DepthStencilReadOnlyOptimal
-                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                ) {
-                    return false;
-                }
-                atch_ref.attachment
-            }
-            None => return false,
-        };
-
-        self.attachment_desc(atch_num)
-            .format
-            .map_or(false, |f| f.aspects().intersects(ImageAspects::DEPTH))
-    }
-
-    /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment.
-    #[inline]
-    pub fn has_stencil(&self) -> bool {
-        let subpass_desc = self.subpass_desc();
-        let atch_num = match &subpass_desc.depth_stencil_attachment {
-            Some(atch_ref) => atch_ref.attachment,
-            None => return false,
-        };
-
-        self.attachment_desc(atch_num)
-            .format
-            .map_or(false, |f| f.aspects().intersects(ImageAspects::STENCIL))
-    }
-
-    /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment whose
-    /// layout does not have a read-only stencil layout.
-    #[inline]
-    pub fn has_writable_stencil(&self) -> bool {
-        let subpass_desc = self.subpass_desc();
-
-        let atch_num = match &subpass_desc.depth_stencil_attachment {
-            Some(atch_ref) => {
-                if matches!(
-                    atch_ref.layout,
-                    ImageLayout::DepthStencilReadOnlyOptimal
-                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
-                ) {
-                    return false;
-                }
-                atch_ref.attachment
-            }
-            None => return false,
-        };
-
-        self.attachment_desc(atch_num)
-            .format
-            .map_or(false, |f| f.aspects().intersects(ImageAspects::STENCIL))
     }
 
     /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`
@@ -678,15 +767,13 @@ impl Subpass {
         let subpass_desc = self.subpass_desc();
 
         // TODO: chain input attachments as well?
-        subpass_desc
-            .color_attachments
-            .iter()
-            .flatten()
-            .chain(subpass_desc.depth_stencil_attachment.iter())
-            .filter_map(|atch_ref| {
+        (subpass_desc.color_attachments.iter().flatten())
+            .chain(subpass_desc.depth_attachment.iter())
+            .chain(subpass_desc.stencil_attachment.iter())
+            .filter_map(|resolvable_attachment| {
                 self.render_pass
                     .attachments()
-                    .get(atch_ref.attachment as usize)
+                    .get(resolvable_attachment.attachment_ref.attachment as usize)
             })
             .next()
             .map(|atch_desc| atch_desc.samples)
@@ -711,6 +798,11 @@ impl From<Subpass> for (Arc<RenderPass>, u32) {
 /// Parameters to create a new `RenderPass`.
 #[derive(Clone, Debug)]
 pub struct RenderPassCreateInfo {
+    /// Additional properties of the render pass.
+    ///
+    /// The default value is empty.
+    pub flags: RenderPassCreateFlags,
+
     /// The attachments available for the render pass.
     ///
     /// The default value is empty.
@@ -749,6 +841,7 @@ impl Default for RenderPassCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: RenderPassCreateFlags::empty(),
             attachments: Vec::new(),
             subpasses: Vec::new(),
             dependencies: Vec::new(),
@@ -758,9 +851,1052 @@ impl Default for RenderPassCreateInfo {
     }
 }
 
+impl RenderPassCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            flags,
+            ref attachments,
+            ref subpasses,
+            ref dependencies,
+            ref correlated_view_masks,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkRenderPassCreateInfo2-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        let mut attachment_potential_format_features =
+            vec![FormatFeatures::empty(); attachments.len()];
+
+        for (attachment_index, attachment) in attachments.iter().enumerate() {
+            // VUID-VkRenderPassCreateInfo2-pAttachments-parameter
+            attachment
+                .validate(device)
+                .map_err(|err| err.add_context(format!("attachments[{}]", attachment_index)))?;
+
+            let &AttachmentDescription {
+                flags: _,
+                format,
+                samples: _,
+                load_op: _,
+                store_op: _,
+                initial_layout: _,
+                final_layout: _,
+                stencil_load_op: _,
+                stencil_store_op: _,
+                stencil_initial_layout: _,
+                stencil_final_layout: _,
+                _ne: _,
+            } = attachment;
+
+            // Safety: attachment has been validated
+            attachment_potential_format_features[attachment_index] = unsafe {
+                device
+                    .physical_device()
+                    .format_properties_unchecked(format.unwrap())
+                    .potential_format_features()
+            };
+        }
+
+        if subpasses.is_empty() {
+            return Err(ValidationError {
+                context: "subpasses".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkRenderPassCreateInfo2-subpassCount-arraylength"],
+                ..Default::default()
+            });
+        }
+
+        let mut attachment_is_used = vec![false; attachments.len()];
+
+        for (subpass_index, subpass_desc) in subpasses.iter().enumerate() {
+            // VUID-VkRenderPassCreateInfo2-pSubpasses-parameter
+            subpass_desc
+                .validate(device)
+                .map_err(|err| err.add_context(format!("subpasses[{}]", subpass_index)))?;
+
+            let &SubpassDescription {
+                flags: _,
+                view_mask,
+                ref input_attachments,
+                ref color_attachments,
+                ref depth_attachment,
+                ref stencil_attachment,
+                ref preserve_attachments,
+                _ne: _,
+            } = subpass_desc;
+
+            if (view_mask != 0) != (subpasses[0].view_mask != 0) {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`subpasses[{}].view_mask != 0` does not equal \
+                        `subpasses[0].view_mask != 0`",
+                        subpass_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkRenderPassCreateInfo2-viewMask-03058"],
+                    ..Default::default()
+                });
+            }
+
+            let mut color_samples = None;
+
+            for (ref_index, color_attachment) in color_attachments
+                .iter()
+                .enumerate()
+                .flat_map(|(i, a)| a.as_ref().map(|a| (i, a)))
+            {
+                let &ResolvableAttachmentReference {
+                    attachment_ref:
+                        AttachmentReference {
+                            attachment,
+                            layout,
+                            _ne: _,
+                        },
+                    ref resolve,
+                } = color_attachment;
+
+                let attachment_desc =
+                    attachments
+                        .get(attachment as usize)
+                        .ok_or_else(|| ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].color_attachments[{}].attachment_ref.attachment` \
+                                is not less than the length of `attachments`",
+                                subpass_index, ref_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                            ..Default::default()
+                        })?;
+
+                let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
+
+                if is_first_use
+                    && attachment_desc.load_op == LoadOp::Clear
+                    && !layout.is_writable(ImageAspect::Color)
+                {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "attachment {0} is first used in subpass {1} in \
+                            `color_attachments[{2}].attachment_ref`, and \
+                            `attachments[{0}].load_op` is `LoadOp::Clear`, but \
+                            `color_attachments[{2}].attachment_ref.layout` \
+                            does not have a writable color aspect",
+                            attachment, subpass_index, ref_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-pAttachments-02522"],
+                        ..Default::default()
+                    });
+                }
+
+                if !attachment_potential_format_features[attachment as usize]
+                    .intersects(FormatFeatures::COLOR_ATTACHMENT)
+                {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "attachment {} is used in subpass {} in \
+                            `color_attachments[{}].attachment_ref`, \
+                            but the potential format features of `attachments[{0}].format` \
+                            do not include `FormatFeatures::COLOR_ATTACHMENT`",
+                            attachment, subpass_index, ref_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkSubpassDescription2-pColorAttachments-02898"],
+                        ..Default::default()
+                    });
+                }
+
+                match color_samples {
+                    Some(samples) => {
+                        if samples != attachment_desc.samples {
+                            return Err(ValidationError {
+                                problem: format!(
+                                    "`subpasses[{}].color_attachments[{}].attachment_ref` uses \
+                                    an attachment with a different number of samples than other \
+                                    color and depth/stencil attachments in the subpass",
+                                    subpass_index, ref_index
+                                )
+                                .into(),
+                                vuids: &["VUID-VkSubpassDescription2-pColorAttachments-03069"],
+                                ..Default::default()
+                            });
+                        }
+                    }
+                    None => color_samples = Some(attachment_desc.samples),
+                }
+
+                if let Some(resolve) = resolve {
+                    let &ResolveAttachmentReference {
+                        attachment_ref:
+                            AttachmentReference {
+                                attachment: resolve_attachment,
+                                layout: resolve_layout,
+                                _ne: _,
+                            },
+                        mode,
+                    } = resolve;
+
+                    let resolve_attachment_desc = attachments
+                        .get(resolve_attachment as usize)
+                        .ok_or_else(|| ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].color_attachments[{}].resolve.attachment_ref\
+                                .attachment` is not less than the length of `attachments`",
+                                subpass_index, ref_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                            ..Default::default()
+                        })?;
+
+                    let is_first_use =
+                        !replace(&mut attachment_is_used[resolve_attachment as usize], true);
+
+                    if is_first_use
+                        && attachment_desc.load_op == LoadOp::Clear
+                        && !resolve_layout.is_writable(ImageAspect::Color)
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {0} is first used in subpass {1} in \
+                                `color_attachments[{2}].resolve.attachment_ref`, and \
+                                `attachments[{0}].load_op` is `LoadOp::Clear`, but \
+                                `color_attachments[{2}].resolve.attachment_ref.layout` \
+                                does not have a writable color aspect",
+                                attachment, subpass_index, ref_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-pAttachments-02522"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !attachment_potential_format_features[resolve_attachment as usize]
+                        .intersects(FormatFeatures::COLOR_ATTACHMENT)
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {} is used in subpass {} in \
+                                `color_attachments[{}].resolve.attachment_ref`, \
+                                but the potential format features of `attachments[{0}].format` \
+                                do not include `FormatFeatures::COLOR_ATTACHMENT`",
+                                resolve_attachment, subpass_index, ref_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescription2-pResolveAttachments-02899"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if resolve_attachment_desc.samples != SampleCount::Sample1 {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {} is used in subpass {} in \
+                                `color_attachments[{}].resolve.attachment_ref`, but \
+                                `attachments[{0}].samples` is not `SampleCount::Sample1`",
+                                resolve_attachment, subpass_index, ref_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescription2-pResolveAttachments-03067"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if attachment_desc.samples == SampleCount::Sample1 {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {0} is used in subpass {1} in \
+                                `color_attachments[{2}].attachment_ref`, and
+                                `color_attachments[{2}].resolve.attachment_ref` is not \
+                                `None`, but `attachments[{0}].samples` is `SampleCount::Sample1`",
+                                attachment, subpass_index, ref_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescription2-pResolveAttachments-03066"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if resolve_attachment_desc.format != attachment_desc.format {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "`attachments[\
+                                subpasses[{0}].color_attachments[{1}].resolve.attachment_ref\
+                                .attachment].format` is not equal to \
+                                `attachments[\
+                                subpasses[{0}].color_attachments[{1}].attachment_ref\
+                                .attachment].format`",
+                                subpass_index, ref_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescription2-pResolveAttachments-03068"],
+                            ..Default::default()
+                        });
+                    }
+
+                    match resolve_attachment_desc
+                        .format
+                        .unwrap()
+                        .type_color()
+                        .unwrap()
+                    {
+                        NumericType::SFLOAT
+                        | NumericType::UFLOAT
+                        | NumericType::SNORM
+                        | NumericType::UNORM
+                        | NumericType::SSCALED
+                        | NumericType::USCALED
+                        | NumericType::SRGB => {
+                            if mode != ResolveMode::Average {
+                                return Err(ValidationError {
+                                    problem: format!(
+                                        "`attachments[\
+                                        subpasses[{0}].color_attachments[{1}].resolve\
+                                        .attachment_ref.attachment].format` is a floating-point
+                                        color format, but \
+                                        `subpasses[{0}].color_attachments[{1}].resolve\
+                                        .attachment_ref.attachment` is not \
+                                        `ResolveMode::Average`",
+                                        subpass_index, ref_index,
+                                    )
+                                    .into(),
+                                    // vuids?
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                        NumericType::SINT | NumericType::UINT => {
+                            if mode != ResolveMode::SampleZero {
+                                return Err(ValidationError {
+                                    problem: format!(
+                                        "`attachments[\
+                                        subpasses[{0}].color_attachments[{1}].resolve\
+                                        .attachment_ref.attachment].format` is an integer
+                                        color format, but \
+                                        `subpasses[{0}].color_attachments[{1}].resolve\
+                                        .attachment_ref.attachment` is not \
+                                        `ResolveMode::SampleZero`",
+                                        subpass_index, ref_index,
+                                    )
+                                    .into(),
+                                    // vuids?
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(depth_attachment) = depth_attachment.as_ref() {
+                let &ResolvableAttachmentReference {
+                    attachment_ref:
+                        AttachmentReference {
+                            attachment,
+                            layout,
+                            _ne: _,
+                        },
+                    ref resolve,
+                } = depth_attachment;
+
+                let attachment_desc =
+                    attachments
+                        .get(attachment as usize)
+                        .ok_or_else(|| ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].depth_attachment.attachment_ref.attachment` \
+                                is not less than the length of `attachments`",
+                                subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                            ..Default::default()
+                        })?;
+
+                let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
+
+                if is_first_use
+                    && attachment_desc.load_op == LoadOp::Clear
+                    && !layout.is_writable(ImageAspect::Depth)
+                {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "attachment {0} is first used in subpass {1} in \
+                            `depth_attachment.attachment_ref`, and \
+                            `attachments[{0}].load_op` is `LoadOp::Clear`, but \
+                            `depth_attachment.attachment_ref.layout` \
+                            does not have a writable depth aspect",
+                            attachment, subpass_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-pAttachments-02522"],
+                        ..Default::default()
+                    });
+                }
+
+                if !attachment_potential_format_features[attachment as usize]
+                    .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
+                {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "attachment {} is used in subpass {} in \
+                            `depth_attachment.attachment_ref`, \
+                            but the potential format features of `attachments[{0}].format` \
+                            do not include `FormatFeatures::DEPTH_STENCIL_ATTACHMENT`",
+                            attachment, subpass_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkSubpassDescription2-pDepthStencilAttachment-02900"],
+                        ..Default::default()
+                    });
+                }
+
+                if let Some(samples) = color_samples {
+                    if samples != attachment_desc.samples {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].depth_attachment.attachment_ref` uses an \
+                                attachment with a different number of samples than other color,
+                                depth and stencil attachments in the subpass",
+                                subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescription2-pColorAttachments-03069"],
+                            ..Default::default()
+                        });
+                    }
+                }
+
+                if let Some(resolve) = resolve {
+                    let &ResolveAttachmentReference {
+                        attachment_ref:
+                            AttachmentReference {
+                                attachment: resolve_attachment,
+                                layout: resolve_layout,
+                                _ne: _,
+                            },
+                        mode: _,
+                    } = resolve;
+
+                    let resolve_attachment_desc = attachments
+                        .get(resolve_attachment as usize)
+                        .ok_or_else(|| ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].depth_attachment.resolve.attachment_ref\
+                                .attachment` is not less than the length of `attachments`",
+                                subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-pSubpasses-06473"],
+                            ..Default::default()
+                        })?;
+
+                    let is_first_use =
+                        !replace(&mut attachment_is_used[resolve_attachment as usize], true);
+
+                    if is_first_use
+                        && attachment_desc.load_op == LoadOp::Clear
+                        && !resolve_layout.is_writable(ImageAspect::Depth)
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {0} is first used in subpass {1} in \
+                                `depth_attachment.resolve.attachment_ref`, and \
+                                `attachments[{0}].load_op` is `LoadOp::Clear`, but \
+                                `depth_attachment.resolve.attachment_ref.layout` \
+                                does not have a writable depth aspect",
+                                attachment, subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-pAttachments-02522"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !attachment_potential_format_features[attachment as usize]
+                        .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {} is used in subpass {} in \
+                                `depth_attachment.resolve.attachment_ref`, \
+                                but the potential format features of `attachments[{0}].format` \
+                                do not include `FormatFeatures::DEPTH_STENCIL_ATTACHMENT`",
+                                attachment, subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-02651"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if resolve_attachment_desc.samples != SampleCount::Sample1 {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {} is used in subpass {} in \
+                                `depth_attachment.resolve.attachment_ref`, but \
+                                `attachments[{0}].samples` is not `SampleCount::Sample1`",
+                                resolve_attachment, subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03180"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if attachment_desc.samples == SampleCount::Sample1 {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {0} is used in subpass {1} in \
+                                `depth_attachments.attachment_ref`, and
+                                `depth_attachments.resolve.attachment_ref` is not \
+                                `None`, but `attachments[{0}].samples` is `SampleCount::Sample1`",
+                                attachment, subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03179"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !(resolve_attachment_desc.format.unwrap().components()[0]
+                        == attachment_desc.format.unwrap().components()[0]
+                        && resolve_attachment_desc.format.unwrap().type_depth()
+                            == attachment_desc.format.unwrap().type_depth())
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "the number of bits and numeric type of the depth component of \
+                                `attachments[\
+                                subpasses[{0}].depth_attachment.resolve.attachment_ref\
+                                .attachment].format` is not equal to \
+                                the number of bits and numeric type of the depth component of \
+                                `attachments[\
+                                subpasses[{0}].depth_attachment.attachment_ref\
+                                .attachment].format`",
+                                subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03181"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            if let Some(stencil_attachment) = stencil_attachment.as_ref() {
+                let &ResolvableAttachmentReference {
+                    attachment_ref:
+                        AttachmentReference {
+                            attachment,
+                            layout,
+                            _ne: _,
+                        },
+                    ref resolve,
+                } = stencil_attachment;
+
+                let attachment_desc =
+                    attachments
+                        .get(attachment as usize)
+                        .ok_or_else(|| ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].stencil_attachment.attachment_ref.attachment` \
+                                is not less than the length of `attachments`",
+                                subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                            ..Default::default()
+                        })?;
+
+                let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
+
+                if is_first_use
+                    && attachment_desc.stencil_load_op == LoadOp::Clear
+                    && !layout.is_writable(ImageAspect::Stencil)
+                {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "attachment {0} is first used in subpass {1} in \
+                            `stencil_attachment.attachment_ref`, and \
+                            `attachments[{0}].stencil_load_op` is `LoadOp::Clear`, but \
+                            `stencil_attachment.attachment_ref.layout` \
+                            does not have a writable stencil aspect",
+                            attachment, subpass_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-pAttachments-02522"],
+                        ..Default::default()
+                    });
+                }
+
+                if !attachment_potential_format_features[attachment as usize]
+                    .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
+                {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "attachment {} is used in subpass {} in \
+                            `stencil_attachment.attachment_ref`, \
+                            but the potential format features of `attachments[{0}].format` \
+                            do not include `FormatFeatures::DEPTH_STENCIL_ATTACHMENT`",
+                            attachment, subpass_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkSubpassDescription2-pDepthStencilAttachment-02900"],
+                        ..Default::default()
+                    });
+                }
+
+                if let Some(samples) = color_samples {
+                    if samples != attachment_desc.samples {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].stencil_attachment.attachment_ref` uses an \
+                                attachment with a different number of samples than other color,
+                                depth and stencil attachments in the subpass",
+                                subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescription2-pColorAttachments-03069"],
+                            ..Default::default()
+                        });
+                    }
+                }
+
+                if let Some(resolve) = resolve {
+                    let &ResolveAttachmentReference {
+                        attachment_ref:
+                            AttachmentReference {
+                                attachment: resolve_attachment,
+                                layout: resolve_layout,
+                                _ne: _,
+                            },
+                        mode: _,
+                    } = resolve;
+
+                    let resolve_attachment_desc = attachments
+                        .get(resolve_attachment as usize)
+                        .ok_or_else(|| ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].stencil_attachment.resolve.attachment_ref\
+                                .attachment` is not less than the length of `attachments`",
+                                subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-pSubpasses-06473"],
+                            ..Default::default()
+                        })?;
+
+                    let is_first_use =
+                        !replace(&mut attachment_is_used[resolve_attachment as usize], true);
+
+                    if is_first_use
+                        && attachment_desc.stencil_load_op == LoadOp::Clear
+                        && !resolve_layout.is_writable(ImageAspect::Stencil)
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {0} is first used in subpass {1} in \
+                                `stencil_attachment.resolve.attachment_ref`, and \
+                                `attachments[{0}].stencil_load_op` is `LoadOp::Clear`, but \
+                                `stencil_attachment.resolve.attachment_ref.layout` \
+                                does not have a writable stencil aspect",
+                                attachment, subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-pAttachments-02522"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !attachment_potential_format_features[attachment as usize]
+                        .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {} is used in subpass {} in \
+                                `stencil_attachment.resolve.attachment_ref`, \
+                                but the potential format features of `attachments[{0}].format` \
+                                do not include `FormatFeatures::DEPTH_STENCIL_ATTACHMENT`",
+                                attachment, subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-02651"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if resolve_attachment_desc.samples != SampleCount::Sample1 {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {} is used in subpass {} in \
+                                `stencil_attachment.resolve.attachment_ref`, but \
+                                `attachments[{0}].samples` is not `SampleCount::Sample1`",
+                                resolve_attachment, subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03180"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if attachment_desc.samples == SampleCount::Sample1 {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {0} is used in subpass {1} in \
+                                `stencil_attachments.attachment_ref`, and
+                                `stencil_attachments.resolve.attachment_ref` is not \
+                                `None`, but `attachments[{0}].samples` is `SampleCount::Sample1`",
+                                attachment, subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03179"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !(resolve_attachment_desc.format.unwrap().components()[1]
+                        == attachment_desc.format.unwrap().components()[1]
+                        && resolve_attachment_desc.format.unwrap().type_stencil()
+                            == attachment_desc.format.unwrap().type_stencil())
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "the number of bits and numeric type of the stencil component of \
+                                `attachments[\
+                                subpasses[{0}].stencil_attachment.resolve.attachment_ref\
+                                .attachment].format` is not equal to \
+                                the number of bits and numeric type of the stencil component of \
+                                `attachments[\
+                                subpasses[{0}].stencil_attachment.attachment_ref\
+                                .attachment].format`",
+                                subpass_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03181"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            for (ref_index, input_attachment) in input_attachments
+                .iter()
+                .enumerate()
+                .flat_map(|(i, a)| a.as_ref().map(|a| (i, a)))
+            {
+                let &InputAttachmentReference {
+                    attachment_ref:
+                        AttachmentReference {
+                            attachment,
+                            layout: _,
+                            _ne: _,
+                        },
+                    aspects,
+                } = input_attachment;
+
+                let attachment_desc =
+                    attachments
+                        .get(attachment as usize)
+                        .ok_or_else(|| ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].input_attachments[{}].attachment_ref.attachment` \
+                                is not less than the length of `attachments`",
+                                subpass_index, ref_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                            ..Default::default()
+                        })?;
+
+                let format_aspects = attachment_desc.format.unwrap().aspects();
+                let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
+
+                if is_first_use {
+                    if attachment_desc.load_op == LoadOp::Clear {
+                        if format_aspects.intersects(ImageAspects::COLOR) {
+                            return Err(ValidationError {
+                                problem: format!(
+                                    "attachment {0} has a color component, \
+                                    is first used in subpass {1} in \
+                                    `input_attachments[{2}].attachment_ref`, and \
+                                    `attachments[{0}].load_op` is `LoadOp::Clear`",
+                                    attachment, subpass_index, ref_index
+                                )
+                                .into(),
+                                vuids: &["VUID-VkSubpassDescription2-loadOp-03064"],
+                                ..Default::default()
+                            });
+                        }
+
+                        if format_aspects.intersects(ImageAspects::DEPTH) {
+                            return Err(ValidationError {
+                                problem: format!(
+                                    "attachment {0} has a depth component, \
+                                    is first used in subpass {1} in \
+                                    `input_attachments[{2}].attachment_ref`, and \
+                                    `attachments[{0}].load_op` is `LoadOp::Clear`",
+                                    attachment, subpass_index, ref_index
+                                )
+                                .into(),
+                                vuids: &["VUID-VkSubpassDescription2-loadOp-03064"],
+                                ..Default::default()
+                            });
+                        }
+                    }
+
+                    if attachment_desc.stencil_load_op == LoadOp::Clear
+                        && format_aspects.intersects(ImageAspects::STENCIL)
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "attachment {0} has a stencil component, \
+                                is first used in subpass {1} in \
+                                `input_attachments[{2}].attachment_ref`, and \
+                                `attachments[{0}].stencil_load_op` is `LoadOp::Clear`",
+                                attachment, subpass_index, ref_index
+                            )
+                            .into(),
+                            // vuids?
+                            ..Default::default()
+                        });
+                    }
+                }
+
+                if !attachment_potential_format_features[attachment as usize].intersects(
+                    FormatFeatures::COLOR_ATTACHMENT | FormatFeatures::DEPTH_STENCIL_ATTACHMENT,
+                ) {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "attachment {} is used in subpass {} in \
+                            `input_attachments[{}].attachment_ref`, \
+                            but the potential format features of `attachments[{0}].format` \
+                            do not include `FormatFeatures::COLOR_ATTACHMENT` or \
+                            `FormatFeatures::DEPTH_STENCIL_ATTACHMENT`",
+                            attachment, subpass_index, ref_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkSubpassDescription2-pInputAttachments-02897"],
+                        ..Default::default()
+                    });
+                }
+
+                if aspects != format_aspects {
+                    if !(device.api_version() >= Version::V1_1
+                        || device.enabled_extensions().khr_create_renderpass2
+                        || device.enabled_extensions().khr_maintenance2)
+                    {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].input_attachments[{}].aspects` does not \
+                                equal the aspects of \
+                                `attachments[subpasses[{0}].input_attachments[{1}].attachment]\
+                                .format`",
+                                subpass_index, ref_index,
+                            )
+                            .into(),
+                            requires_one_of: RequiresOneOf {
+                                api_version: Some(Version::V1_1),
+                                device_extensions: &["khr_create_renderpass2", "khr_maintenance2"],
+                                ..Default::default()
+                            },
+                            // vuids?
+                            ..Default::default()
+                        });
+                    }
+
+                    if !format_aspects.contains(aspects) {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "`subpasses[{}].input_attachments[{}].aspects` is not a subset of \
+                                the aspects of \
+                                `attachments[subpasses[{0}].input_attachments[{1}].attachment]\
+                                .format`",
+                                subpass_index, ref_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-02525"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            for (ref_index, &atch) in preserve_attachments.iter().enumerate() {
+                if atch as usize >= attachments.len() {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`subpasses[{}].preserve_attachments[{}]` \
+                            is not less than the length of `attachments`",
+                            subpass_index, ref_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        for (dependency_index, dependency) in dependencies.iter().enumerate() {
+            // VUID-VkRenderPassCreateInfo2-pDependencies-parameter
+            dependency
+                .validate(device)
+                .map_err(|err| err.add_context(format!("dependencies[{}]", dependency_index)))?;
+
+            let &SubpassDependency {
+                src_subpass,
+                dst_subpass,
+                src_stages,
+                dst_stages,
+                src_access: _,
+                dst_access: _,
+                dependency_flags,
+                view_offset: _,
+                _ne: _,
+            } = dependency;
+
+            if subpasses[0].view_mask == 0
+                && dependency_flags.intersects(DependencyFlags::VIEW_LOCAL)
+            {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`subpasses[0].view_mask` is 0, and `dependencies[{}].dependency_flags` \
+                        includes `DependencyFlags::VIEW_LOCAL`",
+                        dependency_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkRenderPassCreateInfo2-viewMask-03059"],
+                    ..Default::default()
+                });
+            }
+
+            if let Some(src_subpass) = src_subpass {
+                if src_subpass as usize >= subpasses.len() {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`dependencies[{}].src_subpass` is not less than the length of 
+                            `subpasses`",
+                            dependency_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-srcSubpass-02526"],
+                        ..Default::default()
+                    });
+                }
+            }
+
+            if let Some(dst_subpass) = dst_subpass {
+                if dst_subpass as usize >= subpasses.len() {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`dependencies[{}].dst_subpass` is not less than the length of 
+                            `subpasses`",
+                            dependency_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-dstSubpass-02527"],
+                        ..Default::default()
+                    });
+                }
+            }
+
+            if !PipelineStages::from(QueueFlags::GRAPHICS).contains(src_stages) {
+                return Err(ValidationError {
+                    context: format!("dependencies[{}].src_stages", dependency_index,).into(),
+                    problem: "contains a non-graphics stage".into(),
+                    vuids: &["VUID-VkRenderPassCreateInfo2-pDependencies-03054"],
+                    ..Default::default()
+                });
+            }
+
+            if !PipelineStages::from(QueueFlags::GRAPHICS).contains(dst_stages) {
+                return Err(ValidationError {
+                    context: format!("dependencies[{}].dst_stages", dependency_index,).into(),
+                    problem: "contains a non-graphics stage".into(),
+                    vuids: &["VUID-VkRenderPassCreateInfo2-pDependencies-03055"],
+                    ..Default::default()
+                });
+            }
+
+            if let (Some(src_subpass), Some(dst_subpass)) = (src_subpass, dst_subpass) {
+                if src_subpass == dst_subpass
+                    && subpasses[src_subpass as usize].view_mask.count_ones() > 1
+                    && !dependency_flags.intersects(DependencyFlags::VIEW_LOCAL)
+                {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`dependencies[{0}].src_subpass` equals \
+                            `dependencies[{0}].dst_subpass`, and \
+                            `subpasses[dependencies[{0}].src_subpass].view_mask` has more than \
+                            one bit set, and `dependencies[{0}].dependency_flags` does not \
+                            contain `DependencyFlags::VIEW_LOCAL`",
+                            dependency_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-pDependencies-03060"],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        if !correlated_view_masks.is_empty() {
+            if subpasses[0].view_mask == 0 {
+                return Err(ValidationError {
+                    problem: "`correlated_view_masks` is not empty, but \
+                        `subpasses[0].view_mask` is zero"
+                        .into(),
+                    vuids: &["VUID-VkRenderPassCreateInfo2-viewMask-03057"],
+                    ..Default::default()
+                });
+            }
+
+            correlated_view_masks.iter().try_fold(0, |total, &mask| {
+                if total & mask != 0 {
+                    Err(ValidationError {
+                        context: "correlated_view_masks".into(),
+                        problem: "the bit masks overlap with each other".into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-pCorrelatedViewMasks-03056"],
+                        ..Default::default()
+                    })
+                } else {
+                    Ok(total | mask)
+                }
+            })?;
+        }
+
+        Ok(())
+    }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    RenderPassCreateFlags = RenderPassCreateFlags(u32);
+
+    /* TODO: enable
+    // TODO: document
+    TRANSFORM = TRANSFORM_QCOM {
+        device_extensions: [qcom_render_pass_transform],
+    }, */
+}
+
 /// Describes an attachment that will be used in a render pass.
 #[derive(Clone, Copy, Debug)]
 pub struct AttachmentDescription {
+    /// Additional properties of the attachment.
+    ///
+    /// The default value is empty.
+    pub flags: AttachmentDescriptionFlags,
+
     /// The format of the image that is going to be bound.
     ///
     /// The default value is `None`, which must be overridden.
@@ -783,6 +1919,19 @@ pub struct AttachmentDescription {
     /// The default value is [`StoreOp::DontCare`].
     pub store_op: StoreOp,
 
+    /// The layout that the image must in at the start of the render pass.
+    ///
+    /// The vulkano library will automatically switch to the correct layout if necessary, but it
+    /// is more efficient to set this to the correct value.
+    ///
+    /// The default value is [`ImageLayout::Undefined`].
+    pub initial_layout: ImageLayout,
+
+    /// The layout that the image will be transitioned to at the end of the render pass.
+    ///
+    /// The default value is [`ImageLayout::Undefined`], which must be overridden.
+    pub final_layout: ImageLayout,
+
     /// The equivalent of `load_op` for the stencil component of the attachment, if any. Irrelevant
     /// if there is no stencil component.
     ///
@@ -795,18 +1944,25 @@ pub struct AttachmentDescription {
     /// The default value is [`StoreOp::DontCare`].
     pub stencil_store_op: StoreOp,
 
-    /// The layout that the image must in at the start of the render pass.
+    /// The equivalent of `initial_layout` for the stencil component of the attachment, if any.
+    /// Irrelevant if there is no stencil component.
     ///
-    /// The vulkano library will automatically switch to the correct layout if necessary, but it
-    /// is more efficient to set this to the correct value.
+    /// If this is not the same as `initial_layout`, the
+    /// [`separate_depth_stencil_layouts`](crate::device::Features::separate_depth_stencil_layouts)
+    /// feature must be enabled on the device.
     ///
-    /// The default value is [`ImageLayout::Undefined`], which must be overridden.
-    pub initial_layout: ImageLayout,
+    /// The default value is [`ImageLayout::Undefined`].
+    pub stencil_initial_layout: ImageLayout,
 
-    /// The layout that the image will be transitioned to at the end of the render pass.
+    /// The equivalent of `final_layout` for the stencil component of the attachment, if any.
+    /// Irrelevant if there is no stencil component.
+    ///
+    /// If this is not the same as `final_layout`, the
+    /// [`separate_depth_stencil_layouts`](crate::device::Features::separate_depth_stencil_layouts)
+    /// feature must be enabled on the device.
     ///
     /// The default value is [`ImageLayout::Undefined`], which must be overridden.
-    pub final_layout: ImageLayout,
+    pub stencil_final_layout: ImageLayout,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -815,17 +1971,298 @@ impl Default for AttachmentDescription {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: AttachmentDescriptionFlags::empty(),
             format: None,
             samples: SampleCount::Sample1,
             load_op: LoadOp::DontCare,
             store_op: StoreOp::DontCare,
-            stencil_load_op: LoadOp::DontCare,
-            stencil_store_op: StoreOp::DontCare,
             initial_layout: ImageLayout::Undefined,
             final_layout: ImageLayout::Undefined,
+            stencil_load_op: LoadOp::DontCare,
+            stencil_store_op: StoreOp::DontCare,
+            stencil_initial_layout: ImageLayout::Undefined,
+            stencil_final_layout: ImageLayout::Undefined,
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+impl AttachmentDescription {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            flags,
+            format,
+            samples,
+            load_op,
+            store_op,
+            initial_layout,
+            final_layout,
+            stencil_load_op,
+            stencil_store_op,
+            stencil_initial_layout,
+            stencil_final_layout,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkAttachmentDescription2-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        let format = format.ok_or_else(|| ValidationError {
+            context: "format".into(),
+            problem: "is None".into(),
+            vuids: &["VUID-VkAttachmentDescription2-format-06698"],
+            ..Default::default()
+        })?;
+
+        format
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "format".into(),
+                vuids: &["VUID-VkAttachmentDescription2-format-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        samples
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "samples".into(),
+                vuids: &["VUID-VkAttachmentDescription2-samples-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        load_op
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "load_op".into(),
+                vuids: &["VUID-VkAttachmentDescription2-loadOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        store_op
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "store_op".into(),
+                vuids: &["VUID-VkAttachmentDescription2-storeOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        initial_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "initial_layout".into(),
+                vuids: &["VUID-VkAttachmentDescription2-initialLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        final_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "final_layout".into(),
+                vuids: &["VUID-VkAttachmentDescription2-finalLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        stencil_load_op
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "stencil_load_op".into(),
+                vuids: &["VUID-VkAttachmentDescription2-stencilLoadOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        stencil_store_op
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "stencil_store_op".into(),
+                vuids: &["VUID-VkAttachmentDescription2-stencilStoreOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        stencil_initial_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "stencil_initial_layout".into(),
+                vuids: &[
+                    "VUID-VkAttachmentDescriptionStencilLayout-stencilInitialLayout-parameter",
+                ],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        stencil_final_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "stencil_final_layout".into(),
+                vuids: &["VUID-VkAttachmentDescriptionStencilLayout-stencilFinalLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        let aspects = format.aspects();
+
+        if matches!(
+            final_layout,
+            ImageLayout::Undefined | ImageLayout::Preinitialized
+        ) {
+            return Err(ValidationError {
+                context: "final_layout".into(),
+                problem: "is `ImageLayout::Undefined` or `ImageLayout::Preinitialized`".into(),
+                vuids: &["VUID-VkAttachmentDescription2-finalLayout-03061"],
+                ..Default::default()
+            });
+        }
+
+        if aspects.intersects(ImageAspects::COLOR) {
+            if initial_layout.layout_for(ImageAspect::Color).is_none() {
+                return Err(ValidationError {
+                    problem: "`format` has a color component, but `initial_layout` cannot be \
+                        used with color formats"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkAttachmentDescription2-format-03280",
+                        "VUID-VkAttachmentDescription2-format-06487",
+                    ],
+                    ..Default::default()
+                });
+            }
+
+            if final_layout.layout_for(ImageAspect::Color).is_none() {
+                return Err(ValidationError {
+                    problem: "`format` has a color component, but `final_layout` cannot be \
+                        used with color formats"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkAttachmentDescription2-format-03282",
+                        "VUID-VkAttachmentDescription2-format-06488",
+                    ],
+                    ..Default::default()
+                });
+            }
+
+            if load_op == LoadOp::Load && initial_layout == ImageLayout::Undefined {
+                return Err(ValidationError {
+                    problem: "`format` has a color component, `load_op` is \
+                        `LoadOp::Load`, and `initial_layout` is `ImageLayout::Undefined`"
+                        .into(),
+                    vuids: &["VUID-VkAttachmentDescription2-format-06699"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if aspects.intersects(ImageAspects::DEPTH) {
+            if initial_layout.layout_for(ImageAspect::Depth).is_none() {
+                return Err(ValidationError {
+                    problem: "`format` has a depth component, but `initial_layout` cannot be \
+                        used with depth formats"
+                        .into(),
+                    vuids: &["VUID-VkAttachmentDescription2-format-03281"],
+                    ..Default::default()
+                });
+            }
+
+            if final_layout.layout_for(ImageAspect::Depth).is_none() {
+                return Err(ValidationError {
+                    problem: "`format` has a depth component, but `final_layout` cannot be \
+                        used with depth formats"
+                        .into(),
+                    vuids: &["VUID-VkAttachmentDescription2-format-03283"],
+                    ..Default::default()
+                });
+            }
+
+            if load_op == LoadOp::Load && initial_layout == ImageLayout::Undefined {
+                return Err(ValidationError {
+                    problem: "`format` has a depth component, `load_op` is \
+                        `LoadOp::Load`, and `initial_layout` is `ImageLayout::Undefined`"
+                        .into(),
+                    vuids: &["VUID-VkAttachmentDescription2-format-06699"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if aspects.intersects(ImageAspects::STENCIL) {
+            if initial_layout.layout_for(ImageAspect::Stencil).is_none() {
+                return Err(ValidationError {
+                    problem: "`format` has a stencil component, but `initial_layout` cannot be \
+                        used with stencil formats"
+                        .into(),
+                    vuids: &["VUID-VkAttachmentDescription2-format-03281"],
+                    ..Default::default()
+                });
+            }
+
+            if final_layout.layout_for(ImageAspect::Stencil).is_none() {
+                return Err(ValidationError {
+                    problem: "`format` has a stencil component, but `final_layout` cannot be \
+                        used with stencil formats"
+                        .into(),
+                    vuids: &["VUID-VkAttachmentDescription2-format-03283"],
+                    ..Default::default()
+                });
+            }
+
+            if stencil_load_op == LoadOp::Load && initial_layout == ImageLayout::Undefined {
+                return Err(ValidationError {
+                    problem: "`format` has a stencil component, `stencil_load_op` is \
+                        `LoadOp::Load`, and `initial_layout` is `ImageLayout::Undefined`"
+                        .into(),
+                    vuids: &["VUID-VkAttachmentDescription2-pNext-06704"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+            && !device.enabled_features().separate_depth_stencil_layouts
+        {
+            if initial_layout != stencil_initial_layout {
+                return Err(ValidationError {
+                    problem: "`format` has both a depth and a stencil component, and \
+                        `initial_layout` does not equal `stencil_initial_layout`"
+                        .into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["separate_depth_stencil_layouts"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            if final_layout != stencil_final_layout {
+                return Err(ValidationError {
+                    problem: "`format` has both a depth and a stencil component, and \
+                        `final_layout` does not equal `stencil_final_layout`"
+                        .into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["separate_depth_stencil_layouts"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+        }
+
+        // VUID-VkAttachmentDescription2-samples-08745
+        // TODO: How do you check this?
+
+        Ok(())
+    }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags specifying additional properties of a render pass attachment description.
+    AttachmentDescriptionFlags = AttachmentDescriptionFlags(u32);
+
+    /* TODO: enable
+    // TODO: document
+    MAY_ALIAS = MAY_ALIAS, */
 }
 
 /// Describes one of the subpasses of a render pass.
@@ -842,6 +2279,11 @@ impl Default for AttachmentDescription {
 /// the same as well.
 #[derive(Debug, Clone)]
 pub struct SubpassDescription {
+    /// Additional properties of the subpass.
+    ///
+    /// The default value is empty.
+    pub flags: SubpassDescriptionFlags,
+
     /// If not `0`, enables multiview rendering, and specifies the view indices that are rendered to
     /// in this subpass. The value is a bitmask, so that that for example `0b11` will draw to the
     /// first two views and `0b101` will draw to the first and third view.
@@ -859,7 +2301,7 @@ pub struct SubpassDescription {
     /// must not be [`LoadOp::Clear`].
     ///
     /// The default value is empty.
-    pub input_attachments: Vec<Option<AttachmentReference>>,
+    pub input_attachments: Vec<Option<InputAttachmentReference>>,
 
     /// The attachments of the render pass that are to be used as color attachments in this subpass.
     ///
@@ -868,28 +2310,43 @@ pub struct SubpassDescription {
     /// physical device. All color attachments must have the same `samples` value.
     ///
     /// The default value is empty.
-    pub color_attachments: Vec<Option<AttachmentReference>>,
+    pub color_attachments: Vec<Option<ResolvableAttachmentReference>>,
 
-    /// The attachments of the render pass that are to be used as resolve attachments in this
-    /// subpass.
-    ///
-    /// This list must either be empty or have the same length as `color_attachments`. If it's not
-    /// empty, then each resolve attachment is paired with the color attachment of the same index.
-    /// The resolve attachments must all have a `samples` value of [`SampleCount::Sample1`], while
-    /// the color attachments must have a `samples` value other than [`SampleCount::Sample1`].
-    /// Each resolve attachment must have the same `format` as the corresponding color attachment.
-    ///
-    /// The default value is empty.
-    pub resolve_attachments: Vec<Option<AttachmentReference>>,
-
-    /// The single attachment of the render pass that is to be used as depth-stencil attachment in
+    /// The single attachment of the render pass that is to be used as depth attachment in
     /// this subpass.
     ///
     /// If set to `Some`, the referenced attachment must have the same `samples` value as those in
-    /// `color_attachments`.
+    /// `color_attachments`. If the resolve attachment is also `Some`, then the device API version
+    /// must be at least 1.1, or the
+    /// [`khr_depth_stencil_resolve`](crate::device::DeviceExtensions::khr_depth_stencil_resolve)
+    /// extension must be enabled on the device.
+    ///
+    /// If both `depth_attachment` and `stencil_attachment` are `Some`, then the attachment and
+    /// resolve attachment must be the same, but they can have different layouts and resolve modes.
+    /// If the layouts differ, then the
+    /// [`separate_depth_stencil_layouts`](crate::device::Features::separate_depth_stencil_layouts)
+    /// feature must be enabled on the device.
     ///
     /// The default value is `None`.
-    pub depth_stencil_attachment: Option<AttachmentReference>,
+    pub depth_attachment: Option<ResolvableAttachmentReference>,
+
+    /// The single attachment of the render pass that is to be used as stencil attachment in
+    /// this subpass.
+    ///
+    /// If set to `Some`, the referenced attachment must have the same `samples` value as those in
+    /// `color_attachments`. If the resolve attachment is also `Some`, then the device API version
+    /// must be at least 1.1, or the
+    /// [`khr_depth_stencil_resolve`](crate::device::DeviceExtensions::khr_depth_stencil_resolve)
+    /// extension must be enabled on the device.
+    ///
+    /// If both `depth_attachment` and `stencil_attachment` are `Some`, then the attachment and
+    /// resolve attachment must be the same, but they can have different layouts and resolve modes.
+    /// If the layouts differ, then the
+    /// [`separate_depth_stencil_layouts`](crate::device::Features::separate_depth_stencil_layouts)
+    /// feature must be enabled on the device.
+    ///
+    /// The default value is `None`.
+    pub stencil_attachment: Option<ResolvableAttachmentReference>,
 
     /// The indices of attachments of the render pass that will be preserved during this subpass.
     ///
@@ -905,18 +2362,880 @@ impl Default for SubpassDescription {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: SubpassDescriptionFlags::empty(),
             view_mask: 0,
             color_attachments: Vec::new(),
-            depth_stencil_attachment: None,
+            depth_attachment: None,
+            stencil_attachment: None,
             input_attachments: Vec::new(),
-            resolve_attachments: Vec::new(),
             preserve_attachments: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
 }
 
-/// A reference in a subpass description to a particular attachment of the render pass.
+impl SubpassDescription {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let properties = device.physical_device().properties();
+
+        let &Self {
+            flags,
+            view_mask,
+            ref input_attachments,
+            ref color_attachments,
+            ref depth_attachment,
+            ref stencil_attachment,
+            ref preserve_attachments,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkSubpassDescription2-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if color_attachments.len() as u32 > properties.max_color_attachments {
+            return Err(ValidationError {
+                context: "color_attachments".into(),
+                problem: "the number of elements is greater than the `max_color_attachments` limit"
+                    .into(),
+                vuids: &["VUID-VkSubpassDescription2-colorAttachmentCount-03063"],
+                ..Default::default()
+            });
+        }
+
+        // Track the layout of each attachment used in this subpass
+        let mut layouts = HashMap::default();
+
+        for (ref_index, color_attachment) in color_attachments
+            .iter()
+            .enumerate()
+            .flat_map(|(i, a)| a.as_ref().map(|a| (i, a)))
+        {
+            // VUID-VkSubpassDescription2-pColorAttachments-parameter
+            // VUID-VkSubpassDescription2-pResolveAttachments-parameter
+            color_attachment
+                .validate(device)
+                .map_err(|err| err.add_context(format!("color_attachments[{}]", ref_index)))?;
+
+            let &ResolvableAttachmentReference {
+                attachment_ref:
+                    AttachmentReference {
+                        attachment,
+                        layout,
+                        _ne: _,
+                    },
+                ref resolve,
+            } = color_attachment;
+
+            if preserve_attachments.contains(&attachment) {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`color_attachments[{}].attachment_ref.attachment` also occurs in \
+                        `preserve_attachments`",
+                        ref_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkSubpassDescription2-pPreserveAttachments-03074"],
+                    ..Default::default()
+                });
+            }
+
+            if matches!(layout, ImageLayout::ShaderReadOnlyOptimal) {
+                return Err(ValidationError {
+                    context: format!("color_attachments[{}].attachment_ref.layout", ref_index)
+                        .into(),
+                    problem: "is `ImageLayout::ShaderReadOnlyOptimal`".into(),
+                    vuids: &["VUID-VkSubpassDescription2-attachment-06913"],
+                    ..Default::default()
+                });
+            }
+
+            if layout.layout_for(ImageAspect::Color).is_none() {
+                return Err(ValidationError {
+                    context: format!("color_attachments[{}].attachment_ref.layout", ref_index)
+                        .into(),
+                    problem: "cannot be used with color attachments".into(),
+                    vuids: &[
+                        "VUID-VkSubpassDescription2-attachment-06913",
+                        "VUID-VkSubpassDescription2-attachment-06916",
+                        "VUID-VkSubpassDescription2-attachment-06919",
+                    ],
+                    ..Default::default()
+                });
+            }
+
+            match layouts.entry(attachment) {
+                Entry::Occupied(entry) => {
+                    if *entry.get() != layout {
+                        return Err(ValidationError {
+                            context: format!(
+                                "color_attachments[{}].attachment_ref.layout",
+                                ref_index
+                            )
+                            .into(),
+                            problem: "is not equal to the layout used for this attachment \
+                                elsewhere in this subpass"
+                                .into(),
+                            vuids: &["VUID-VkSubpassDescription2-layout-02528"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(layout);
+                }
+            }
+
+            if let Some(resolve) = resolve {
+                let &ResolveAttachmentReference {
+                    attachment_ref:
+                        AttachmentReference {
+                            attachment: resolve_attachment,
+                            layout: resolve_layout,
+                            _ne: _,
+                        },
+                    mode: _,
+                } = resolve;
+
+                if preserve_attachments.contains(&resolve_attachment) {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`color_attachments[{}].resolve.attachment_ref.attachment` \
+                            also occurs in `preserve_attachments`",
+                            ref_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkSubpassDescription2-pPreserveAttachments-03074"],
+                        ..Default::default()
+                    });
+                }
+
+                if matches!(resolve_layout, ImageLayout::ShaderReadOnlyOptimal) {
+                    return Err(ValidationError {
+                        context: format!(
+                            "color_attachments[{}].resolve.attachment_ref.layout",
+                            ref_index
+                        )
+                        .into(),
+                        problem: "is `ImageLayout::ShaderReadOnlyOptimal`".into(),
+                        vuids: &["VUID-VkSubpassDescription2-attachment-06914"],
+                        ..Default::default()
+                    });
+                }
+
+                if resolve_layout.layout_for(ImageAspect::Color).is_none() {
+                    return Err(ValidationError {
+                        context: format!(
+                            "color_attachments[{}].resolve.attachment_ref.layout",
+                            ref_index
+                        )
+                        .into(),
+                        problem: "cannot be used with color attachments".into(),
+                        vuids: &[
+                            "VUID-VkSubpassDescription2-attachment-06914",
+                            "VUID-VkSubpassDescription2-attachment-06917",
+                            "VUID-VkSubpassDescription2-attachment-06920",
+                        ],
+                        ..Default::default()
+                    });
+                }
+
+                match layouts.entry(resolve_attachment) {
+                    Entry::Occupied(entry) => {
+                        if *entry.get() != resolve_layout {
+                            return Err(ValidationError {
+                                context: format!(
+                                    "color_attachments[{}].resolve.attachment_ref.layout",
+                                    ref_index
+                                )
+                                .into(),
+                                problem: "is not equal to the layout used for this attachment \
+                                    elsewhere in this subpass"
+                                    .into(),
+                                vuids: &["VUID-VkSubpassDescription2-layout-02528"],
+                                ..Default::default()
+                            });
+                        }
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(resolve_layout);
+                    }
+                }
+            }
+        }
+
+        if let Some(depth_attachment) = depth_attachment.as_ref() {
+            // VUID-VkSubpassDescription2-pDepthStencilAttachment-parameter
+            depth_attachment
+                .validate(device)
+                .map_err(|err| err.add_context("depth_attachment"))?;
+
+            let &ResolvableAttachmentReference {
+                attachment_ref:
+                    AttachmentReference {
+                        attachment,
+                        layout,
+                        _ne: _,
+                    },
+                ref resolve,
+            } = depth_attachment;
+
+            if preserve_attachments.contains(&attachment) {
+                return Err(ValidationError {
+                    problem: "`depth_attachment.attachment_ref.attachment` also occurs in \
+                        `preserve_attachments`"
+                        .into(),
+                    vuids: &["VUID-VkSubpassDescription2-pPreserveAttachments-03074"],
+                    ..Default::default()
+                });
+            }
+
+            if matches!(layout, ImageLayout::ShaderReadOnlyOptimal) {
+                return Err(ValidationError {
+                    context: "depth_attachment.attachment_ref.layout".into(),
+                    problem: "is `ImageLayout::ShaderReadOnlyOptimal`".into(),
+                    vuids: &["VUID-VkSubpassDescription2-attachment-06915"],
+                    ..Default::default()
+                });
+            }
+
+            if layout.layout_for(ImageAspect::Depth).is_none() {
+                return Err(ValidationError {
+                    context: "depth_attachment.attachment_ref.layout".into(),
+                    problem: "cannot be used with depth attachments".into(),
+                    vuids: &["VUID-VkSubpassDescription2-attachment-06915"],
+                    ..Default::default()
+                });
+            }
+
+            match layouts.entry(attachment) {
+                Entry::Occupied(entry) => {
+                    if *entry.get() != layout {
+                        return Err(ValidationError {
+                            context: "depth_attachment.attachment_ref.layout".into(),
+                            problem: "is not equal to the layout used for this attachment \
+                                elsewhere in this subpass"
+                                .into(),
+                            vuids: &["VUID-VkSubpassDescription2-layout-02528"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(layout);
+                }
+            }
+
+            if color_attachments
+                .iter()
+                .flatten()
+                .any(|color_atch_ref| color_atch_ref.attachment_ref.attachment == attachment)
+            {
+                return Err(ValidationError {
+                    problem: "`depth_attachment.attachment_ref.attachment` also occurs in \
+                        `color_attachments`"
+                        .into(),
+                    vuids: &["VUID-VkSubpassDescription2-pDepthStencilAttachment-04440"],
+                    ..Default::default()
+                });
+            }
+
+            if let Some(resolve) = resolve {
+                if !(device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_depth_stencil_resolve)
+                {
+                    return Err(ValidationError {
+                        context: "depth_attachment.resolve".into(),
+                        problem: "is `Some`".into(),
+                        requires_one_of: RequiresOneOf {
+                            api_version: Some(Version::V1_1),
+                            device_extensions: &["khr_depth_stencil_resolve"],
+                            ..Default::default()
+                        },
+                        // vuids?
+                        ..Default::default()
+                    });
+                }
+
+                let &ResolveAttachmentReference {
+                    attachment_ref:
+                        AttachmentReference {
+                            attachment: resolve_attachment,
+                            layout: resolve_layout,
+                            _ne: _,
+                        },
+                    mode,
+                } = resolve;
+
+                if preserve_attachments.contains(&resolve_attachment) {
+                    return Err(ValidationError {
+                        problem: "`depth_attachment.resolve.attachment_ref.attachment` \
+                            also occurs in `preserve_attachments`"
+                            .into(),
+                        vuids: &["VUID-VkSubpassDescription2-pPreserveAttachments-03074"],
+                        ..Default::default()
+                    });
+                }
+
+                if matches!(resolve_layout, ImageLayout::ShaderReadOnlyOptimal) {
+                    return Err(ValidationError {
+                        context: "depth_attachment.resolve.attachment_ref.layout".into(),
+                        problem: "is `ImageLayout::ShaderReadOnlyOptimal`".into(),
+                        vuids: &["VUID-VkSubpassDescription2-attachment-06914"],
+                        ..Default::default()
+                    });
+                }
+
+                if resolve_layout.layout_for(ImageAspect::Depth).is_none() {
+                    return Err(ValidationError {
+                        context: "depth_attachment.resolve.attachment_ref.layout".into(),
+                        problem: "cannot be used with depth attachments".into(),
+                        vuids: &[
+                            "VUID-VkSubpassDescription2-attachment-06914",
+                            "VUID-VkSubpassDescription2-attachment-06917",
+                            "VUID-VkSubpassDescription2-attachment-06920",
+                        ],
+                        ..Default::default()
+                    });
+                }
+
+                match layouts.entry(resolve_attachment) {
+                    Entry::Occupied(entry) => {
+                        if *entry.get() != resolve_layout {
+                            return Err(ValidationError {
+                                context: "depth_attachment.resolve.attachment_ref.layout".into(),
+                                problem: "is not equal to the layout used for this attachment \
+                                    elsewhere in this subpass"
+                                    .into(),
+                                vuids: &["VUID-VkSubpassDescription2-layout-02528"],
+                                ..Default::default()
+                            });
+                        }
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(resolve_layout);
+                    }
+                }
+
+                if !device
+                    .physical_device()
+                    .properties()
+                    .supported_depth_resolve_modes
+                    .unwrap_or_default()
+                    .contains_enum(mode)
+                {
+                    return Err(ValidationError {
+                        problem: "depth_attachment.resolve.mode` is not one of the \
+                            modes in the `supported_depth_resolve_modes` device property"
+                            .into(),
+                        vuids: &[
+                            "VUID-VkSubpassDescriptionDepthStencilResolve-depthResolveMode-03183",
+                        ],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        if let Some(stencil_attachment) = stencil_attachment.as_ref() {
+            // VUID-VkSubpassDescription2-pDepthStencilAttachment-parameter
+            stencil_attachment
+                .validate(device)
+                .map_err(|err| err.add_context("stencil_attachment"))?;
+
+            let &ResolvableAttachmentReference {
+                attachment_ref:
+                    AttachmentReference {
+                        attachment,
+                        layout,
+                        _ne: _,
+                    },
+                ref resolve,
+            } = stencil_attachment;
+
+            if preserve_attachments.contains(&attachment) {
+                return Err(ValidationError {
+                    problem: "`stencil_attachment.attachment_ref.attachment` also occurs in \
+                        `preserve_attachments`"
+                        .into(),
+                    vuids: &["VUID-VkSubpassDescription2-pPreserveAttachments-03074"],
+                    ..Default::default()
+                });
+            }
+
+            if matches!(layout, ImageLayout::ShaderReadOnlyOptimal) {
+                return Err(ValidationError {
+                    context: "stencil_attachment.attachment_ref.layout".into(),
+                    problem: "is `ImageLayout::ShaderReadOnlyOptimal`".into(),
+                    vuids: &["VUID-VkSubpassDescription2-attachment-06915"],
+                    ..Default::default()
+                });
+            }
+
+            if layout.layout_for(ImageAspect::Stencil).is_none() {
+                return Err(ValidationError {
+                    context: "stencil_attachment.attachment_ref.layout".into(),
+                    problem: "cannot be used with stencil attachments".into(),
+                    vuids: &["VUID-VkSubpassDescription2-attachment-06915"],
+                    ..Default::default()
+                });
+            }
+
+            match layouts.entry(attachment) {
+                Entry::Occupied(entry) => {
+                    if *entry.get() != layout {
+                        return Err(ValidationError {
+                            context: "stencil_attachment.attachment_ref.layout".into(),
+                            problem: "is not equal to the layout used for this attachment \
+                                elsewhere in this subpass"
+                                .into(),
+                            vuids: &["VUID-VkSubpassDescription2-layout-02528"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(layout);
+                }
+            }
+
+            if color_attachments
+                .iter()
+                .flatten()
+                .any(|color_atch_ref| color_atch_ref.attachment_ref.attachment == attachment)
+            {
+                return Err(ValidationError {
+                    problem: "`stencil_attachment.attachment_ref.attachment` also occurs in \
+                        `color_attachments`"
+                        .into(),
+                    vuids: &["VUID-VkSubpassDescription2-pDepthStencilAttachment-04440"],
+                    ..Default::default()
+                });
+            }
+
+            if let Some(resolve) = resolve {
+                if !(device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_depth_stencil_resolve)
+                {
+                    return Err(ValidationError {
+                        context: "stencil_attachment.resolve".into(),
+                        problem: "is `Some`".into(),
+                        requires_one_of: RequiresOneOf {
+                            api_version: Some(Version::V1_1),
+                            device_extensions: &["khr_depth_stencil_resolve"],
+                            ..Default::default()
+                        },
+                        // vuids?
+                        ..Default::default()
+                    });
+                }
+
+                let &ResolveAttachmentReference {
+                    attachment_ref:
+                        AttachmentReference {
+                            attachment: resolve_attachment,
+                            layout: resolve_layout,
+                            _ne: _,
+                        },
+                    mode,
+                } = resolve;
+
+                if preserve_attachments.contains(&resolve_attachment) {
+                    return Err(ValidationError {
+                        problem: "`stencil_attachment.resolve.attachment_ref.attachment` \
+                            also occurs in `preserve_attachments`"
+                            .into(),
+                        vuids: &["VUID-VkSubpassDescription2-pPreserveAttachments-03074"],
+                        ..Default::default()
+                    });
+                }
+
+                if matches!(resolve_layout, ImageLayout::ShaderReadOnlyOptimal) {
+                    return Err(ValidationError {
+                        context: "stencil_attachment.resolve.attachment_ref.layout".into(),
+                        problem: "is `ImageLayout::ShaderReadOnlyOptimal`".into(),
+                        vuids: &["VUID-VkSubpassDescription2-attachment-06914"],
+                        ..Default::default()
+                    });
+                }
+
+                if resolve_layout.layout_for(ImageAspect::Stencil).is_none() {
+                    return Err(ValidationError {
+                        context: "stencil_attachment.resolve.attachment_ref.layout".into(),
+                        problem: "cannot be used with stencil attachments".into(),
+                        vuids: &[
+                            "VUID-VkSubpassDescription2-attachment-06914",
+                            "VUID-VkSubpassDescription2-attachment-06917",
+                            "VUID-VkSubpassDescription2-attachment-06920",
+                        ],
+                        ..Default::default()
+                    });
+                }
+
+                match layouts.entry(resolve_attachment) {
+                    Entry::Occupied(entry) => {
+                        if *entry.get() != resolve_layout {
+                            return Err(ValidationError {
+                                context: "stencil_attachment.resolve.attachment_ref.layout".into(),
+                                problem: "is not equal to the layout used for this attachment \
+                                    elsewhere in this subpass"
+                                    .into(),
+                                vuids: &["VUID-VkSubpassDescription2-layout-02528"],
+                                ..Default::default()
+                            });
+                        }
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(resolve_layout);
+                    }
+                }
+
+                if !device
+                    .physical_device()
+                    .properties()
+                    .supported_stencil_resolve_modes
+                    .unwrap_or_default()
+                    .contains_enum(mode)
+                {
+                    return Err(ValidationError {
+                        problem: "stencil_attachment.resolve.mode` is not one of the \
+                            modes in the `supported_stencil_resolve_modes` device property"
+                            .into(),
+                        vuids: &[
+                            "VUID-VkSubpassDescriptionDepthStencilResolve-stencilResolveMode-03184",
+                        ],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        if let (Some(depth_attachment), Some(stencil_attachment)) =
+            (depth_attachment, stencil_attachment)
+        {
+            let &ResolvableAttachmentReference {
+                attachment_ref:
+                    AttachmentReference {
+                        attachment: depth_attachment,
+                        layout: depth_layout,
+                        _ne: _,
+                    },
+                resolve: ref depth_resolve,
+            } = depth_attachment;
+            let &ResolvableAttachmentReference {
+                attachment_ref:
+                    AttachmentReference {
+                        attachment: stencil_attachment,
+                        layout: stencil_layout,
+                        _ne: _,
+                    },
+                resolve: ref stencil_resolve,
+            } = stencil_attachment;
+
+            if depth_attachment != stencil_attachment {
+                return Err(ValidationError {
+                    problem: "`depth_attachment` and `stencil_attachment` are both \
+                        `Some`, and `depth_attachment.attachment_ref.attachment` does not 
+                        equal `stencil_attachment.attachment_ref.attachment`"
+                        .into(),
+                    // vuids?
+                    ..Default::default()
+                });
+            }
+
+            if depth_layout != stencil_layout
+                && !device.enabled_features().separate_depth_stencil_layouts
+            {
+                return Err(ValidationError {
+                    problem: "`depth_attachment` and `stencil_attachment` are both \
+                        `Some`, and `depth_attachment.attachment_ref.layout` does not \
+                        equal `stencil_attachment.attachment_ref.layout`"
+                        .into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["separate_depth_stencil_layouts"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            match (depth_resolve, stencil_resolve) {
+                (None, None) => (),
+                (None, Some(_)) | (Some(_), None) => {
+                    if !properties.independent_resolve_none.unwrap_or(false) {
+                        return Err(ValidationError {
+                            problem: "`depth_attachment` and `stencil_attachment` are both \
+                                `Some`, and the `independent_resolve_none` device property is \
+                                `false`, but one of `depth_attachment.resolve` and \
+                                `stencil_attachment.resolve` is `Some` while the other is `None`"
+                                .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03186"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                (Some(depth_resolve), Some(stencil_resolve)) => {
+                    let &ResolveAttachmentReference {
+                        attachment_ref:
+                            AttachmentReference {
+                                attachment: depth_resolve_attachment,
+                                layout: depth_resolve_layout,
+                                _ne: _,
+                            },
+                        mode: depth_mode,
+                    } = depth_resolve;
+                    let &ResolveAttachmentReference {
+                        attachment_ref:
+                            AttachmentReference {
+                                attachment: stencil_resolve_attachment,
+                                layout: stencil_resolve_layout,
+                                _ne: _,
+                            },
+                        mode: stencil_mode,
+                    } = stencil_resolve;
+
+                    if depth_resolve_attachment != stencil_resolve_attachment {
+                        return Err(ValidationError {
+                            problem: "`depth_attachment` and `stencil_attachment` are both \
+                                `Some`, and `depth_attachment.resolve` and \
+                                `stencil_attachment.resolve` are also both `Some`, and \
+                                `depth_attachment.resolve.attachment_ref.attachment` does not \
+                                equal `stencil_attachment.resolve.attachment_ref.attachment`"
+                                .into(),
+                            // vuids?
+                            ..Default::default()
+                        });
+                    }
+
+                    if depth_resolve_layout != stencil_resolve_layout
+                        && !device.enabled_features().separate_depth_stencil_layouts
+                    {
+                        return Err(ValidationError {
+                            problem: "`depth_attachment` and `stencil_attachment` are both \
+                                `Some`, and `depth_attachment.resolve` and \
+                                `stencil_attachment.resolve` are also both `Some`, and \
+                                `depth_attachment.resolve.attachment_ref.layout` does not \
+                                equal `stencil_attachment.resolve.attachment_ref.layout`"
+                                .into(),
+                            requires_one_of: RequiresOneOf {
+                                features: &["separate_depth_stencil_layouts"],
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        });
+                    }
+
+                    if depth_mode != stencil_mode
+                        && !properties.independent_resolve.unwrap_or(false)
+                    {
+                        return Err(ValidationError {
+                            problem: "`depth_attachment` and `stencil_attachment` are both \
+                                `Some`, and `depth_attachment.resolve` and \
+                                `stencil_attachment.resolve` are also both `Some`,
+                                the `independent_resolve` device property is `false`, but \
+                                `depth_attachment.resolve.mode` does not equal \
+                                `stencil_attachment.resolve.mode`"
+                                .into(),
+                            vuids: &["VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03185"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+
+        for (ref_index, input_attachment) in input_attachments
+            .iter()
+            .enumerate()
+            .flat_map(|(i, a)| a.as_ref().map(|a| (i, a)))
+        {
+            // VUID-VkSubpassDescription2-pInputAttachments-parameter
+            input_attachment
+                .validate(device)
+                .map_err(|err| err.add_context(format!("input_attachments[{}]", ref_index)))?;
+
+            let &InputAttachmentReference {
+                attachment_ref:
+                    AttachmentReference {
+                        attachment,
+                        layout,
+                        _ne: _,
+                    },
+                aspects,
+            } = input_attachment;
+
+            if preserve_attachments.contains(&attachment) {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`input_attachments[{}].attachment` also occurs in \
+                        `preserve_attachments`",
+                        ref_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkSubpassDescription2-pPreserveAttachments-03074"],
+                    ..Default::default()
+                });
+            }
+
+            if matches!(
+                layout,
+                ImageLayout::ColorAttachmentOptimal
+                    | ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+            ) {
+                return Err(ValidationError {
+                    context: format!("input_attachments[{}].layout", ref_index).into(),
+                    problem: "cannot be used with input attachments".into(),
+                    vuids: &[
+                        "VUID-VkSubpassDescription2-attachment-06912",
+                        "VUID-VkSubpassDescription2-attachment-06918",
+                    ],
+                    ..Default::default()
+                });
+            }
+
+            match layouts.entry(attachment) {
+                Entry::Occupied(entry) => {
+                    if *entry.get() != layout {
+                        return Err(ValidationError {
+                            context: format!("input_attachments[{}].layout", ref_index).into(),
+                            problem: "is not equal to the layout used for this attachment \
+                                elsewhere in this subpass"
+                                .into(),
+                            vuids: &["VUID-VkSubpassDescription2-layout-02528"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(layout);
+                }
+            }
+
+            if aspects.is_empty() {
+                return Err(ValidationError {
+                    context: format!("input_attachments[{}].aspects", ref_index).into(),
+                    problem: "is empty for an input attachment".into(),
+                    vuids: &["VUID-VkSubpassDescription2-attachment-02800"],
+                    ..Default::default()
+                });
+            }
+
+            if aspects.intersects(ImageAspects::METADATA) {
+                return Err(ValidationError {
+                    context: format!("input_attachments[{}].aspects", ref_index).into(),
+                    problem: "contains `ImageAspects::METADATA`".into(),
+                    vuids: &["VUID-VkSubpassDescription2-attachment-02801"],
+                    ..Default::default()
+                });
+            }
+
+            if aspects.intersects(
+                ImageAspects::MEMORY_PLANE_0
+                    | ImageAspects::MEMORY_PLANE_1
+                    | ImageAspects::MEMORY_PLANE_2,
+            ) {
+                return Err(ValidationError {
+                    context: format!("input_attachments[{}].aspects", ref_index).into(),
+                    problem: "contains `ImageAspects::MEMORY_PLANE_0`, \
+                        `ImageAspects::MEMORY_PLANE_1` or `ImageAspects::MEMORY_PLANE_2`"
+                        .into(),
+                    vuids: &["VUID-VkSubpassDescription2-attachment-04563"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if !device.enabled_features().multiview && view_mask != 0 {
+            return Err(ValidationError {
+                context: "view_mask".into(),
+                problem: "is not 0".into(),
+                requires_one_of: RequiresOneOf {
+                    features: &["multiview"],
+                    ..Default::default()
+                },
+                vuids: &["VUID-VkSubpassDescription2-multiview-06558"],
+            });
+        }
+
+        let highest_view_index = u32::BITS - view_mask.leading_zeros();
+
+        if highest_view_index >= properties.max_multiview_view_count.unwrap_or(0) {
+            return Err(ValidationError {
+                context: "view_mask".into(),
+                problem: "the highest enabled view index is not less than the \
+                    `max_multiview_view_count` limit"
+                    .into(),
+                vuids: &["VUID-VkSubpassDescription2-viewMask-06706"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
+    }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags specifying additional properties of a render pass subpass description.
+    SubpassDescriptionFlags = SubpassDescriptionFlags(u32);
+
+    /* TODO: enable
+    // TODO: document
+    PER_VIEW_ATTRIBUTES = PER_VIEW_ATTRIBUTES_NVX {
+        device_extensions: [nvx_multiview_per_view_attributes],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    PER_VIEW_POSITION_X_ONLY = PER_VIEW_POSITION_X_ONLY_NVX{
+        device_extensions: [nvx_multiview_per_view_attributes],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    FRAGMENT_REGION = FRAGMENT_REGION_QCOM {
+        device_extensions: [qcom_render_pass_shader_resolve],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    SHADER_RESOLVE = SHADER_RESOLVE_QCOM {
+        device_extensions: [qcom_render_pass_shader_resolve],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    RASTERIZATION_ORDER_ATTACHMENT_COLOR_ACCESS = RASTERIZATION_ORDER_ATTACHMENT_COLOR_ACCESS_EXT {
+        device_extensions: [ext_rasterization_order_attachment_access, arm_rasterization_order_attachment_access],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    RASTERIZATION_ORDER_ATTACHMENT_DEPTH_ACCESS = RASTERIZATION_ORDER_ATTACHMENT_DEPTH_ACCESS_EXT {
+        device_extensions: [ext_rasterization_order_attachment_access, arm_rasterization_order_attachment_access],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    RASTERIZATION_ORDER_ATTACHMENT_STENCIL_ACCESS = RASTERIZATION_ORDER_ATTACHMENT_STENCIL_ACCESS_EXT {
+        device_extensions: [ext_rasterization_order_attachment_access, arm_rasterization_order_attachment_access],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    ENABLE_LEGACY_DITHERING = ENABLE_LEGACY_DITHERING_EXT {
+        device_extensions: [ext_legacy_dithering],
+    }, */
+}
+
+/// A reference to an attachment in a subpass description of a render pass.
 #[derive(Clone, Debug)]
 pub struct AttachmentReference {
     /// The number of the attachment being referred to.
@@ -933,8 +3252,141 @@ pub struct AttachmentReference {
     /// The default value is [`ImageLayout::Undefined`], which must be overridden.
     pub layout: ImageLayout,
 
-    /// For references to input attachments, the aspects of the image that should be selected.
-    /// For attachment types other than input attachments, the value must be empty.
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for AttachmentReference {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            attachment: 0,
+            layout: ImageLayout::Undefined,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl AttachmentReference {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            attachment: _,
+            layout,
+            _ne,
+        } = self;
+
+        layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "layout".into(),
+                vuids: &["VUID-VkAttachmentReference2-layout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if matches!(
+            layout,
+            ImageLayout::Undefined | ImageLayout::Preinitialized | ImageLayout::PresentSrc
+        ) {
+            return Err(ValidationError {
+                context: "layout".into(),
+                problem: "is ImageLayout::Undefined, ImageLayout::Preinitialized or \
+                    ImageLayout::PresentSrc"
+                    .into(),
+                vuids: &["VUID-VkAttachmentReference2-layout-03077"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
+    }
+}
+
+/// A reference to a color, depth or stencil attachment in a subpass description of a render pass.
+#[derive(Clone, Debug, Default)]
+pub struct ResolvableAttachmentReference {
+    /// The regular color, depth or stencil attachment.
+    pub attachment_ref: AttachmentReference,
+
+    /// The resolve attachment, if any.
+    ///
+    /// If this is `Some`, then the referenced attachment must the same `format` as the attachment
+    /// referenced by `attachment_ref`. `resolve_attachment_ref` must have a `samples` value of
+    /// [`SampleCount::Sample1`], and `attachment_ref` must have a `samples` value other than
+    /// [`SampleCount::Sample1`].
+    pub resolve: Option<ResolveAttachmentReference>,
+}
+
+impl ResolvableAttachmentReference {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            ref attachment_ref,
+            ref resolve,
+        } = self;
+
+        attachment_ref
+            .validate(device)
+            .map_err(|err| err.add_context("attachment_ref"))?;
+
+        if let Some(resolve) = resolve {
+            resolve
+                .validate(device)
+                .map_err(|err| err.add_context("resolve"))?;
+        }
+
+        Ok(())
+    }
+}
+
+/// A reference to a resolve attachment in a subpass description of a render pass.
+#[derive(Clone, Debug)]
+pub struct ResolveAttachmentReference {
+    /// The resolve attachment.
+    pub attachment_ref: AttachmentReference,
+
+    /// How the resolve operation should be performed.
+    ///
+    /// The default value is [`ResolveMode::Average`].
+    pub mode: ResolveMode,
+}
+
+impl Default for ResolveAttachmentReference {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            attachment_ref: Default::default(),
+            mode: ResolveMode::Average,
+        }
+    }
+}
+
+impl ResolveAttachmentReference {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            ref attachment_ref,
+            mode,
+        } = self;
+
+        attachment_ref
+            .validate(device)
+            .map_err(|err| err.add_context("attachment_ref"))?;
+
+        mode.validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "mode".into(),
+                // vuids?
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+}
+
+/// A reference to an input attachment in a subpass description of a render pass.
+#[derive(Clone, Debug, Default)]
+pub struct InputAttachmentReference {
+    /// The regular input attachment.
+    pub attachment_ref: AttachmentReference,
+
+    /// The aspects of the image that should be selected.
     ///
     /// If empty, all aspects available in the input attachment's `format` will be selected.
     /// If any fields are set, they must be aspects that are available in the `format` of the
@@ -948,19 +3400,28 @@ pub struct AttachmentReference {
     ///
     /// The default value is [`ImageAspects::empty()`].
     pub aspects: ImageAspects,
-
-    pub _ne: crate::NonExhaustive,
 }
 
-impl Default for AttachmentReference {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            attachment: 0,
-            layout: ImageLayout::Undefined,
-            aspects: ImageAspects::empty(),
-            _ne: crate::NonExhaustive(()),
-        }
+impl InputAttachmentReference {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            ref attachment_ref,
+            aspects,
+        } = self;
+
+        attachment_ref
+            .validate(device)
+            .map_err(|err| err.add_context("aspects"))?;
+
+        aspects
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "aspects".into(),
+                // vuids?
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
     }
 }
 
@@ -1071,6 +3532,212 @@ impl Default for SubpassDependency {
     }
 }
 
+impl SubpassDependency {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            src_subpass,
+            dst_subpass,
+            src_stages,
+            dst_stages,
+            src_access,
+            dst_access,
+            dependency_flags,
+            view_offset,
+            _ne: _,
+        } = self;
+
+        // A hack to let us re-use the validation of MemoryBarrier
+        // without using it directly inside SubpassDependency.
+        let temp_barrier = MemoryBarrier {
+            src_stages,
+            src_access,
+            dst_stages,
+            dst_access,
+            ..Default::default()
+        };
+        temp_barrier.validate(device)?;
+
+        // To use the extra flag bits from synchronization 2, we also need create_renderpass2,
+        // for the ability to use extension structs.
+        if !(device.api_version() >= Version::V1_2
+            || device.enabled_extensions().khr_create_renderpass2)
+        {
+            if src_stages.contains_flags2() {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_2),
+                        device_extensions: &["khr_create_renderpass2"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            if dst_stages.contains_flags2() {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_2),
+                        device_extensions: &["khr_create_renderpass2"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            if src_access.contains_flags2() {
+                return Err(ValidationError {
+                    context: "src_access".into(),
+                    problem: "contains flags from `VkAccessFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_2),
+                        device_extensions: &["khr_create_renderpass2"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            if dst_access.contains_flags2() {
+                return Err(ValidationError {
+                    context: "dst_access".into(),
+                    problem: "contains flags from `VkAccessFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_2),
+                        device_extensions: &["khr_create_renderpass2"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+        }
+
+        if !device.enabled_features().synchronization2 {
+            if src_stages.is_empty() {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "is empty".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["synchronization2"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkSubpassDependency2-srcStageMask-03937"],
+                });
+            }
+
+            if dst_stages.is_empty() {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "is empty".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["synchronization2"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkSubpassDependency2-dstStageMask-03937"],
+                });
+            }
+        }
+
+        if src_subpass.is_none() && dst_subpass.is_none() {
+            return Err(ValidationError {
+                problem: "`src_subpass` and `dst_subpass` are both `None`".into(),
+                vuids: &["VUID-VkSubpassDependency2-srcSubpass-03085"],
+                ..Default::default()
+            });
+        }
+
+        if let (Some(src_subpass), Some(dst_subpass)) = (src_subpass, dst_subpass) {
+            if src_subpass > dst_subpass {
+                return Err(ValidationError {
+                    problem: "`src_subpass` is greater than `dst_subpass`".into(),
+                    vuids: &["VUID-VkSubpassDependency2-srcSubpass-03084"],
+                    ..Default::default()
+                });
+            }
+
+            if src_subpass == dst_subpass {
+                let framebuffer_stages = PipelineStages::EARLY_FRAGMENT_TESTS
+                    | PipelineStages::FRAGMENT_SHADER
+                    | PipelineStages::LATE_FRAGMENT_TESTS
+                    | PipelineStages::COLOR_ATTACHMENT_OUTPUT;
+
+                if src_stages.intersects(framebuffer_stages)
+                    && !(dst_stages - framebuffer_stages).is_empty()
+                {
+                    return Err(ValidationError {
+                        problem: "`src_subpass` equals `dst_subpass`, and `src_stages` includes \
+                            a framebuffer-space stage, and `dst_stages` does not contain only \
+                            framebuffer-space stages"
+                            .into(),
+                        vuids: &["VUID-VkSubpassDependency2-srcSubpass-06810"],
+                        ..Default::default()
+                    });
+                }
+
+                if src_stages.intersects(framebuffer_stages)
+                    && dst_stages.intersects(framebuffer_stages)
+                    && !dependency_flags.intersects(DependencyFlags::BY_REGION)
+                {
+                    return Err(ValidationError {
+                        problem: "`src_subpass` equals `dst_subpass`, and \
+                            `src_stages` and `dst_stages` both include a framebuffer-space stage, \
+                            and `dependency_flags` does not include `DependencyFlags::BY_REGION`"
+                            .into(),
+                        vuids: &["VUID-VkSubpassDependency2-srcSubpass-02245"],
+                        ..Default::default()
+                    });
+                }
+
+                if view_offset != 0 {
+                    return Err(ValidationError {
+                        problem: "`src_subpass` equals `dst_subpass`, and `view_offset` is 0"
+                            .into(),
+                        vuids: &["VUID-VkSubpassDependency2-viewOffset-02530"],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        if dependency_flags.intersects(DependencyFlags::VIEW_LOCAL) {
+            if src_subpass.is_none() {
+                return Err(ValidationError {
+                    problem: "`dependency_flags` includes `DependencyFlags::VIEW_LOCAL`, and \
+                        `src_subpass` is `None`"
+                        .into(),
+                    vuids: &["VUID-VkSubpassDependency2-dependencyFlags-03090"],
+                    ..Default::default()
+                });
+            }
+
+            if dst_subpass.is_none() {
+                return Err(ValidationError {
+                    problem: "`dependency_flags` includes `DependencyFlags::VIEW_LOCAL`, and \
+                        `dst_subpass` is `None`"
+                        .into(),
+                    vuids: &["VUID-VkSubpassDependency2-dependencyFlags-03091"],
+                    ..Default::default()
+                });
+            }
+        } else {
+            if view_offset != 0 {
+                return Err(ValidationError {
+                    problem: "`dependency_flags` does not include `DependencyFlags::VIEW_LOCAL`, \
+                        and `view_offset` is not 0"
+                        .into(),
+                    vuids: &["VUID-VkSubpassDependency2-dependencyFlags-03092"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
 vulkan_enum! {
     #[non_exhaustive]
 
@@ -1172,15 +3839,20 @@ vulkan_bitflags_enum! {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        format::Format,
-        render_pass::{RenderPass, RenderPassCreationError},
-    };
+    use super::{RenderPassCreateInfo, SubpassDescription};
+    use crate::{format::Format, render_pass::RenderPass};
 
     #[test]
     fn empty() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = RenderPass::empty_single_pass(device).unwrap();
+        let _ = RenderPass::new(
+            device,
+            RenderPassCreateInfo {
+                subpasses: vec![SubpassDescription::default()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1191,7 +3863,7 @@ mod tests {
             return; // test ignored
         }
 
-        let rp = single_pass_renderpass!(
+        single_pass_renderpass!(
             device,
             attachments: {
                 a1: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
@@ -1207,14 +3879,11 @@ mod tests {
             },
             pass: {
                 color: [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
-        );
-
-        match rp {
-            Err(RenderPassCreationError::SubpassMaxColorAttachmentsExceeded { .. }) => (),
-            _ => panic!(),
-        }
+        )
+        .unwrap_err();
     }
 
     #[test]
@@ -1228,7 +3897,8 @@ mod tests {
             },
             pass: {
                 color: [a],
-                depth_stencil: {},
+                depth: {},
+                stencil: {},
             },
         )
         .unwrap();
