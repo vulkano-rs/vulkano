@@ -2318,7 +2318,7 @@ pub struct SubpassDescription {
     ///
     /// If set to `Some`, the referenced attachment must have the same `samples` value as those in
     /// `color_attachments`. If the resolve attachment is also `Some`, then the device API version
-    /// must be at least 1.1, or the
+    /// must be at least 1.2, or the
     /// [`khr_depth_stencil_resolve`](crate::device::DeviceExtensions::khr_depth_stencil_resolve)
     /// extension must be enabled on the device.
     ///
@@ -2336,7 +2336,7 @@ pub struct SubpassDescription {
     ///
     /// If set to `Some`, the referenced attachment must have the same `samples` value as those in
     /// `color_attachments`. If the resolve attachment is also `Some`, then the device API version
-    /// must be at least 1.1, or the
+    /// must be at least 1.2, or the
     /// [`khr_depth_stencil_resolve`](crate::device::DeviceExtensions::khr_depth_stencil_resolve)
     /// extension must be enabled on the device.
     ///
@@ -2646,14 +2646,14 @@ impl SubpassDescription {
             }
 
             if let Some(resolve) = resolve {
-                if !(device.api_version() >= Version::V1_1
+                if !(device.api_version() >= Version::V1_2
                     || device.enabled_extensions().khr_depth_stencil_resolve)
                 {
                     return Err(ValidationError {
                         context: "depth_attachment.resolve".into(),
                         problem: "is `Some`".into(),
                         requires_one_of: RequiresOneOf {
-                            api_version: Some(Version::V1_1),
+                            api_version: Some(Version::V1_2),
                             device_extensions: &["khr_depth_stencil_resolve"],
                             ..Default::default()
                         },
@@ -2819,14 +2819,14 @@ impl SubpassDescription {
             }
 
             if let Some(resolve) = resolve {
-                if !(device.api_version() >= Version::V1_1
+                if !(device.api_version() >= Version::V1_2
                     || device.enabled_extensions().khr_depth_stencil_resolve)
                 {
                     return Err(ValidationError {
                         context: "stencil_attachment.resolve".into(),
                         problem: "is `Some`".into(),
                         requires_one_of: RequiresOneOf {
-                            api_version: Some(Version::V1_1),
+                            api_version: Some(Version::V1_2),
                             device_extensions: &["khr_depth_stencil_resolve"],
                             ..Default::default()
                         },
