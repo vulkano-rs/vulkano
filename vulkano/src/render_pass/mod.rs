@@ -89,10 +89,10 @@ mod framebuffer;
 ///     attachments: {
 ///         // `foo` is a custom name we give to the first and only attachment.
 ///         foo: {
-///             load: Clear,
-///             store: Store,
 ///             format: Format::R8G8B8A8_UNORM,
 ///             samples: 1,
+///             load_op: Clear,
+///             store_op: Store,
 ///         },
 ///     },
 ///     pass: {
