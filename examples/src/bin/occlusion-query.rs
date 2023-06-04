@@ -285,16 +285,16 @@ fn main() {
         device.clone(),
         attachments: {
             color: {
-                load: Clear,
-                store: Store,
                 format: swapchain.image_format(),
                 samples: 1,
+                load_op: Clear,
+                store_op: Store,
             },
             depth: {
-                load: Clear,
-                store: DontCare,
                 format: Format::D16_UNORM,
                 samples: 1,
+                load_op: Clear,
+                store_op: DontCare,
             },
         },
         pass: {

@@ -73,10 +73,10 @@ macro_rules! ordered_passes_renderpass {
         attachments: {
             $(
                 $atch_name:ident: {
-                    load: $load:ident,
-                    store: $store:ident,
                     format: $format:expr,
-                    samples: $samples:expr
+                    samples: $samples:expr,
+                    load_op: $load_op:ident,
+                    store_op: $store_op:ident
                     $(,initial_layout: $init_layout:expr)?
                     $(,final_layout: $final_layout:expr)?
                     $(,)?
@@ -279,10 +279,8 @@ macro_rules! ordered_passes_renderpass {
                     $crate::render_pass::AttachmentDescription {
                         format: Some($format),
                         samples: $crate::image::SampleCount::try_from($samples).unwrap(),
-                        load_op: $crate::render_pass::LoadOp::$load,
-                        store_op: $crate::render_pass::StoreOp::$store,
-                        stencil_load_op: $crate::render_pass::LoadOp::$load,
-                        stencil_store_op: $crate::render_pass::StoreOp::$store,
+                        load_op: $crate::render_pass::AttachmentLoadOp::$load_op,
+                        store_op: $crate::render_pass::AttachmentStoreOp::$store_op,
                         initial_layout: layout.0.expect(
                             format!(
                                 "Attachment {} is missing initial_layout, this is normally \
@@ -293,6 +291,26 @@ macro_rules! ordered_passes_renderpass {
                             .as_ref(),
                         ),
                         final_layout: layout.1.expect(
+                            format!(
+                                "Attachment {} is missing final_layout, this is normally \
+                                automatically determined but you can manually specify it for an individual \
+                                attachment in the single_pass_renderpass! macro",
+                                attachment_num
+                            )
+                            .as_ref(),
+                        ),
+                        stencil_load_op: $crate::render_pass::AttachmentLoadOp::$load_op,
+                        stencil_store_op: $crate::render_pass::AttachmentStoreOp::$store_op,
+                        stencil_initial_layout: layout.0.expect(
+                            format!(
+                                "Attachment {} is missing initial_layout, this is normally \
+                                automatically determined but you can manually specify it for an individual \
+                                attachment in the single_pass_renderpass! macro",
+                                attachment_num
+                            )
+                            .as_ref(),
+                        ),
+                        stencil_final_layout: layout.1.expect(
                             format!(
                                 "Attachment {} is missing final_layout, this is normally \
                                 automatically determined but you can manually specify it for an individual \
@@ -329,16 +347,16 @@ mod tests {
             device,
             attachments: {
                 a: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 4,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
                 b: {
-                    load: DontCare,
-                    store: Store,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: DontCare,
+                    store_op: Store,
                 },
             },
             pass: {

@@ -22,8 +22,8 @@ use crate::{
     image::{ImageAspect, ImageAspects, ImageLayout, ImageUsage, ImageViewAbstract, SampleCount},
     pipeline::graphics::subpass::PipelineRenderingCreateInfo,
     render_pass::{
-        AttachmentDescription, Framebuffer, LoadOp, RenderPass, ResolveMode, StoreOp,
-        SubpassDescription,
+        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, Framebuffer, RenderPass,
+        ResolveMode, SubpassDescription,
     },
     sync::PipelineStageAccessFlags,
     RequirementNotMet, RequiresOneOf, Version, VulkanObject,
@@ -333,15 +333,15 @@ where
             let attachment_index = attachment_index as u32;
             let attachment_format = attachment_desc.format.unwrap();
 
-            if attachment_desc.load_op == LoadOp::Clear
-                || attachment_desc.stencil_load_op == LoadOp::Clear
+            if attachment_desc.load_op == AttachmentLoadOp::Clear
+                || attachment_desc.stencil_load_op == AttachmentLoadOp::Clear
             {
                 let clear_value = match clear_value {
                     Some(x) => x,
                     None => return Err(RenderPassError::ClearValueMissing { attachment_index }),
                 };
 
-                if let (Some(numeric_type), LoadOp::Clear) =
+                if let (Some(numeric_type), AttachmentLoadOp::Clear) =
                     (attachment_format.type_color(), attachment_desc.load_op)
                 {
                     match numeric_type {
@@ -382,9 +382,9 @@ where
                 } else {
                     let attachment_aspects = attachment_format.aspects();
                     let need_depth = attachment_aspects.intersects(ImageAspects::DEPTH)
-                        && attachment_desc.load_op == LoadOp::Clear;
+                        && attachment_desc.load_op == AttachmentLoadOp::Clear;
                     let need_stencil = attachment_aspects.intersects(ImageAspects::STENCIL)
-                        && attachment_desc.stencil_load_op == LoadOp::Clear;
+                        && attachment_desc.stencil_load_op == AttachmentLoadOp::Clear;
 
                     if need_depth && need_stencil {
                         if !matches!(clear_value, ClearValue::DepthStencil(_)) {
@@ -2364,12 +2364,12 @@ pub struct RenderingAttachmentInfo {
     /// What the implementation should do with the attachment at the start of rendering.
     ///
     /// The default value is [`LoadOp::DontCare`].
-    pub load_op: LoadOp,
+    pub load_op: AttachmentLoadOp,
 
     /// What the implementation should do with the attachment at the end of rendering.
     ///
     /// The default value is [`StoreOp::DontCare`].
-    pub store_op: StoreOp,
+    pub store_op: AttachmentStoreOp,
 
     /// If `load_op` is [`LoadOp::Clear`], specifies the clear value that should be used for the
     /// attachment.
@@ -2397,8 +2397,8 @@ impl RenderingAttachmentInfo {
             image_view,
             image_layout,
             resolve_info: None,
-            load_op: LoadOp::DontCare,
-            store_op: StoreOp::DontCare,
+            load_op: AttachmentLoadOp::DontCare,
+            store_op: AttachmentStoreOp::DontCare,
             clear_value: None,
             _ne: crate::NonExhaustive(()),
         }

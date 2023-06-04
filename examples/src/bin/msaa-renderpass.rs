@@ -191,19 +191,19 @@ fn main() {
         attachments: {
             // The first framebuffer attachment is the intermediary image.
             intermediary: {
-                load: Clear,
-                store: DontCare,
                 format: Format::R8G8B8A8_UNORM,
                 // This has to match the image definition.
                 samples: 4,
+                load_op: Clear,
+                store_op: DontCare,
             },
             // The second framebuffer attachment is the final image.
             color: {
-                load: DontCare,
-                store: Store,
                 format: Format::R8G8B8A8_UNORM,
                 // Same here, this has to match.
                 samples: 1,
+                load_op: DontCare,
+                store_op: Store,
             },
         },
         pass: {

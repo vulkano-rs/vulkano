@@ -44,9 +44,9 @@ use vulkano::{
         GraphicsPipeline, PipelineLayout,
     },
     render_pass::{
-        AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
-        RenderPass, RenderPassCreateInfo, ResolvableAttachmentReference, StoreOp, Subpass,
-        SubpassDescription,
+        AttachmentDescription, AttachmentLoadOp, AttachmentReference, AttachmentStoreOp,
+        Framebuffer, FramebufferCreateInfo, RenderPass, RenderPassCreateInfo,
+        ResolvableAttachmentReference, Subpass, SubpassDescription,
     },
     shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
@@ -225,10 +225,10 @@ fn main() {
         attachments: vec![AttachmentDescription {
             format: Some(image.format()),
             samples: SampleCount::Sample1,
-            load_op: LoadOp::Clear,
-            store_op: StoreOp::Store,
-            stencil_load_op: LoadOp::Clear,
-            stencil_store_op: StoreOp::Store,
+            load_op: AttachmentLoadOp::Clear,
+            store_op: AttachmentStoreOp::Store,
+            stencil_load_op: AttachmentLoadOp::Clear,
+            stencil_store_op: AttachmentStoreOp::Store,
             initial_layout: ImageLayout::ColorAttachmentOptimal,
             final_layout: ImageLayout::ColorAttachmentOptimal,
             ..Default::default()

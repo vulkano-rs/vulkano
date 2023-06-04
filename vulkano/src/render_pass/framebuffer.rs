@@ -734,10 +734,10 @@ mod tests {
             device.clone(),
             attachments: {
                 color: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             pass: {
@@ -811,10 +811,10 @@ mod tests {
             device.clone(),
             attachments: {
                 color: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             pass: {
@@ -853,10 +853,10 @@ mod tests {
             device.clone(),
             attachments: {
                 color: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             pass: {
@@ -893,10 +893,10 @@ mod tests {
             device.clone(),
             attachments: {
                 color: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             pass: {
@@ -935,16 +935,16 @@ mod tests {
             device.clone(),
             attachments: {
                 a: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
                 b: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             pass: {
@@ -988,16 +988,16 @@ mod tests {
             device.clone(),
             attachments: {
                 a: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
                 b: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             pass: {
@@ -1039,10 +1039,10 @@ mod tests {
             device.clone(),
             attachments: {
                 a: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             pass: {

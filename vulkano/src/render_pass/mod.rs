@@ -978,7 +978,7 @@ impl RenderPassCreateInfo {
                 let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
 
                 if is_first_use
-                    && attachment_desc.load_op == LoadOp::Clear
+                    && attachment_desc.load_op == AttachmentLoadOp::Clear
                     && !layout.is_writable(ImageAspect::Color)
                 {
                     return Err(ValidationError {
@@ -1060,7 +1060,7 @@ impl RenderPassCreateInfo {
                         !replace(&mut attachment_is_used[resolve_attachment as usize], true);
 
                     if is_first_use
-                        && attachment_desc.load_op == LoadOp::Clear
+                        && attachment_desc.load_op == AttachmentLoadOp::Clear
                         && !resolve_layout.is_writable(ImageAspect::Color)
                     {
                         return Err(ValidationError {
@@ -1223,7 +1223,7 @@ impl RenderPassCreateInfo {
                 let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
 
                 if is_first_use
-                    && attachment_desc.load_op == LoadOp::Clear
+                    && attachment_desc.load_op == AttachmentLoadOp::Clear
                     && !layout.is_writable(ImageAspect::Depth)
                 {
                     return Err(ValidationError {
@@ -1302,7 +1302,7 @@ impl RenderPassCreateInfo {
                         !replace(&mut attachment_is_used[resolve_attachment as usize], true);
 
                     if is_first_use
-                        && attachment_desc.load_op == LoadOp::Clear
+                        && attachment_desc.load_op == AttachmentLoadOp::Clear
                         && !resolve_layout.is_writable(ImageAspect::Depth)
                     {
                         return Err(ValidationError {
@@ -1419,7 +1419,7 @@ impl RenderPassCreateInfo {
                 let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
 
                 if is_first_use
-                    && attachment_desc.stencil_load_op == LoadOp::Clear
+                    && attachment_desc.stencil_load_op == AttachmentLoadOp::Clear
                     && !layout.is_writable(ImageAspect::Stencil)
                 {
                     return Err(ValidationError {
@@ -1498,7 +1498,7 @@ impl RenderPassCreateInfo {
                         !replace(&mut attachment_is_used[resolve_attachment as usize], true);
 
                     if is_first_use
-                        && attachment_desc.stencil_load_op == LoadOp::Clear
+                        && attachment_desc.stencil_load_op == AttachmentLoadOp::Clear
                         && !resolve_layout.is_writable(ImageAspect::Stencil)
                     {
                         return Err(ValidationError {
@@ -1620,7 +1620,7 @@ impl RenderPassCreateInfo {
                 let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
 
                 if is_first_use {
-                    if attachment_desc.load_op == LoadOp::Clear {
+                    if attachment_desc.load_op == AttachmentLoadOp::Clear {
                         if format_aspects.intersects(ImageAspects::COLOR) {
                             return Err(ValidationError {
                                 problem: format!(
@@ -1652,7 +1652,7 @@ impl RenderPassCreateInfo {
                         }
                     }
 
-                    if attachment_desc.stencil_load_op == LoadOp::Clear
+                    if attachment_desc.stencil_load_op == AttachmentLoadOp::Clear
                         && format_aspects.intersects(ImageAspects::STENCIL)
                     {
                         return Err(ValidationError {
@@ -1911,13 +1911,13 @@ pub struct AttachmentDescription {
     /// uses it.
     ///
     /// The default value is [`LoadOp::DontCare`].
-    pub load_op: LoadOp,
+    pub load_op: AttachmentLoadOp,
 
     /// What the implementation should do with the attachment at the end of the subpass that last
     /// uses it.
     ///
     /// The default value is [`StoreOp::DontCare`].
-    pub store_op: StoreOp,
+    pub store_op: AttachmentStoreOp,
 
     /// The layout that the image must in at the start of the render pass.
     ///
@@ -1936,13 +1936,13 @@ pub struct AttachmentDescription {
     /// if there is no stencil component.
     ///
     /// The default value is [`LoadOp::DontCare`].
-    pub stencil_load_op: LoadOp,
+    pub stencil_load_op: AttachmentLoadOp,
 
     /// The equivalent of `store_op` for the stencil component of the attachment, if any. Irrelevant
     /// if there is no stencil component.
     ///
     /// The default value is [`StoreOp::DontCare`].
-    pub stencil_store_op: StoreOp,
+    pub stencil_store_op: AttachmentStoreOp,
 
     /// The equivalent of `initial_layout` for the stencil component of the attachment, if any.
     /// Irrelevant if there is no stencil component.
@@ -1974,12 +1974,12 @@ impl Default for AttachmentDescription {
             flags: AttachmentDescriptionFlags::empty(),
             format: None,
             samples: SampleCount::Sample1,
-            load_op: LoadOp::DontCare,
-            store_op: StoreOp::DontCare,
+            load_op: AttachmentLoadOp::DontCare,
+            store_op: AttachmentStoreOp::DontCare,
             initial_layout: ImageLayout::Undefined,
             final_layout: ImageLayout::Undefined,
-            stencil_load_op: LoadOp::DontCare,
-            stencil_store_op: StoreOp::DontCare,
+            stencil_load_op: AttachmentLoadOp::DontCare,
+            stencil_store_op: AttachmentStoreOp::DontCare,
             stencil_initial_layout: ImageLayout::Undefined,
             stencil_final_layout: ImageLayout::Undefined,
             _ne: crate::NonExhaustive(()),
@@ -2142,7 +2142,7 @@ impl AttachmentDescription {
                 });
             }
 
-            if load_op == LoadOp::Load && initial_layout == ImageLayout::Undefined {
+            if load_op == AttachmentLoadOp::Load && initial_layout == ImageLayout::Undefined {
                 return Err(ValidationError {
                     problem: "`format` has a color component, `load_op` is \
                         `LoadOp::Load`, and `initial_layout` is `ImageLayout::Undefined`"
@@ -2174,7 +2174,7 @@ impl AttachmentDescription {
                 });
             }
 
-            if load_op == LoadOp::Load && initial_layout == ImageLayout::Undefined {
+            if load_op == AttachmentLoadOp::Load && initial_layout == ImageLayout::Undefined {
                 return Err(ValidationError {
                     problem: "`format` has a depth component, `load_op` is \
                         `LoadOp::Load`, and `initial_layout` is `ImageLayout::Undefined`"
@@ -2206,7 +2206,8 @@ impl AttachmentDescription {
                 });
             }
 
-            if stencil_load_op == LoadOp::Load && initial_layout == ImageLayout::Undefined {
+            if stencil_load_op == AttachmentLoadOp::Load && initial_layout == ImageLayout::Undefined
+            {
                 return Err(ValidationError {
                     problem: "`format` has a stencil component, `stencil_load_op` is \
                         `LoadOp::Load`, and `initial_layout` is `ImageLayout::Undefined`"
@@ -3742,7 +3743,7 @@ vulkan_enum! {
     #[non_exhaustive]
 
     /// Describes what the implementation should do with an attachment at the start of the subpass.
-    LoadOp = AttachmentLoadOp(i32);
+    AttachmentLoadOp = AttachmentLoadOp(i32);
 
     /// The content of the attachment will be loaded from memory. This is what you want if you want
     /// to draw over something existing.
@@ -3778,7 +3779,7 @@ vulkan_enum! {
 
     /// Describes what the implementation should do with an attachment after all the subpasses have
     /// completed.
-    StoreOp = AttachmentStoreOp(i32);
+    AttachmentStoreOp = AttachmentStoreOp(i32);
 
     /// The attachment will be stored. This is what you usually want.
     ///
@@ -3866,16 +3867,16 @@ mod tests {
         single_pass_renderpass!(
             device,
             attachments: {
-                a1: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a2: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a3: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a4: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a5: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a6: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a7: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a8: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a9: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
-                a10: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a1: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
+                a2: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
+                a3: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
+                a4: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
+                a5: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
+                a6: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
+                a7: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
+                a8: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
+                a9: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
+                a10: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
             },
             pass: {
                 color: [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10],
@@ -3893,7 +3894,7 @@ mod tests {
         let rp = single_pass_renderpass!(
             device,
             attachments: {
-                a: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a: { format: Format::R8G8B8A8_UNORM, samples: 1, load_op: Clear, store_op: DontCare, },
             },
             pass: {
                 color: [a],

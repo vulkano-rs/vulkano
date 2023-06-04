@@ -44,10 +44,10 @@ impl RenderPassPlaceOverFrame {
             gfx_queue.device().clone(),
             attachments: {
                 color: {
-                    load: Clear,
-                    store: Store,
                     format: output_format,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
                 },
             },
             pass: {
