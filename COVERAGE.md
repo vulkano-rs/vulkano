@@ -109,6 +109,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_4444_formats`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_4444_formats.html)
 - [`VK_EXT_extended_dynamic_state`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_extended_dynamic_state.html)
 - [`VK_EXT_extended_dynamic_state2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_extended_dynamic_state2.html)
+- [`VK_EXT_image_robustness`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_robustness.html)
 - [`VK_EXT_shader_demote_to_helper_invocation`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_shader_demote_to_helper_invocation.html)
 - [`VK_EXT_texel_buffer_alignment`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_texel_buffer_alignment.html)
 - [`VK_EXT_texture_compression_astc_hdr`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_texture_compression_astc_hdr.html)
@@ -126,7 +127,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 ### Unsupported
 
 - [`VK_KHR_maintenance4`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance4.html)
-- [`VK_EXT_image_robustness`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_robustness.html)
 - [`VK_EXT_inline_uniform_block`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_inline_uniform_block.html)
 - [`VK_EXT_pipeline_creation_cache_control`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_pipeline_creation_cache_control.html)
 - [`VK_EXT_pipeline_creation_feedback`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_pipeline_creation_feedback.html)
