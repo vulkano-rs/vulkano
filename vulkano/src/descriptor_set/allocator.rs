@@ -19,10 +19,7 @@
 use self::sorted_map::SortedMap;
 use super::{
     layout::DescriptorSetLayout,
-    pool::{
-        DescriptorPool, DescriptorPoolAllocError, DescriptorPoolCreateInfo,
-        DescriptorSetAllocateInfo,
-    },
+    pool::{DescriptorPool, DescriptorPoolCreateInfo, DescriptorSetAllocateInfo},
     sys::UnsafeDescriptorSet,
 };
 use crate::{
@@ -282,30 +279,30 @@ impl FixedPool {
             variable_descriptor_count: 0,
         });
 
-        let reserve = match unsafe { inner.allocate_descriptor_sets(allocate_infos) } {
-            Ok(allocs) => {
-                let reserve = ArrayQueue::new(set_count);
-                for alloc in allocs {
-                    let _ = reserve.push(alloc);
-                }
-
-                reserve
-            }
-            Err(DescriptorPoolAllocError::OutOfHostMemory) => {
-                return Err(RuntimeError::OutOfHostMemory);
-            }
-            Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
-                return Err(RuntimeError::OutOfDeviceMemory);
-            }
-            Err(DescriptorPoolAllocError::FragmentedPool) => {
-                // This can't happen as we don't free individual sets.
-                unreachable!();
-            }
-            Err(DescriptorPoolAllocError::OutOfPoolMemory) => {
-                // We created the pool with an exact size.
-                unreachable!();
-            }
+        let allocs = unsafe {
+            inner
+                .allocate_descriptor_sets(allocate_infos)
+                .map_err(|err| match err {
+                    RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory => err,
+                    RuntimeError::FragmentedPool => {
+                        // This can't happen as we don't free individual sets.
+                        unreachable!();
+                    }
+                    RuntimeError::OutOfPoolMemory => {
+                        // We created the pool with an exact size.
+                        unreachable!();
+                    }
+                    _ => {
+                        // Shouldn't ever be returned.
+                        unreachable!();
+                    }
+                })?
         };
+
+        let reserve = ArrayQueue::new(set_count);
+        for alloc in allocs {
+            let _ = reserve.push(alloc);
+        }
 
         Ok(Arc::new(FixedPool {
             _inner: inner,
@@ -360,28 +357,30 @@ impl VariableEntry {
             variable_descriptor_count,
         };
 
-        let inner = match unsafe { self.pool.inner.allocate_descriptor_sets([allocate_info]) } {
-            Ok(mut sets) => sets.next().unwrap(),
-            Err(DescriptorPoolAllocError::OutOfHostMemory) => {
-                return Err(RuntimeError::OutOfHostMemory);
-            }
-            Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
-                return Err(RuntimeError::OutOfDeviceMemory);
-            }
-            Err(DescriptorPoolAllocError::FragmentedPool) => {
-                // This can't happen as we don't free individual sets.
-                unreachable!();
-            }
-            Err(DescriptorPoolAllocError::OutOfPoolMemory) => {
-                // We created the pool to fit the maximum variable descriptor count.
-                unreachable!();
-            }
+        let mut sets = unsafe {
+            self.pool
+                .inner
+                .allocate_descriptor_sets([allocate_info])
+                .map_err(|err| match err {
+                    RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory => err,
+                    RuntimeError::FragmentedPool => {
+                        // This can't happen as we don't free individual sets.
+                        unreachable!();
+                    }
+                    RuntimeError::OutOfPoolMemory => {
+                        // We created the pool to fit the maximum variable descriptor count.
+                        unreachable!();
+                    }
+                    _ => {
+                        // Shouldn't ever be returned.
+                        unreachable!();
+                    }
+                })?
         };
-
         self.allocations += 1;
 
         Ok(StandardDescriptorSetAlloc {
-            inner: ManuallyDrop::new(inner),
+            inner: ManuallyDrop::new(sets.next().unwrap()),
             parent: AllocParent::Variable(self.pool.clone()),
         })
     }

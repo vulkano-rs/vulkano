@@ -18,16 +18,7 @@ use crate::{
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
-use std::{
-    cell::Cell,
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    marker::PhantomData,
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ptr,
-    sync::Arc,
-};
+use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// Pool that descriptors are allocated from.
 ///
@@ -212,7 +203,7 @@ impl DescriptorPool {
     pub unsafe fn allocate_descriptor_sets<'a>(
         &self,
         allocate_info: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
-    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, DescriptorPoolAllocError> {
+    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, RuntimeError> {
         let (layouts, variable_descriptor_counts): (SmallVec<[_; 1]>, SmallVec<[_; 1]>) =
             allocate_info
                 .into_iter()
@@ -261,30 +252,18 @@ impl DescriptorPool {
             let mut output = Vec::with_capacity(layouts.len());
 
             let fns = self.device.fns();
-            let ret = (fns.v1_0.allocate_descriptor_sets)(
-                self.device.handle(),
-                &infos,
-                output.as_mut_ptr(),
-            );
-
-            // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after version
-            // 1.0 of Vulkan, any negative return value except out-of-memory errors must be
-            // considered as a fragmented pool error.
-            match ret {
-                ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
-                    return Err(DescriptorPoolAllocError::OutOfHostMemory);
-                }
-                ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
-                    return Err(DescriptorPoolAllocError::OutOfDeviceMemory);
-                }
-                ash::vk::Result::ERROR_OUT_OF_POOL_MEMORY_KHR => {
-                    return Err(DescriptorPoolAllocError::OutOfPoolMemory);
-                }
-                c if c.as_raw() < 0 => {
-                    return Err(DescriptorPoolAllocError::FragmentedPool);
-                }
-                _ => (),
-            };
+            (fns.v1_0.allocate_descriptor_sets)(self.device.handle(), &infos, output.as_mut_ptr())
+                .result()
+                .map_err(RuntimeError::from)
+                .map_err(|err| match err {
+                    RuntimeError::OutOfHostMemory
+                    | RuntimeError::OutOfDeviceMemory
+                    | RuntimeError::OutOfPoolMemory => err,
+                    // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after
+                    // version 1.0 of Vulkan, any negative return value except out-of-memory errors
+                    // must be considered as a fragmented pool error.
+                    _ => RuntimeError::FragmentedPool,
+                })?;
 
             output.set_len(layouts.len());
             output
@@ -536,42 +515,6 @@ pub struct DescriptorSetAllocateInfo<'a> {
     /// For layouts with a variable-count binding, the number of descriptors to allocate for that
     /// binding. This should be 0 for layouts that don't have a variable-count binding.
     pub variable_descriptor_count: u32,
-}
-
-/// Error that can be returned when creating a device.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DescriptorPoolAllocError {
-    /// There is no memory available on the host (ie. the CPU, RAM, etc.).
-    OutOfHostMemory,
-    /// There is no memory available on the device (ie. video memory).
-    OutOfDeviceMemory,
-    /// Allocation has failed because the pool is too fragmented.
-    FragmentedPool,
-    /// There is no more space available in the descriptor pool.
-    OutOfPoolMemory,
-}
-
-impl Error for DescriptorPoolAllocError {}
-
-impl Display for DescriptorPoolAllocError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                DescriptorPoolAllocError::OutOfHostMemory => "no memory available on the host",
-                DescriptorPoolAllocError::OutOfDeviceMemory => {
-                    "no memory available on the graphical device"
-                }
-                DescriptorPoolAllocError::FragmentedPool => {
-                    "allocation has failed because the pool is too fragmented"
-                }
-                DescriptorPoolAllocError::OutOfPoolMemory => {
-                    "there is no more space available in the descriptor pool"
-                }
-            }
-        )
-    }
 }
 
 #[cfg(test)]
