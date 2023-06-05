@@ -899,9 +899,12 @@ vulkan_enum! {
     ///
     /// Within a shader, an inline uniform block is defined exactly the same as a uniform buffer.
     /// The Vulkan API acts as if every byte in the inline buffer were its own descriptor:
-    /// the `descriptor_count` value specifies the number of bytes available for data, and the
-    /// `first_array_element` value when writing a descriptor set specifies the byte offset into
-    /// the inline buffer. These values must always be a multiple of 4.
+    /// - The `descriptor_count` value specifies the number of bytes available for data.
+    /// - The `variable_descriptor_count` value when allocating a descriptor set specifies a
+    ///   variable byte count instead.
+    /// - The `first_array_element` value when writing a descriptor set specifies the byte offset
+    ///   into the inline buffer.
+    /// These values must always be a multiple of 4.
     InlineUniformBlock = INLINE_UNIFORM_BLOCK {
         api_version: V1_3,
         device_extensions: [ext_inline_uniform_block],
