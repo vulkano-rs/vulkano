@@ -79,7 +79,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `vkGetBufferOpaqueCaptureAddressKHR` / `VkBufferOpaqueCaptureAddressCreateInfoKHR`
 	- `vkGetDeviceMemoryOpaqueCaptureAddressKHR` / `VkMemoryOpaqueCaptureAddressAllocateInfoKHR`
 - [`VK_EXT_descriptor_indexing`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_descriptor_indexing.html)
-	- `VkDescriptorSetVariableDescriptorCountLayoutSupportEXT`
 	- `VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT`
 	- `VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT` / `VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT` / `VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT`
 	- `VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT_EXT`
