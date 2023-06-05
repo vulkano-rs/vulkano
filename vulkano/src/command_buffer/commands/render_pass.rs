@@ -137,6 +137,35 @@ where
                 stencil_final_layout,
             ] {
                 match layout {
+                    ImageLayout::ColorAttachmentOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03094
+                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index,
+                                usage: "color_attachment",
+                            });
+                        }
+                    }
+                    ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                    | ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::DepthReadOnlyOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+                    | ImageLayout::StencilReadOnlyOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03096
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-02844
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                        {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index,
+                                usage: "depth_stencil_attachment",
+                            });
+                        }
+                    }
                     ImageLayout::ShaderReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03097
                         if !image_view
@@ -167,33 +196,10 @@ where
                             });
                         }
                     }
-                    _ => {
-                        if layout.layout_for(ImageAspect::Color).is_some() {
-                            // VUID-vkCmdBeginRenderPass2-initialLayout-03094
-                            if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
-                                return Err(RenderPassError::AttachmentImageMissingUsage {
-                                    attachment_index,
-                                    usage: "color_attachment",
-                                });
-                            }
-                        }
-
-                        if layout.layout_for(ImageAspect::Depth).is_some()
-                            || layout.layout_for(ImageAspect::Stencil).is_some()
-                        {
-                            // VUID-vkCmdBeginRenderPass2-initialLayout-03096
-                            // VUID-vkCmdBeginRenderPass2-initialLayout-02844
-                            if !image_view
-                                .usage()
-                                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-                            {
-                                return Err(RenderPassError::AttachmentImageMissingUsage {
-                                    attachment_index,
-                                    usage: "depth_stencil_attachment",
-                                });
-                            }
-                        }
-                    }
+                    ImageLayout::Undefined
+                    | ImageLayout::General
+                    | ImageLayout::Preinitialized
+                    | ImageLayout::PresentSrc => (),
                 }
             }
         }
@@ -255,6 +261,35 @@ where
                 let image_view = &framebuffer.attachments()[atch_ref.attachment as usize];
 
                 match atch_ref.layout {
+                    ImageLayout::ColorAttachmentOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03094
+                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index: atch_ref.attachment,
+                                usage: "color_attachment",
+                            });
+                        }
+                    }
+                    ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                    | ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::DepthReadOnlyOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+                    | ImageLayout::StencilReadOnlyOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03096
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-02844
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                        {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index: atch_ref.attachment,
+                                usage: "depth_stencil_attachment",
+                            });
+                        }
+                    }
                     ImageLayout::ShaderReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03097
                         if !image_view
@@ -285,33 +320,10 @@ where
                             });
                         }
                     }
-                    _ => {
-                        if atch_ref.layout.layout_for(ImageAspect::Color).is_some() {
-                            // VUID-vkCmdBeginRenderPass2-initialLayout-03094
-                            if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
-                                return Err(RenderPassError::AttachmentImageMissingUsage {
-                                    attachment_index: atch_ref.attachment,
-                                    usage: "color_attachment",
-                                });
-                            }
-                        }
-
-                        if atch_ref.layout.layout_for(ImageAspect::Depth).is_some()
-                            || atch_ref.layout.layout_for(ImageAspect::Stencil).is_some()
-                        {
-                            // VUID-vkCmdBeginRenderPass2-initialLayout-03096
-                            // VUID-vkCmdBeginRenderPass2-initialLayout-02844
-                            if !image_view
-                                .usage()
-                                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-                            {
-                                return Err(RenderPassError::AttachmentImageMissingUsage {
-                                    attachment_index: atch_ref.attachment,
-                                    usage: "depth_stencil_attachment",
-                                });
-                            }
-                        }
-                    }
+                    ImageLayout::Undefined
+                    | ImageLayout::General
+                    | ImageLayout::Preinitialized
+                    | ImageLayout::PresentSrc => (),
                 }
             }
         }
