@@ -308,6 +308,17 @@ impl WriteDescriptorSet {
         }
     }
 
+    /// Write data to an inline uniform block.
+    ///
+    /// `offset` and the length of `data` must be a multiple of 4.
+    pub fn inline_uniform_block(binding: u32, offset: u32, data: Vec<u8>) -> Self {
+        Self {
+            binding,
+            first_array_element: offset,
+            elements: WriteDescriptorSetElements::InlineUniformBlock(data),
+        }
+    }
+
     /// Write a single acceleration structure to array element 0.
     #[inline]
     pub fn acceleration_structure(
@@ -364,6 +375,7 @@ impl WriteDescriptorSet {
                 WriteDescriptorSetElements::ImageView(_) => "image_view",
                 WriteDescriptorSetElements::ImageViewSampler(_) => "image_view_sampler",
                 WriteDescriptorSetElements::Sampler(_) => "sampler",
+                WriteDescriptorSetElements::InlineUniformBlock(_) => "inline_uniform_block",
                 WriteDescriptorSetElements::AccelerationStructure(_) => "acceleration_structure",
             }
         }
@@ -403,7 +415,7 @@ impl WriteDescriptorSet {
         // VUID-VkWriteDescriptorSet-dstArrayElement-00321
         if first_array_element + array_element_count > max_descriptor_count {
             return Err(ValidationError {
-                problem: "first_array_element + the number of provided elements is greater than \
+                problem: "`first_array_element` + the number of provided elements is greater than \
                     the number of descriptors in the descriptor set binding"
                     .into(),
                 vuids: &["VUID-VkWriteDescriptorSet-dstArrayElement-00321"],
@@ -417,8 +429,8 @@ impl WriteDescriptorSet {
                     if image_view.view_type() == ImageViewType::Dim2dArray {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "the image view's type is ImageViewType::Dim2dArray, and was \
-                            created from a 3D image"
+                            problem: "the image view's type is `ImageViewType::Dim2dArray`, and \
+                                was created from a 3D image"
                                 .into(),
                             vuids: &["VUID-VkDescriptorImageInfo-imageView-00343"],
                             ..Default::default()
@@ -434,8 +446,8 @@ impl WriteDescriptorSet {
                                     return Err(ValidationError {
                                         context: format!("elements[{}]", index).into(),
                                         problem: format!(
-                                            "the descriptor type is DescriptorType::{:?}, and the \
-                                            image view's type is ImageViewType::Dim2d,
+                                            "the descriptor type is `DescriptorType::{:?}`, and \
+                                            the image view's type is `ImageViewType::Dim2d`,
                                             and was created from a 3D image",
                                             layout_binding.descriptor_type,
                                         )
@@ -453,8 +465,8 @@ impl WriteDescriptorSet {
                                     return Err(ValidationError {
                                         context: format!("elements[{}]", index).into(),
                                         problem: format!(
-                                            "the descriptor type is DescriptorType::{:?}, and the \
-                                            image view's type is ImageViewType::Dim2d,
+                                            "the descriptor type is `DescriptorType::{:?}`, and \
+                                            the image view's type is `ImageViewType::Dim2d`,
                                             and was created from a 3D image",
                                             layout_binding.descriptor_type,
                                         )
@@ -471,10 +483,10 @@ impl WriteDescriptorSet {
                                 return Err(ValidationError {
                                     context: format!("elements[{}]", index).into(),
                                     problem: "the descriptor type is not \
-                                        DescriptorType::StorageImage, \
-                                        DescriptorType::SampledImage \
-                                        or DescriptorType::CombinedImageSampler,\
-                                        and the image view's type is ImageViewType::Dim2D, \
+                                        `DescriptorType::StorageImage`, \
+                                        `DescriptorType::SampledImage` or \
+                                        `DescriptorType::CombinedImageSampler`,\
+                                        and the image view's type is `ImageViewType::Dim2D`, \
                                         and was created from a 3D image"
                                         .into(),
                                     vuids: &["VUID-VkDescriptorImageInfo-imageView-07795"],
@@ -564,7 +576,7 @@ impl WriteDescriptorSet {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is not \
-                                DescriptorType::CombinedImageSampler, and the sampler has a \
+                                `DescriptorType::CombinedImageSampler`, and the sampler has a \
                                 sampler YCbCr conversion"
                                 .into(),
                             // vuids?
@@ -629,9 +641,9 @@ impl WriteDescriptorSet {
                             return Err(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the descriptor type is \
-                                    DescriptorType::SampledImage or \
-                                    DescriptorType::CombinedImageSampler, and the image was not \
-                                    created with the ImageUsage::SAMPLED usage"
+                                    `DescriptorType::SampledImage` or \
+                                    `DescriptorType::CombinedImageSampler`, and the image was not \
+                                    created with the `ImageUsage::SAMPLED` usage"
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00337"],
                                 ..Default::default()
@@ -649,8 +661,8 @@ impl WriteDescriptorSet {
                             return Err(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the descriptor type is \
-                                    DescriptorType::CombinedImageSampler, and the image layout is \
-                                    not valid with this type"
+                                    `DescriptorType::CombinedImageSampler`, and the image layout \
+                                    is not valid with this type"
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04150"],
                                 ..Default::default()
@@ -740,9 +752,9 @@ impl WriteDescriptorSet {
                             return Err(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the descriptor type is \
-                                    DescriptorType::SampledImage or \
-                                    DescriptorType::CombinedImageSampler, and the image was not \
-                                    created with the ImageUsage::SAMPLED usage"
+                                    `DescriptorType::SampledImage` or \
+                                    `DescriptorType::CombinedImageSampler`, and the image was not \
+                                    created with the `ImageUsage::SAMPLED` usage"
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00337"],
                                 ..Default::default()
@@ -760,8 +772,8 @@ impl WriteDescriptorSet {
                             return Err(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the descriptor type is \
-                                    DescriptorType::CombinedImageSampler, and the image layout is \
-                                    not valid with this type"
+                                    `DescriptorType::CombinedImageSampler`, and the image layout \
+                                    is not valid with this type"
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04150"],
                                 ..Default::default()
@@ -810,9 +822,9 @@ impl WriteDescriptorSet {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
-                                DescriptorType::SampledImage or \
-                                DescriptorType::CombinedImageSampler, and the image was not \
-                                created with the ImageUsage::SAMPLED usage"
+                                `DescriptorType::SampledImage` or \
+                                `DescriptorType::CombinedImageSampler`, and the image was not \
+                                created with the `ImageUsage::SAMPLED` usage"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00337"],
                             ..Default::default()
@@ -830,7 +842,7 @@ impl WriteDescriptorSet {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
-                                DescriptorType::SampledImage, and the image layout is \
+                                `DescriptorType::SampledImage`, and the image layout is \
                                 not valid with this type"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04149"],
@@ -841,7 +853,7 @@ impl WriteDescriptorSet {
                     if image_view.sampler_ycbcr_conversion().is_some() {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "the descriptor type is DescriptorType::SampledImage, and \
+                            problem: "the descriptor type is `DescriptorType::SampledImage`, and \
                                 the image view has a sampler YCbCr conversion"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-01946"],
@@ -886,8 +898,8 @@ impl WriteDescriptorSet {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
-                                DescriptorType::StorageImage, and the image was not \
-                                created with the ImageUsage::STORAGE usage"
+                                `DescriptorType::StorageImage`, and the image was not \
+                                created with the `ImageUsage::STORAGE` usage"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00339"],
                             ..Default::default()
@@ -898,7 +910,7 @@ impl WriteDescriptorSet {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
-                                DescriptorType::StorageImage, and the image layout is \
+                                `DescriptorType::StorageImage`, and the image layout is \
                                 not valid with this type"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04152"],
@@ -909,8 +921,8 @@ impl WriteDescriptorSet {
                     if !image_view.component_mapping().is_identity() {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "the descriptor type is DescriptorType::StorageImage or \
-                                DescriptorType::InputAttachment, and the image view is not \
+                            problem: "the descriptor type is `DescriptorType::StorageImage` or \
+                                `DescriptorType::InputAttachment`, and the image view is not \
                                 identity swizzled"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00336"],
@@ -921,7 +933,7 @@ impl WriteDescriptorSet {
                     if image_view.sampler_ycbcr_conversion().is_some() {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "image_view has a sampler YCbCr conversion".into(),
+                            problem: "the image view has a sampler YCbCr conversion".into(),
                             // vuids?
                             ..Default::default()
                         });
@@ -957,9 +969,9 @@ impl WriteDescriptorSet {
                     {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "the descriptor type is DescriptorType::UniformTexelBuffer, \
-                                and the buffer was not created with the \
-                                BufferUsage::UNIFORM_TEXEL_BUFFER usage"
+                            problem: "the descriptor type is \
+                                `DescriptorType::UniformTexelBuffer`, and the buffer was not \
+                                created with the `BufferUsage::UNIFORM_TEXEL_BUFFER` usage"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00334"],
                             ..Default::default()
@@ -997,9 +1009,9 @@ impl WriteDescriptorSet {
                     {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "the descriptor type is DescriptorType::StorageTexelBuffer, \
-                                and the buffer was not created with the \
-                                BufferUsage::STORAGE_TEXEL_BUFFER usage"
+                            problem: "the descriptor type is \
+                                `DescriptorType::StorageTexelBuffer`, and the buffer was not \
+                                created with the `BufferUsage::STORAGE_TEXEL_BUFFER` usage"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00335"],
                             ..Default::default()
@@ -1037,9 +1049,9 @@ impl WriteDescriptorSet {
                     {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "the descriptor type is DescriptorType::UniformBuffer or \
-                                DescriptorType::UniformBufferDynamic, and the buffer was not \
-                                created with the BufferUsage::UNIFORM_BUFFER usage"
+                            problem: "the descriptor type is `DescriptorType::UniformBuffer` or \
+                                `DescriptorType::UniformBufferDynamic`, and the buffer was not \
+                                created with the `BufferUsage::UNIFORM_BUFFER` usage"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00330"],
                             ..Default::default()
@@ -1089,9 +1101,9 @@ impl WriteDescriptorSet {
                     {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "the descriptor type is DescriptorType::StorageBuffer or \
-                                DescriptorType::StorageBufferDynamic, and the buffer was not \
-                                created with the BufferUsage::STORAGE_BUFFER usage"
+                            problem: "the descriptor type is `DescriptorType::StorageBuffer` or \
+                                `DescriptorType::StorageBufferDynamic`, and the buffer was not \
+                                created with the `BufferUsage::STORAGE_BUFFER` usage"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00331"],
                             ..Default::default()
@@ -1147,8 +1159,8 @@ impl WriteDescriptorSet {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
-                                DescriptorType::InputAttachment, and the image was not \
-                                created with the ImageUsage::INPUT_ATTACHMENT usage"
+                                `DescriptorType::InputAttachment`, and the image was not \
+                                created with the `ImageUsage::INPUT_ATTACHMENT` usage"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00338"],
                             ..Default::default()
@@ -1166,7 +1178,7 @@ impl WriteDescriptorSet {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
-                                DescriptorType::InputAttachment, and the image layout is \
+                                `DescriptorType::InputAttachment`, and the image layout is \
                                 not valid with this type"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04151"],
@@ -1177,8 +1189,8 @@ impl WriteDescriptorSet {
                     if !image_view.component_mapping().is_identity() {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "the descriptor type is DescriptorType::StorageImage or \
-                                DescriptorType::InputAttachment, and the image view is not \
+                            problem: "the descriptor type is `DescriptorType::StorageImage` or \
+                                `DescriptorType::InputAttachment`, and the image view is not \
                                 identity swizzled"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00336"],
@@ -1189,13 +1201,63 @@ impl WriteDescriptorSet {
                     if image_view.sampler_ycbcr_conversion().is_some() {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
-                            problem: "the descriptor type is DescriptorType::InputAttachment, and \
-                                the image view has a sampler YCbCr conversion"
+                            problem: "the descriptor type is `DescriptorType::InputAttachment`, \
+                                and the image view has a sampler YCbCr conversion"
                                 .into(),
                             // vuids?
                             ..Default::default()
                         });
                     }
+                }
+            }
+
+            DescriptorType::InlineUniformBlock => {
+                let data = if let WriteDescriptorSetElements::InlineUniformBlock(data) = elements {
+                    data
+                } else {
+                    return Err(ValidationError {
+                        context: "elements".into(),
+                        problem: format!(
+                            "contains `{}` elements, but the descriptor set \
+                            binding requires `inline_uniform_block` elements",
+                            provided_element_type(elements)
+                        )
+                        .into(),
+                        ..Default::default()
+                    });
+                };
+
+                if data.is_empty() {
+                    return Err(ValidationError {
+                        context: "data".into(),
+                        problem: "is empty".into(),
+                        vuids: &[
+                            "VUID-VkWriteDescriptorSetInlineUniformBlock-dataSize-arraylength",
+                            "VUID-VkWriteDescriptorSet-descriptorCount-arraylength",
+                        ],
+                        ..Default::default()
+                    });
+                }
+
+                if data.len() % 4 != 0 {
+                    return Err(ValidationError {
+                        context: "data".into(),
+                        problem: "the length is not a multiple of 4".into(),
+                        vuids: &[
+                            "VUID-VkWriteDescriptorSetInlineUniformBlock-dataSize-02222",
+                            "VUID-VkWriteDescriptorSet-descriptorType-02220",
+                        ],
+                        ..Default::default()
+                    });
+                }
+
+                if first_array_element % 4 != 0 {
+                    return Err(ValidationError {
+                        context: "offset".into(),
+                        problem: "is not a multiple of 4".into(),
+                        vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02219"],
+                        ..Default::default()
+                    });
                 }
             }
 
@@ -1226,8 +1288,8 @@ impl WriteDescriptorSet {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the acceleration structure's type is not \
-                                AccelerationStructureType::TopLevel or \
-                                AccelerationStructureType::Generic"
+                                `AccelerationStructureType::TopLevel` or \
+                                `AccelerationStructureType::Generic`"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSetAccelerationStructureKHR-pAccelerationStructures-03579"],
                             ..Default::default()
@@ -1365,6 +1427,13 @@ impl WriteDescriptorSet {
                         .collect(),
                 )
             }
+            WriteDescriptorSetElements::InlineUniformBlock(data) => {
+                debug_assert!(matches!(
+                    descriptor_type,
+                    DescriptorType::InlineUniformBlock
+                ));
+                DescriptorWriteInfo::InlineUniformBlock(data.clone())
+            }
             WriteDescriptorSetElements::AccelerationStructure(elements) => {
                 debug_assert!(matches!(
                     descriptor_type,
@@ -1408,6 +1477,7 @@ pub enum WriteDescriptorSetElements {
     ImageView(SmallVec<[DescriptorImageViewInfo; 1]>),
     ImageViewSampler(SmallVec<[(DescriptorImageViewInfo, Arc<Sampler>); 1]>),
     Sampler(SmallVec<[Arc<Sampler>; 1]>),
+    InlineUniformBlock(Vec<u8>),
     AccelerationStructure(SmallVec<[Arc<AccelerationStructure>; 1]>),
 }
 
@@ -1422,6 +1492,7 @@ impl WriteDescriptorSetElements {
             Self::ImageView(elements) => elements.len() as u32,
             Self::ImageViewSampler(elements) => elements.len() as u32,
             Self::Sampler(elements) => elements.len() as u32,
+            Self::InlineUniformBlock(data) => data.len() as u32,
             Self::AccelerationStructure(elements) => elements.len() as u32,
         }
     }
@@ -1475,6 +1546,7 @@ pub(crate) enum DescriptorWriteInfo {
     Image(SmallVec<[ash::vk::DescriptorImageInfo; 1]>),
     Buffer(SmallVec<[ash::vk::DescriptorBufferInfo; 1]>),
     BufferView(SmallVec<[ash::vk::BufferView; 1]>),
+    InlineUniformBlock(Vec<u8>),
     AccelerationStructure(SmallVec<[ash::vk::AccelerationStructureKHR; 1]>),
 }
 
@@ -1549,7 +1621,8 @@ impl CopyDescriptorSet {
             Some(layout_binding) => layout_binding,
             None => {
                 return Err(ValidationError {
-                    problem: "src_binding does not exist in the descriptor set layout of src_set"
+                    problem: "`src_binding` does not exist in the descriptor set layout of \
+                        `src_set`"
                         .into(),
                     vuids: &["VUID-VkCopyDescriptorSet-srcBinding-00345"],
                     ..Default::default()
@@ -1568,8 +1641,8 @@ impl CopyDescriptorSet {
 
         if src_first_array_element + descriptor_count > src_max_descriptor_count {
             return Err(ValidationError {
-                problem: "src_first_array_element + descriptor_count is greater than \
-                    the number of descriptors in src_set's descriptor set binding"
+                problem: "`src_first_array_element` + `descriptor_count` is greater than \
+                    the number of descriptors in `src_set`'s descriptor set binding"
                     .into(),
                 vuids: &["VUID-VkCopyDescriptorSet-srcArrayElement-00346"],
                 ..Default::default()
@@ -1580,7 +1653,8 @@ impl CopyDescriptorSet {
             Some(layout_binding) => layout_binding,
             None => {
                 return Err(ValidationError {
-                    problem: "dst_binding does not exist in the descriptor set layout of dst_set"
+                    problem: "`dst_binding` does not exist in the descriptor set layout of \
+                        `dst_set`"
                         .into(),
                     vuids: &["VUID-VkCopyDescriptorSet-dstBinding-00347"],
                     ..Default::default()
@@ -1599,8 +1673,8 @@ impl CopyDescriptorSet {
 
         if dst_first_array_element + descriptor_count > dst_max_descriptor_count {
             return Err(ValidationError {
-                problem: "dst_first_array_element + descriptor_count is greater than \
-                    the number of descriptors in dst_set's descriptor set binding"
+                problem: "`dst_first_array_element` + `descriptor_count` is greater than \
+                    the number of descriptors in `dst_set`'s descriptor set binding"
                     .into(),
                 vuids: &["VUID-VkCopyDescriptorSet-dstArrayElement-00348"],
                 ..Default::default()
@@ -1609,8 +1683,8 @@ impl CopyDescriptorSet {
 
         if src_layout_binding.descriptor_type != dst_layout_binding.descriptor_type {
             return Err(ValidationError {
-                problem: "the descriptor type of src_binding within src_set does not equal the \
-                    descriptor type of dst_binding within dst_set"
+                problem: "the descriptor type of `src_binding` within `src_set` does not equal \
+                    the descriptor type of `dst_binding` within `dst_set`"
                     .into(),
                 vuids: &["VUID-VkCopyDescriptorSet-dstBinding-02632"],
                 ..Default::default()
@@ -1621,13 +1695,48 @@ impl CopyDescriptorSet {
             && !dst_layout_binding.immutable_samplers.is_empty()
         {
             return Err(ValidationError {
-                problem: "the descriptor type of dst_binding within dst_set is \
-                    DescriptorType::Sampler, and the layout was created with immutable samplers \
-                    for dst_binding"
+                problem: "the descriptor type of `dst_binding` within `dst_set` is \
+                    `DescriptorType::Sampler`, and the layout was created with immutable samplers \
+                    for `dst_binding`"
                     .into(),
                 vuids: &["VUID-VkCopyDescriptorSet-dstBinding-02753"],
                 ..Default::default()
             });
+        }
+
+        if dst_layout_binding.descriptor_type == DescriptorType::InlineUniformBlock {
+            if src_first_array_element % 4 != 0 {
+                return Err(ValidationError {
+                    problem: "the descriptor type of `src_binding` within `src_set` is \
+                        `DescriptorType::InlineUniformBlock`, and `src_first_array_element` is \
+                        not a multiple of 4"
+                        .into(),
+                    vuids: &["VUID-VkCopyDescriptorSet-srcBinding-02223"],
+                    ..Default::default()
+                });
+            }
+
+            if dst_first_array_element % 4 != 0 {
+                return Err(ValidationError {
+                    problem: "the descriptor type of `dst_binding` within `dst_set` is \
+                        `DescriptorType::InlineUniformBlock`, and `dst_first_array_element` is \
+                        not a multiple of 4"
+                        .into(),
+                    vuids: &["VUID-VkCopyDescriptorSet-dstBinding-02224"],
+                    ..Default::default()
+                });
+            }
+
+            if descriptor_count % 4 != 0 {
+                return Err(ValidationError {
+                    problem: "the descriptor type of `dst_binding` within `dst_set` is \
+                        `DescriptorType::InlineUniformBlock`, and `descriptor_count` is \
+                        not a multiple of 4"
+                        .into(),
+                    vuids: &["VUID-VkCopyDescriptorSet-srcBinding-02225"],
+                    ..Default::default()
+                });
+            }
         }
 
         // VUID-VkCopyDescriptorSet-srcSet-00349

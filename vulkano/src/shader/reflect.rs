@@ -697,6 +697,7 @@ fn inspect_entry_point(
                                             | DescriptorType::UniformBufferDynamic
                                             | DescriptorType::StorageBuffer
                                             | DescriptorType::StorageBufferDynamic
+                                            | DescriptorType::InlineUniformBlock
                                     )
                                 }) {
                                     if let Some(desc_reqs) =
@@ -824,6 +825,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                     reqs.descriptor_types = vec![
                         DescriptorType::UniformBuffer,
                         DescriptorType::UniformBufferDynamic,
+                        DescriptorType::InlineUniformBlock,
                     ];
                 };
 
@@ -936,6 +938,10 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                 length,
                 ..
             } => {
+                // Inline uniform blocks can't be arrayed.
+                reqs.descriptor_types
+                    .retain(|&d| d != DescriptorType::InlineUniformBlock);
+
                 let len = match spirv.id(length).instruction() {
                     Instruction::Constant { value, .. } => {
                         value.iter().rev().fold(0, |a, &b| (a << 32) | b as u64)
@@ -951,6 +957,10 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
             }
 
             Instruction::TypeRuntimeArray { element_type, .. } => {
+                // Inline uniform blocks can't be arrayed.
+                reqs.descriptor_types
+                    .retain(|&d| d != DescriptorType::InlineUniformBlock);
+
                 reqs.descriptor_count = None;
 
                 Some(element_type)

@@ -194,6 +194,7 @@ impl DescriptorSetInner {
         struct PerDescriptorWrite {
             write_info: DescriptorWriteInfo,
             acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR,
+            inline_uniform_block: ash::vk::WriteDescriptorSetInlineUniformBlock,
         }
 
         let writes_iter = descriptor_writes.into_iter();
@@ -212,6 +213,7 @@ impl DescriptorSetInner {
             per_writes_vk.push(PerDescriptorWrite {
                 write_info: write.to_vulkan_info(layout_binding.descriptor_type),
                 acceleration_structures: Default::default(),
+                inline_uniform_block: Default::default(),
             });
         }
 
@@ -229,6 +231,12 @@ impl DescriptorSetInner {
                     DescriptorWriteInfo::BufferView(info) => {
                         write_vk.descriptor_count = info.len() as u32;
                         write_vk.p_texel_buffer_view = info.as_ptr();
+                    }
+                    DescriptorWriteInfo::InlineUniformBlock(data) => {
+                        write_vk.descriptor_count = data.len() as u32;
+                        write_vk.p_next = &per_write_vk.inline_uniform_block as *const _ as _;
+                        per_write_vk.inline_uniform_block.data_size = write_vk.descriptor_count;
+                        per_write_vk.inline_uniform_block.p_data = data.as_ptr() as *const _;
                     }
                     DescriptorWriteInfo::AccelerationStructure(info) => {
                         write_vk.descriptor_count = info.len() as u32;
@@ -366,6 +374,9 @@ impl DescriptorSetResources {
                             DescriptorBindingResources::None(smallvec![Some(()); count])
                         }
                     }
+                    DescriptorType::InlineUniformBlock => {
+                        DescriptorBindingResources::InlineUniformBlock
+                    }
                     DescriptorType::AccelerationStructure => {
                         DescriptorBindingResources::AccelerationStructure(smallvec![None; count])
                     }
@@ -426,6 +437,7 @@ pub enum DescriptorBindingResources {
     ImageView(Elements<DescriptorImageViewInfo>),
     ImageViewSampler(Elements<(DescriptorImageViewInfo, Arc<Sampler>)>),
     Sampler(Elements<Arc<Sampler>>),
+    InlineUniformBlock,
     AccelerationStructure(Elements<Arc<AccelerationStructure>>),
 }
 
@@ -501,6 +513,14 @@ impl DescriptorBindingResources {
                 DescriptorBindingResources::Sampler(resources),
                 WriteDescriptorSetElements::Sampler(elements),
             ) => write_resources(first, resources, elements, Clone::clone),
+            (
+                DescriptorBindingResources::InlineUniformBlock,
+                WriteDescriptorSetElements::InlineUniformBlock(_),
+            ) => (),
+            (
+                DescriptorBindingResources::AccelerationStructure(resources),
+                WriteDescriptorSetElements::AccelerationStructure(elements),
+            ) => write_resources(first, resources, elements, Clone::clone),
             _ => panic!(
                 "descriptor write for binding {} has wrong resource type",
                 write.binding(),
@@ -552,6 +572,17 @@ impl DescriptorBindingResources {
             (
                 DescriptorBindingResources::Sampler(src),
                 DescriptorBindingResources::Sampler(dst),
+            ) => {
+                dst[dst_start..dst_start + count]
+                    .clone_from_slice(&src[src_start..src_start + count]);
+            }
+            (
+                DescriptorBindingResources::InlineUniformBlock,
+                DescriptorBindingResources::InlineUniformBlock,
+            ) => (),
+            (
+                DescriptorBindingResources::AccelerationStructure(src),
+                DescriptorBindingResources::AccelerationStructure(dst),
             ) => {
                 dst[dst_start..dst_start + count]
                     .clone_from_slice(&src[src_start..src_start + count]);

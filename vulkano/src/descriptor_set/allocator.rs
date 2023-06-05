@@ -26,9 +26,9 @@ use super::{
     sys::UnsafeDescriptorSet,
 };
 use crate::{
-    descriptor_set::layout::DescriptorSetLayoutCreateFlags,
+    descriptor_set::layout::{DescriptorSetLayoutCreateFlags, DescriptorType},
     device::{Device, DeviceOwned},
-    RuntimeError,
+    RuntimeError, VulkanError,
 };
 use crossbeam_queue::ArrayQueue;
 use std::{cell::UnsafeCell, mem::ManuallyDrop, num::NonZeroU64, sync::Arc, thread};
@@ -267,11 +267,15 @@ impl FixedPool {
                 pool_sizes: layout
                     .descriptor_counts()
                     .iter()
-                    .map(|(&ty, &count)| (ty, count * set_count as u32))
+                    .map(|(&ty, &count)| {
+                        assert!(ty != DescriptorType::InlineUniformBlock);
+                        (ty, count * set_count as u32)
+                    })
                     .collect(),
                 ..Default::default()
             },
-        )?;
+        )
+        .map_err(VulkanError::unwrap_runtime)?;
 
         let allocate_infos = (0..set_count).map(|_| DescriptorSetAllocateInfo {
             layout,
@@ -403,7 +407,10 @@ impl VariablePool {
                 pool_sizes: layout
                     .descriptor_counts()
                     .iter()
-                    .map(|(&ty, &count)| (ty, count * MAX_SETS as u32))
+                    .map(|(&ty, &count)| {
+                        assert!(ty != DescriptorType::InlineUniformBlock);
+                        (ty, count * MAX_SETS as u32)
+                    })
                     .collect(),
                 ..Default::default()
             },
@@ -414,6 +421,7 @@ impl VariablePool {
                 reserve,
             })
         })
+        .map_err(VulkanError::unwrap_runtime)
     }
 }
 

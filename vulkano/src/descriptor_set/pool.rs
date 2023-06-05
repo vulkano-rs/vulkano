@@ -13,8 +13,8 @@ use crate::{
         sys::UnsafeDescriptorSet,
     },
     device::{Device, DeviceOwned},
-    macros::impl_id_counter,
-    RuntimeError, Version, VulkanObject,
+    macros::{impl_id_counter, vulkan_bitflags},
+    RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -39,93 +39,100 @@ pub struct DescriptorPool {
     device: Arc<Device>,
     id: NonZeroU64,
 
+    flags: DescriptorPoolCreateFlags,
     max_sets: u32,
     pool_sizes: HashMap<DescriptorType, u32>,
-    can_free_descriptor_sets: bool,
+    max_inline_uniform_block_bindings: u32,
+
     // Unimplement `Sync`, as Vulkan descriptor pools are not thread safe.
     _marker: PhantomData<Cell<ash::vk::DescriptorPool>>,
 }
 
 impl DescriptorPool {
     /// Creates a new `UnsafeDescriptorPool`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `create_info.max_sets` is `0`.
-    /// - Panics if `create_info.pool_sizes` is empty.
-    /// - Panics if `create_info.pool_sizes` contains a descriptor type with a count of `0`.
+    #[inline]
     pub fn new(
         device: Arc<Device>,
         create_info: DescriptorPoolCreateInfo,
-    ) -> Result<DescriptorPool, RuntimeError> {
-        let DescriptorPoolCreateInfo {
-            max_sets,
-            pool_sizes,
-            can_free_descriptor_sets,
-            _ne: _,
-        } = create_info;
+    ) -> Result<DescriptorPool, VulkanError> {
+        Self::validate_new(&device, &create_info)?;
 
-        // VUID-VkDescriptorPoolCreateInfo-maxSets-00301
-        assert!(max_sets != 0);
-
-        // VUID-VkDescriptorPoolCreateInfo-poolSizeCount-arraylength
-        assert!(!pool_sizes.is_empty());
-
-        let handle = {
-            let pool_sizes: SmallVec<[_; 8]> = pool_sizes
-                .iter()
-                .map(|(&ty, &descriptor_count)| {
-                    // VUID-VkDescriptorPoolSize-descriptorCount-00302
-                    assert!(descriptor_count != 0);
-
-                    ash::vk::DescriptorPoolSize {
-                        ty: ty.into(),
-                        descriptor_count,
-                    }
-                })
-                .collect();
-
-            let mut flags = ash::vk::DescriptorPoolCreateFlags::empty();
-
-            if can_free_descriptor_sets {
-                flags |= ash::vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET;
-            }
-
-            let create_info = ash::vk::DescriptorPoolCreateInfo {
-                flags,
-                max_sets,
-                pool_size_count: pool_sizes.len() as u32,
-                p_pool_sizes: pool_sizes.as_ptr(),
-                ..Default::default()
-            };
-
-            unsafe {
-                let fns = device.fns();
-                let mut output = MaybeUninit::uninit();
-                (fns.v1_0.create_descriptor_pool)(
-                    device.handle(),
-                    &create_info,
-                    ptr::null(),
-                    output.as_mut_ptr(),
-                )
-                .result()
-                .map_err(RuntimeError::from)?;
-                output.assume_init()
-            }
-        };
-
-        Ok(DescriptorPool {
-            handle,
-            device,
-            id: Self::next_id(),
-            max_sets,
-            pool_sizes,
-            can_free_descriptor_sets,
-            _marker: PhantomData,
-        })
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
     }
 
-    /// Creates a new `UnsafeDescriptorPool` from a raw object handle.
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: DescriptorPoolCreateInfo,
+    ) -> Result<DescriptorPool, RuntimeError> {
+        let &DescriptorPoolCreateInfo {
+            flags,
+            max_sets,
+            ref pool_sizes,
+            max_inline_uniform_block_bindings,
+            _ne: _,
+        } = &create_info;
+
+        let pool_sizes_vk: SmallVec<[_; 8]> = pool_sizes
+            .iter()
+            .map(|(&ty, &descriptor_count)| ash::vk::DescriptorPoolSize {
+                ty: ty.into(),
+                descriptor_count,
+            })
+            .collect();
+
+        let mut create_info_vk = ash::vk::DescriptorPoolCreateInfo {
+            flags: flags.into(),
+            max_sets,
+            pool_size_count: pool_sizes_vk.len() as u32,
+            p_pool_sizes: pool_sizes_vk.as_ptr(),
+            ..Default::default()
+        };
+
+        let mut inline_uniform_block_create_info_vk = None;
+
+        if max_inline_uniform_block_bindings != 0 {
+            let next = inline_uniform_block_create_info_vk.insert(
+                ash::vk::DescriptorPoolInlineUniformBlockCreateInfo {
+                    max_inline_uniform_block_bindings,
+                    ..Default::default()
+                },
+            );
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        let handle = unsafe {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.v1_0.create_descriptor_pool)(
+                device.handle(),
+                &create_info_vk,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(RuntimeError::from)?;
+            output.assume_init()
+        };
+
+        unsafe { Ok(Self::from_handle(device, handle, create_info)) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &DescriptorPoolCreateInfo,
+    ) -> Result<(), ValidationError> {
+        // VUID-vkCreateDescriptorPool-pCreateInfo-parameter
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    /// Creates a new `DescriptorPool` from a raw object handle.
     ///
     /// # Safety
     ///
@@ -138,9 +145,10 @@ impl DescriptorPool {
         create_info: DescriptorPoolCreateInfo,
     ) -> DescriptorPool {
         let DescriptorPoolCreateInfo {
+            flags,
             max_sets,
             pool_sizes,
-            can_free_descriptor_sets,
+            max_inline_uniform_block_bindings,
             _ne: _,
         } = create_info;
 
@@ -148,11 +156,20 @@ impl DescriptorPool {
             handle,
             device,
             id: Self::next_id(),
+
+            flags,
             max_sets,
             pool_sizes,
-            can_free_descriptor_sets,
+            max_inline_uniform_block_bindings,
+
             _marker: PhantomData,
         }
+    }
+
+    /// Returns the flags that the descriptor pool was created with.
+    #[inline]
+    pub fn flags(&self) -> DescriptorPoolCreateFlags {
+        self.flags
     }
 
     /// Returns the maximum number of sets that can be allocated from the pool.
@@ -167,10 +184,11 @@ impl DescriptorPool {
         &self.pool_sizes
     }
 
-    /// Returns whether the descriptor sets allocated from the pool can be individually freed.
+    /// Returns the maximum number of [`DescriptorType::InlineUniformBlock`] bindings that can
+    /// be allocated from the descriptor pool.
     #[inline]
-    pub fn can_free_descriptor_sets(&self) -> bool {
-        self.can_free_descriptor_sets
+    pub fn max_inline_uniform_block_bindings(&self) -> u32 {
+        self.max_inline_uniform_block_bindings
     }
 
     /// Allocates descriptor sets from the pool, one for each element in `create_info`.
@@ -355,6 +373,11 @@ impl_id_counter!(DescriptorPool);
 /// Parameters to create a new `UnsafeDescriptorPool`.
 #[derive(Clone, Debug)]
 pub struct DescriptorPoolCreateInfo {
+    /// Additional properties of the descriptor pool.
+    ///
+    /// The default value is empty.
+    pub flags: DescriptorPoolCreateFlags,
+
     /// The maximum number of descriptor sets that can be allocated from the pool.
     ///
     /// The default value is `0`, which must be overridden.
@@ -362,14 +385,21 @@ pub struct DescriptorPoolCreateInfo {
 
     /// The number of descriptors of each type to allocate for the pool.
     ///
+    /// If the descriptor type is [`DescriptorType::InlineUniformBlock`], then the value is the
+    /// number of bytes to allocate for such descriptors. The value must then be a multiple of 4.
+    ///
     /// The default value is empty, which must be overridden.
     pub pool_sizes: HashMap<DescriptorType, u32>,
 
-    /// Whether individual descriptor sets can be freed from the pool. Otherwise you must reset or
-    /// destroy the whole pool at once.
+    /// The maximum number of [`DescriptorType::InlineUniformBlock`] bindings that can be allocated
+    /// from the descriptor pool.
     ///
-    /// The default value is `false`.
-    pub can_free_descriptor_sets: bool,
+    /// If this is not 0, the device API version must be at least 1.3, or the
+    /// [`khr_inline_uniform_block`](crate::device::DeviceExtensions::khr_inline_uniform_block)
+    /// extension must be enabled on the device.
+    ///
+    /// The default value is 0.
+    pub max_inline_uniform_block_bindings: u32,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -378,12 +408,123 @@ impl Default for DescriptorPoolCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: DescriptorPoolCreateFlags::empty(),
             max_sets: 0,
             pool_sizes: HashMap::default(),
-            can_free_descriptor_sets: false,
+            max_inline_uniform_block_bindings: 0,
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+impl DescriptorPoolCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            flags,
+            max_sets,
+            ref pool_sizes,
+            max_inline_uniform_block_bindings,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkDescriptorPoolCreateInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if max_sets == 0 {
+            return Err(ValidationError {
+                context: "max_sets".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkDescriptorPoolCreateInfo-maxSets-00301"],
+                ..Default::default()
+            });
+        }
+
+        if pool_sizes.is_empty() {
+            return Err(ValidationError {
+                context: "pool_sizes".into(),
+                problem: "is empty".into(),
+                // vuids?
+                ..Default::default()
+            });
+        }
+
+        // VUID-VkDescriptorPoolCreateInfo-pPoolSizes-parameter
+        for (&descriptor_type, &pool_size) in pool_sizes.iter() {
+            flags
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "pool_sizes".into(),
+                    vuids: &["VUID-VkDescriptorPoolSize-type-parameter"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if pool_size == 0 {
+                return Err(ValidationError {
+                    context: format!("pool_sizes[DescriptorType::{:?}]", descriptor_type).into(),
+                    problem: "is zero".into(),
+                    vuids: &["VUID-VkDescriptorPoolSize-descriptorCount-00302"],
+                    ..Default::default()
+                });
+            }
+
+            if descriptor_type == DescriptorType::InlineUniformBlock {
+                return Err(ValidationError {
+                    context: "pool_sizes[DescriptorType::InlineUniformBlock]".into(),
+                    problem: "is not a multiple of 4".into(),
+                    vuids: &["VUID-VkDescriptorPoolSize-type-02218"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if max_inline_uniform_block_bindings != 0
+            && !(device.api_version() >= Version::V1_3
+                || device.enabled_extensions().ext_inline_uniform_block)
+        {
+            return Err(ValidationError {
+                context: "max_inline_uniform_block_bindings".into(),
+                problem: "is not zero".into(),
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    device_extensions: &["ext_inline_uniform_block"],
+                    ..Default::default()
+                },
+                // vuids?
+                ..Default::default()
+            });
+        }
+
+        Ok(())
+    }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags specifying additional properties of a descriptor pool.
+    DescriptorPoolCreateFlags = DescriptorPoolCreateFlags(u32);
+
+    /// Individual descriptor sets can be freed from the pool. Otherwise you must reset or
+    /// destroy the whole pool at once.
+    FREE_DESCRIPTOR_SET = FREE_DESCRIPTOR_SET,
+
+    /* TODO: enable
+    // TODO: document
+    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND {
+        api_version: V1_2,
+        device_extensions: [ext_descriptor_indexing],
+    }, */
+
+    /* TODO: enable
+    // TODO: document
+    HOST_ONLY = HOST_ONLY_EXT {
+        device_extensions: [ext_mutable_descriptor_type, valve_mutable_descriptor_type],
+    }, */
 }
 
 /// Parameters to allocate a new `UnsafeDescriptorSet` from an `UnsafeDescriptorPool`.
@@ -466,31 +607,29 @@ mod tests {
     fn zero_max_set() {
         let (device, _) = gfx_dev_and_queue!();
 
-        assert_should_panic!({
-            let _ = DescriptorPool::new(
-                device,
-                DescriptorPoolCreateInfo {
-                    max_sets: 0,
-                    pool_sizes: [(DescriptorType::UniformBuffer, 1)].into_iter().collect(),
-                    ..Default::default()
-                },
-            );
-        });
+        DescriptorPool::new(
+            device,
+            DescriptorPoolCreateInfo {
+                max_sets: 0,
+                pool_sizes: [(DescriptorType::UniformBuffer, 1)].into_iter().collect(),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
     }
 
     #[test]
     fn zero_descriptors() {
         let (device, _) = gfx_dev_and_queue!();
 
-        assert_should_panic!({
-            let _ = DescriptorPool::new(
-                device,
-                DescriptorPoolCreateInfo {
-                    max_sets: 10,
-                    ..Default::default()
-                },
-            );
-        });
+        DescriptorPool::new(
+            device,
+            DescriptorPoolCreateInfo {
+                max_sets: 10,
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
     }
 
     #[test]
