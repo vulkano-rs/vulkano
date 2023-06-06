@@ -515,7 +515,7 @@ impl CommandBufferState {
 }
 
 #[doc(hidden)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct CommandBufferResourcesUsage {
     pub(crate) buffers: Vec<CommandBufferBufferUsage>,
     pub(crate) images: Vec<CommandBufferImageUsage>,
