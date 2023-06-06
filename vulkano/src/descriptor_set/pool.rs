@@ -374,7 +374,7 @@ pub struct DescriptorPoolCreateInfo {
     /// from the descriptor pool.
     ///
     /// If this is not 0, the device API version must be at least 1.3, or the
-    /// [`khr_inline_uniform_block`](crate::device::DeviceExtensions::khr_inline_uniform_block)
+    /// [`khr_inline_uniform_block`](crate::device::DeviceExtensions::ext_inline_uniform_block)
     /// extension must be enabled on the device.
     ///
     /// The default value is 0.
