@@ -10,21 +10,12 @@
 use super::RenderPass;
 use crate::{
     device::{Device, DeviceOwned},
-    format::Format,
-    image::{view::ImageViewType, ImageDimensions, ImageUsage, ImageViewAbstract, SampleCount},
+    image::{view::ImageViewType, ImageAspects, ImageType, ImageUsage, ImageViewAbstract},
     macros::impl_id_counter,
-    OomError, RuntimeError, VulkanObject,
+    RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ops::Range,
-    ptr,
-    sync::Arc,
-};
+use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 
 /// The image views that are attached to a render pass during drawing.
 ///
@@ -65,250 +56,211 @@ impl Framebuffer {
     /// Creates a new `Framebuffer`.
     pub fn new(
         render_pass: Arc<RenderPass>,
-        create_info: FramebufferCreateInfo,
-    ) -> Result<Arc<Framebuffer>, FramebufferCreationError> {
-        let FramebufferCreateInfo {
-            attachments,
-            mut extent,
-            mut layers,
-            _ne: _,
+        mut create_info: FramebufferCreateInfo,
+    ) -> Result<Arc<Framebuffer>, VulkanError> {
+        create_info.set_auto_extent_layers(&render_pass);
+        Self::validate_new(&render_pass, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(render_pass, create_info)?) }
+    }
+
+    fn validate_new(
+        render_pass: &RenderPass,
+        create_info: &FramebufferCreateInfo,
+    ) -> Result<(), ValidationError> {
+        create_info
+            .validate(render_pass.device())
+            .map_err(|err| err.add_context("create_info"))?;
+
+        let &FramebufferCreateInfo {
+            ref attachments,
+            extent,
+            layers,
+            _ne,
         } = create_info;
 
-        let device = render_pass.device();
-
-        // VUID-VkFramebufferCreateInfo-attachmentCount-00876
         if attachments.len() != render_pass.attachments().len() {
-            return Err(FramebufferCreationError::AttachmentCountMismatch {
-                provided: attachments.len() as u32,
-                required: render_pass.attachments().len() as u32,
+            return Err(ValidationError {
+                problem: "`create_info.attachments` does not have the same length as \
+                    `render_pass.attachments()`"
+                    .into(),
+                vuids: &["VUID-VkFramebufferCreateInfo-attachmentCount-00876"],
+                ..Default::default()
             });
         }
 
-        let auto_extent = extent[0] == 0 || extent[1] == 0;
-        let auto_layers = layers == 0;
-
-        // VUID-VkFramebufferCreateInfo-width-00885
-        // VUID-VkFramebufferCreateInfo-height-00887
-        if auto_extent {
-            if attachments.is_empty() {
-                return Err(FramebufferCreationError::AutoExtentAttachmentsEmpty);
-            }
-
-            extent = [u32::MAX, u32::MAX];
-        }
-
-        // VUID-VkFramebufferCreateInfo-layers-00889
-        if auto_layers {
-            if attachments.is_empty() {
-                return Err(FramebufferCreationError::AutoLayersAttachmentsEmpty);
-            }
-
-            if render_pass.views_used() != 0 {
-                // VUID-VkFramebufferCreateInfo-renderPass-02531
-                layers = 1;
-            } else {
-                layers = u32::MAX;
-            }
-        } else {
-            // VUID-VkFramebufferCreateInfo-renderPass-02531
-            if render_pass.views_used() != 0 && layers != 1 {
-                return Err(FramebufferCreationError::MultiviewLayersInvalid);
-            }
-        }
-
-        let attachments_vk = attachments
+        for (index, ((image_view, attachment_desc), attachment_use)) in attachments
             .iter()
             .zip(render_pass.attachments())
+            .zip(&render_pass.attachment_use)
             .enumerate()
-            .map(|(attachment_num, (image_view, attachment_desc))| {
-                let attachment_num = attachment_num as u32;
-                assert_eq!(device, image_view.device());
-
-                for subpass in render_pass.subpasses() {
-                    // VUID-VkFramebufferCreateInfo-pAttachments-00877
-                    if subpass
-                        .color_attachments
-                        .iter()
-                        .flatten()
-                        .any(|resolvable_attachment| {
-                            resolvable_attachment.attachment_ref.attachment == attachment_num
-                        })
-                    {
-                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
-                            return Err(FramebufferCreationError::AttachmentMissingUsage {
-                                attachment: attachment_num,
-                                usage: "color_attachment",
-                            });
-                        }
-                    }
-
-                    // VUID-VkFramebufferCreateInfo-pAttachments-02633
-                    if let Some(resolvable_attachment) = subpass
-                        .depth_attachment
-                        .as_ref()
-                        .or(subpass.stencil_attachment.as_ref())
-                    {
-                        if resolvable_attachment.attachment_ref.attachment == attachment_num {
-                            if !image_view
-                                .usage()
-                                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-                            {
-                                return Err(FramebufferCreationError::AttachmentMissingUsage {
-                                    attachment: attachment_num,
-                                    usage: "depth_stencil",
-                                });
-                            }
-                        }
-                    }
-
-                    // VUID-VkFramebufferCreateInfo-pAttachments-00879
-                    if subpass
-                        .input_attachments
-                        .iter()
-                        .flatten()
-                        .any(|input_attachment| {
-                            input_attachment.attachment_ref.attachment == attachment_num
-                        })
-                    {
-                        if !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT) {
-                            return Err(FramebufferCreationError::AttachmentMissingUsage {
-                                attachment: attachment_num,
-                                usage: "input_attachment",
-                            });
-                        }
-                    }
-                }
-
-                // VUID-VkFramebufferCreateInfo-pAttachments-00880
-                if image_view.format() != attachment_desc.format {
-                    return Err(FramebufferCreationError::AttachmentFormatMismatch {
-                        attachment: attachment_num,
-                        provided: image_view.format(),
-                        required: attachment_desc.format,
-                    });
-                }
-
-                // VUID-VkFramebufferCreateInfo-pAttachments-00881
-                if image_view.image().samples() != attachment_desc.samples {
-                    return Err(FramebufferCreationError::AttachmentSamplesMismatch {
-                        attachment: attachment_num,
-                        provided: image_view.image().samples(),
-                        required: attachment_desc.samples,
-                    });
-                }
-
-                let image_view_extent = image_view.image().dimensions().width_height();
-                let image_view_array_layers = image_view.subresource_range().array_layers.end
-                    - image_view.subresource_range().array_layers.start;
-
-                // VUID-VkFramebufferCreateInfo-renderPass-04536
-                if image_view_array_layers < render_pass.views_used() {
-                    return Err(
-                        FramebufferCreationError::MultiviewAttachmentNotEnoughLayers {
-                            attachment: attachment_num,
-                            provided: image_view_array_layers,
-                            min: render_pass.views_used(),
-                        },
-                    );
-                }
-
-                // VUID-VkFramebufferCreateInfo-flags-04533
-                // VUID-VkFramebufferCreateInfo-flags-04534
-                if auto_extent {
-                    extent[0] = extent[0].min(image_view_extent[0]);
-                    extent[1] = extent[1].min(image_view_extent[1]);
-                } else if image_view_extent[0] < extent[0] || image_view_extent[1] < extent[1] {
-                    return Err(FramebufferCreationError::AttachmentExtentTooSmall {
-                        attachment: attachment_num,
-                        provided: image_view_extent,
-                        min: extent,
-                    });
-                }
-
-                // VUID-VkFramebufferCreateInfo-flags-04535
-                if auto_layers {
-                    layers = layers.min(image_view_array_layers);
-                } else if image_view_array_layers < layers {
-                    return Err(FramebufferCreationError::AttachmentNotEnoughLayers {
-                        attachment: attachment_num,
-                        provided: image_view_array_layers,
-                        min: layers,
-                    });
-                }
-
-                // VUID-VkFramebufferCreateInfo-pAttachments-00883
-                if image_view.subresource_range().mip_levels.end
-                    - image_view.subresource_range().mip_levels.start
-                    != 1
-                {
-                    return Err(FramebufferCreationError::AttachmentMultipleMipLevels {
-                        attachment: attachment_num,
-                    });
-                }
-
-                // VUID-VkFramebufferCreateInfo-pAttachments-00884
-                if !image_view.component_mapping().is_identity() {
-                    return Err(
-                        FramebufferCreationError::AttachmentComponentMappingNotIdentity {
-                            attachment: attachment_num,
-                        },
-                    );
-                }
-
-                // VUID-VkFramebufferCreateInfo-pAttachments-00891
-                if matches!(
-                    image_view.view_type(),
-                    ImageViewType::Dim2d | ImageViewType::Dim2dArray
-                ) && matches!(
-                    image_view.image().dimensions(),
-                    ImageDimensions::Dim3d { .. }
-                ) && image_view.format().unwrap().type_color().is_none()
-                {
-                    return Err(
-                        FramebufferCreationError::Attachment2dArrayCompatibleDepthStencil {
-                            attachment: attachment_num,
-                        },
-                    );
-                }
-
-                // VUID-VkFramebufferCreateInfo-flags-04113
-                if image_view.view_type() == ImageViewType::Dim3d {
-                    return Err(FramebufferCreationError::AttachmentViewType3d {
-                        attachment: attachment_num,
-                    });
-                }
-
-                Ok(image_view.handle())
-            })
-            .collect::<Result<SmallVec<[_; 4]>, _>>()?;
-
         {
-            let properties = device.physical_device().properties();
-
-            // VUID-VkFramebufferCreateInfo-width-00886
-            // VUID-VkFramebufferCreateInfo-height-00888
-            if extent[0] > properties.max_framebuffer_width
-                || extent[1] > properties.max_framebuffer_height
+            if attachment_use.color_attachment
+                && !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT)
             {
-                return Err(FramebufferCreationError::MaxFramebufferExtentExceeded {
-                    provided: extent,
-                    max: [
-                        properties.max_framebuffer_width,
-                        properties.max_framebuffer_height,
-                    ],
+                return Err(ValidationError {
+                    problem: format!(
+                        "`render_pass` uses `create_info.attachments[{}]` as \
+                        a color attachment, but it was not created with the \
+                        `ImageUsage::COLOR_ATTACHMENT` usage",
+                        index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00877"],
+                    ..Default::default()
                 });
             }
 
-            // VUID-VkFramebufferCreateInfo-layers-00890
-            if layers > properties.max_framebuffer_layers {
-                return Err(FramebufferCreationError::MaxFramebufferLayersExceeded {
-                    provided: layers,
-                    max: properties.max_framebuffer_layers,
+            if attachment_use.depth_stencil_attachment
+                && !image_view
+                    .usage()
+                    .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`render_pass` uses `create_info.attachments[{}]` as \
+                        a depth or stencil attachment, but it was not created with the \
+                        `ImageUsage::DEPTH_STENCIL_ATTACHMENT` usage",
+                        index,
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkFramebufferCreateInfo-pAttachments-02633",
+                        "VUID-VkFramebufferCreateInfo-pAttachments-02634",
+                    ],
+                    ..Default::default()
+                });
+            }
+
+            if attachment_use.input_attachment
+                && !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT)
+            {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`render_pass` uses `create_info.attachments[{}]` as \
+                        an input attachment, but it was not created with the \
+                        `ImageUsage::INPUT_ATTACHMENT` usage",
+                        index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-02633"],
+                    ..Default::default()
+                });
+            }
+
+            if image_view.format() != attachment_desc.format {
+                return Err(ValidationError {
+                    problem: format!(
+                        "the format of `create_info.attachments[{}]` does not equal \
+                        `render_pass.attachments()[{0}].format`",
+                        index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00880"],
+                    ..Default::default()
+                });
+            }
+
+            if image_view.image().samples() != attachment_desc.samples {
+                return Err(ValidationError {
+                    problem: format!(
+                        "the samples of `create_info.attachments[{}]` does not equal \
+                        `render_pass.attachments()[{0}].samples`",
+                        index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00881"],
+                    ..Default::default()
+                });
+            }
+
+            let image_view_extent = image_view.image().dimensions().width_height();
+            let image_view_array_layers = image_view.subresource_range().array_layers.end
+                - image_view.subresource_range().array_layers.start;
+
+            if attachment_use.input_attachment
+                || attachment_use.color_attachment
+                || attachment_use.depth_stencil_attachment
+            {
+                if image_view_extent[0] < extent[0] || image_view_extent[1] < extent[1] {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`render_pass` uses `create_info.attachments[{}]` as an input, color, \
+                            depth or stencil attachment, but \
+                            its width and height are less than `create_info.extent`",
+                            index,
+                        )
+                        .into(),
+                        vuids: &[
+                            "VUID-VkFramebufferCreateInfo-flags-04533",
+                            "VUID-VkFramebufferCreateInfo-flags-04534",
+                        ],
+                        ..Default::default()
+                    });
+                }
+
+                if image_view_array_layers < layers {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`render_pass` uses `create_info.attachments[{}]` as an input, color, \
+                            depth or stencil attachment, but \
+                            its layer count is less than `create_info.layers`",
+                            index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkFramebufferCreateInfo-flags-04535"],
+                        ..Default::default()
+                    });
+                }
+
+                if image_view_array_layers < render_pass.views_used() {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`render_pass` has multiview enabled, and uses \
+                            `create_info.attachments[{}]` as an input, color, depth or stencil \
+                            attachment, but its layer count is less than the number of views used \
+                            by `render_pass`",
+                            index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkFramebufferCreateInfo-renderPass-04536"],
+                        ..Default::default()
+                    });
+                }
+            }
+
+            if render_pass.views_used() != 0 && layers != 1 {
+                return Err(ValidationError {
+                    problem: "`render_pass` has multiview enabled, but \
+                        `create_info.layers` is not 1"
+                        .into(),
+                    vuids: &["VUID-VkFramebufferCreateInfo-renderPass-02531"],
+                    ..Default::default()
                 });
             }
         }
 
-        let create_info = ash::vk::FramebufferCreateInfo {
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        render_pass: Arc<RenderPass>,
+        mut create_info: FramebufferCreateInfo,
+    ) -> Result<Arc<Framebuffer>, RuntimeError> {
+        create_info.set_auto_extent_layers(&render_pass);
+
+        let &FramebufferCreateInfo {
+            ref attachments,
+            extent,
+            layers,
+            _ne: _,
+        } = &create_info;
+
+        let attachments_vk: SmallVec<[_; 4]> =
+            attachments.iter().map(VulkanObject::handle).collect();
+
+        let create_info_vk = ash::vk::FramebufferCreateInfo {
             flags: ash::vk::FramebufferCreateFlags::empty(),
             render_pass: render_pass.handle(),
             attachment_count: attachments_vk.len() as u32,
@@ -320,11 +272,11 @@ impl Framebuffer {
         };
 
         let handle = unsafe {
-            let fns = device.fns();
+            let fns = render_pass.device().fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_framebuffer)(
-                device.handle(),
-                &create_info,
+                render_pass.device().handle(),
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -333,14 +285,7 @@ impl Framebuffer {
             output.assume_init()
         };
 
-        Ok(Arc::new(Framebuffer {
-            handle,
-            render_pass,
-            id: Self::next_id(),
-            attachments,
-            extent,
-            layers,
-        }))
+        Ok(Self::from_handle(render_pass, handle, create_info))
     }
 
     /// Creates a new `Framebuffer` from a raw object handle.
@@ -353,8 +298,10 @@ impl Framebuffer {
     pub unsafe fn from_handle(
         render_pass: Arc<RenderPass>,
         handle: ash::vk::Framebuffer,
-        create_info: FramebufferCreateInfo,
+        mut create_info: FramebufferCreateInfo,
     ) -> Arc<Framebuffer> {
+        create_info.set_auto_extent_layers(&render_pass);
+
         let FramebufferCreateInfo {
             attachments,
             extent,
@@ -499,218 +446,164 @@ impl Default for FramebufferCreateInfo {
     }
 }
 
-/// Error that can happen when creating a `Framebuffer`.
-#[derive(Copy, Clone, Debug)]
-pub enum FramebufferCreationError {
-    /// Out of memory.
-    OomError(OomError),
+impl FramebufferCreateInfo {
+    fn set_auto_extent_layers(&mut self, render_pass: &RenderPass) {
+        let Self {
+            attachments,
+            extent,
+            layers,
+            _ne: _,
+        } = self;
 
-    /// An attachment image is a 2D image view created from a 3D image, and has a depth/stencil
-    /// format.
-    Attachment2dArrayCompatibleDepthStencil { attachment: u32 },
+        let is_auto_extent = extent[0] == 0 || extent[1] == 0;
+        let is_auto_layers = *layers == 0;
 
-    /// An attachment image has a non-identity component mapping.
-    AttachmentComponentMappingNotIdentity { attachment: u32 },
+        if (is_auto_extent || is_auto_layers) && !attachments.is_empty() {
+            let mut auto_extent = [u32::MAX, u32::MAX];
+            let mut auto_layers = if render_pass.views_used() != 0 {
+                // VUID-VkFramebufferCreateInfo-renderPass-02531
+                1
+            } else {
+                u32::MAX
+            };
 
-    /// The number of attachments doesn't match the number expected by the render pass.
-    AttachmentCountMismatch { provided: u32, required: u32 },
+            for image_view in attachments.iter() {
+                let image_view_extent = image_view.image().dimensions().width_height();
+                let image_view_array_layers = image_view.subresource_range().array_layers.end
+                    - image_view.subresource_range().array_layers.start;
 
-    /// An attachment image has an extent smaller than the provided `extent`.
-    AttachmentExtentTooSmall {
-        attachment: u32,
-        provided: [u32; 2],
-        min: [u32; 2],
-    },
-
-    /// An attachment image has a `format` different from what the render pass requires.
-    AttachmentFormatMismatch {
-        attachment: u32,
-        provided: Option<Format>,
-        required: Option<Format>,
-    },
-
-    /// An attachment image is missing a usage that the render pass requires it to have.
-    AttachmentMissingUsage {
-        attachment: u32,
-        usage: &'static str,
-    },
-
-    /// An attachment image has multiple mip levels.
-    AttachmentMultipleMipLevels { attachment: u32 },
-
-    /// An attachment image has less array layers than the provided `layers`.
-    AttachmentNotEnoughLayers {
-        attachment: u32,
-        provided: u32,
-        min: u32,
-    },
-
-    /// An attachment image has a `samples` different from what the render pass requires.
-    AttachmentSamplesMismatch {
-        attachment: u32,
-        provided: SampleCount,
-        required: SampleCount,
-    },
-
-    /// An attachment image has a `ty` of [`ImageViewType::Dim3d`].
-    AttachmentViewType3d { attachment: u32 },
-
-    /// One of the elements of `extent` is zero, but no attachment images were given to calculate
-    /// the extent from.
-    AutoExtentAttachmentsEmpty,
-
-    /// `layers` is zero, but no attachment images were given to calculate the number of layers
-    /// from.
-    AutoLayersAttachmentsEmpty,
-
-    /// The provided `extent` exceeds the `max_framebuffer_width` or `max_framebuffer_height`
-    /// limits.
-    MaxFramebufferExtentExceeded { provided: [u32; 2], max: [u32; 2] },
-
-    /// The provided `layers` exceeds the `max_framebuffer_layers` limit.
-    MaxFramebufferLayersExceeded { provided: u32, max: u32 },
-
-    /// The render pass has multiview enabled, and an attachment image has less layers than the
-    /// number of views in the render pass.
-    MultiviewAttachmentNotEnoughLayers {
-        attachment: u32,
-        provided: u32,
-        min: u32,
-    },
-
-    /// The render pass has multiview enabled, but `layers` was not 0 or 1.
-    MultiviewLayersInvalid,
-}
-
-impl From<OomError> for FramebufferCreationError {
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
-impl Error for FramebufferCreationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for FramebufferCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "no memory available",),
-            Self::Attachment2dArrayCompatibleDepthStencil { attachment } => write!(
-                f,
-                "attachment image {} is a 2D image view created from a 3D image, and has a \
-                depth/stencil format",
-                attachment,
-            ),
-            Self::AttachmentComponentMappingNotIdentity { attachment } => write!(
-                f,
-                "attachment image {} has a non-identity component mapping",
-                attachment,
-            ),
-            Self::AttachmentCountMismatch { .. } => write!(
-                f,
-                "the number of attachments doesn't match the number expected by the render pass",
-            ),
-            Self::AttachmentExtentTooSmall {
-                attachment,
-                provided,
-                min,
-            } => write!(
-                f,
-                "attachment image {} has an extent ({:?}) smaller than the provided `extent` \
-                ({:?})",
-                attachment, provided, min,
-            ),
-            Self::AttachmentFormatMismatch {
-                attachment,
-                provided,
-                required,
-            } => write!(
-                f,
-                "attachment image {} has a `format` ({:?}) different from what the render pass \
-                requires ({:?})",
-                attachment, provided, required,
-            ),
-            Self::AttachmentMissingUsage { attachment, usage } => write!(
-                f,
-                "attachment image {} is missing usage `{}` that the render pass requires it to \
-                have",
-                attachment, usage,
-            ),
-            Self::AttachmentMultipleMipLevels { attachment } => {
-                write!(f, "attachment image {} has multiple mip levels", attachment)
+                auto_extent[0] = auto_extent[0].min(image_view_extent[0]);
+                auto_extent[1] = auto_extent[1].min(image_view_extent[1]);
+                auto_layers = auto_layers.min(image_view_array_layers);
             }
-            Self::AttachmentNotEnoughLayers {
-                attachment,
-                provided,
-                min,
-            } => write!(
-                f,
-                "attachment image {} has less layers ({}) than the provided `layers` ({})",
-                attachment, provided, min,
-            ),
-            Self::AttachmentSamplesMismatch {
-                attachment,
-                provided,
-                required,
-            } => write!(
-                f,
-                "attachment image {} has a `samples` ({:?}) different from what the render pass \
-                requires ({:?})",
-                attachment, provided, required,
-            ),
-            Self::AttachmentViewType3d { attachment } => write!(
-                f,
-                "attachment image {} has a `ty` of `ImageViewType::Dim3d`",
-                attachment,
-            ),
-            Self::AutoExtentAttachmentsEmpty => write!(
-                f,
-                "one of the elements of `extent` is zero, but no attachment images were given to \
-                calculate the extent from",
-            ),
-            Self::AutoLayersAttachmentsEmpty => write!(
-                f,
-                "`layers` is zero, but no attachment images were given to calculate the number of \
-                layers from",
-            ),
-            Self::MaxFramebufferExtentExceeded { provided, max } => write!(
-                f,
-                "the provided `extent` ({:?}) exceeds the `max_framebuffer_width` or \
-                `max_framebuffer_height` limits ({:?})",
-                provided, max,
-            ),
-            Self::MaxFramebufferLayersExceeded { provided, max } => write!(
-                f,
-                "the provided `layers` ({}) exceeds the `max_framebuffer_layers` limit ({})",
-                provided, max,
-            ),
-            Self::MultiviewAttachmentNotEnoughLayers {
-                attachment,
-                provided,
-                min,
-            } => write!(
-                f,
-                "the render pass has multiview enabled, and attachment image {} has less layers \
-                ({}) than the number of views in the render pass ({})",
-                attachment, provided, min,
-            ),
-            Self::MultiviewLayersInvalid => write!(
-                f,
-                "the render pass has multiview enabled, but `layers` was not 0 or 1",
-            ),
+
+            if is_auto_extent {
+                *extent = auto_extent;
+            }
+
+            if is_auto_layers {
+                *layers = auto_layers;
+            }
         }
     }
-}
 
-impl From<RuntimeError> for FramebufferCreationError {
-    fn from(err: RuntimeError) -> Self {
-        Self::from(OomError::from(err))
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            ref attachments,
+            extent,
+            layers,
+            _ne: _,
+        } = self;
+
+        for (index, image_view) in attachments.iter().enumerate() {
+            assert_eq!(device, image_view.device().as_ref());
+
+            let image_view_mip_levels = image_view.subresource_range().mip_levels.end
+                - image_view.subresource_range().mip_levels.start;
+
+            if image_view_mip_levels != 1 {
+                return Err(ValidationError {
+                    context: format!("attachments[{}]", index).into(),
+                    problem: "has more than one mip level".into(),
+                    vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00883"],
+                    ..Default::default()
+                });
+            }
+
+            if !image_view.component_mapping().is_identity() {
+                return Err(ValidationError {
+                    context: format!("attachments[{}]", index).into(),
+                    problem: "is not identity swizzled".into(),
+                    vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00884"],
+                    ..Default::default()
+                });
+            }
+
+            match image_view.view_type() {
+                ImageViewType::Dim2d | ImageViewType::Dim2dArray => {
+                    if image_view.image().dimensions().image_type() == ImageType::Dim3d
+                        && (image_view.format().unwrap().aspects())
+                            .intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
+                    {
+                        return Err(ValidationError {
+                            context: format!("attachments[{}]", index).into(),
+                            problem: "is a 2D or 2D array image view, but its format is a \
+                                depth/stencil format"
+                                .into(),
+                            vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00891"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                ImageViewType::Dim3d => {
+                    return Err(ValidationError {
+                        context: format!("attachments[{}]", index).into(),
+                        problem: "is a 3D image view".into(),
+                        vuids: &["VUID-VkFramebufferCreateInfo-flags-04113"],
+                        ..Default::default()
+                    });
+                }
+                _ => (),
+            }
+        }
+
+        let properties = device.physical_device().properties();
+
+        if extent[0] == 0 {
+            return Err(ValidationError {
+                context: "extent[0]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkFramebufferCreateInfo-width-00885"],
+                ..Default::default()
+            });
+        }
+
+        if extent[0] > properties.max_framebuffer_width {
+            return Err(ValidationError {
+                context: "extent[0]".into(),
+                problem: "exceeds the `max_framebuffer_width` limit".into(),
+                vuids: &["VUID-VkFramebufferCreateInfo-width-00886"],
+                ..Default::default()
+            });
+        }
+
+        if extent[1] == 0 {
+            return Err(ValidationError {
+                context: "extent[1]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkFramebufferCreateInfo-height-00887"],
+                ..Default::default()
+            });
+        }
+
+        if extent[1] > properties.max_framebuffer_height {
+            return Err(ValidationError {
+                context: "extent[1]".into(),
+                problem: "exceeds the `max_framebuffer_height` limit".into(),
+                vuids: &["VUID-VkFramebufferCreateInfo-height-00888"],
+                ..Default::default()
+            });
+        }
+
+        if layers == 0 {
+            return Err(ValidationError {
+                context: "layers".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkFramebufferCreateInfo-layers-00889"],
+                ..Default::default()
+            });
+        }
+
+        if layers > properties.max_framebuffer_layers {
+            return Err(ValidationError {
+                context: "layers".into(),
+                problem: "exceeds the `max_framebuffer_layers` limit".into(),
+                vuids: &["VUID-VkFramebufferCreateInfo-layers-00890"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
     }
 }
 
@@ -721,8 +614,8 @@ mod tests {
         image::{attachment::AttachmentImage, view::ImageView},
         memory::allocator::StandardMemoryAllocator,
         render_pass::{
-            Framebuffer, FramebufferCreateInfo, FramebufferCreationError, RenderPass,
-            RenderPassCreateInfo, SubpassDescription,
+            Framebuffer, FramebufferCreateInfo, RenderPass, RenderPassCreateInfo,
+            SubpassDescription,
         },
     };
 
@@ -775,31 +668,31 @@ mod tests {
             },
         )
         .unwrap();
-        let res = Framebuffer::new(
+
+        if Framebuffer::new(
             render_pass.clone(),
             FramebufferCreateInfo {
                 extent: [0xffffffff, 0xffffffff],
                 layers: 1,
                 ..Default::default()
             },
-        );
-        match res {
-            Err(FramebufferCreationError::MaxFramebufferExtentExceeded { .. }) => (),
-            _ => panic!(),
+        )
+        .is_ok()
+        {
+            panic!()
         }
 
-        let res = Framebuffer::new(
+        if Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 extent: [1, 1],
                 layers: 0xffffffff,
                 ..Default::default()
             },
-        );
-
-        match res {
-            Err(FramebufferCreationError::MaxFramebufferLayersExceeded { .. }) => (),
-            _ => panic!(),
+        )
+        .is_ok()
+        {
+            panic!()
         }
     }
 
@@ -831,15 +724,16 @@ mod tests {
         )
         .unwrap();
 
-        match Framebuffer::new(
+        if Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 attachments: vec![view],
                 ..Default::default()
             },
-        ) {
-            Err(FramebufferCreationError::AttachmentFormatMismatch { .. }) => (),
-            _ => panic!(),
+        )
+        .is_ok()
+        {
+            panic!()
         }
     }
 
@@ -913,7 +807,7 @@ mod tests {
         )
         .unwrap();
 
-        match Framebuffer::new(
+        if Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 attachments: vec![view],
@@ -921,9 +815,10 @@ mod tests {
                 layers: 1,
                 ..Default::default()
             },
-        ) {
-            Err(FramebufferCreationError::AttachmentExtentTooSmall { .. }) => (),
-            _ => panic!(),
+        )
+        .is_ok()
+        {
+            panic!()
         }
     }
 
@@ -1014,20 +909,16 @@ mod tests {
         )
         .unwrap();
 
-        let res = Framebuffer::new(
+        if Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 attachments: vec![view],
                 ..Default::default()
             },
-        );
-
-        match res {
-            Err(FramebufferCreationError::AttachmentCountMismatch {
-                required: 2,
-                provided: 1,
-            }) => (),
-            _ => panic!(),
+        )
+        .is_ok()
+        {
+            panic!()
         }
     }
 
@@ -1063,20 +954,16 @@ mod tests {
         )
         .unwrap();
 
-        let res = Framebuffer::new(
+        if Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 attachments: vec![a, b],
                 ..Default::default()
             },
-        );
-
-        match res {
-            Err(FramebufferCreationError::AttachmentCountMismatch {
-                required: 1,
-                provided: 2,
-            }) => (),
-            _ => panic!(),
+        )
+        .is_ok()
+        {
+            panic!()
         }
     }
 
@@ -1115,10 +1002,9 @@ mod tests {
             },
         )
         .unwrap();
-        let res = Framebuffer::new(render_pass, FramebufferCreateInfo::default());
-        match res {
-            Err(FramebufferCreationError::AutoExtentAttachmentsEmpty) => (),
-            _ => panic!(),
+
+        if Framebuffer::new(render_pass, FramebufferCreateInfo::default()).is_ok() {
+            panic!()
         }
     }
 }

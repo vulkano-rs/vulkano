@@ -25,7 +25,7 @@
 //! Consequently you can create graphics pipelines from a render pass object alone.
 //! A `Framebuffer` object is only needed when you actually add draw commands to a command buffer.
 
-pub use self::framebuffer::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError};
+pub use self::framebuffer::{Framebuffer, FramebufferCreateInfo};
 use crate::{
     device::{Device, DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures, NumericType},
@@ -118,6 +118,7 @@ pub struct RenderPass {
     dependencies: Vec<SubpassDependency>,
     correlated_view_masks: Vec<u32>,
 
+    attachment_use: Vec<AttachmentUse>,
     granularity: [u32; 2],
     views_used: u32,
 }
@@ -214,14 +215,58 @@ impl RenderPass {
             _ne: _,
         } = create_info;
 
+        let mut attachment_use = vec![AttachmentUse::default(); attachments.len()];
         let granularity = Self::get_granularity(&device, handle);
         let mut views_used = 0;
 
         for subpass_desc in &subpasses {
-            views_used = max(
-                views_used,
-                u32::BITS - subpass_desc.view_mask.leading_zeros(),
-            );
+            let &SubpassDescription {
+                flags: _,
+                view_mask,
+                ref input_attachments,
+                ref color_attachments,
+                ref depth_attachment,
+                ref stencil_attachment,
+                preserve_attachments: _,
+                _ne: _,
+            } = subpass_desc;
+
+            for color_attachment in color_attachments.iter().flatten() {
+                attachment_use[color_attachment.attachment_ref.attachment as usize]
+                    .color_attachment = true;
+
+                if let Some(resolve) = &color_attachment.resolve {
+                    attachment_use[resolve.attachment_ref.attachment as usize].color_attachment =
+                        true;
+                }
+            }
+
+            if let Some(depth_attachment) = depth_attachment {
+                attachment_use[depth_attachment.attachment_ref.attachment as usize]
+                    .depth_stencil_attachment = true;
+
+                if let Some(resolve) = &depth_attachment.resolve {
+                    attachment_use[resolve.attachment_ref.attachment as usize]
+                        .depth_stencil_attachment = true;
+                }
+            }
+
+            if let Some(stencil_attachment) = stencil_attachment {
+                attachment_use[stencil_attachment.attachment_ref.attachment as usize]
+                    .depth_stencil_attachment = true;
+
+                if let Some(resolve) = &stencil_attachment.resolve {
+                    attachment_use[resolve.attachment_ref.attachment as usize]
+                        .depth_stencil_attachment = true;
+                }
+            }
+
+            for input_attachment in input_attachments.iter().flatten() {
+                attachment_use[input_attachment.attachment_ref.attachment as usize]
+                    .input_attachment = true;
+            }
+
+            views_used = max(views_used, u32::BITS - view_mask.leading_zeros());
         }
 
         Arc::new(RenderPass {
@@ -235,6 +280,7 @@ impl RenderPass {
             dependencies,
             correlated_view_masks,
 
+            attachment_use,
             granularity,
             views_used,
         })
@@ -325,6 +371,7 @@ impl RenderPass {
             dependencies: dependencies1,
             correlated_view_masks: correlated_view_masks1,
 
+            attachment_use: _,
             granularity: _,
             views_used: _,
         } = self;
@@ -339,6 +386,7 @@ impl RenderPass {
             dependencies: dependencies2,
             correlated_view_masks: correlated_view_masks2,
 
+            attachment_use: _,
             granularity: _,
             views_used: _,
         } = other;
@@ -3837,6 +3885,13 @@ vulkan_bitflags_enum! {
     ///
     /// This mode is supported for depth and stencil formats only.
     MAX, Max = MAX,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct AttachmentUse {
+    pub(crate) color_attachment: bool,
+    pub(crate) depth_stencil_attachment: bool,
+    pub(crate) input_attachment: bool,
 }
 
 #[cfg(test)]
