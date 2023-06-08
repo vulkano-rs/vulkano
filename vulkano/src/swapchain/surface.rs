@@ -10,6 +10,7 @@
 use super::{FullScreenExclusive, Win32Monitor};
 use crate::{
     cache::OnceCache,
+    device::physical::PhysicalDevice,
     format::Format,
     image::ImageUsage,
     instance::{Instance, InstanceExtensions},
@@ -18,7 +19,7 @@ use crate::{
         display::{DisplayMode, DisplayPlane},
         SurfaceSwapchainLock,
     },
-    OomError, RequiresOneOf, RuntimeError, VulkanObject,
+    OomError, RequiresOneOf, RuntimeError, ValidationError, VulkanObject,
 };
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
@@ -1892,6 +1893,34 @@ impl Default for SurfaceInfo {
             win32_monitor: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+impl SurfaceInfo {
+    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+        let &Self {
+            full_screen_exclusive,
+            win32_monitor: _,
+            _ne: _,
+        } = self;
+
+        if !physical_device
+            .supported_extensions()
+            .ext_full_screen_exclusive
+            && full_screen_exclusive != FullScreenExclusive::Default
+        {
+            return Err(ValidationError {
+                context: "full_screen_exclusive".into(),
+                problem: "is not `FullScreenExclusive::Default`".into(),
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["ext_full_screen_exclusive"],
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+        }
+
+        Ok(())
     }
 }
 

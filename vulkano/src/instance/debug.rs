@@ -41,22 +41,21 @@
 //! be callable. If you don't store the return value of `DebugUtilsMessenger`'s constructor in a
 //! variable, it will be immediately destroyed and your callback will not work.
 
-use super::Instance;
+use super::{Instance, InstanceExtensions};
 use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
-    RequirementNotMet, RequiresOneOf, RuntimeError, VulkanObject,
+    RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
 };
 use std::{
-    error::Error,
     ffi::{c_void, CStr},
-    fmt::{Debug, Display, Error as FmtError, Formatter},
+    fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     panic::{catch_unwind, AssertUnwindSafe, RefUnwindSafe},
     ptr,
     sync::Arc,
 };
 
-pub(super) type UserCallback = Arc<dyn Fn(&Message<'_>) + RefUnwindSafe + Send + Sync>;
+pub type UserCallback = Arc<dyn Fn(&Message<'_>) + RefUnwindSafe + Send + Sync>;
 
 /// Registration of a callback called by validation layers.
 ///
@@ -80,64 +79,39 @@ impl DebugUtilsMessenger {
     /// - `create_info.user_callback` must not make any calls to the Vulkan API.
     pub unsafe fn new(
         instance: Arc<Instance>,
-        mut create_info: DebugUtilsMessengerCreateInfo,
-    ) -> Result<Self, DebugUtilsMessengerCreationError> {
-        Self::validate_create(&instance, &mut create_info)?;
-        let (handle, user_callback) = Self::record_create(&instance, create_info)?;
+        create_info: DebugUtilsMessengerCreateInfo,
+    ) -> Result<Self, VulkanError> {
+        Self::validate_new(&instance, &create_info)?;
 
-        Ok(DebugUtilsMessenger {
-            handle,
-            instance,
-            _user_callback: user_callback,
-        })
+        Ok(Self::new_unchecked(instance, create_info)?)
     }
 
-    fn validate_create(
+    fn validate_new(
         instance: &Instance,
-        create_info: &mut DebugUtilsMessengerCreateInfo,
-    ) -> Result<(), DebugUtilsMessengerCreationError> {
-        let &mut DebugUtilsMessengerCreateInfo {
-            message_type,
-            message_severity,
-            user_callback: _,
-            _ne: _,
-        } = create_info;
-
+        create_info: &DebugUtilsMessengerCreateInfo,
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().ext_debug_utils {
-            return Err(DebugUtilsMessengerCreationError::RequirementNotMet {
-                required_for: "`DebugUtilsMessenger::new`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
                 },
+                ..Default::default()
             });
         }
 
-        // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-parameter
-        message_severity.validate_instance(instance)?;
-
-        // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-requiredbitmask
-        assert!(!message_severity.is_empty());
-
-        // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-parameter
-        message_type.validate_instance(instance)?;
-
-        // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-requiredbitmask
-        assert!(!message_type.is_empty());
-
-        // VUID-PFN_vkDebugUtilsMessengerCallbackEXT-None-04769
-        // Can't be checked, creation is unsafe.
+        create_info
+            .validate(instance)
+            .map_err(|err| err.add_context("create_info"))?;
 
         Ok(())
     }
 
-    unsafe fn record_create(
-        instance: &Instance,
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        instance: Arc<Instance>,
         create_info: DebugUtilsMessengerCreateInfo,
-    ) -> Result<
-        (ash::vk::DebugUtilsMessengerEXT, Box<UserCallback>),
-        DebugUtilsMessengerCreationError,
-    > {
+    ) -> Result<Self, RuntimeError> {
         let DebugUtilsMessengerCreateInfo {
             message_severity,
             message_type,
@@ -149,7 +123,7 @@ impl DebugUtilsMessenger {
         // that can't be cast to a `*const c_void`.
         let user_callback = Box::new(user_callback);
 
-        let create_info = ash::vk::DebugUtilsMessengerCreateInfoEXT {
+        let create_info_vk = ash::vk::DebugUtilsMessengerCreateInfoEXT {
             flags: ash::vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
             message_severity: message_severity.into(),
             message_type: message_type.into(),
@@ -158,13 +132,12 @@ impl DebugUtilsMessenger {
             ..Default::default()
         };
 
-        let fns = instance.fns();
-
         let handle = {
+            let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_debug_utils.create_debug_utils_messenger_ext)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -173,7 +146,11 @@ impl DebugUtilsMessenger {
             output.assume_init()
         };
 
-        Ok((handle, user_callback))
+        Ok(DebugUtilsMessenger {
+            handle,
+            instance,
+            _user_callback: user_callback,
+        })
     }
 }
 
@@ -244,47 +221,6 @@ pub(super) unsafe extern "system" fn trampoline(
     ash::vk::FALSE
 }
 
-/// Error that can happen when creating a `DebugUtilsMessenger`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DebugUtilsMessengerCreationError {
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-}
-
-impl Error for DebugUtilsMessengerCreationError {}
-
-impl Display for DebugUtilsMessengerCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-        }
-    }
-}
-
-impl From<RuntimeError> for DebugUtilsMessengerCreationError {
-    fn from(err: RuntimeError) -> DebugUtilsMessengerCreationError {
-        panic!("unexpected error: {:?}", err)
-    }
-}
-
-impl From<RequirementNotMet> for DebugUtilsMessengerCreationError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
 /// Parameters to create a `DebugUtilsMessenger`.
 #[derive(Clone)]
 pub struct DebugUtilsMessengerCreateInfo {
@@ -324,6 +260,63 @@ impl DebugUtilsMessengerCreateInfo {
             user_callback,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    #[inline]
+    pub(crate) fn validate(&self, instance: &Instance) -> Result<(), ValidationError> {
+        self.validate_raw(instance.api_version(), instance.enabled_extensions())
+    }
+
+    pub(crate) fn validate_raw(
+        &self,
+        instance_api_version: Version,
+        instance_extensions: &InstanceExtensions,
+    ) -> Result<(), ValidationError> {
+        let &DebugUtilsMessengerCreateInfo {
+            message_severity,
+            message_type,
+            user_callback: _,
+            _ne: _,
+        } = self;
+
+        message_severity
+            .validate_instance_raw(instance_api_version, instance_extensions)
+            .map_err(|err| ValidationError {
+                context: "message_severity".into(),
+                vuids: &["VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if message_severity.is_empty() {
+            return Err(ValidationError {
+                context: "message_severity".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-requiredbitmask"],
+                ..Default::default()
+            });
+        }
+
+        message_type
+            .validate_instance_raw(instance_api_version, instance_extensions)
+            .map_err(|err| ValidationError {
+                context: "message_type".into(),
+                vuids: &["VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if message_type.is_empty() {
+            return Err(ValidationError {
+                context: "message_type".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-requiredbitmask"],
+                ..Default::default()
+            });
+        }
+
+        // VUID-PFN_vkDebugUtilsMessengerCallbackEXT-None-04769
+        // Can't be checked, creation is unsafe.
+
+        Ok(())
     }
 }
 

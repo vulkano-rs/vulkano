@@ -111,7 +111,7 @@ use self::{
     sys::RawBuffer,
 };
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{physical::PhysicalDevice, Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
     memory::{
         allocator::{
@@ -123,8 +123,8 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{future::AccessError, CurrentAccess, Sharing},
-    DeviceSize, NonZeroDeviceSize, RequirementNotMet, RequiresOneOf, RuntimeError, Version,
-    VulkanObject,
+    DeviceSize, NonZeroDeviceSize, RequirementNotMet, RequiresOneOf, RuntimeError, ValidationError,
+    Version, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -1113,6 +1113,42 @@ impl ExternalBufferInfo {
             sparse: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+        let &Self {
+            handle_type,
+            usage,
+            sparse: _,
+            _ne: _,
+        } = self;
+
+        usage
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "usage".into(),
+                vuids: &["VUID-VkPhysicalDeviceExternalBufferInfo-usage-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if usage.is_empty() {
+            return Err(ValidationError {
+                context: "usage".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkPhysicalDeviceExternalBufferInfo-usage-requiredbitmask"],
+                ..Default::default()
+            });
+        }
+
+        handle_type
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "handle_type".into(),
+                vuids: &["VUID-VkPhysicalDeviceExternalBufferInfo-handleType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
     }
 }
 

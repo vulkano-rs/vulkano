@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{Device, DeviceOwned};
+use super::{Device, DeviceOwned, QueueCreateFlags};
 use crate::{
     buffer::BufferState,
     command_buffer::{
@@ -26,18 +26,16 @@ use crate::{
         future::{AccessCheckError, FlushError, GpuFuture},
         semaphore::SemaphoreState,
     },
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    OomError, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanObject,
 };
 use ahash::HashMap;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::{smallvec, SmallVec};
 use std::{
     collections::VecDeque,
-    error::Error,
     ffi::CString,
-    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
-    mem::take,
+    mem::{take, MaybeUninit},
     ptr,
     sync::{atomic::Ordering, Arc},
 };
@@ -48,6 +46,8 @@ use std::{
 pub struct Queue {
     handle: ash::vk::Queue,
     device: Arc<Device>,
+
+    flags: QueueCreateFlags,
     queue_family_index: u32,
     id: u32, // id within family
 
@@ -55,17 +55,40 @@ pub struct Queue {
 }
 
 impl Queue {
+    pub(super) unsafe fn new(
+        device: Arc<Device>,
+        flags: QueueCreateFlags,
+        queue_family_index: u32,
+        id: u32,
+    ) -> Arc<Self> {
+        let handle = {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.v1_0.get_device_queue)(
+                device.handle(),
+                queue_family_index,
+                id,
+                output.as_mut_ptr(),
+            );
+            output.assume_init()
+        };
+
+        Self::from_handle(device, handle, flags, queue_family_index, id)
+    }
+
     // TODO: Make public
     #[inline]
-    pub(super) fn from_handle(
+    pub(super) unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Queue,
+        flags: QueueCreateFlags,
         queue_family_index: u32,
         id: u32,
     ) -> Arc<Self> {
         Arc::new(Queue {
             handle,
             device,
+            flags,
             queue_family_index,
             id,
             state: Mutex::new(Default::default()),
@@ -76,6 +99,12 @@ impl Queue {
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+
+    /// Returns the flags that the queue was created with.
+    #[inline]
+    pub fn flags(&self) -> QueueCreateFlags {
+        self.flags
     }
 
     /// Returns the index of the queue family that this queue belongs to.
@@ -1105,7 +1134,7 @@ impl<'a> QueueGuard<'a> {
     pub fn begin_debug_utils_label(
         &mut self,
         label_info: DebugUtilsLabel,
-    ) -> Result<(), QueueError> {
+    ) -> Result<(), ValidationError> {
         self.validate_begin_debug_utils_label(&label_info)?;
 
         unsafe {
@@ -1117,7 +1146,7 @@ impl<'a> QueueGuard<'a> {
     fn validate_begin_debug_utils_label(
         &self,
         _label_info: &DebugUtilsLabel,
-    ) -> Result<(), QueueError> {
+    ) -> Result<(), ValidationError> {
         if !self
             .queue
             .device
@@ -1125,12 +1154,12 @@ impl<'a> QueueGuard<'a> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(QueueError::RequirementNotMet {
-                required_for: "`QueueGuard::begin_debug_utils_label`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
                 },
+                ..Default::default()
             });
         }
 
@@ -1167,14 +1196,14 @@ impl<'a> QueueGuard<'a> {
     /// - There must be an outstanding queue label region begun with `begin_debug_utils_label` in
     ///   the queue.
     #[inline]
-    pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), QueueError> {
+    pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), ValidationError> {
         self.validate_end_debug_utils_label()?;
         self.end_debug_utils_label_unchecked();
 
         Ok(())
     }
 
-    fn validate_end_debug_utils_label(&self) -> Result<(), QueueError> {
+    fn validate_end_debug_utils_label(&self) -> Result<(), ValidationError> {
         if !self
             .queue
             .device
@@ -1182,12 +1211,12 @@ impl<'a> QueueGuard<'a> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(QueueError::RequirementNotMet {
-                required_for: "`QueueGuard::end_debug_utils_label`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
                 },
+                ..Default::default()
             });
         }
 
@@ -1212,7 +1241,7 @@ impl<'a> QueueGuard<'a> {
     pub fn insert_debug_utils_label(
         &mut self,
         label_info: DebugUtilsLabel,
-    ) -> Result<(), QueueError> {
+    ) -> Result<(), ValidationError> {
         self.validate_insert_debug_utils_label(&label_info)?;
 
         unsafe {
@@ -1224,7 +1253,7 @@ impl<'a> QueueGuard<'a> {
     fn validate_insert_debug_utils_label(
         &self,
         _label_info: &DebugUtilsLabel,
-    ) -> Result<(), QueueError> {
+    ) -> Result<(), ValidationError> {
         if !self
             .queue
             .device
@@ -1232,12 +1261,12 @@ impl<'a> QueueGuard<'a> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(QueueError::RequirementNotMet {
-                required_for: "`QueueGuard::insert_debug_utils_label`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
                     ..Default::default()
                 },
+                ..Default::default()
             });
         }
 
@@ -1644,57 +1673,6 @@ vulkan_bitflags! {
     OPTICAL_FLOW = OPTICAL_FLOW_NV {
         device_extensions: [nv_optical_flow],
     },
-}
-
-/// Error that can happen when submitting work to a queue.
-#[derive(Clone, Debug)]
-pub enum QueueError {
-    RuntimeError(RuntimeError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-}
-
-impl Error for QueueError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            QueueError::RuntimeError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for QueueError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-        }
-    }
-}
-
-impl From<RuntimeError> for QueueError {
-    fn from(err: RuntimeError) -> Self {
-        Self::RuntimeError(err)
-    }
-}
-
-impl From<RequirementNotMet> for QueueError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
 }
 
 #[cfg(test)]

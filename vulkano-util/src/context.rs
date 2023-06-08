@@ -237,9 +237,9 @@ impl VulkanoContext {
             Device::new(
                 physical_device,
                 DeviceCreateInfo {
+                    queue_create_infos,
                     enabled_extensions: device_extensions,
                     enabled_features: features,
-                    queue_create_infos,
                     ..Default::default()
                 },
             )

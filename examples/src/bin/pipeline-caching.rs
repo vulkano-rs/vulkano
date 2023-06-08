@@ -33,7 +33,7 @@ use vulkano::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
         QueueFlags,
     },
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     pipeline::{
         cache::PipelineCache, compute::ComputePipelineCreateInfo,
         layout::PipelineDescriptorSetLayoutCreateInfo, ComputePipeline, PipelineLayout,
@@ -48,7 +48,7 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
-            enumerate_portability: true,
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             ..Default::default()
         },
     )

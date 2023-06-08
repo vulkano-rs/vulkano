@@ -92,86 +92,75 @@ fn write_instance_extensions(vk_data: &VkRegistryData) {
 fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
     let common = extensions_common_output(format_ident!("DeviceExtensions"), members);
 
-    let check_requirements_items = members.iter().map(|ExtensionsMember {
-        name,
-        requires,
-        conflicts_device_extensions,
-        required_if_supported,
-        ..
-    }| {
-        let name_string = name.to_string();
+    let check_requirements_items =
+        members
+            .iter()
+            .map(|ExtensionsMember { name, requires, .. }| {
+                let name_string = name.to_string();
 
-        let requires_items = requires.iter().map(|require| {
-            let require_items = require.api_version.iter().map(|version| {
-                let version = format_ident!("V{}_{}", version.0, version.1);
-                quote! { api_version >= crate::Version::#version }
-            }).chain(require.instance_extensions.iter().map(|ext| {
-                quote! { instance_extensions.#ext }
-            })).chain(require.device_extensions.iter().map(|ext| {
-                quote! { device_extensions.#ext }
-            }));
+                let requires_items = requires.iter().map(|require| {
+                    let require_items = require
+                        .api_version
+                        .iter()
+                        .map(|version| {
+                            let version = format_ident!("V{}_{}", version.0, version.1);
+                            quote! { api_version >= crate::Version::#version }
+                        })
+                        .chain(require.instance_extensions.iter().map(|ext| {
+                            quote! { instance_extensions.#ext }
+                        }))
+                        .chain(require.device_extensions.iter().map(|ext| {
+                            quote! { device_extensions.#ext }
+                        }));
 
-            let api_version_items = require.api_version.as_ref().map(|version| {
-                let version = format_ident!("V{}_{}", version.0, version.1);
-                quote! { Some(crate::Version::#version) }
-            }).unwrap_or_else(|| quote!{ None });
-            let device_extensions_items = require.device_extensions.iter().map(|ext| ext.to_string());
-            let instance_extensions_items = require.instance_extensions.iter().map(|ext| ext.to_string());
+                    let api_version_items = require
+                        .api_version
+                        .as_ref()
+                        .map(|version| {
+                            let version = format_ident!("V{}_{}", version.0, version.1);
+                            quote! { Some(crate::Version::#version) }
+                        })
+                        .unwrap_or_else(|| quote! { None });
+                    let device_extensions_items =
+                        require.device_extensions.iter().map(|ext| ext.to_string());
+                    let instance_extensions_items = require
+                        .instance_extensions
+                        .iter()
+                        .map(|ext| ext.to_string());
 
-            quote! {
-                if !(#(#require_items)||*) {
-                    return Err(crate::device::ExtensionRestrictionError {
-                        extension: #name_string,
-                        restriction: crate::device::ExtensionRestriction::Requires(crate::RequiresOneOf {
-                            api_version: #api_version_items,
-                            device_extensions: &[#(#device_extensions_items),*],
-                            instance_extensions: &[#(#instance_extensions_items),*],
-                            ..Default::default()
-                        }),
-                    })
+                    quote! {
+                        if !(#(#require_items)||*) {
+                            return Err(crate::ValidationError {
+                                problem: format!("contains `{}`", #name_string).into(),
+                                requires_one_of: crate::RequiresOneOf {
+                                    api_version: #api_version_items,
+                                    device_extensions: &[#(#device_extensions_items),*],
+                                    instance_extensions: &[#(#instance_extensions_items),*],
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            });
+                        }
+                    }
+                });
+
+                quote! {
+                    if self.#name {
+                        if !supported.#name {
+                            return Err(crate::ValidationError {
+                                problem: format!(
+                                    "contains `{}`, but this extension is not supported \
+                                    by the physical device",
+                                    #name_string,
+                                ).into(),
+                                ..Default::default()
+                            });
+                        }
+
+                        #(#requires_items)*
+                    }
                 }
-            }
-        });
-        let conflicts_device_extensions_items = conflicts_device_extensions.iter().map(|extension| {
-            let string = extension.to_string();
-            quote! {
-                if self.#extension {
-                    return Err(crate::device::ExtensionRestrictionError {
-                        extension: #name_string,
-                        restriction: crate::device::ExtensionRestriction::ConflictsDeviceExtension(#string),
-                    });
-                }
-            }
-        });
-        let required_if_supported = if *required_if_supported {
-            quote! {
-                if supported.#name {
-                    return Err(crate::device::ExtensionRestrictionError {
-                        extension: #name_string,
-                        restriction: crate::device::ExtensionRestriction::RequiredIfSupported,
-                    });
-                }
-            }
-        } else {
-            quote! {}
-        };
-
-        quote! {
-            if self.#name {
-                if !supported.#name {
-                    return Err(crate::device::ExtensionRestrictionError {
-                        extension: #name_string,
-                        restriction: crate::device::ExtensionRestriction::NotSupported,
-                    });
-                }
-
-                #(#requires_items)*
-                #(#conflicts_device_extensions_items)*
-            } else {
-                #required_if_supported
-            }
-        }
-    });
+            });
 
     quote! {
         #common
@@ -183,7 +172,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 supported: &DeviceExtensions,
                 api_version: crate::Version,
                 instance_extensions: &crate::instance::InstanceExtensions,
-            ) -> Result<(), crate::device::ExtensionRestrictionError> {
+            ) -> Result<(), crate::ValidationError> {
                 let device_extensions = self;
                 #(#check_requirements_items)*
                 Ok(())
@@ -233,15 +222,16 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
 
                     quote! {
                         if !(#(#require_items)||*) {
-                            return Err(crate::instance::ExtensionRestrictionError {
-                                extension: #name_string,
-                                restriction: crate::instance::ExtensionRestriction::Requires(crate::RequiresOneOf {
+                            return Err(crate::ValidationError {
+                                problem: format!("contains `{}`", #name_string).into(),
+                                requires_one_of: crate::RequiresOneOf {
                                     api_version: #api_version_items,
                                     device_extensions: &[#(#device_extensions_items),*],
                                     instance_extensions: &[#(#instance_extensions_items),*],
                                     ..Default::default()
-                                }),
-                            })
+                                },
+                                ..Default::default()
+                            });
                         }
                     }
                 });
@@ -249,9 +239,13 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 quote! {
                     if self.#name {
                         if !supported.#name {
-                            return Err(crate::instance::ExtensionRestrictionError {
-                                extension: #name_string,
-                                restriction: crate::instance::ExtensionRestriction::NotSupported,
+                            return Err(crate::ValidationError {
+                                problem: format!(
+                                    "contains `{}`, but this extension is not supported \
+                                    by the library",
+                                    #name_string,
+                                ).into(),
+                                ..Default::default()
                             });
                         }
 
@@ -269,7 +263,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 &self,
                 supported: &InstanceExtensions,
                 api_version: crate::Version,
-            ) -> Result<(), crate::instance::ExtensionRestrictionError> {
+            ) -> Result<(), crate::ValidationError> {
                 let instance_extensions = self;
                 #(#check_requirements_items)*
                 Ok(())

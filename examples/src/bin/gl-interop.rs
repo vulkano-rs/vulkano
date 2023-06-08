@@ -31,7 +31,7 @@ mod linux {
         image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
         instance::{
             debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
-            Instance, InstanceCreateInfo, InstanceExtensions,
+            Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
         },
         memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
         pipeline::{
@@ -422,6 +422,7 @@ mod linux {
         let instance = Instance::new(
             library,
             InstanceCreateInfo {
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 enabled_extensions: InstanceExtensions {
                     khr_get_physical_device_properties2: true,
                     khr_external_memory_capabilities: true,
@@ -430,7 +431,6 @@ mod linux {
                     ext_debug_utils: true,
                     ..required_extensions
                 },
-                enumerate_portability: true,
                 ..Default::default()
             },
         )

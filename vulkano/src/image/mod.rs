@@ -63,10 +63,11 @@ pub use self::{
 pub use self::storage::SubresourceData;
 
 use crate::{
+    device::physical::PhysicalDevice,
     format::Format,
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{ExternalMemoryHandleType, ExternalMemoryProperties},
-    DeviceSize,
+    DeviceSize, RequiresOneOf, ValidationError, Version,
 };
 use std::{cmp, ops::Range};
 
@@ -818,6 +819,180 @@ impl Default for ImageFormatInfo {
     }
 }
 
+impl ImageFormatInfo {
+    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+        let &Self {
+            flags,
+            format,
+            image_type,
+            tiling,
+            usage,
+            mut stencil_usage,
+            external_memory_handle_type,
+            image_view_type,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        let format = format.ok_or(ValidationError {
+            context: "format".into(),
+            problem: "is `None`".into(),
+            vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter"],
+            ..Default::default()
+        })?;
+        let aspects = format.aspects();
+
+        format
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "format".into(),
+                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        image_type
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "image_type".into(),
+                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-imageType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        tiling
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "tiling".into(),
+                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-tiling-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        usage
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "usage".into(),
+                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-usage-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if usage.is_empty() {
+            return Err(ValidationError {
+                context: "usage".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-usage-requiredbitmask"],
+                ..Default::default()
+            });
+        }
+
+        let has_separate_stencil_usage = if stencil_usage.is_empty()
+            || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        {
+            stencil_usage = usage;
+            false
+        } else {
+            stencil_usage == usage
+        };
+
+        if has_separate_stencil_usage {
+            if !(physical_device.api_version() >= Version::V1_2
+                || physical_device
+                    .supported_extensions()
+                    .ext_separate_stencil_usage)
+            {
+                return Err(ValidationError {
+                    problem: "`stencil_usage` is `Some`, and `format` has both a depth and a \
+                        stencil aspect"
+                        .into(),
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_2),
+                        device_extensions: &["ext_separate_stencil_usage"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            stencil_usage
+                .validate_physical_device(physical_device)
+                .map_err(|err| ValidationError {
+                    context: "stencil_usage".into(),
+                    vuids: &["VUID-VkImageStencilUsageCreateInfo-stencilUsage-parameter"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if stencil_usage.is_empty() {
+                return Err(ValidationError {
+                    context: "stencil_usage".into(),
+                    problem: "is empty".into(),
+                    vuids: &["VUID-VkImageStencilUsageCreateInfo-usage-requiredbitmask"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if let Some(handle_type) = external_memory_handle_type {
+            if !(physical_device.api_version() >= Version::V1_1
+                || physical_device
+                    .instance()
+                    .enabled_extensions()
+                    .khr_external_memory_capabilities)
+            {
+                return Err(ValidationError {
+                    problem: "`external_memory_handle_type` is `Some`".into(),
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        instance_extensions: &["khr_external_memory_capabilities"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            handle_type
+                .validate_physical_device(physical_device)
+                .map_err(|err| ValidationError {
+                    context: "handle_type".into(),
+                    vuids: &["VUID-VkPhysicalDeviceExternalImageFormatInfo-handleType-parameter"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+        }
+
+        if let Some(image_view_type) = image_view_type {
+            if !physical_device.supported_extensions().ext_filter_cubic {
+                return Err(ValidationError {
+                    problem: "`image_view_type` is `Some`".into(),
+                    requires_one_of: RequiresOneOf {
+                        device_extensions: &["ext_filter_cubic"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            image_view_type
+                .validate_physical_device(physical_device)
+                .map_err(|err| ValidationError {
+                    context: "image_view_type".into(),
+                    vuids: &[
+                        "VUID-VkPhysicalDeviceImageViewImageFormatInfoEXT-imageViewType-parameter",
+                    ],
+                    ..ValidationError::from_requirement(err)
+                })?;
+        }
+
+        // TODO: VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02313
+        // Currently there is nothing in Vulkano for for adding a VkImageFormatListCreateInfo.
+
+        Ok(())
+    }
+}
+
 /// The properties that are supported by a physical device for images of a certain type.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -916,6 +1091,80 @@ impl Default for SparseImageFormatInfo {
             tiling: ImageTiling::Optimal,
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+impl SparseImageFormatInfo {
+    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+        let &Self {
+            format,
+            image_type,
+            samples,
+            usage,
+            tiling,
+            _ne: _,
+        } = self;
+
+        let format = format.ok_or(ValidationError {
+            context: "format".into(),
+            problem: "is `None`".into(),
+            vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter"],
+            ..Default::default()
+        })?;
+
+        format
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "format".into(),
+                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-format-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        image_type
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "image_type".into(),
+                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-type-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        samples
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "samples".into(),
+                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-samples-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        usage
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "usage".into(),
+                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-usage-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if usage.is_empty() {
+            return Err(ValidationError {
+                context: "usage".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-usage-requiredbitmask"],
+                ..Default::default()
+            });
+        }
+
+        tiling
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "tiling".into(),
+                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-tiling-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-samples-01095
+        // TODO:
+
+        Ok(())
     }
 }
 

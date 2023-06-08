@@ -22,7 +22,7 @@ use vulkano::{
             DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
             DebugUtilsMessengerCreateInfo,
         },
-        Instance, InstanceCreateInfo, InstanceExtensions,
+        Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
     },
     memory::allocator::StandardMemoryAllocator,
     VulkanLibrary,
@@ -69,9 +69,9 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
-            enabled_extensions: extensions,
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             enabled_layers: layers,
-            enumerate_portability: true,
+            enabled_extensions: extensions,
             ..Default::default()
         },
     )

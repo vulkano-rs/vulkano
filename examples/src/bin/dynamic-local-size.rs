@@ -29,7 +29,7 @@ use vulkano::{
     },
     format::Format,
     image::{view::ImageView, ImageDimensions, StorageImage},
-    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
@@ -45,13 +45,13 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             enabled_extensions: InstanceExtensions {
                 // This extension is required to obtain physical device metadata about the device
                 // workgroup size limits.
                 khr_get_physical_device_properties2: true,
                 ..InstanceExtensions::empty()
             },
-            enumerate_portability: true,
             ..Default::default()
         },
     )

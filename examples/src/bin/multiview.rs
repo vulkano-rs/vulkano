@@ -28,7 +28,7 @@ use vulkano::{
         view::ImageView, ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout,
         ImageSubresourceLayers, ImageUsage, SampleCount, StorageImage,
     },
-    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
@@ -57,12 +57,12 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             enabled_extensions: InstanceExtensions {
                 // Required to get multiview limits.
                 khr_get_physical_device_properties2: true,
                 ..InstanceExtensions::empty()
             },
-            enumerate_portability: true,
             ..Default::default()
         },
     )
@@ -121,12 +121,12 @@ fn main() {
     let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            enabled_features: features,
             queue_create_infos: vec![QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
+            enabled_extensions: device_extensions,
+            enabled_features: features,
             ..Default::default()
         },
     )
