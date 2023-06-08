@@ -33,9 +33,9 @@ use smallvec::SmallVec;
 use std::{
     cmp::min,
     error,
+    ffi::c_void,
     fmt::{Display, Error as FmtError, Formatter},
     mem::size_of,
-    slice,
     sync::Arc,
 };
 
@@ -647,26 +647,21 @@ where
         &self,
         pipeline_layout: &PipelineLayout,
         offset: u32,
-        push_constants: &Pc,
+        _push_constants: &Pc,
     ) -> Result<(), BindPushError> {
         let size = size_of::<Pc>() as u32;
-
-        // SAFETY: `&push_constants` is a valid pointer, and the size of the struct is `size`,
-        //         thus, getting a slice of the whole struct is safe if its not modified.
-        let push_constants = unsafe {
-            slice::from_raw_parts(push_constants as *const Pc as *const u8, size as usize)
-        };
 
         if offset % 4 != 0 {
             return Err(BindPushError::PushConstantsOffsetNotAligned);
         }
 
-        if push_constants.len() % 4 != 0 {
+        if size % 4 != 0 {
             return Err(BindPushError::PushConstantsSizeNotAligned);
         }
 
         let mut current_offset = offset;
-        let mut remaining_size = push_constants.len() as u32;
+        let mut remaining_size = u32::try_from(size).unwrap();
+
         for range in pipeline_layout
             .push_constant_ranges_disjoint()
             .iter()
@@ -1046,21 +1041,16 @@ where
     where
         Pc: BufferContents,
     {
-        let size = size_of::<Pc>() as u32;
+        let size = u32::try_from(size_of::<Pc>()).unwrap();
 
         if size == 0 {
             return self;
         }
 
-        // SAFETY: `&push_constants` is a valid pointer, and the size of the struct is `size`,
-        //         thus, getting a slice of the whole struct is safe if its not modified.
-        let push_constants = unsafe {
-            slice::from_raw_parts(push_constants as *const Pc as *const u8, size as usize)
-        };
-
         let fns = self.device().fns();
         let mut current_offset = offset;
         let mut remaining_size = size;
+
         for range in pipeline_layout
             .push_constant_ranges_disjoint()
             .iter()
@@ -1075,7 +1065,8 @@ where
             // push the minimum of the whole remaining data, and the part until the end of this range
             let push_size = remaining_size.min(range.offset + range.size - current_offset);
             let data_offset = (current_offset - offset) as usize;
-            let slice = &push_constants[data_offset..(data_offset + push_size as usize)];
+            debug_assert!(data_offset < size as usize);
+            let data = (push_constants as *const Pc as *const c_void).add(data_offset);
 
             (fns.v1_0.cmd_push_constants)(
                 self.handle(),
@@ -1083,7 +1074,7 @@ where
                 range.stages.into(),
                 current_offset,
                 push_size,
-                slice.as_ptr() as _,
+                data,
             );
 
             current_offset += push_size;
