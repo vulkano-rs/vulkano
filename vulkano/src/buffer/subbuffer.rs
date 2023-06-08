@@ -180,12 +180,14 @@ where
     ///
     /// # Panics
     ///
-    /// - Panics if the memory offset of the subbuffer is not aligned to the alignment of `U`.
+    /// - Panics if the memory offset of the subbuffer is not a multiple of the alignment of `U`.
     /// - If `U` is sized, then panics if the subbuffer size doesn't match the size of `U` exactly.
-    /// - If `U` is unsized, then panics if:
-    ///   - the subbuffer size isn't greater than the size of the head (sized part) of `U`, or
+    /// - If `U` is unsized, then panics if
+    ///   - the subbuffer size isn't greater than the size of the head (sized part) of `U`,
     ///   - the subbuffer would have slop when reinterpreted as `U`, meaning that the subbuffer
-    ///     size minus the the size of the head of `U` isn't divisible by the element size of `U`.
+    ///     size minus the the size of the head of `U` isn't divisible by the element size of `U`,
+    ///     or
+    ///   - the subbuffer size isn't a multiple of the alignment of `U`.
     pub fn reinterpret<U>(self) -> Subbuffer<U>
     where
         U: BufferContents + ?Sized,
@@ -204,12 +206,13 @@ where
     ///
     /// # Safety
     ///
-    /// - The memory offset of the subbuffer must be aligned to the alignment of `U`.
+    /// - The memory offset of the subbuffer must be a multiple of the alignment of `U`.
     /// - If `U` is sized, then the subbuffer size must match the size of `U` exactly.
     /// - If `U` is unsized, then
-    ///   - the subbuffer size must be greater than the size of the head (sized part) of `U`, and
+    ///   - the subbuffer size must be greater than the size of the head (sized part) of `U`,
     ///   - the subbuffer must not have slop when reinterpreted as `U`, meaning that the subbuffer
-    ///     size minus the the size of the head of `U` is divisible by the element size of `U`.
+    ///     size minus the the size of the head of `U` is divisible by the element size of `U`, and
+    ///   - the subbuffer size must be a multiple of the alignment of `U`.
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn reinterpret_unchecked<U>(self) -> Subbuffer<U>
     where
@@ -259,6 +262,7 @@ where
         } else {
             assert!(self.size > new_layout.head_size());
             assert!((self.size - new_layout.head_size()) % new_layout.element_size().unwrap() == 0);
+            assert!(is_aligned(self.size(), new_layout.alignment()));
         }
     }
 
