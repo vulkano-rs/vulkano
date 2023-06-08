@@ -25,7 +25,7 @@
 //! Consequently you can create graphics pipelines from a render pass object alone.
 //! A `Framebuffer` object is only needed when you actually add draw commands to a command buffer.
 
-pub use self::framebuffer::{Framebuffer, FramebufferCreateInfo};
+pub use self::framebuffer::{Framebuffer, FramebufferCreateFlags, FramebufferCreateInfo};
 use crate::{
     device::{Device, DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures, NumericType},

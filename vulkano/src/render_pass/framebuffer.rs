@@ -11,7 +11,7 @@ use super::RenderPass;
 use crate::{
     device::{Device, DeviceOwned},
     image::{view::ImageViewType, ImageAspects, ImageType, ImageUsage, ImageViewAbstract},
-    macros::impl_id_counter,
+    macros::{impl_id_counter, vulkan_bitflags},
     RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -47,6 +47,7 @@ pub struct Framebuffer {
     render_pass: Arc<RenderPass>,
     id: NonZeroU64,
 
+    flags: FramebufferCreateFlags,
     attachments: Vec<Arc<dyn ImageViewAbstract>>,
     extent: [u32; 2],
     layers: u32,
@@ -68,11 +69,13 @@ impl Framebuffer {
         render_pass: &RenderPass,
         create_info: &FramebufferCreateInfo,
     ) -> Result<(), ValidationError> {
+        // VUID-vkCreateFramebuffer-pCreateInfo-parameter
         create_info
             .validate(render_pass.device())
             .map_err(|err| err.add_context("create_info"))?;
 
         let &FramebufferCreateInfo {
+            flags: _,
             ref attachments,
             extent,
             layers,
@@ -251,6 +254,7 @@ impl Framebuffer {
         create_info.set_auto_extent_layers(&render_pass);
 
         let &FramebufferCreateInfo {
+            flags,
             ref attachments,
             extent,
             layers,
@@ -261,7 +265,7 @@ impl Framebuffer {
             attachments.iter().map(VulkanObject::handle).collect();
 
         let create_info_vk = ash::vk::FramebufferCreateInfo {
-            flags: ash::vk::FramebufferCreateFlags::empty(),
+            flags: flags.into(),
             render_pass: render_pass.handle(),
             attachment_count: attachments_vk.len() as u32,
             p_attachments: attachments_vk.as_ptr(),
@@ -303,6 +307,7 @@ impl Framebuffer {
         create_info.set_auto_extent_layers(&render_pass);
 
         let FramebufferCreateInfo {
+            flags,
             attachments,
             extent,
             layers,
@@ -313,15 +318,24 @@ impl Framebuffer {
             handle,
             render_pass,
             id: Self::next_id(),
+
+            flags,
             attachments,
             extent,
             layers,
         })
     }
+
     /// Returns the renderpass that was used to create this framebuffer.
     #[inline]
     pub fn render_pass(&self) -> &Arc<RenderPass> {
         &self.render_pass
+    }
+
+    /// Returns the flags that the framebuffer was created with.
+    #[inline]
+    pub fn flags(&self) -> FramebufferCreateFlags {
+        self.flags
     }
 
     /// Returns the attachments of the framebuffer.
@@ -383,6 +397,11 @@ impl_id_counter!(Framebuffer);
 /// Parameters to create a new `Framebuffer`.
 #[derive(Clone, Debug)]
 pub struct FramebufferCreateInfo {
+    /// Additional properties of the framebuffer.
+    ///
+    /// The default value is empty.
+    pub flags: FramebufferCreateFlags,
+
     /// The attachment images that are to be used in the framebuffer.
     ///
     /// Attachments are specified in the same order as they are defined in the render pass, and
@@ -438,6 +457,7 @@ impl Default for FramebufferCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: FramebufferCreateFlags::empty(),
             attachments: Vec::new(),
             extent: [0, 0],
             layers: 0,
@@ -449,6 +469,7 @@ impl Default for FramebufferCreateInfo {
 impl FramebufferCreateInfo {
     fn set_auto_extent_layers(&mut self, render_pass: &RenderPass) {
         let Self {
+            flags: _,
             attachments,
             extent,
             layers,
@@ -489,11 +510,20 @@ impl FramebufferCreateInfo {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
         let &Self {
+            flags,
             ref attachments,
             extent,
             layers,
             _ne: _,
         } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkFramebufferCreateInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
         for (index, image_view) in attachments.iter().enumerate() {
             assert_eq!(device, image_view.device().as_ref());
@@ -605,6 +635,20 @@ impl FramebufferCreateInfo {
 
         Ok(())
     }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags specifying additional properties of a framebuffer.
+    FramebufferCreateFlags = FramebufferCreateFlags(u32);
+
+    /* TODO: enable
+    // TODO: document
+    IMAGELESS = IMAGELESS {
+        api_version: V1_2,
+        device_extensions: [khr_imageless_framebuffer],
+    }, */
 }
 
 #[cfg(test)]
