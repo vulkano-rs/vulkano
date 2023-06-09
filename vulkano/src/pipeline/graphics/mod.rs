@@ -85,6 +85,7 @@ use crate::{
             depth_stencil::{StencilOpState, StencilState},
             rasterization::{CullMode, FrontFace},
             subpass::PipelineRenderingCreateInfo,
+            tessellation::TessellationDomainOrigin,
             vertex_input::VertexInputRate,
         },
         PartialStateMode,
@@ -1044,6 +1045,7 @@ impl GraphicsPipeline {
         if let Some(tessellation_state) = tessellation_state {
             let &TessellationState {
                 patch_control_points,
+                domain_origin,
             } = tessellation_state;
 
             match patch_control_points {
@@ -1072,6 +1074,24 @@ impl GraphicsPipeline {
                     }
                 }
             };
+
+            // VUID-VkPipelineTessellationDomainOriginStateCreateInfo-domainOrigin-parameter
+            domain_origin.validate_device(device)?;
+
+            if domain_origin != TessellationDomainOrigin::default()
+                && !(device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_maintenance2)
+            {
+                return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                    required_for: "`tessellation_state.domain_origin` is not \
+                        `TessellationDomainOrigin::UpperLeft`",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        device_extensions: &["khr_maintenance2"],
+                        ..Default::default()
+                    },
+                });
+            }
         }
 
         if let Some(viewport_state) = viewport_state {
@@ -2809,10 +2829,12 @@ impl GraphicsPipeline {
         }
 
         let mut tessellation_state_vk = None;
+        let mut tessellation_domain_origin_state_vk = None;
 
         if let Some(tessellation_state) = tessellation_state {
             let &TessellationState {
                 patch_control_points,
+                domain_origin,
             } = tessellation_state;
 
             let patch_control_points = match patch_control_points {
@@ -2826,11 +2848,24 @@ impl GraphicsPipeline {
                 }
             };
 
-            let _ = tessellation_state_vk.insert(ash::vk::PipelineTessellationStateCreateInfo {
-                flags: ash::vk::PipelineTessellationStateCreateFlags::empty(),
-                patch_control_points,
-                ..Default::default()
-            });
+            let tessellation_state_vk =
+                tessellation_state_vk.insert(ash::vk::PipelineTessellationStateCreateInfo {
+                    flags: ash::vk::PipelineTessellationStateCreateFlags::empty(),
+                    patch_control_points,
+                    ..Default::default()
+                });
+
+            if domain_origin != TessellationDomainOrigin::default() {
+                let tessellation_domain_origin_state_vk = tessellation_domain_origin_state_vk
+                    .insert(ash::vk::PipelineTessellationDomainOriginStateCreateInfo {
+                        domain_origin: domain_origin.into(),
+                        ..Default::default()
+                    });
+
+                tessellation_domain_origin_state_vk.p_next = tessellation_state_vk.p_next;
+                tessellation_state_vk.p_next =
+                    tessellation_domain_origin_state_vk as *const _ as *const _;
+            }
         }
 
         let mut viewport_state_vk = None;
@@ -3694,6 +3729,7 @@ impl GraphicsPipeline {
         if let Some(tessellation_state) = &tessellation_state {
             let &TessellationState {
                 patch_control_points,
+                domain_origin: _,
             } = tessellation_state;
 
             match patch_control_points {

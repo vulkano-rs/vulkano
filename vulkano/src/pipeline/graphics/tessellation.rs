@@ -9,7 +9,7 @@
 
 //! Subdivides primitives into smaller primitives.
 
-use crate::pipeline::StateMode;
+use crate::{macros::vulkan_enum, pipeline::StateMode};
 
 /// The state in a graphics pipeline describing the tessellation shader execution of a graphics
 /// pipeline.
@@ -21,6 +21,15 @@ pub struct TessellationState {
     /// [`extended_dynamic_state2_patch_control_points`](crate::device::Features::extended_dynamic_state2_patch_control_points)
     /// feature must be enabled on the device.
     pub patch_control_points: StateMode<u32>,
+
+    /// The origin to use for the tessellation domain.
+    ///
+    /// If this is not [`TessellationDomainOrigin::UpperLeft`], the device API version must be at
+    /// least 1.1, or the [`khr_maintenance2`](crate::device::DeviceExtensions::khr_maintenance2)
+    /// extension must be enabled on the device.
+    ///
+    /// The default value is [`TessellationDomainOrigin::UpperLeft`].
+    pub domain_origin: TessellationDomainOrigin,
 }
 
 impl TessellationState {
@@ -29,6 +38,7 @@ impl TessellationState {
     pub fn new() -> Self {
         Self {
             patch_control_points: StateMode::Fixed(3),
+            domain_origin: TessellationDomainOrigin::default(),
         }
     }
 
@@ -52,5 +62,27 @@ impl Default for TessellationState {
     #[inline]
     fn default() -> Self {
         Self::new()
+    }
+}
+
+vulkan_enum! {
+    #[non_exhaustive]
+
+    /// The origin of the tessellation domain.
+    TessellationDomainOrigin = TessellationDomainOrigin(i32);
+
+    /// The origin is in the upper left corner.
+    ///
+    /// This is the default.
+    UpperLeft = UPPER_LEFT,
+
+    /// The origin is in the lower left corner.
+    LowerLeft = LOWER_LEFT,
+}
+
+impl Default for TessellationDomainOrigin {
+    #[inline]
+    fn default() -> Self {
+        Self::UpperLeft
     }
 }
