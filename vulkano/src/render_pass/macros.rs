@@ -143,6 +143,8 @@ macro_rules! ordered_passes_renderpass {
                                 })
                             }))?
                         },
+                        depth_resolve_mode: None, // TODO:
+                        stencil_resolve_mode: None, // TODO:
                         input_attachments: vec![
                             $({
                                 let layouts = &mut layouts[$input_atch as usize];
