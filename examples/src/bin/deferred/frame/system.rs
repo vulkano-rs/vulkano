@@ -127,7 +127,7 @@ impl FrameSystem {
                     store_op: DontCare,
                 },
                 // Will be bound to `self.depth_buffer`.
-                depth: {
+                depth_stencil: {
                     format: Format::D16_UNORM,
                     samples: 1,
                     load_op: Clear,
@@ -138,20 +138,234 @@ impl FrameSystem {
                 // Write to the diffuse, normals and depth attachments.
                 {
                     color: [diffuse, normals],
-                    depth: {depth},
-                    stencil: {},
+                    depth_stencil: {depth_stencil},
                     input: [],
                 },
                 // Apply lighting by reading these three attachments and writing to `final_color`.
                 {
                     color: [final_color],
-                    depth: {},
-                    stencil: {},
-                    input: [diffuse, normals, depth],
+                    depth_stencil: {},
+                    input: [diffuse, normals, depth_stencil],
                 },
             ],
         )
         .unwrap();
+
+        /*
+        RenderPassCreateInfo {
+            flags: empty(),
+            attachments: [
+                AttachmentDescription {
+                    flags: empty(),
+                    format: Some(
+                        B8G8R8A8_SRGB,
+                    ),
+                    samples: Sample1,
+                    load_op: Clear,
+                    store_op: Store,
+                    initial_layout: ColorAttachmentOptimal,
+                    final_layout: ColorAttachmentOptimal,
+                    stencil_load_op: None,
+                    stencil_store_op: None,
+                    stencil_initial_layout: None,
+                    stencil_final_layout: None,
+                    _ne: NonExhaustive(
+                        (),
+                    ),
+                },
+                AttachmentDescription {
+                    flags: empty(),
+                    format: Some(
+                        A2B10G10R10_UNORM_PACK32,
+                    ),
+                    samples: Sample1,
+                    load_op: Clear,
+                    store_op: DontCare,
+                    initial_layout: ColorAttachmentOptimal,
+                    final_layout: ShaderReadOnlyOptimal,
+                    stencil_load_op: None,
+                    stencil_store_op: None,
+                    stencil_initial_layout: None,
+                    stencil_final_layout: None,
+                    _ne: NonExhaustive(
+                        (),
+                    ),
+                },
+                AttachmentDescription {
+                    flags: empty(),
+                    format: Some(
+                        R16G16B16A16_SFLOAT,
+                    ),
+                    samples: Sample1,
+                    load_op: Clear,
+                    store_op: DontCare,
+                    initial_layout: ColorAttachmentOptimal,
+                    final_layout: ShaderReadOnlyOptimal,
+                    stencil_load_op: None,
+                    stencil_store_op: None,
+                    stencil_initial_layout: None,
+                    stencil_final_layout: None,
+                    _ne: NonExhaustive(
+                        (),
+                    ),
+                },
+                AttachmentDescription {
+                    flags: empty(),
+                    format: Some(
+                        D16_UNORM,
+                    ),
+                    samples: Sample1,
+                    load_op: Clear,
+                    store_op: DontCare,
+                    initial_layout: DepthStencilAttachmentOptimal,
+                    final_layout: ShaderReadOnlyOptimal,
+                    stencil_load_op: None,
+                    stencil_store_op: None,
+                    stencil_initial_layout: None,
+                    stencil_final_layout: None,
+                    _ne: NonExhaustive(
+                        (),
+                    ),
+                },
+            ],
+            subpasses: [
+                SubpassDescription {
+                    flags: empty(),
+                    view_mask: 0,
+                    input_attachments: [],
+                    color_attachments: [
+                        Some(
+                            AttachmentReference {
+                                attachment: 1,
+                                layout: ColorAttachmentOptimal,
+                                stencil_layout: None,
+                                aspects: empty(),
+                                _ne: NonExhaustive(
+                                    (),
+                                ),
+                            },
+                        ),
+                        Some(
+                            AttachmentReference {
+                                attachment: 2,
+                                layout: ColorAttachmentOptimal,
+                                stencil_layout: None,
+                                aspects: empty(),
+                                _ne: NonExhaustive(
+                                    (),
+                                ),
+                            },
+                        ),
+                    ],
+                    color_resolve_attachments: [],
+                    depth_stencil_attachment: Some(
+                        AttachmentReference {
+                            attachment: 3,
+                            layout: DepthStencilAttachmentOptimal,
+                            stencil_layout: None,
+                            aspects: empty(),
+                            _ne: NonExhaustive(
+                                (),
+                            ),
+                        },
+                    ),
+                    depth_stencil_resolve_attachment: None,
+                    depth_resolve_mode: None,
+                    stencil_resolve_mode: None,
+                    preserve_attachments: [
+                        0,
+                    ],
+                    _ne: NonExhaustive(
+                        (),
+                    ),
+                },
+                SubpassDescription {
+                    flags: empty(),
+                    view_mask: 0,
+                    input_attachments: [
+                        Some(
+                            AttachmentReference {
+                                attachment: 1,
+                                layout: ShaderReadOnlyOptimal,
+                                stencil_layout: None,
+                                aspects: COLOR,
+                                _ne: NonExhaustive(
+                                    (),
+                                ),
+                            },
+                        ),
+                        Some(
+                            AttachmentReference {
+                                attachment: 2,
+                                layout: ShaderReadOnlyOptimal,
+                                stencil_layout: None,
+                                aspects: COLOR,
+                                _ne: NonExhaustive(
+                                    (),
+                                ),
+                            },
+                        ),
+                        Some(
+                            AttachmentReference {
+                                attachment: 3,
+                                layout: ShaderReadOnlyOptimal,
+                                stencil_layout: None,
+                                aspects: DEPTH,
+                                _ne: NonExhaustive(
+                                    (),
+                                ),
+                            },
+                        ),
+                    ],
+                    color_attachments: [
+                        Some(
+                            AttachmentReference {
+                                attachment: 0,
+                                layout: ColorAttachmentOptimal,
+                                stencil_layout: None,
+                                aspects: empty(),
+                                _ne: NonExhaustive(
+                                    (),
+                                ),
+                            },
+                        ),
+                    ],
+                    color_resolve_attachments: [],
+                    depth_stencil_attachment: None,
+                    depth_stencil_resolve_attachment: None,
+                    depth_resolve_mode: None,
+                    stencil_resolve_mode: None,
+                    preserve_attachments: [],
+                    _ne: NonExhaustive(
+                        (),
+                    ),
+                },
+            ],
+            dependencies: [
+                SubpassDependency {
+                    src_subpass: Some(
+                        0,
+                    ),
+                    dst_subpass: Some(
+                        1,
+                    ),
+                    src_stages: ALL_GRAPHICS,
+                    dst_stages: ALL_GRAPHICS,
+                    src_access: MEMORY_READ | MEMORY_WRITE,
+                    dst_access: MEMORY_READ | MEMORY_WRITE,
+                    dependency_flags: BY_REGION,
+                    view_offset: 0,
+                    _ne: NonExhaustive(
+                        (),
+                    ),
+                },
+            ],
+            correlated_view_masks: [],
+            _ne: NonExhaustive(
+                (),
+            ),
+        }
+        */
 
         // For now we create three temporary images with a dimension of 1 by 1 pixel. These images
         // will be replaced the first time we call `frame()`.

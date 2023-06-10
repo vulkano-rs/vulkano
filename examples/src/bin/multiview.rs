@@ -45,8 +45,8 @@ use vulkano::{
     },
     render_pass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentReference, AttachmentStoreOp,
-        Framebuffer, FramebufferCreateInfo, RenderPass, RenderPassCreateInfo,
-        ResolvableAttachmentReference, Subpass, SubpassDescription,
+        Framebuffer, FramebufferCreateInfo, RenderPass, RenderPassCreateInfo, Subpass,
+        SubpassDescription,
     },
     shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
@@ -227,8 +227,6 @@ fn main() {
             samples: SampleCount::Sample1,
             load_op: AttachmentLoadOp::Clear,
             store_op: AttachmentStoreOp::Store,
-            stencil_load_op: AttachmentLoadOp::Clear,
-            stencil_store_op: AttachmentStoreOp::Store,
             initial_layout: ImageLayout::ColorAttachmentOptimal,
             final_layout: ImageLayout::ColorAttachmentOptimal,
             ..Default::default()
@@ -237,13 +235,10 @@ fn main() {
             // The view mask indicates which layers of the framebuffer should be rendered for each
             // subpass.
             view_mask: 0b11,
-            color_attachments: vec![Some(ResolvableAttachmentReference {
-                attachment_ref: AttachmentReference {
-                    attachment: 0,
-                    layout: ImageLayout::ColorAttachmentOptimal,
-                    ..Default::default()
-                },
-                resolve: None,
+            color_attachments: vec![Some(AttachmentReference {
+                attachment: 0,
+                layout: ImageLayout::ColorAttachmentOptimal,
+                ..Default::default()
             })],
             ..Default::default()
         }],

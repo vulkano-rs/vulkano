@@ -679,8 +679,7 @@ mod tests {
             },
             pass: {
                 color: [color],
-                depth: {},
-                stencil: {},
+                depth_stencil: {},
             },
         )
         .unwrap();
@@ -756,8 +755,7 @@ mod tests {
             },
             pass: {
                 color: [color],
-                depth: {},
-                stencil: {},
+                depth_stencil: {},
             },
         )
         .unwrap();
@@ -799,8 +797,7 @@ mod tests {
             },
             pass: {
                 color: [color],
-                depth: {},
-                stencil: {},
+                depth_stencil: {},
             },
         )
         .unwrap();
@@ -839,8 +836,7 @@ mod tests {
             },
             pass: {
                 color: [color],
-                depth: {},
-                stencil: {},
+                depth_stencil: {},
             },
         )
         .unwrap();
@@ -888,8 +884,7 @@ mod tests {
             },
             pass: {
                 color: [a, b],
-                depth: {},
-                stencil: {},
+                depth_stencil: {},
             },
         )
         .unwrap();
@@ -941,8 +936,7 @@ mod tests {
             },
             pass: {
                 color: [a, b],
-                depth: {},
-                stencil: {},
+                depth_stencil: {},
             },
         )
         .unwrap();
@@ -982,8 +976,7 @@ mod tests {
             },
             pass: {
                 color: [a],
-                depth: {},
-                stencil: {},
+                depth_stencil: {},
             },
         )
         .unwrap();

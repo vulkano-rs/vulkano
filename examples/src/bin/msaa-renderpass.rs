@@ -216,9 +216,9 @@ fn main() {
             // The value after : indicates the resolve mode. For a floating-point color format,
             // which we are using here, Average is the only allowed option.
             // You can choose multiple modes for depth/stencil formats.
-            color: [intermediary -> color:Average],
-            depth: {},
-            stencil: {},
+            color: [intermediary],
+            color_resolve: [color],
+            depth_stencil: {},
         },
     )
     .unwrap();

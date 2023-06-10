@@ -131,11 +131,14 @@ where
             } = attachment_desc;
 
             for layout in [
-                initial_layout,
-                final_layout,
+                Some(initial_layout),
+                Some(final_layout),
                 stencil_initial_layout,
                 stencil_final_layout,
-            ] {
+            ]
+            .into_iter()
+            .flatten()
+            {
                 match layout {
                     ImageLayout::ColorAttachmentOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03094
@@ -210,54 +213,21 @@ where
                 view_mask: _,
                 input_attachments,
                 color_attachments,
-                depth_attachment,
-                stencil_attachment,
+                color_resolve_attachments,
+                depth_stencil_attachment,
+                depth_stencil_resolve_attachment,
+                depth_resolve_mode: _,
+                stencil_resolve_mode: _,
                 preserve_attachments: _,
                 _ne: _,
             } = subpass_desc;
 
-            for atch_ref in (input_attachments
-                .iter()
-                .flatten()
-                .map(|input_attachment| &input_attachment.attachment_ref))
-            .chain(
-                color_attachments
-                    .iter()
-                    .flatten()
-                    .flat_map(|resolvable_attachment| {
-                        [
-                            Some(&resolvable_attachment.attachment_ref),
-                            resolvable_attachment
-                                .resolve
-                                .as_ref()
-                                .map(|resolve| &resolve.attachment_ref),
-                        ]
-                        .into_iter()
-                        .flatten()
-                    }),
-            )
-            .chain(depth_attachment.iter().flat_map(|resolvable_attachment| {
-                [
-                    Some(&resolvable_attachment.attachment_ref),
-                    resolvable_attachment
-                        .resolve
-                        .as_ref()
-                        .map(|resolve| &resolve.attachment_ref),
-                ]
-                .into_iter()
-                .flatten()
-            }))
-            .chain(stencil_attachment.iter().flat_map(|resolvable_attachment| {
-                [
-                    Some(&resolvable_attachment.attachment_ref),
-                    resolvable_attachment
-                        .resolve
-                        .as_ref()
-                        .map(|resolve| &resolve.attachment_ref),
-                ]
-                .into_iter()
-                .flatten()
-            })) {
+            for atch_ref in (input_attachments.iter().flatten())
+                .chain(color_attachments.iter().flatten())
+                .chain(color_resolve_attachments.iter().flatten())
+                .chain(depth_stencil_attachment.iter())
+                .chain(depth_stencil_resolve_attachment.iter())
+            {
                 let image_view = &framebuffer.attachments()[atch_ref.attachment as usize];
 
                 match atch_ref.layout {
@@ -346,7 +316,10 @@ where
             let attachment_format = attachment_desc.format.unwrap();
 
             if attachment_desc.load_op == AttachmentLoadOp::Clear
-                || attachment_desc.stencil_load_op == AttachmentLoadOp::Clear
+                || attachment_desc
+                    .stencil_load_op
+                    .unwrap_or(attachment_desc.load_op)
+                    == AttachmentLoadOp::Clear
             {
                 let clear_value = match clear_value {
                     Some(x) => x,
@@ -396,7 +369,10 @@ where
                     let need_depth = attachment_aspects.intersects(ImageAspects::DEPTH)
                         && attachment_desc.load_op == AttachmentLoadOp::Clear;
                     let need_stencil = attachment_aspects.intersects(ImageAspects::STENCIL)
-                        && attachment_desc.stencil_load_op == AttachmentLoadOp::Clear;
+                        && attachment_desc
+                            .stencil_load_op
+                            .unwrap_or(attachment_desc.load_op)
+                            == AttachmentLoadOp::Clear;
 
                     if need_depth && need_stencil {
                         if !matches!(clear_value, ClearValue::DepthStencil(_)) {
@@ -876,7 +852,17 @@ where
             // VUID-VkRenderingInfo-colorAttachmentCount-06090
             // VUID-VkRenderingInfo-colorAttachmentCount-06096
             // VUID-VkRenderingInfo-colorAttachmentCount-06100
-            if image_layout.layout_for(ImageAspect::Color).is_none() {
+            if matches!(
+                image_layout,
+                ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::DepthReadOnlyOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+                    | ImageLayout::StencilReadOnlyOptimal
+            ) {
                 return Err(RenderPassError::ColorAttachmentLayoutInvalid { attachment_index });
             }
 
@@ -960,10 +946,17 @@ where
                 // VUID-VkRenderingInfo-colorAttachmentCount-06091
                 // VUID-VkRenderingInfo-colorAttachmentCount-06097
                 // VUID-VkRenderingInfo-colorAttachmentCount-06101
-                if resolve_image_layout
-                    .layout_for(ImageAspect::Color)
-                    .is_none()
-                {
+                if matches!(
+                    resolve_image_layout,
+                    ImageLayout::DepthStencilAttachmentOptimal
+                        | ImageLayout::DepthStencilReadOnlyOptimal
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                        | ImageLayout::DepthAttachmentOptimal
+                        | ImageLayout::DepthReadOnlyOptimal
+                        | ImageLayout::StencilAttachmentOptimal
+                        | ImageLayout::StencilReadOnlyOptimal
+                ) {
                     return Err(RenderPassError::ColorAttachmentResolveLayoutInvalid {
                         attachment_index,
                     });
@@ -1048,7 +1041,7 @@ where
             }
 
             // VUID-VkRenderingInfo-pDepthAttachment-06092
-            if image_layout.layout_for(ImageAspect::Depth).is_none() {
+            if matches!(image_layout, ImageLayout::ColorAttachmentOptimal) {
                 return Err(RenderPassError::DepthAttachmentLayoutInvalid);
             }
 
@@ -1105,10 +1098,7 @@ where
                 }
 
                 // VUID-VkRenderingInfo-pDepthAttachment-06093
-                if resolve_image_layout
-                    .layout_for(ImageAspect::Depth)
-                    .is_none()
-                {
+                if matches!(resolve_image_layout, ImageLayout::ColorAttachmentOptimal) {
                     return Err(RenderPassError::DepthAttachmentResolveLayoutInvalid);
                 }
 
@@ -1191,7 +1181,7 @@ where
             }
 
             // VUID-VkRenderingInfo-pStencilAttachment-06094
-            if image_layout.layout_for(ImageAspect::Stencil).is_none() {
+            if matches!(image_layout, ImageLayout::ColorAttachmentOptimal) {
                 return Err(RenderPassError::StencilAttachmentLayoutInvalid);
             }
 
@@ -1248,10 +1238,7 @@ where
                 }
 
                 // VUID-VkRenderingInfo-pStencilAttachment-06095
-                if resolve_image_layout
-                    .layout_for(ImageAspect::Stencil)
-                    .is_none()
-                {
+                if matches!(resolve_image_layout, ImageLayout::ColorAttachmentOptimal) {
                     return Err(RenderPassError::StencilAttachmentResolveLayoutInvalid);
                 }
 

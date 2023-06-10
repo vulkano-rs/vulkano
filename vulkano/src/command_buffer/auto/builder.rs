@@ -45,7 +45,7 @@ use crate::{
     query::{QueryControlFlags, QueryPool},
     range_map::RangeMap,
     range_set::RangeSet,
-    render_pass::{Framebuffer, ResolvableAttachmentReference, Subpass},
+    render_pass::{Framebuffer, Subpass},
     sync::{
         AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier,
         PipelineStageAccessFlags, PipelineStages,
@@ -1941,74 +1941,76 @@ impl RenderPassStateAttachments {
         framebuffer: &Framebuffer,
     ) -> Self {
         let subpass_desc = subpass.subpass_desc();
+        let rp_attachments = subpass.render_pass().attachments();
         let fb_attachments = framebuffer.attachments();
 
         Self {
             color_attachments: (subpass_desc.color_attachments.iter())
-                .map(|resolvable_attachment| {
-                    (resolvable_attachment.as_ref()).map(|resolvable_attachment| {
-                        let ResolvableAttachmentReference {
-                            attachment_ref,
-                            resolve,
-                        } = resolvable_attachment;
-
+                .zip(subpass_desc.color_resolve_attachments.iter())
+                .map(|(color_attachment, color_resolve_attachment)| {
+                    (color_attachment.as_ref()).map(|color_attachment| {
                         RenderPassStateAttachmentInfo {
-                            image_view: fb_attachments[attachment_ref.attachment as usize].clone(),
-                            _image_layout: attachment_ref.layout,
-                            _resolve_info: resolve.as_ref().map(|resolve| {
-                                RenderPassStateAttachmentResolveInfo {
+                            image_view: fb_attachments[color_attachment.attachment as usize]
+                                .clone(),
+                            _image_layout: color_attachment.layout,
+                            _resolve_info: color_resolve_attachment.as_ref().map(
+                                |color_resolve_attachment| RenderPassStateAttachmentResolveInfo {
                                     _image_view: fb_attachments
-                                        [resolve.attachment_ref.attachment as usize]
+                                        [color_resolve_attachment.attachment as usize]
                                         .clone(),
-                                    _image_layout: resolve.attachment_ref.layout,
-                                }
-                            }),
+                                    _image_layout: color_resolve_attachment.layout,
+                                },
+                            ),
                         }
                     })
                 })
                 .collect(),
-            depth_attachment: (subpass_desc.depth_attachment.as_ref()).map(
-                |resolvable_attachment| {
-                    let ResolvableAttachmentReference {
-                        attachment_ref,
-                        resolve,
-                    } = resolvable_attachment;
-
-                    RenderPassStateAttachmentInfo {
-                        image_view: fb_attachments[attachment_ref.attachment as usize].clone(),
-                        _image_layout: attachment_ref.layout,
-                        _resolve_info: resolve.as_ref().map(|resolve| {
-                            RenderPassStateAttachmentResolveInfo {
-                                _image_view: fb_attachments
-                                    [resolve.attachment_ref.attachment as usize]
-                                    .clone(),
-                                _image_layout: resolve.attachment_ref.layout,
-                            }
-                        }),
-                    }
-                },
-            ),
-            stencil_attachment: (subpass_desc.stencil_attachment.as_ref()).map(
-                |resolvable_attachment| {
-                    let ResolvableAttachmentReference {
-                        attachment_ref,
-                        resolve,
-                    } = resolvable_attachment;
-
-                    RenderPassStateAttachmentInfo {
-                        image_view: fb_attachments[attachment_ref.attachment as usize].clone(),
-                        _image_layout: attachment_ref.layout,
-                        _resolve_info: resolve.as_ref().map(|resolve| {
-                            RenderPassStateAttachmentResolveInfo {
-                                _image_view: fb_attachments
-                                    [resolve.attachment_ref.attachment as usize]
-                                    .clone(),
-                                _image_layout: resolve.attachment_ref.layout,
-                            }
-                        }),
-                    }
-                },
-            ),
+            depth_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
+                .filter(|depth_stencil_attachment| {
+                    (rp_attachments[depth_stencil_attachment.attachment as usize]
+                        .format
+                        .unwrap())
+                    .aspects()
+                    .intersects(ImageAspects::DEPTH)
+                })
+                .map(|depth_stencil_attachment| RenderPassStateAttachmentInfo {
+                    image_view: fb_attachments[depth_stencil_attachment.attachment as usize]
+                        .clone(),
+                    _image_layout: depth_stencil_attachment.layout,
+                    _resolve_info: subpass_desc.depth_stencil_resolve_attachment.as_ref().map(
+                        |depth_stencil_resolve_attachment| RenderPassStateAttachmentResolveInfo {
+                            _image_view: fb_attachments
+                                [depth_stencil_resolve_attachment.attachment as usize]
+                                .clone(),
+                            _image_layout: depth_stencil_resolve_attachment.layout,
+                        },
+                    ),
+                }),
+            stencil_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
+                .filter(|depth_stencil_attachment| {
+                    (rp_attachments[depth_stencil_attachment.attachment as usize]
+                        .format
+                        .unwrap())
+                    .aspects()
+                    .intersects(ImageAspects::STENCIL)
+                })
+                .map(|depth_stencil_attachment| RenderPassStateAttachmentInfo {
+                    image_view: fb_attachments[depth_stencil_attachment.attachment as usize]
+                        .clone(),
+                    _image_layout: depth_stencil_attachment
+                        .stencil_layout
+                        .unwrap_or(depth_stencil_attachment.layout),
+                    _resolve_info: subpass_desc.depth_stencil_resolve_attachment.as_ref().map(
+                        |depth_stencil_resolve_attachment| RenderPassStateAttachmentResolveInfo {
+                            _image_view: fb_attachments
+                                [depth_stencil_resolve_attachment.attachment as usize]
+                                .clone(),
+                            _image_layout: depth_stencil_resolve_attachment
+                                .stencil_layout
+                                .unwrap_or(depth_stencil_resolve_attachment.layout),
+                        },
+                    ),
+                }),
         }
     }
 

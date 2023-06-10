@@ -10,11 +10,7 @@
 use super::{AttachmentDescription, AttachmentReference, RenderPass, RenderPassCreateInfo};
 use crate::{
     device::Device,
-    image::ImageAspects,
-    render_pass::{
-        InputAttachmentReference, ResolvableAttachmentReference, ResolveAttachmentReference,
-        SubpassDependency, SubpassDescription,
-    },
+    render_pass::{SubpassDependency, SubpassDescription},
     RuntimeError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -57,28 +53,6 @@ impl RenderPass {
                         _ne: _,
                     } = attachment;
 
-                    let aspects = format.unwrap().aspects();
-
-                    let (initial_layout_vk, final_layout_vk, stencil_layout_vk) = if aspects
-                        .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
-                        && (initial_layout != stencil_initial_layout
-                            || final_layout != stencil_final_layout)
-                    {
-                        (
-                            initial_layout,
-                            final_layout,
-                            Some(ash::vk::AttachmentDescriptionStencilLayout {
-                                stencil_initial_layout: stencil_initial_layout.into(),
-                                stencil_final_layout: stencil_final_layout.into(),
-                                ..Default::default()
-                            }),
-                        )
-                    } else if aspects.intersects(ImageAspects::STENCIL) {
-                        (stencil_initial_layout, stencil_final_layout, None)
-                    } else {
-                        (initial_layout, final_layout, None)
-                    };
-
                     (
                         ash::vk::AttachmentDescription2 {
                             flags: flags.into(),
@@ -86,13 +60,23 @@ impl RenderPass {
                             samples: samples.into(),
                             load_op: load_op.into(),
                             store_op: store_op.into(),
-                            stencil_load_op: stencil_load_op.into(),
-                            stencil_store_op: stencil_store_op.into(),
-                            initial_layout: initial_layout_vk.into(),
-                            final_layout: final_layout_vk.into(),
+                            stencil_load_op: stencil_load_op.unwrap_or(load_op).into(),
+                            stencil_store_op: stencil_store_op.unwrap_or(store_op).into(),
+                            initial_layout: initial_layout.into(),
+                            final_layout: final_layout.into(),
                             ..Default::default()
                         },
-                        PerAttachment { stencil_layout_vk },
+                        PerAttachment {
+                            stencil_layout_vk: stencil_initial_layout
+                                .zip(stencil_final_layout)
+                                .map(|(stencil_initial_layout, stencil_final_layout)| {
+                                    ash::vk::AttachmentDescriptionStencilLayout {
+                                        stencil_initial_layout: stencil_initial_layout.into(),
+                                        stencil_final_layout: stencil_final_layout.into(),
+                                        ..Default::default()
+                                    }
+                                }),
+                        },
                     )
                 })
                 .unzip();
@@ -108,17 +92,20 @@ impl RenderPass {
             }
         }
 
-        struct PerSubpass {
+        struct PerSubpassDescriptionVk {
             input_attachments_vk: SmallVec<[ash::vk::AttachmentReference2; 4]>,
+            per_input_attachments_vk: SmallVec<[PerAttachmentReferenceVk; 4]>,
             color_attachments_vk: SmallVec<[ash::vk::AttachmentReference2; 4]>,
             resolve_attachments_vk: SmallVec<[ash::vk::AttachmentReference2; 4]>,
-            depth_stencil_attachment_vk: DepthStencilAttachment,
+            depth_stencil_attachment_vk: ash::vk::AttachmentReference2,
+            per_depth_stencil_attachment_vk: PerAttachmentReferenceVk,
+            depth_stencil_resolve_attachment_vk: ash::vk::AttachmentReference2,
+            per_depth_stencil_resolve_attachment_vk: PerAttachmentReferenceVk,
             depth_stencil_resolve_vk: Option<ash::vk::SubpassDescriptionDepthStencilResolve>,
-            depth_stencil_resolve_attachment_vk: DepthStencilAttachment,
         }
 
-        struct DepthStencilAttachment {
-            attachment_reference_vk: ash::vk::AttachmentReference2,
+        #[derive(Default)]
+        struct PerAttachmentReferenceVk {
             stencil_layout_vk: Option<ash::vk::AttachmentReferenceStencilLayout>,
         }
 
@@ -131,11 +118,191 @@ impl RenderPass {
                         view_mask,
                         ref input_attachments,
                         ref color_attachments,
-                        ref depth_attachment,
-                        ref stencil_attachment,
+                        ref color_resolve_attachments,
+                        ref depth_stencil_attachment,
+                        ref depth_stencil_resolve_attachment,
+                        depth_resolve_mode,
+                        stencil_resolve_mode,
                         ref preserve_attachments,
                         _ne: _,
                     } = subpass;
+
+                    let (input_attachments_vk, per_input_attachments_vk) = input_attachments
+                        .iter()
+                        .map(|input_attachment| {
+                            if let Some(input_attachment) = input_attachment {
+                                let &AttachmentReference {
+                                    attachment,
+                                    layout,
+                                    stencil_layout,
+                                    aspects,
+                                    _ne: _,
+                                } = input_attachment;
+
+                                (
+                                    ash::vk::AttachmentReference2 {
+                                        attachment,
+                                        layout: layout.into(),
+                                        aspect_mask: aspects.into(),
+                                        ..Default::default()
+                                    },
+                                    PerAttachmentReferenceVk {
+                                        stencil_layout_vk: stencil_layout.map(|stencil_layout| {
+                                            ash::vk::AttachmentReferenceStencilLayout {
+                                                stencil_layout: stencil_layout.into(),
+                                                ..Default::default()
+                                            }
+                                        }),
+                                    },
+                                )
+                            } else {
+                                (
+                                    ash::vk::AttachmentReference2 {
+                                        attachment: ash::vk::ATTACHMENT_UNUSED,
+                                        ..Default::default()
+                                    },
+                                    PerAttachmentReferenceVk::default(),
+                                )
+                            }
+                        })
+                        .unzip();
+
+                    let color_attachments_vk = color_attachments
+                        .iter()
+                        .map(|color_attachment| {
+                            if let Some(color_attachment) = color_attachment {
+                                let &AttachmentReference {
+                                    attachment,
+                                    layout,
+                                    stencil_layout: _,
+                                    aspects: _,
+                                    _ne: _,
+                                } = color_attachment;
+
+                                ash::vk::AttachmentReference2 {
+                                    attachment,
+                                    layout: layout.into(),
+                                    ..Default::default()
+                                }
+                            } else {
+                                ash::vk::AttachmentReference2 {
+                                    attachment: ash::vk::ATTACHMENT_UNUSED,
+                                    ..Default::default()
+                                }
+                            }
+                        })
+                        .collect();
+
+                    let resolve_attachments_vk = color_resolve_attachments
+                        .iter()
+                        .map(|color_resolve_attachment| {
+                            if let Some(color_resolve_attachment) = color_resolve_attachment {
+                                let &AttachmentReference {
+                                    attachment,
+                                    layout,
+                                    stencil_layout: _,
+                                    aspects: _,
+                                    _ne: _,
+                                } = color_resolve_attachment;
+
+                                ash::vk::AttachmentReference2 {
+                                    attachment,
+                                    layout: layout.into(),
+                                    ..Default::default()
+                                }
+                            } else {
+                                ash::vk::AttachmentReference2 {
+                                    attachment: ash::vk::ATTACHMENT_UNUSED,
+                                    ..Default::default()
+                                }
+                            }
+                        })
+                        .collect();
+
+                    let (depth_stencil_attachment_vk, per_depth_stencil_attachment_vk) =
+                        if let Some(depth_stencil_attachment) = depth_stencil_attachment {
+                            let &AttachmentReference {
+                                attachment,
+                                layout,
+                                stencil_layout,
+                                aspects: _,
+                                _ne: _,
+                            } = depth_stencil_attachment;
+
+                            (
+                                ash::vk::AttachmentReference2 {
+                                    attachment,
+                                    layout: layout.into(),
+                                    ..Default::default()
+                                },
+                                PerAttachmentReferenceVk {
+                                    stencil_layout_vk: stencil_layout.map(|stencil_layout| {
+                                        ash::vk::AttachmentReferenceStencilLayout {
+                                            stencil_layout: stencil_layout.into(),
+                                            ..Default::default()
+                                        }
+                                    }),
+                                },
+                            )
+                        } else {
+                            (
+                                ash::vk::AttachmentReference2 {
+                                    attachment: ash::vk::ATTACHMENT_UNUSED,
+                                    ..Default::default()
+                                },
+                                PerAttachmentReferenceVk::default(),
+                            )
+                        };
+
+                    let (
+                        depth_stencil_resolve_attachment_vk,
+                        per_depth_stencil_resolve_attachment_vk,
+                    ) = if let Some(depth_stencil_resolve_attachment) =
+                        depth_stencil_resolve_attachment
+                    {
+                        let &AttachmentReference {
+                            attachment,
+                            layout,
+                            stencil_layout,
+                            aspects: _,
+                            _ne: _,
+                        } = depth_stencil_resolve_attachment;
+
+                        (
+                            ash::vk::AttachmentReference2 {
+                                attachment,
+                                layout: layout.into(),
+                                ..Default::default()
+                            },
+                            PerAttachmentReferenceVk {
+                                stencil_layout_vk: stencil_layout.map(|stencil_layout| {
+                                    ash::vk::AttachmentReferenceStencilLayout {
+                                        stencil_layout: stencil_layout.into(),
+                                        ..Default::default()
+                                    }
+                                }),
+                            },
+                        )
+                    } else {
+                        (
+                            ash::vk::AttachmentReference2 {
+                                attachment: ash::vk::ATTACHMENT_UNUSED,
+                                ..Default::default()
+                            },
+                            PerAttachmentReferenceVk::default(),
+                        )
+                    };
+
+                    let depth_stencil_resolve_vk = depth_stencil_resolve_attachment
+                        .is_some()
+                        .then_some(ash::vk::SubpassDescriptionDepthStencilResolve {
+                            depth_resolve_mode: depth_resolve_mode
+                                .map_or(ash::vk::ResolveModeFlags::NONE, Into::into),
+                            stencil_resolve_mode: stencil_resolve_mode
+                                .map_or(ash::vk::ResolveModeFlags::NONE, Into::into),
+                            p_depth_stencil_resolve_attachment: ptr::null(),
+                            ..Default::default()
+                        });
 
                     (
                         ash::vk::SubpassDescription2 {
@@ -156,336 +323,101 @@ impl RenderPass {
                             },
                             ..Default::default()
                         },
-                        PerSubpass {
-                            input_attachments_vk: input_attachments
-                                .iter()
-                                .map(|input_attachment| {
-                                    if let Some(input_attachment) = input_attachment {
-                                        let &InputAttachmentReference {
-                                            attachment_ref:
-                                                AttachmentReference {
-                                                    attachment,
-                                                    layout,
-                                                    _ne: _,
-                                                },
-                                            aspects,
-                                        } = input_attachment;
-
-                                        ash::vk::AttachmentReference2 {
-                                            attachment,
-                                            layout: layout.into(),
-                                            aspect_mask: aspects.into(),
-                                            ..Default::default()
-                                        }
-                                    } else {
-                                        ash::vk::AttachmentReference2 {
-                                            attachment: ash::vk::ATTACHMENT_UNUSED,
-                                            ..Default::default()
-                                        }
-                                    }
-                                })
-                                .collect(),
-                            color_attachments_vk: color_attachments
-                                .iter()
-                                .map(|color_attachment| {
-                                    if let Some(color_attachment) = color_attachment {
-                                        let &ResolvableAttachmentReference {
-                                            attachment_ref:
-                                                AttachmentReference {
-                                                    attachment,
-                                                    layout,
-                                                    _ne: _,
-                                                },
-                                            resolve: _,
-                                        } = color_attachment;
-
-                                        ash::vk::AttachmentReference2 {
-                                            attachment,
-                                            layout: layout.into(),
-                                            ..Default::default()
-                                        }
-                                    } else {
-                                        ash::vk::AttachmentReference2 {
-                                            attachment: ash::vk::ATTACHMENT_UNUSED,
-                                            ..Default::default()
-                                        }
-                                    }
-                                })
-                                .collect(),
-                            resolve_attachments_vk: color_attachments
-                                .iter()
-                                .map(|color_attachment| {
-                                    if let Some(&ResolvableAttachmentReference {
-                                        attachment_ref: _,
-                                        resolve:
-                                            Some(ResolveAttachmentReference {
-                                                attachment_ref:
-                                                    AttachmentReference {
-                                                        attachment,
-                                                        layout,
-                                                        _ne: _,
-                                                    },
-                                                mode: _,
-                                            }),
-                                    }) = color_attachment.as_ref()
-                                    {
-                                        ash::vk::AttachmentReference2 {
-                                            attachment,
-                                            layout: layout.into(),
-                                            ..Default::default()
-                                        }
-                                    } else {
-                                        ash::vk::AttachmentReference2 {
-                                            attachment: ash::vk::ATTACHMENT_UNUSED,
-                                            ..Default::default()
-                                        }
-                                    }
-                                })
-                                .collect(),
-                            depth_stencil_attachment_vk: {
-                                match (depth_attachment.as_ref(), stencil_attachment.as_ref()) {
-                                    (
-                                        Some(&ResolvableAttachmentReference {
-                                            attachment_ref:
-                                                AttachmentReference {
-                                                    attachment,
-                                                    layout: depth_layout,
-                                                    _ne: _,
-                                                },
-                                            resolve: _,
-                                        }),
-                                        Some(&ResolvableAttachmentReference {
-                                            attachment_ref:
-                                                AttachmentReference {
-                                                    attachment: _,
-                                                    layout: stencil_layout,
-                                                    _ne: _,
-                                                },
-                                            resolve: _,
-                                        }),
-                                    ) => DepthStencilAttachment {
-                                        attachment_reference_vk: ash::vk::AttachmentReference2 {
-                                            attachment,
-                                            layout: depth_layout.into(),
-                                            ..Default::default()
-                                        },
-                                        stencil_layout_vk: (depth_layout != stencil_layout)
-                                            .then_some(ash::vk::AttachmentReferenceStencilLayout {
-                                                stencil_layout: stencil_layout.into(),
-                                                ..Default::default()
-                                            }),
-                                    },
-                                    (
-                                        Some(&ResolvableAttachmentReference {
-                                            attachment_ref:
-                                                AttachmentReference {
-                                                    attachment,
-                                                    layout,
-                                                    _ne: _,
-                                                },
-                                            resolve: _,
-                                        }),
-                                        None,
-                                    )
-                                    | (
-                                        None,
-                                        Some(&ResolvableAttachmentReference {
-                                            attachment_ref:
-                                                AttachmentReference {
-                                                    attachment,
-                                                    layout,
-                                                    _ne: _,
-                                                },
-                                            resolve: _,
-                                        }),
-                                    ) => DepthStencilAttachment {
-                                        attachment_reference_vk: ash::vk::AttachmentReference2 {
-                                            attachment,
-                                            layout: layout.into(),
-                                            ..Default::default()
-                                        },
-                                        stencil_layout_vk: None,
-                                    },
-                                    _ => DepthStencilAttachment {
-                                        attachment_reference_vk: ash::vk::AttachmentReference2 {
-                                            attachment: ash::vk::ATTACHMENT_UNUSED,
-                                            ..Default::default()
-                                        },
-                                        stencil_layout_vk: None,
-                                    },
-                                }
-                            },
-                            depth_stencil_resolve_vk: {
-                                let depth_resolve_mode = depth_attachment
-                                    .as_ref()
-                                    .and_then(|attachment| attachment.resolve.as_ref())
-                                    .map(|resolve| resolve.mode);
-                                let stencil_resolve_mode = stencil_attachment
-                                    .as_ref()
-                                    .and_then(|attachment| attachment.resolve.as_ref())
-                                    .map(|resolve| resolve.mode);
-
-                                // VUID-VkSubpassDescriptionDepthStencilResolve-pDepthStencilResolveAttachment-03178
-                                (depth_resolve_mode.is_some() || stencil_resolve_mode.is_some())
-                                    .then_some(ash::vk::SubpassDescriptionDepthStencilResolve {
-                                        depth_resolve_mode: depth_resolve_mode
-                                            .map_or(ash::vk::ResolveModeFlags::NONE, Into::into),
-                                        stencil_resolve_mode: stencil_resolve_mode
-                                            .map_or(ash::vk::ResolveModeFlags::NONE, Into::into),
-                                        p_depth_stencil_resolve_attachment: ptr::null(),
-                                        ..Default::default()
-                                    })
-                            },
-                            depth_stencil_resolve_attachment_vk: {
-                                match (depth_attachment.as_ref(), stencil_attachment.as_ref()) {
-                                    (
-                                        Some(&ResolvableAttachmentReference {
-                                            attachment_ref: _,
-                                            resolve:
-                                                Some(ResolveAttachmentReference {
-                                                    attachment_ref:
-                                                        AttachmentReference {
-                                                            attachment,
-                                                            layout: depth_layout,
-                                                            _ne: _,
-                                                        },
-                                                    mode: _,
-                                                }),
-                                        }),
-                                        Some(&ResolvableAttachmentReference {
-                                            attachment_ref: _,
-                                            resolve:
-                                                Some(ResolveAttachmentReference {
-                                                    attachment_ref:
-                                                        AttachmentReference {
-                                                            attachment: _,
-                                                            layout: stencil_layout,
-                                                            _ne: _,
-                                                        },
-                                                    mode: _,
-                                                }),
-                                        }),
-                                    ) => DepthStencilAttachment {
-                                        attachment_reference_vk: ash::vk::AttachmentReference2 {
-                                            attachment,
-                                            layout: depth_layout.into(),
-                                            ..Default::default()
-                                        },
-                                        stencil_layout_vk: (depth_layout != stencil_layout)
-                                            .then_some(ash::vk::AttachmentReferenceStencilLayout {
-                                                stencil_layout: stencil_layout.into(),
-                                                ..Default::default()
-                                            }),
-                                    },
-                                    (
-                                        Some(&ResolvableAttachmentReference {
-                                            attachment_ref: _,
-                                            resolve:
-                                                Some(ResolveAttachmentReference {
-                                                    attachment_ref:
-                                                        AttachmentReference {
-                                                            attachment,
-                                                            layout,
-                                                            _ne: _,
-                                                        },
-                                                    mode: _,
-                                                }),
-                                        }),
-                                        None
-                                        | Some(&ResolvableAttachmentReference {
-                                            attachment_ref: _,
-                                            resolve: None,
-                                        }),
-                                    )
-                                    | (
-                                        None
-                                        | Some(&ResolvableAttachmentReference {
-                                            attachment_ref: _,
-                                            resolve: None,
-                                        }),
-                                        Some(&ResolvableAttachmentReference {
-                                            attachment_ref: _,
-                                            resolve:
-                                                Some(ResolveAttachmentReference {
-                                                    attachment_ref:
-                                                        AttachmentReference {
-                                                            attachment,
-                                                            layout,
-                                                            _ne: _,
-                                                        },
-                                                    mode: _,
-                                                }),
-                                        }),
-                                    ) => DepthStencilAttachment {
-                                        attachment_reference_vk: ash::vk::AttachmentReference2 {
-                                            attachment,
-                                            layout: layout.into(),
-                                            ..Default::default()
-                                        },
-                                        stencil_layout_vk: None,
-                                    },
-                                    _ => DepthStencilAttachment {
-                                        attachment_reference_vk: ash::vk::AttachmentReference2 {
-                                            attachment: ash::vk::ATTACHMENT_UNUSED,
-                                            ..Default::default()
-                                        },
-                                        stencil_layout_vk: None,
-                                    },
-                                }
-                            },
+                        PerSubpassDescriptionVk {
+                            input_attachments_vk,
+                            per_input_attachments_vk,
+                            color_attachments_vk,
+                            resolve_attachments_vk,
+                            depth_stencil_attachment_vk,
+                            per_depth_stencil_attachment_vk,
+                            depth_stencil_resolve_attachment_vk,
+                            per_depth_stencil_resolve_attachment_vk,
+                            depth_stencil_resolve_vk,
                         },
                     )
                 })
                 .unzip();
 
         for (subpass_vk, per_subpass_vk) in subpasses_vk.iter_mut().zip(per_subpass_vk.iter_mut()) {
-            let PerSubpass {
+            let PerSubpassDescriptionVk {
                 input_attachments_vk,
+                per_input_attachments_vk,
                 color_attachments_vk,
                 resolve_attachments_vk,
                 depth_stencil_attachment_vk,
+                per_depth_stencil_attachment_vk,
                 depth_stencil_resolve_attachment_vk,
+                per_depth_stencil_resolve_attachment_vk,
                 depth_stencil_resolve_vk,
             } = per_subpass_vk;
 
-            if let Some(next) = &mut depth_stencil_attachment_vk.stencil_layout_vk {
-                next.p_next = depth_stencil_attachment_vk.attachment_reference_vk.p_next as *mut _;
-                depth_stencil_attachment_vk.attachment_reference_vk.p_next =
-                    next as *const _ as *const _;
+            for (input_attachment_vk, per_input_attachment_vk) in input_attachments_vk
+                .iter_mut()
+                .zip(per_input_attachments_vk)
+            {
+                let PerAttachmentReferenceVk { stencil_layout_vk } = per_input_attachment_vk;
+
+                if let Some(stencil_layout_vk) = stencil_layout_vk {
+                    stencil_layout_vk.p_next = input_attachment_vk.p_next as *mut _;
+                    input_attachment_vk.p_next = stencil_layout_vk as *const _ as *const _;
+                }
+            }
+
+            {
+                let PerAttachmentReferenceVk { stencil_layout_vk } =
+                    per_depth_stencil_attachment_vk;
+
+                if let Some(stencil_layout_vk) = stencil_layout_vk {
+                    stencil_layout_vk.p_next = depth_stencil_attachment_vk.p_next as *mut _;
+                    depth_stencil_attachment_vk.p_next = stencil_layout_vk as *const _ as *const _;
+                }
+            }
+
+            {
+                let PerAttachmentReferenceVk { stencil_layout_vk } =
+                    per_depth_stencil_resolve_attachment_vk;
+
+                if let Some(stencil_layout_vk) = stencil_layout_vk {
+                    stencil_layout_vk.p_next = depth_stencil_resolve_attachment_vk.p_next as *mut _;
+                    depth_stencil_resolve_attachment_vk.p_next =
+                        stencil_layout_vk as *const _ as *const _;
+                }
             }
 
             *subpass_vk = ash::vk::SubpassDescription2 {
                 input_attachment_count: input_attachments_vk.len() as u32,
-                p_input_attachments: input_attachments_vk.as_ptr(),
+                p_input_attachments: if input_attachments_vk.is_empty() {
+                    ptr::null()
+                } else {
+                    input_attachments_vk.as_ptr()
+                },
                 color_attachment_count: color_attachments_vk.len() as u32,
-                p_color_attachments: color_attachments_vk.as_ptr(),
-                p_resolve_attachments: resolve_attachments_vk.as_ptr(),
-                p_depth_stencil_attachment: &depth_stencil_attachment_vk.attachment_reference_vk,
+                p_color_attachments: if color_attachments_vk.is_empty() {
+                    ptr::null()
+                } else {
+                    color_attachments_vk.as_ptr()
+                },
+                p_resolve_attachments: if resolve_attachments_vk.is_empty() {
+                    ptr::null()
+                } else {
+                    resolve_attachments_vk.as_ptr()
+                },
+                p_depth_stencil_attachment: depth_stencil_attachment_vk,
                 ..*subpass_vk
             };
 
-            if let Some(next) = depth_stencil_resolve_vk {
-                *next = ash::vk::SubpassDescriptionDepthStencilResolve {
-                    p_depth_stencil_resolve_attachment: &depth_stencil_resolve_attachment_vk
-                        .attachment_reference_vk,
-                    ..*next
+            if let Some(depth_stencil_resolve_vk) = depth_stencil_resolve_vk {
+                *depth_stencil_resolve_vk = ash::vk::SubpassDescriptionDepthStencilResolve {
+                    p_depth_stencil_resolve_attachment: depth_stencil_resolve_attachment_vk,
+                    ..*depth_stencil_resolve_vk
                 };
 
-                next.p_next = subpass_vk.p_next;
-                subpass_vk.p_next = next as *const _ as *const _;
-
-                if let Some(next) = &mut depth_stencil_resolve_attachment_vk.stencil_layout_vk {
-                    next.p_next = depth_stencil_resolve_attachment_vk
-                        .attachment_reference_vk
-                        .p_next as *mut _;
-                    depth_stencil_resolve_attachment_vk
-                        .attachment_reference_vk
-                        .p_next = next as *const _ as *const _;
-                }
+                depth_stencil_resolve_vk.p_next = subpass_vk.p_next;
+                subpass_vk.p_next = depth_stencil_resolve_vk as *const _ as *const _;
             }
         }
 
-        struct PerDependency {
+        struct PerSubpassDependencyVk {
             memory_barrier_vk: Option<ash::vk::MemoryBarrier2>,
         }
 
@@ -518,7 +450,7 @@ impl RenderPass {
                             view_offset,
                             ..Default::default()
                         },
-                        PerDependency {
+                        PerSubpassDependencyVk {
                             memory_barrier_vk: device
                                 .enabled_features()
                                 .synchronization2
@@ -537,7 +469,7 @@ impl RenderPass {
         for (dependency_vk, per_dependency_vk) in
             dependencies_vk.iter_mut().zip(&mut per_dependency_vk)
         {
-            let PerDependency { memory_barrier_vk } = per_dependency_vk;
+            let PerSubpassDependencyVk { memory_barrier_vk } = per_dependency_vk;
 
             if let Some(next) = memory_barrier_vk {
                 next.p_next = dependency_vk.p_next;
@@ -622,21 +554,10 @@ impl RenderPass {
                     final_layout,
                     stencil_load_op,
                     stencil_store_op,
-                    stencil_initial_layout,
-                    stencil_final_layout,
+                    stencil_initial_layout: _,
+                    stencil_final_layout: _,
                     _ne: _,
                 } = attachment;
-
-                let aspects = format.unwrap().aspects();
-
-                let (initial_layout_vk, final_layout_vk) = if aspects
-                    .intersects(ImageAspects::STENCIL)
-                    && !aspects.intersects(ImageAspects::DEPTH)
-                {
-                    (stencil_initial_layout, stencil_final_layout)
-                } else {
-                    (initial_layout, final_layout)
-                };
 
                 ash::vk::AttachmentDescription {
                     flags: flags.into(),
@@ -644,15 +565,15 @@ impl RenderPass {
                     samples: samples.into(),
                     load_op: load_op.into(),
                     store_op: store_op.into(),
-                    stencil_load_op: stencil_load_op.into(),
-                    stencil_store_op: stencil_store_op.into(),
-                    initial_layout: initial_layout_vk.into(),
-                    final_layout: final_layout_vk.into(),
+                    stencil_load_op: stencil_load_op.unwrap_or(load_op).into(),
+                    stencil_store_op: stencil_store_op.unwrap_or(store_op).into(),
+                    initial_layout: initial_layout.into(),
+                    final_layout: final_layout.into(),
                 }
             })
             .collect::<SmallVec<[_; 4]>>();
 
-        struct PerSubpass {
+        struct PerSubpassDescriptionVk {
             input_attachments_vk: SmallVec<[ash::vk::AttachmentReference; 4]>,
             color_attachments_vk: SmallVec<[ash::vk::AttachmentReference; 4]>,
             resolve_attachments_vk: SmallVec<[ash::vk::AttachmentReference; 4]>,
@@ -667,11 +588,110 @@ impl RenderPass {
                     view_mask: _,
                     ref input_attachments,
                     ref color_attachments,
-                    ref depth_attachment,
-                    ref stencil_attachment,
+                    ref color_resolve_attachments,
+                    ref depth_stencil_attachment,
+                    depth_stencil_resolve_attachment: _,
+                    depth_resolve_mode: _,
+                    stencil_resolve_mode: _,
                     ref preserve_attachments,
                     _ne: _,
                 } = subpass;
+
+                let input_attachments_vk = input_attachments
+                    .iter()
+                    .map(|input_attachment| {
+                        if let Some(input_attachment) = input_attachment {
+                            let &AttachmentReference {
+                                attachment,
+                                layout,
+                                stencil_layout: _,
+                                aspects: _,
+                                _ne: _,
+                            } = input_attachment;
+
+                            ash::vk::AttachmentReference {
+                                attachment,
+                                layout: layout.into(),
+                            }
+                        } else {
+                            ash::vk::AttachmentReference {
+                                attachment: ash::vk::ATTACHMENT_UNUSED,
+                                ..Default::default()
+                            }
+                        }
+                    })
+                    .collect();
+
+                let color_attachments_vk = color_attachments
+                    .iter()
+                    .map(|color_attachment| {
+                        if let Some(color_attachment) = color_attachment {
+                            let &AttachmentReference {
+                                attachment,
+                                layout,
+                                stencil_layout: _,
+                                aspects: _,
+                                _ne: _,
+                            } = color_attachment;
+
+                            ash::vk::AttachmentReference {
+                                attachment,
+                                layout: layout.into(),
+                            }
+                        } else {
+                            ash::vk::AttachmentReference {
+                                attachment: ash::vk::ATTACHMENT_UNUSED,
+                                ..Default::default()
+                            }
+                        }
+                    })
+                    .collect();
+
+                let resolve_attachments_vk = color_resolve_attachments
+                    .iter()
+                    .map(|color_resolve_attachment| {
+                        if let Some(color_resolve_attachment) = color_resolve_attachment {
+                            let &AttachmentReference {
+                                attachment,
+                                layout,
+                                stencil_layout: _,
+                                aspects: _,
+                                _ne: _,
+                            } = color_resolve_attachment;
+
+                            ash::vk::AttachmentReference {
+                                attachment,
+                                layout: layout.into(),
+                            }
+                        } else {
+                            ash::vk::AttachmentReference {
+                                attachment: ash::vk::ATTACHMENT_UNUSED,
+                                ..Default::default()
+                            }
+                        }
+                    })
+                    .collect();
+
+                let depth_stencil_attachment_vk =
+                    if let Some(depth_stencil_attachment) = depth_stencil_attachment {
+                        let &AttachmentReference {
+                            attachment,
+                            layout,
+                            stencil_layout: _,
+                            aspects: _,
+                            _ne: _,
+                        } = depth_stencil_attachment;
+
+                        ash::vk::AttachmentReference {
+                            attachment,
+                            layout: layout.into(),
+                        }
+                    } else {
+                        ash::vk::AttachmentReference {
+                            attachment: ash::vk::ATTACHMENT_UNUSED,
+                            ..Default::default()
+                        }
+                    };
 
                 (
                     ash::vk::SubpassDescription {
@@ -690,118 +710,18 @@ impl RenderPass {
                             preserve_attachments.as_ptr()
                         },
                     },
-                    PerSubpass {
-                        input_attachments_vk: input_attachments
-                            .iter()
-                            .map(|input_attachment| {
-                                if let Some(input_attachment) = input_attachment {
-                                    let &InputAttachmentReference {
-                                        attachment_ref:
-                                            AttachmentReference {
-                                                attachment,
-                                                layout,
-                                                _ne: _,
-                                            },
-                                        aspects: _,
-                                    } = input_attachment;
-
-                                    ash::vk::AttachmentReference {
-                                        attachment,
-                                        layout: layout.into(),
-                                    }
-                                } else {
-                                    ash::vk::AttachmentReference {
-                                        attachment: ash::vk::ATTACHMENT_UNUSED,
-                                        ..Default::default()
-                                    }
-                                }
-                            })
-                            .collect(),
-                        color_attachments_vk: color_attachments
-                            .iter()
-                            .map(|color_attachment| {
-                                if let Some(color_attachment) = color_attachment {
-                                    let &ResolvableAttachmentReference {
-                                        attachment_ref:
-                                            AttachmentReference {
-                                                attachment,
-                                                layout,
-                                                _ne: _,
-                                            },
-                                        resolve: _,
-                                    } = color_attachment;
-
-                                    ash::vk::AttachmentReference {
-                                        attachment,
-                                        layout: layout.into(),
-                                    }
-                                } else {
-                                    ash::vk::AttachmentReference {
-                                        attachment: ash::vk::ATTACHMENT_UNUSED,
-                                        ..Default::default()
-                                    }
-                                }
-                            })
-                            .collect(),
-                        resolve_attachments_vk: color_attachments
-                            .iter()
-                            .map(|color_attachment| {
-                                if let Some(&ResolvableAttachmentReference {
-                                    attachment_ref: _,
-                                    resolve:
-                                        Some(ResolveAttachmentReference {
-                                            attachment_ref:
-                                                AttachmentReference {
-                                                    attachment,
-                                                    layout,
-                                                    _ne: _,
-                                                },
-                                            mode: _,
-                                        }),
-                                }) = color_attachment.as_ref()
-                                {
-                                    ash::vk::AttachmentReference {
-                                        attachment,
-                                        layout: layout.into(),
-                                    }
-                                } else {
-                                    ash::vk::AttachmentReference {
-                                        attachment: ash::vk::ATTACHMENT_UNUSED,
-                                        ..Default::default()
-                                    }
-                                }
-                            })
-                            .collect(),
-                        depth_stencil_attachment_vk: if let Some(depth_stencil_attachment) =
-                            depth_attachment.as_ref().or(stencil_attachment.as_ref())
-                        {
-                            let &ResolvableAttachmentReference {
-                                attachment_ref:
-                                    AttachmentReference {
-                                        attachment,
-                                        layout,
-                                        _ne: _,
-                                    },
-                                resolve: _,
-                            } = depth_stencil_attachment;
-
-                            ash::vk::AttachmentReference {
-                                attachment,
-                                layout: layout.into(),
-                            }
-                        } else {
-                            ash::vk::AttachmentReference {
-                                attachment: ash::vk::ATTACHMENT_UNUSED,
-                                ..Default::default()
-                            }
-                        },
+                    PerSubpassDescriptionVk {
+                        input_attachments_vk,
+                        color_attachments_vk,
+                        resolve_attachments_vk,
+                        depth_stencil_attachment_vk,
                     },
                 )
             })
             .unzip();
 
         for (subpass_vk, per_subpass_vk) in subpasses_vk.iter_mut().zip(&per_subpass_vk) {
-            let PerSubpass {
+            let PerSubpassDescriptionVk {
                 input_attachments_vk,
                 color_attachments_vk,
                 resolve_attachments_vk,
@@ -810,10 +730,22 @@ impl RenderPass {
 
             *subpass_vk = ash::vk::SubpassDescription {
                 input_attachment_count: input_attachments_vk.len() as u32,
-                p_input_attachments: input_attachments_vk.as_ptr(),
+                p_input_attachments: if input_attachments_vk.is_empty() {
+                    ptr::null()
+                } else {
+                    input_attachments_vk.as_ptr()
+                },
                 color_attachment_count: color_attachments_vk.len() as u32,
-                p_color_attachments: color_attachments_vk.as_ptr(),
-                p_resolve_attachments: resolve_attachments_vk.as_ptr(),
+                p_color_attachments: if color_attachments_vk.is_empty() {
+                    ptr::null()
+                } else {
+                    color_attachments_vk.as_ptr()
+                },
+                p_resolve_attachments: if resolve_attachments_vk.is_empty() {
+                    ptr::null()
+                } else {
+                    resolve_attachments_vk.as_ptr()
+                },
                 p_depth_stencil_attachment: depth_stencil_attachment_vk,
                 ..*subpass_vk
             };
@@ -884,9 +816,12 @@ impl RenderPass {
                     subpass.input_attachments.iter().enumerate().flat_map(
                         move |(atch_num, input_attachment)| {
                             input_attachment.as_ref().map(|input_attachment| {
-                                let &InputAttachmentReference {
-                                    attachment_ref: _,
+                                let &AttachmentReference {
+                                    attachment: _,
+                                    layout: _,
+                                    stencil_layout: _,
                                     aspects,
+                                    _ne,
                                 } = input_attachment;
 
                                 ash::vk::InputAttachmentAspectReference {

@@ -221,7 +221,7 @@ fn main() {
                 load_op: Clear,
                 store_op: Store,
             },
-            depth: {
+            depth_stencil: {
                 format: Format::D16_UNORM,
                 samples: 1,
                 load_op: Clear,
@@ -230,8 +230,7 @@ fn main() {
         },
         pass: {
             color: [color],
-            depth: {depth},
-            stencil: {},
+            depth_stencil: {depth_stencil},
         },
     )
     .unwrap();
