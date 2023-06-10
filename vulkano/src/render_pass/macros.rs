@@ -17,7 +17,11 @@ macro_rules! single_pass_renderpass {
             color: [$($color_atch:ident),* $(,)?]
             $(, color_resolve: [$($color_resolve_atch:ident),* $(,)?])?
             , depth_stencil: {$($depth_stencil_atch:ident)?}
-            $(, depth_stencil_resolve: {$depth_stencil_resolve_atch:ident})?
+            $(
+                , depth_stencil_resolve: {$depth_stencil_resolve_atch:ident}
+                $(, depth_resolve_mode: $depth_resolve_mode:ident)?
+                $(, stencil_resolve_mode: $stencil_resolve_mode:ident)?
+            )?
             $(,)?
         } $(,)?
     ) => (
@@ -29,7 +33,11 @@ macro_rules! single_pass_renderpass {
                     color: [$($color_atch),*]
                     $(, color_resolve: [$($color_resolve_atch),*])?
                     , depth_stencil: {$($depth_stencil_atch)?}
-                    $(, depth_stencil_resolve: {$depth_stencil_resolve_atch})?
+                    $(
+                        , depth_stencil_resolve: {$depth_stencil_resolve_atch}
+                        $(, depth_resolve_mode: $depth_resolve_mode)?
+                        $(, stencil_resolve_mode: $stencil_resolve_mode)?
+                    )?
                     , input: [],
                 }
             ]
@@ -61,7 +69,11 @@ macro_rules! ordered_passes_renderpass {
                     color: [$($color_atch:ident),* $(,)?]
                     $(, color_resolve: [$($color_resolve_atch:ident),* $(,)?])?
                     , depth_stencil: {$($depth_stencil_atch:ident)?}
-                    $(, depth_stencil_resolve: {$depth_stencil_resolve_atch:ident})?
+                    $(
+                        , depth_stencil_resolve: {$depth_stencil_resolve_atch:ident}
+                        $(, depth_resolve_mode: $depth_resolve_mode:ident)?
+                        $(, stencil_resolve_mode: $stencil_resolve_mode:ident)?
+                    )?
                     , input: [$($input_atch:ident),* $(,)?]
                     $(,)*
                 }
@@ -143,8 +155,16 @@ macro_rules! ordered_passes_renderpass {
                                 })
                             }))?
                         },
-                        depth_resolve_mode: None, // TODO:
-                        stencil_resolve_mode: None, // TODO:
+                        depth_resolve_mode: {
+                            None $($(.or({
+                                Some($crate::render_pass::ResolveMode::$depth_resolve_mode)
+                            }))?)?
+                        },
+                        stencil_resolve_mode: {
+                            None $($(.or({
+                                Some($crate::render_pass::ResolveMode::$stencil_resolve_mode)
+                            }))?)?
+                        },
                         input_attachments: vec![
                             $({
                                 let layouts = &mut layouts[$input_atch as usize];
