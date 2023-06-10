@@ -210,12 +210,13 @@ fn main() {
             // When drawing, we have only one output which is the intermediary image.
             //
             // At the end of the pass, each color attachment will be *resolved* into the image
-            // given after ->. In other words, here, at the end of the pass, the `intermediary`
-            // attachment will be copied to the attachment named `color`.
+            // given under `color_resolve`. In other words, here, at the end of the pass, the
+            // `intermediary` attachment will be copied to the attachment named `color`.
             //
-            // The value after : indicates the resolve mode. For a floating-point color format,
-            // which we are using here, Average is the only allowed option.
-            // You can choose multiple modes for depth/stencil formats.
+            // For depth/stencil attachments, there is also a `depth_stencil_resolve` field.
+            // When you specify this, you must also specify at least one of the
+            // `depth_resolve_mode` and `stencil_resolve_mode` fields.
+            // We don't need that here, so it's skipped.
             color: [intermediary],
             color_resolve: [color],
             depth_stencil: {},
