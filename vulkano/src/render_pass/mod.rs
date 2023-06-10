@@ -1690,6 +1690,9 @@ pub struct AttachmentDescription {
 
     /// The `initial_layout` for the stencil aspect of the attachment, if different.
     ///
+    /// `stencil_initial_layout` and `stencil_final_layout` must be either both `None`,
+    /// or both `Some`.
+    ///
     /// If this is `Some`, then the
     /// [`separate_depth_stencil_layouts`](crate::device::Features::separate_depth_stencil_layouts)
     /// feature must be enabled on the device.
@@ -1698,6 +1701,9 @@ pub struct AttachmentDescription {
     pub stencil_initial_layout: Option<ImageLayout>,
 
     /// The `final_layout` for the stencil aspect of the attachment, if different.
+    ///
+    /// `stencil_initial_layout` and `stencil_final_layout` must be either both `None`,
+    /// or both `Some`.
     ///
     /// If this is `Some`, then the
     /// [`separate_depth_stencil_layouts`](crate::device::Features::separate_depth_stencil_layouts)
@@ -1881,6 +1887,15 @@ impl AttachmentDescription {
                     vuids: &["VUID-VkAttachmentDescription2-stencilStoreOp-parameter"],
                     ..ValidationError::from_requirement(err)
                 })?;
+        }
+
+        if stencil_initial_layout.is_some() != stencil_final_layout.is_some() {
+            return Err(ValidationError {
+                problem: "`stencil_initial_layout` and `stencil_final_layout` are not either both \
+                    `None` or both `Some`"
+                    .into(),
+                ..Default::default()
+            });
         }
 
         if let Some(stencil_initial_layout) = stencil_initial_layout {
