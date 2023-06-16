@@ -60,25 +60,38 @@ impl VulkanLibrary {
         #[cfg(not(target_os = "ios"))]
         fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
             #[cfg(windows)]
-            fn get_path() -> &'static Path {
-                Path::new("vulkan-1.dll")
+            fn get_paths() -> [&'static Path; 1] {
+                [Path::new("vulkan-1.dll")]
             }
             #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-            fn get_path() -> &'static Path {
-                Path::new("libvulkan.so.1")
+            fn get_paths() -> [&'static Path; 1] {
+                [Path::new("libvulkan.so.1")]
             }
             #[cfg(target_os = "macos")]
-            fn get_path() -> &'static Path {
-                Path::new("libvulkan.1.dylib")
+            fn get_paths() -> [&'static Path; 3] {
+                [
+                    Path::new("libvulkan.dylib"),
+                    Path::new("libvulkan.1.dylib"),
+                    Path::new("libMoltenVK.dylib"),
+                ]
             }
             #[cfg(target_os = "android")]
-            fn get_path() -> &'static Path {
-                Path::new("libvulkan.so")
+            fn get_paths() -> [&'static Path; 2] {
+                [Path::new("libvulkan.so.1"), Path::new("libvulkan.so")]
             }
 
-            let loader = unsafe { DynamicLibraryLoader::new(get_path())? };
+            let paths = get_paths();
 
-            Ok(Box::new(loader))
+            let mut err: Option<LoadingError> = None;
+
+            for path in paths {
+                match unsafe { DynamicLibraryLoader::new(path) } {
+                    Ok(library) => return Ok(Box::new(library)),
+                    Err(e) => err = Some(e),
+                }
+            }
+
+            Err(err.unwrap())
         }
 
         def_loader_impl().and_then(VulkanLibrary::with_loader)
