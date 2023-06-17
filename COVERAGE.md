@@ -100,6 +100,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_copy_commands2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_copy_commands2.html)
 - [`VK_KHR_create_renderpass2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_create_renderpass2.html)
 - [`VK_KHR_format_feature_flags2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_format_feature_flags2.html)
+- [`VK_EXT_inline_uniform_block`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_inline_uniform_block.html)
 - [`VK_KHR_shader_integer_dot_product`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_integer_dot_product.html)
 - [`VK_KHR_shader_non_semantic_info`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_non_semantic_info.html)
 - [`VK_KHR_shader_terminate_invocation`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_terminate_invocation.html)
@@ -125,7 +126,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 ### Unsupported
 
 - [`VK_KHR_maintenance4`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance4.html)
-- [`VK_EXT_inline_uniform_block`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_inline_uniform_block.html)
 - [`VK_EXT_pipeline_creation_cache_control`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_pipeline_creation_cache_control.html)
 - [`VK_EXT_pipeline_creation_feedback`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_pipeline_creation_feedback.html)
 - [`VK_EXT_private_data`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_private_data.html)
