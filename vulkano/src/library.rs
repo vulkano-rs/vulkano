@@ -426,15 +426,15 @@ pub enum LoadingError {
     /// Failed to load the Vulkan shared library.
     LibraryLoadFailure(LibloadingError),
 
-    /// Not enough memory.
-    OomError(OomError),
+    /// The Vulkan driver returned an error and was unable to complete the operation.
+    RuntimeError(RuntimeError),
 }
 
 impl Error for LoadingError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             //Self::LibraryLoadFailure(err) => Some(err),
-            Self::OomError(err) => Some(err),
+            Self::RuntimeError(err) => Some(err),
             _ => None,
         }
     }
@@ -442,24 +442,16 @@ impl Error for LoadingError {
 
 impl Display for LoadingError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
-                Self::OomError(_) => "not enough memory available",
-            }
-        )
+        match self {
+            Self::LibraryLoadFailure(_) => write!(f, "failed to load the Vulkan shared library"),
+            Self::RuntimeError(err) => write!(f, "a runtime error occurred: {err}"),
+        }
     }
 }
 
 impl From<RuntimeError> for LoadingError {
     fn from(err: RuntimeError) -> Self {
-        match err {
-            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ RuntimeError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err),
-        }
+        Self::RuntimeError(err)
     }
 }
 

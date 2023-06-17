@@ -516,7 +516,7 @@ impl Sampler {
         image_view: &(impl ImageViewAbstract + ?Sized),
     ) -> Result<(), ValidationError> {
         /*
-            Note: Most of these checks come from the Instruction/Sampler/Image View Validation
+            NOTE: Most of these checks come from the Instruction/Sampler/Image View Validation
             section, and are not strictly VUIDs.
             https://registry.khronos.org/vulkan/specs/1.2-extensions/html/chap16.html#textures-input-validation
         */

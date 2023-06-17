@@ -9,7 +9,11 @@
 
 use ahash::HashMap;
 use parking_lot::RwLock;
-use std::{collections::hash_map::Entry, hash::Hash};
+use std::{
+    collections::hash_map::Entry,
+    hash::Hash,
+    sync::{Arc, Weak},
+};
 
 /// A map specialized to caching properties that are specific to a Vulkan implementation.
 ///
@@ -22,7 +26,7 @@ pub(crate) struct OnceCache<K, V> {
 
 impl<K, V> Default for OnceCache<K, V> {
     fn default() -> Self {
-        OnceCache {
+        Self {
             inner: RwLock::new(HashMap::default()),
         }
     }
@@ -56,7 +60,6 @@ where
             Entry::Vacant(entry) => {
                 let value = f(entry.key());
                 entry.insert(value.clone());
-
                 value
             }
         }
@@ -81,6 +84,105 @@ where
                 entry.insert(value.clone());
 
                 Ok(value)
+            }
+        }
+    }
+}
+
+/// Like `OnceCache`, but the cache stores weak `Arc` references. If the weak reference cannot
+/// be upgraded, then it acts as if the entry has become vacant again.
+#[derive(Debug)]
+pub(crate) struct WeakArcOnceCache<K, V> {
+    inner: RwLock<HashMap<K, Weak<V>>>,
+}
+
+impl<K, V> Default for WeakArcOnceCache<K, V> {
+    fn default() -> Self {
+        Self {
+            inner: RwLock::new(HashMap::default()),
+        }
+    }
+}
+
+impl<K, V> WeakArcOnceCache<K, V> {
+    /// Creates a new `OnceCache`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl<K, V> WeakArcOnceCache<K, V>
+where
+    K: Eq + Hash,
+{
+    /// Returns the value for the specified `key`. The entry gets written to with the value
+    /// returned by `f` if it doesn't exist.
+    #[allow(dead_code)]
+    pub fn get_or_insert(&self, key: K, f: impl FnOnce(&K) -> Arc<V>) -> Arc<V> {
+        if let Some(arc) = self
+            .inner
+            .read()
+            .get(&key)
+            .and_then(|weak| Weak::upgrade(weak))
+        {
+            return arc;
+        }
+
+        match self.inner.write().entry(key) {
+            Entry::Occupied(mut entry) => {
+                if let Some(arc) = Weak::upgrade(entry.get()) {
+                    // This can happen if someone else inserted an entry between when we released
+                    // the read lock and acquired the write lock.
+                    arc
+                } else {
+                    // The weak reference could not be upgraded, so create a new one.
+                    let arc = f(entry.key());
+                    entry.insert(Arc::downgrade(&arc));
+                    arc
+                }
+            }
+            Entry::Vacant(entry) => {
+                let arc = f(entry.key());
+                entry.insert(Arc::downgrade(&arc));
+                arc
+            }
+        }
+    }
+
+    /// Returns the value for the specified `key`. The entry gets written to with the value
+    /// returned by `f` if it doesn't exist. If `f` returns [`Err`], the error is propagated and
+    /// the entry isn't written to.
+    pub fn get_or_try_insert<E>(
+        &self,
+        key: K,
+        f: impl FnOnce(&K) -> Result<Arc<V>, E>,
+    ) -> Result<Arc<V>, E> {
+        if let Some(arc) = self
+            .inner
+            .read()
+            .get(&key)
+            .and_then(|weak| Weak::upgrade(weak))
+        {
+            return Ok(arc);
+        }
+
+        match self.inner.write().entry(key) {
+            Entry::Occupied(mut entry) => {
+                if let Some(arc) = Weak::upgrade(entry.get()) {
+                    // This can happen if someone else inserted an entry between when we released
+                    // the read lock and acquired the write lock.
+                    Ok(arc)
+                } else {
+                    // The weak reference could not be upgraded, so create a new one.
+                    let arc = f(entry.key())?;
+                    entry.insert(Arc::downgrade(&arc));
+                    Ok(arc)
+                }
+            }
+            Entry::Vacant(entry) => {
+                let arc = f(entry.key())?;
+                entry.insert(Arc::downgrade(&arc));
+                Ok(arc)
             }
         }
     }

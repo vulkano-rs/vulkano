@@ -324,62 +324,55 @@ macro_rules! vulkan_bitflags {
             }
 
             #[allow(dead_code)]
+            #[inline]
             pub(crate) fn validate_device(
                 self,
-                #[allow(unused_variables)] device: &crate::device::Device,
+                device: &crate::device::Device,
             ) -> Result<(), crate::RequirementNotMet> {
-                $(
-                    $(
-                        if self.intersects(Self::$flag_name) && ![
-                            $(
-                                device.api_version() >= crate::Version::$api_version,
-                            )?
-                            $($(
-                                device.enabled_features().$feature,
-                            )+)?
-                            $($(
-                                device.enabled_extensions().$device_extension,
-                            )+)?
-                            $($(
-                                device.instance().enabled_extensions().$instance_extension,
-                            )+)?
-                        ].into_iter().any(|x| x) {
-                            return Err(crate::RequirementNotMet {
-                                required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
-                                requires_one_of: crate::RequiresOneOf {
-                                    $(api_version: Some(crate::Version::$api_version),)?
-                                    $(features: &[$(stringify!($feature)),+],)?
-                                    $(device_extensions: &[$(stringify!($device_extension)),+],)?
-                                    $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
-                                    ..Default::default()
-                                },
-                            });
-                        }
-                    )?
-                )*
-
-                Ok(())
+                self.validate_device_raw(
+                    device.api_version(),
+                    device.enabled_features(),
+                    device.enabled_extensions(),
+                    device.instance().enabled_extensions(),
+                )
             }
 
             #[allow(dead_code)]
+            #[inline]
             pub(crate) fn validate_physical_device(
                 self,
-                #[allow(unused_variables)] physical_device: &crate::device::physical::PhysicalDevice,
+                physical_device: &crate::device::physical::PhysicalDevice,
+            ) -> Result<(), crate::RequirementNotMet> {
+                self.validate_device_raw(
+                    physical_device.api_version(),
+                    physical_device.supported_features(),
+                    physical_device.supported_extensions(),
+                    physical_device.instance().enabled_extensions(),
+                )
+            }
+
+            #[allow(dead_code)]
+            pub(crate) fn validate_device_raw(
+                self,
+                #[allow(unused_variables)] device_api_version: crate::Version,
+                #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
+                #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), crate::RequirementNotMet> {
                 $(
                     $(
                         if self.intersects(Self::$flag_name) && ![
                             $(
-                                physical_device.api_version() >= crate::Version::$api_version,
+                                device_api_version >= crate::Version::$api_version,
                             )?
                             $($(
-                                physical_device.supported_features().$feature,
+                                device_features.$feature,
                             )+)?
                             $($(
-                                physical_device.supported_extensions().$device_extension,
+                                device_extensions.$device_extension,
                             )+)?
                             $($(
-                                physical_device.instance().enabled_extensions().$instance_extension,
+                                instance_extensions.$instance_extension,
                             )+)?
                         ].into_iter().any(|x| x) {
                             return Err(crate::RequirementNotMet {
@@ -400,18 +393,31 @@ macro_rules! vulkan_bitflags {
             }
 
             #[allow(dead_code)]
+            #[inline]
             pub(crate) fn validate_instance(
                 self,
-                #[allow(unused_variables)] instance: &crate::instance::Instance,
+                instance: &crate::instance::Instance,
+            ) -> Result<(), crate::RequirementNotMet> {
+                self.validate_instance_raw(
+                    instance.api_version(),
+                    instance.enabled_extensions(),
+                )
+            }
+
+            #[allow(dead_code)]
+            pub(crate) fn validate_instance_raw(
+                self,
+                #[allow(unused_variables)] instance_api_version: crate::Version,
+                #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), crate::RequirementNotMet> {
                 $(
                     $(
                         if self.intersects(Self::$flag_name) && ![
                             $(
-                                instance.api_version() >= crate::Version::$api_version,
+                                instance_api_version >= crate::Version::$api_version,
                             )?
                             $($(
-                                instance.enabled_extensions().$instance_extension,
+                                instance_extensions.$instance_extension,
                             )+)?
                         ].into_iter().any(|x| x) {
                             return Err(crate::RequirementNotMet {
@@ -626,52 +632,40 @@ macro_rules! vulkan_enum {
 
         impl $ty {
             #[allow(dead_code)]
+            #[inline]
             pub(crate) fn validate_device(
                 self,
-                #[allow(unused_variables)] device: &crate::device::Device,
+                device: &crate::device::Device,
             ) -> Result<(), crate::RequirementNotMet> {
-                match self {
-                    $(
-                        $(
-                            Self::$flag_name => {
-                                if ![
-                                    $(
-                                        device.api_version() >= crate::Version::$api_version,
-                                    )?
-                                    $($(
-                                        device.enabled_features().$feature,
-                                    )+)?
-                                    $($(
-                                        device.enabled_extensions().$device_extension,
-                                    )+)?
-                                    $($(
-                                        device.instance().enabled_extensions().$instance_extension,
-                                    )+)?
-                                 ].into_iter().any(|x| x) {
-                                    return Err(crate::RequirementNotMet {
-                                        required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
-                                        requires_one_of: crate::RequiresOneOf {
-                                            $(api_version: Some(crate::Version::$api_version),)?
-                                            $(features: &[$(stringify!($feature)),+],)?
-                                            $(device_extensions: &[$(stringify!($device_extension)),+],)?
-                                            $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
-                                            ..Default::default()
-                                        },
-                                    });
-                                }
-                            },
-                        )?
-                    )+
-                    _ => (),
-                }
-
-                Ok(())
+                self.validate_device_raw(
+                    device.api_version(),
+                    device.enabled_extensions(),
+                    device.enabled_features(),
+                    device.instance().enabled_extensions(),
+                )
             }
 
             #[allow(dead_code)]
+            #[inline]
             pub(crate) fn validate_physical_device(
                 self,
-                #[allow(unused_variables)] physical_device: &crate::device::physical::PhysicalDevice,
+                physical_device: &crate::device::physical::PhysicalDevice,
+            ) -> Result<(), crate::RequirementNotMet> {
+                self.validate_device_raw(
+                    physical_device.api_version(),
+                    physical_device.supported_extensions(),
+                    physical_device.supported_features(),
+                    physical_device.instance().enabled_extensions(),
+                )
+            }
+
+            #[allow(dead_code)]
+            pub(crate) fn validate_device_raw(
+                self,
+                #[allow(unused_variables)] device_api_version: crate::Version,
+                #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
+                #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), crate::RequirementNotMet> {
                 match self {
                     $(
@@ -679,16 +673,16 @@ macro_rules! vulkan_enum {
                             Self::$flag_name => {
                                 if ![
                                     $(
-                                        physical_device.api_version() >= crate::Version::$api_version,
+                                        device_api_version >= crate::Version::$api_version,
                                     )?
                                     $($(
-                                        physical_device.supported_features().$feature,
+                                        device_features.$feature,
                                     )+)?
                                     $($(
-                                        physical_device.supported_extensions().$device_extension,
+                                        device_extensions.$device_extension,
                                     )+)?
                                     $($(
-                                        physical_device.instance().enabled_extensions().$instance_extension,
+                                        instance_extensions.$instance_extension,
                                     )+)?
                                  ].into_iter().any(|x| x) {
                                     return Err(crate::RequirementNotMet {
@@ -712,9 +706,22 @@ macro_rules! vulkan_enum {
             }
 
             #[allow(dead_code)]
+            #[inline]
             pub(crate) fn validate_instance(
                 self,
-                #[allow(unused_variables)] instance: &crate::instance::Instance,
+                instance: &crate::instance::Instance,
+            ) -> Result<(), crate::RequirementNotMet> {
+                self.validate_instance_raw(
+                    instance.api_version(),
+                    instance.enabled_extensions(),
+                )
+            }
+
+            #[allow(dead_code)]
+            pub(crate) fn validate_instance_raw(
+                self,
+                #[allow(unused_variables)] instance_api_version: crate::Version,
+                #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), crate::RequirementNotMet> {
                 match self {
                     $(
@@ -722,10 +729,10 @@ macro_rules! vulkan_enum {
                             Self::$flag_name => {
                                 if ![
                                     $(
-                                        instance.api_version() >= crate::Version::$api_version,
+                                        instance_api_version >= crate::Version::$api_version,
                                     )?
                                     $($(
-                                        instance.enabled_extensions().$instance_extension,
+                                        instance_extensions.$instance_extension,
                                     )+)?
                                  ].into_iter().any(|x| x) {
                                     return Err(crate::RequirementNotMet {
@@ -743,8 +750,8 @@ macro_rules! vulkan_enum {
                     _ => (),
                 }
 
-            Ok(())
-        }
+                Ok(())
+            }
 
         $(
             $($impls)*

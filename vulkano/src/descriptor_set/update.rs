@@ -1303,7 +1303,7 @@ impl WriteDescriptorSet {
                 )
             }
             WriteDescriptorSetElements::ImageView(elements) => {
-                // Note: combined image sampler can occur with immutable samplers
+                // NOTE: combined image sampler can occur with immutable samplers
                 debug_assert!(matches!(
                     descriptor_type,
                     DescriptorType::CombinedImageSampler

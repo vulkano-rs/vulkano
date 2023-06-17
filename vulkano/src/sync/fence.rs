@@ -11,9 +11,10 @@
 //! and the host.
 
 use crate::{
-    device::{Device, DeviceOwned, Queue},
+    device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, ValidationError, Version,
+    VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -1421,6 +1422,23 @@ impl ExternalFenceInfo {
             handle_type,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+        let &Self {
+            handle_type,
+            _ne: _,
+        } = self;
+
+        handle_type
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "handle_type".into(),
+                vuids: &["VUID-VkPhysicalDeviceExternalFenceInfo-handleType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
     }
 }
 

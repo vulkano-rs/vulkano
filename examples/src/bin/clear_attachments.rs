@@ -18,7 +18,7 @@ use vulkano::{
         QueueFlags,
     },
     image::{view::ImageView, ImageUsage, SwapchainImage},
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
     swapchain::{
         acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
@@ -44,8 +44,8 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             enabled_extensions: required_extensions,
-            enumerate_portability: true,
             ..Default::default()
         },
     )

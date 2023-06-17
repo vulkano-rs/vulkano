@@ -33,7 +33,7 @@ use vulkano::{
         QueueCreateInfo, QueueFlags,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
@@ -169,8 +169,8 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             enabled_extensions: required_extensions,
-            enumerate_portability: true,
             ..Default::default()
         },
     )
@@ -222,12 +222,12 @@ fn main() {
     let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            enabled_features: features,
             queue_create_infos: vec![QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
             }],
+            enabled_extensions: device_extensions,
+            enabled_features: features,
             ..Default::default()
         },
     )

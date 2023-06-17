@@ -11,9 +11,10 @@
 //! commands on the same queue, or between the device and an external source.
 
 use crate::{
-    device::{Device, DeviceOwned, Queue},
+    device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, ValidationError, Version,
+    VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 #[cfg(unix)]
@@ -1381,6 +1382,23 @@ impl ExternalSemaphoreInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+        let &Self {
+            handle_type,
+            _ne: _,
+        } = self;
+
+        handle_type
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "handle_type".into(),
+                vuids: &["VUID-VkPhysicalDeviceExternalSemaphoreInfo-handleType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
 }
 
 /// The properties for exporting or importing external handles, when a semaphore is created
@@ -1636,15 +1654,15 @@ mod tests {
         let (device, _) = match Device::new(
             physical_device,
             DeviceCreateInfo {
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index: 0,
+                    ..Default::default()
+                }],
                 enabled_extensions: DeviceExtensions {
                     khr_external_semaphore: true,
                     khr_external_semaphore_fd: true,
                     ..DeviceExtensions::empty()
                 },
-                queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index: 0,
-                    ..Default::default()
-                }],
                 ..Default::default()
             },
         ) {

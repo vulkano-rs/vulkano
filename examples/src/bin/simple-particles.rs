@@ -27,7 +27,7 @@ use vulkano::{
         QueueFlags,
     },
     image::{view::ImageView, ImageUsage},
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo,
@@ -74,7 +74,7 @@ fn main() {
         library,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
-            enumerate_portability: true,
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             ..Default::default()
         },
     )

@@ -48,7 +48,7 @@ fn conflicts_features(name: &str) -> &'static [&'static str] {
 
 fn required_by_extensions(name: &str) -> &'static [(&'static str, &'static str)] {
     match name {
-        "shaderDrawParameters" => &[("V1_2", "VK_KHR_shader_draw_parameters")],
+        "shaderDrawParameters" => &[("V1_1", "VK_KHR_shader_draw_parameters")],
         "drawIndirectCount" => &[("V1_2", "VK_KHR_draw_indirect_count")],
         "samplerMirrorClampToEdge" => &[("V1_2", "VK_KHR_sampler_mirror_clamp_to_edge")],
         "descriptorIndexing" => &[("V1_2", "VK_EXT_descriptor_indexing")],
@@ -97,66 +97,22 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
     });
 
-    let check_requirements_items = members.iter().map(
-        |FeaturesMember {
-             name,
-             requires_features,
-             conflicts_features,
-             required_by_extensions,
-             ..
-         }| {
-            let name_string = name.to_string();
-            let requires_features_items = requires_features.iter().map(|feature| {
-                let string = feature.to_string();
-                quote! {
-                    if !self.#feature {
-                        return Err(crate::device::FeatureRestrictionError {
-                            feature: #name_string,
-                            restriction: crate::device::FeatureRestriction::RequiresFeature(#string),
-                        });
-                    }
-                }
-            });
-            let conflicts_features_items = conflicts_features.iter().map(|feature| {
-                let string = feature.to_string();
-                quote! {
-                    if self.#feature {
-                        return Err(crate::device::FeatureRestrictionError {
-                            feature: #name_string,
-                            restriction: crate::device::FeatureRestriction::ConflictsFeature(#string),
-                        });
-                    }
-                }
-            });
-            let required_by_extensions_items =
-                required_by_extensions.iter().map(|(version, extension)| {
-                    let string = extension.to_string();
-                    quote! {
-                        if extensions.#extension && api_version >= crate::Version::#version {
-                            return Err(crate::device::FeatureRestrictionError {
-                                feature: #name_string,
-                                restriction: crate::device::FeatureRestriction::RequiredByExtension(#string),
-                            });
-                        }
-                    }
+    let check_requirements_items = members.iter().map(|FeaturesMember { name, .. }| {
+        let name_string = name.to_string();
+        quote! {
+            if self.#name && !supported.#name {
+                return Err(crate::ValidationError {
+                    problem: format!(
+                        "contains `{}`, but this feature is not supported \
+                        by the physical device",
+                        #name_string,
+                    )
+                    .into(),
+                    ..Default::default()
                 });
-            quote! {
-                if self.#name {
-                    if !supported.#name {
-                        return Err(crate::device::FeatureRestrictionError {
-                            feature: #name_string,
-                            restriction: crate::device::FeatureRestriction::NotSupported,
-                        });
-                    }
-
-                    #(#requires_features_items)*
-                    #(#conflicts_features_items)*
-                } else {
-                    #(#required_by_extensions_items)*
-                }
             }
-        },
-    );
+        }
+    });
 
     let empty_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
@@ -331,14 +287,11 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
 
         impl Features {
-            /// Checks enabled features against the device version, device extensions and each
-            /// other.
+            /// Checks enabled features against the features supported by the physical device.
             pub(super) fn check_requirements(
                 &self,
                 supported: &Features,
-                api_version: crate::Version,
-                extensions: &crate::device::DeviceExtensions,
-            ) -> Result<(), crate::device::FeatureRestrictionError> {
+            ) -> Result<(), crate::ValidationError> {
                 #(#check_requirements_items)*
                 Ok(())
             }

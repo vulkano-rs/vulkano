@@ -75,7 +75,7 @@ use vulkano::{
     },
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage},
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
@@ -102,7 +102,7 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
-            enumerate_portability: true,
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
             ..Default::default()
         },
     )
