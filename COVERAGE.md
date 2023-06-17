@@ -20,6 +20,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_16bit_storage`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_16bit_storage.html)
 - [`VK_KHR_bind_memory2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_bind_memory2.html)
 - [`VK_KHR_dedicated_allocation`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_dedicated_allocation.html)
+- [`VK_KHR_device_group_creation`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_device_group_creation.html)
 - [`VK_KHR_get_memory_requirements2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_memory_requirements2.html)
 - [`VK_KHR_get_physical_device_properties2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_physical_device_properties2.html)
 - [`VK_KHR_external_fence`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence.html)
@@ -48,7 +49,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 - [`VK_KHR_descriptor_update_template`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_descriptor_update_template.html)
 - [`VK_KHR_device_group`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_device_group.html)
-- [`VK_KHR_device_group_creation`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_device_group_creation.html)
 - Group operations, subgroup scope
 - Protected memory
 
