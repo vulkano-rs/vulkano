@@ -995,7 +995,7 @@ impl ShaderInterface {
             }
         }
 
-        // Note: since we check that the number of elements is the same, we don't need to iterate
+        // NOTE: since we check that the number of elements is the same, we don't need to iterate
         // over b's elements.
 
         Ok(())

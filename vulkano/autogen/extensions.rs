@@ -244,7 +244,8 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                                     "contains `{}`, but this extension is not supported \
                                     by the library",
                                     #name_string,
-                                ).into(),
+                                )
+                                .into(),
                                 ..Default::default()
                             });
                         }

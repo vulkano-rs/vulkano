@@ -208,7 +208,7 @@ pub type NonZeroDeviceSize = NonZeroU64;
 /// Holds 24 bits in the least significant bits of memory,
 /// and 8 bytes in the most significant bits of that memory,
 /// occupying a single [`u32`] in total.
-// Note: This is copied from Ash, but duplicated here so that we can implement traits on it.
+// NOTE: This is copied from Ash, but duplicated here so that we can implement traits on it.
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Debug, Zeroable, Pod)]
 #[repr(transparent)]
 pub struct Packed24_8(u32);

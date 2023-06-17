@@ -106,7 +106,8 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                         "contains `{}`, but this feature is not supported \
                         by the physical device",
                         #name_string,
-                    ).into(),
+                    )
+                    .into(),
                     ..Default::default()
                 });
             }

@@ -149,7 +149,7 @@ include!(concat!(env!("OUT_DIR"), "/features.rs"));
 #[derive(Debug)]
 pub struct Device {
     handle: ash::vk::Device,
-    physical_device: Arc<PhysicalDevice>, // Note: `physical_devices` always contains this
+    physical_device: Arc<PhysicalDevice>, // NOTE: `physical_devices` always contains this
     id: NonZeroU64,
 
     enabled_extensions: DeviceExtensions,
