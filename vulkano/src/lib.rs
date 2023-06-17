@@ -279,6 +279,23 @@ pub enum VulkanError {
     RuntimeError(RuntimeError),
 }
 
+impl VulkanError {
+    /// Returns the contained `RuntimeError` value, or panics if it contains `ValidationError`.
+    #[track_caller]
+    #[inline]
+    pub fn unwrap_runtime(self) -> RuntimeError {
+        match self {
+            VulkanError::ValidationError(err) => {
+                panic!(
+                    "called `VulkanError::unwrap_runtime` on a `ValidationError` value: {:?}",
+                    err
+                )
+            }
+            VulkanError::RuntimeError(err) => err,
+        }
+    }
+}
+
 impl Debug for VulkanError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {

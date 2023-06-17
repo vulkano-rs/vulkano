@@ -795,7 +795,7 @@ where
                 {
                     return Err(ValidationError {
                         context: "self".into(),
-                        problem: "pipeline_bind_point is PipelineBindPoint::Compute, and the \
+                        problem: "`pipeline_bind_point` is `PipelineBindPoint::Compute`, and the \
                             queue family does not support compute operations"
                             .into(),
                         vuids: &[
@@ -813,7 +813,7 @@ where
                 {
                     return Err(ValidationError {
                         context: "self".into(),
-                        problem: "pipeline_bind_point is PipelineBindPoint::Graphics, and the \
+                        problem: "`pipeline_bind_point` is `PipelineBindPoint::Graphics`, and the \
                             queue family does not support graphics operations"
                             .into(),
                         vuids: &[
@@ -831,8 +831,8 @@ where
 
         if set_num as usize > pipeline_layout.set_layouts().len() {
             return Err(ValidationError {
-                problem: "set_num is greater than the number of descriptor set layouts in \
-                    pipeline_layout"
+                problem: "`set_num` is greater than the number of descriptor set layouts in \
+                    `pipeline_layout`"
                     .into(),
                 vuids: &["VUID-vkCmdPushDescriptorSetKHR-set-00364"],
                 ..Default::default()
@@ -846,9 +846,9 @@ where
             .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
         {
             return Err(ValidationError {
-                problem: "the descriptor set layout with the number set_num in pipeline_layout \
-                    was not created with the DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR \
-                    flag"
+                problem: "the descriptor set layout with the number `set_num` in \
+                    `pipeline_layout` was not created with the \
+                    `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR` flag"
                     .into(),
                 vuids: &["VUID-vkCmdPushDescriptorSetKHR-set-00365"],
                 ..Default::default()
@@ -1107,32 +1107,30 @@ where
         let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 
         struct PerDescriptorWrite {
+            write_info: DescriptorWriteInfo,
             acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR,
+            inline_uniform_block: ash::vk::WriteDescriptorSetInlineUniformBlock,
         }
 
-        let mut infos_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
         let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
         let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
 
         for write in descriptor_writes {
             let layout_binding = &set_layout.bindings()[&write.binding()];
 
-            infos_vk.push(write.to_vulkan_info(layout_binding.descriptor_type));
             writes_vk.push(write.to_vulkan(
                 ash::vk::DescriptorSet::null(),
                 layout_binding.descriptor_type,
             ));
             per_writes_vk.push(PerDescriptorWrite {
+                write_info: write.to_vulkan_info(layout_binding.descriptor_type),
                 acceleration_structures: Default::default(),
+                inline_uniform_block: Default::default(),
             });
         }
 
-        for ((info_vk, write_vk), per_write_vk) in infos_vk
-            .iter()
-            .zip(writes_vk.iter_mut())
-            .zip(per_writes_vk.iter_mut())
-        {
-            match info_vk {
+        for (write_vk, per_write_vk) in writes_vk.iter_mut().zip(per_writes_vk.iter_mut()) {
+            match &mut per_write_vk.write_info {
                 DescriptorWriteInfo::Image(info) => {
                     write_vk.descriptor_count = info.len() as u32;
                     write_vk.p_image_info = info.as_ptr();
@@ -1144,6 +1142,12 @@ where
                 DescriptorWriteInfo::BufferView(info) => {
                     write_vk.descriptor_count = info.len() as u32;
                     write_vk.p_texel_buffer_view = info.as_ptr();
+                }
+                DescriptorWriteInfo::InlineUniformBlock(data) => {
+                    write_vk.descriptor_count = data.len() as u32;
+                    write_vk.p_next = &per_write_vk.inline_uniform_block as *const _ as _;
+                    per_write_vk.inline_uniform_block.data_size = write_vk.descriptor_count;
+                    per_write_vk.inline_uniform_block.p_data = data.as_ptr() as *const _;
                 }
                 DescriptorWriteInfo::AccelerationStructure(info) => {
                     write_vk.descriptor_count = info.len() as u32;

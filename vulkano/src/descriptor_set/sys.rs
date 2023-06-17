@@ -65,6 +65,7 @@ impl UnsafeDescriptorSet {
         struct PerDescriptorWrite {
             write_info: DescriptorWriteInfo,
             acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR,
+            inline_uniform_block: ash::vk::WriteDescriptorSetInlineUniformBlock,
         }
 
         let writes_iter = descriptor_writes.into_iter();
@@ -78,6 +79,7 @@ impl UnsafeDescriptorSet {
             per_writes_vk.push(PerDescriptorWrite {
                 write_info: write.to_vulkan_info(layout_binding.descriptor_type),
                 acceleration_structures: Default::default(),
+                inline_uniform_block: Default::default(),
             });
         }
 
@@ -100,6 +102,12 @@ impl UnsafeDescriptorSet {
                 DescriptorWriteInfo::BufferView(info) => {
                     write_vk.descriptor_count = info.len() as u32;
                     write_vk.p_texel_buffer_view = info.as_ptr();
+                }
+                DescriptorWriteInfo::InlineUniformBlock(data) => {
+                    write_vk.descriptor_count = data.len() as u32;
+                    write_vk.p_next = &per_write_vk.inline_uniform_block as *const _ as _;
+                    per_write_vk.inline_uniform_block.data_size = write_vk.descriptor_count;
+                    per_write_vk.inline_uniform_block.p_data = data.as_ptr() as *const _;
                 }
                 DescriptorWriteInfo::AccelerationStructure(info) => {
                     write_vk.descriptor_count = info.len() as u32;

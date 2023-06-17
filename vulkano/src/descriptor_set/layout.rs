@@ -86,8 +86,8 @@ impl DescriptorSetLayout {
             {
                 return Err(ValidationError {
                     problem: "the total number of descriptors across all bindings is greater than \
-                        the max_per_set_descriptors limit, and \
-                        device.descriptor_set_layout_support returned None"
+                        the `max_per_set_descriptors` limit, and \
+                        `device.descriptor_set_layout_support` returned `None`"
                         .into(),
                     ..Default::default()
                 });
@@ -373,18 +373,24 @@ impl DescriptorSetLayoutCreateInfo {
             if flags.intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR) {
                 if matches!(
                     descriptor_type,
-                    DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
+                    DescriptorType::UniformBufferDynamic
+                        | DescriptorType::StorageBufferDynamic
+                        | DescriptorType::InlineUniformBlock
                 ) {
                     return Err(ValidationError {
                         problem: format!(
-                            "flags contains DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR, \
-                            and bindings[{}].descriptor_type is
-                            DescriptorType::UniformBufferDynamic or \
-                            DescriptorType::StorageBufferDynamic",
+                            "`flags` contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`, \
+                            and `bindings[{}].descriptor_type` is
+                            `DescriptorType::UniformBufferDynamic`, \
+                            `DescriptorType::StorageBufferDynamic` or \
+                            `DescriptorType::InlineUniformBlock`",
                             binding_num
                         )
                         .into(),
-                        vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-00280"],
+                        vuids: &[
+                            "VUID-VkDescriptorSetLayoutCreateInfo-flags-00280",
+                            "VUID-VkDescriptorSetLayoutCreateInfo-flags-02208",
+                        ],
                         ..Default::default()
                     });
                 }
@@ -392,9 +398,9 @@ impl DescriptorSetLayoutCreateInfo {
                 if binding_flags.intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT) {
                     return Err(ValidationError {
                         problem: format!(
-                            "flags contains DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR, \
-                            and bindings[{}].flags contains \
-                            DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT",
+                            "`flags` contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`, \
+                            and `bindings[{}].flags` contains \
+                            `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`",
                             binding_num
                         )
                         .into(),
@@ -409,9 +415,9 @@ impl DescriptorSetLayoutCreateInfo {
             {
                 return Err(ValidationError {
                     problem: format!(
-                        "bindings[{}].flags contains \
-                        DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT, but {0} is not the
-                        highest binding number in bindings",
+                        "`bindings[{}].flags` contains \
+                        `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`, but {0} is not the
+                        highest binding number in `bindings`",
                         binding_num
                     )
                     .into(),
@@ -433,9 +439,9 @@ impl DescriptorSetLayoutCreateInfo {
             && total_descriptor_count > max_push_descriptors
         {
             return Err(ValidationError {
-                problem: "flags contains DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR, and the \
-                    total number of descriptors in bindings exceeds the max_push_descriptors \
-                    limit"
+                problem: "`flags` contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`, and \
+                    the total number of descriptors in `bindings` exceeds the
+                    `max_push_descriptors` limit"
                     .into(),
                 vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-00281"],
                 ..Default::default()
@@ -476,8 +482,8 @@ vulkan_bitflags! {
     /// be used for regular descriptor sets.
     ///
     /// If set, there are several restrictions:
-    /// - There must be no bindings with a type of [`DescriptorType::UniformBufferDynamic`]
-    ///   or [`DescriptorType::StorageBufferDynamic`].
+    /// - There must be no bindings with a type of [`DescriptorType::UniformBufferDynamic`],
+    ///   [`DescriptorType::StorageBufferDynamic`] or [`DescriptorType::InlineUniformBlock`].
     /// - There must be no bindings with `variable_descriptor_count` enabled.
     /// - The total number of descriptors across all bindings must be less than the
     ///   [`max_push_descriptors`](crate::device::Properties::max_push_descriptors) limit.
@@ -518,6 +524,10 @@ pub struct DescriptorSetLayoutBinding {
     /// How many descriptors (array elements) this binding is made of.
     ///
     /// If the binding is a single element rather than an array, then you must specify `1`.
+    ///
+    /// If `descriptor_type` is [`DescriptorType::InlineUniformBlock`], then there can be at most
+    /// one descriptor in the binding, and this value instead specifies the number of bytes
+    /// available in the inline uniform block. The value must then be a multiple of 4.
     ///
     /// The default value is `1`.
     pub descriptor_count: u32,
@@ -627,6 +637,47 @@ impl DescriptorSetLayoutBinding {
                 ..ValidationError::from_requirement(err)
             })?;
 
+        if descriptor_type == DescriptorType::InlineUniformBlock {
+            if !device.enabled_features().inline_uniform_block {
+                return Err(ValidationError {
+                    context: "descriptor_type".into(),
+                    problem: "DescriptorType::InlineUniformBlock".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["inline_uniform_block"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-04604"],
+                });
+            }
+
+            if descriptor_count % 4 != 0 {
+                return Err(ValidationError {
+                    problem: "`descriptor_type` is `DescriptorType::InlineUniformBlock`, and \
+                        `descriptor_count` is not a multiple of 4"
+                        .into(),
+                    vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-02209"],
+                    ..Default::default()
+                });
+            }
+
+            if descriptor_count
+                > device
+                    .physical_device()
+                    .properties()
+                    .max_inline_uniform_block_size
+                    .unwrap_or(0)
+            {
+                return Err(ValidationError {
+                    problem: "`descriptor_type` is `DescriptorType::InlineUniformBlock`, and \
+                        `descriptor_count` is greater than the `max_inline_uniform_block_size` \
+                        limit"
+                        .into(),
+                    vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-08004"],
+                    ..Default::default()
+                });
+            }
+        }
+
         if descriptor_count != 0 {
             stages
                 .validate_device(device)
@@ -640,8 +691,8 @@ impl DescriptorSetLayoutBinding {
                 && !(stages.is_empty() || stages == ShaderStages::FRAGMENT)
             {
                 return Err(ValidationError {
-                    problem: "descriptor_type is DescriptorType::InputAttachment, but stages is not
-                        either empty or equal to ShaderStages::FRAGMENT"
+                    problem: "`descriptor_type` is `DescriptorType::InputAttachment`, but \
+                        `stages` is not either empty or equal to `ShaderStages::FRAGMENT`"
                         .into(),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-01510"],
                     ..Default::default()
@@ -652,8 +703,8 @@ impl DescriptorSetLayoutBinding {
         if !immutable_samplers.is_empty() {
             if descriptor_count != immutable_samplers.len() as u32 {
                 return Err(ValidationError {
-                    problem: "immutable_samplers is not empty, but its length does not equal \
-                        descriptor_count"
+                    problem: "`immutable_samplers` is not empty, but its length does not equal \
+                        `descriptor_count`"
                         .into(),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-00282"],
                     ..Default::default()
@@ -671,9 +722,9 @@ impl DescriptorSetLayoutBinding {
             if has_sampler_ycbcr_conversion {
                 if !matches!(descriptor_type, DescriptorType::CombinedImageSampler) {
                     return Err(ValidationError {
-                        problem: "immutable_samplers contains a sampler with a \
-                            sampler YCbCr conversion, but descriptor_type is not \
-                            DescriptorType::CombinedImageSampler"
+                        problem: "`immutable_samplers` contains a sampler with a \
+                            sampler YCbCr conversion, but `descriptor_type` is not \
+                            `DescriptorType::CombinedImageSampler`"
                             .into(),
                         vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-00282"],
                         ..Default::default()
@@ -685,8 +736,8 @@ impl DescriptorSetLayoutBinding {
                     DescriptorType::Sampler | DescriptorType::CombinedImageSampler
                 ) {
                     return Err(ValidationError {
-                        problem: "immutable_samplers is not empty, but descriptor_type is not \
-                            DescriptorType::Sampler or DescriptorType::CombinedImageSampler"
+                        problem: "`immutable_samplers` is not empty, but `descriptor_type` is not \
+                            `DescriptorType::Sampler` or `DescriptorType::CombinedImageSampler`"
                             .into(),
                         vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-00282"],
                         ..Default::default()
@@ -702,7 +753,7 @@ impl DescriptorSetLayoutBinding {
             {
                 return Err(ValidationError {
                     context: "binding_flags".into(),
-                    problem: "contains DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT".into(),
+                    problem: "contains `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`".into(),
                     requires_one_of: RequiresOneOf {
                         features: &["descriptor_binding_variable_descriptor_count"],
                         ..Default::default()
@@ -716,10 +767,10 @@ impl DescriptorSetLayoutBinding {
                 DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
             ) {
                 return Err(ValidationError {
-                    problem: "binding_flags contains \
-                        DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT, and descriptor_type is
-                        DescriptorType::UniformBufferDynamic or \
-                        DescriptorType::StorageBufferDynamic"
+                    problem: "`binding_flags` contains \
+                        `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`, and \
+                        `descriptor_type` is `DescriptorType::UniformBufferDynamic` or \
+                        `DescriptorType::StorageBufferDynamic`"
                         .into(),
                     vuids: &[
                         "VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03015",
@@ -837,12 +888,27 @@ vulkan_enum! {
     /// pixel that is currently being processed by the fragment shader.
     InputAttachment = INPUT_ATTACHMENT,
 
-    /* TODO: enable
-    // TODO: document
+    /// Very similar to `UniformBuffer`, but the data is written directly into an inline buffer
+    /// inside the descriptor set, instead of writing a reference to a buffer.
+    /// This is similar to push constants, but because the data is stored in the descriptor set
+    /// rather than the command buffer, it can be bound multiple times and reused, and you can
+    /// have more than one of them bound in a single shader.
+    ///
+    /// It is not possible to have an arrayed binding of inline uniform blocks; at most one inline
+    /// uniform block can be bound to one binding.
+    ///
+    /// Within a shader, an inline uniform block is defined exactly the same as a uniform buffer.
+    /// The Vulkan API acts as if every byte in the inline buffer were its own descriptor:
+    /// - The `descriptor_count` value specifies the number of bytes available for data.
+    /// - The `variable_descriptor_count` value when allocating a descriptor set specifies a
+    ///   variable byte count instead.
+    /// - The `first_array_element` value when writing a descriptor set specifies the byte offset
+    ///   into the inline buffer.
+    /// These values must always be a multiple of 4.
     InlineUniformBlock = INLINE_UNIFORM_BLOCK {
         api_version: V1_3,
         device_extensions: [ext_inline_uniform_block],
-    },*/
+    },
 
     /// Gives read access to an acceleration structure, for performing ray queries and ray tracing.
     AccelerationStructure = ACCELERATION_STRUCTURE_KHR {
@@ -888,6 +954,7 @@ impl DescriptorType {
             | DescriptorType::StorageBuffer
             | DescriptorType::UniformBufferDynamic
             | DescriptorType::StorageBufferDynamic
+            | DescriptorType::InlineUniformBlock
             | DescriptorType::AccelerationStructure => ImageLayout::Undefined,
         }
     }

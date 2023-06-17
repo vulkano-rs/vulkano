@@ -454,7 +454,7 @@ impl PipelineLayoutCreateInfo {
         if set_layouts.len() > properties.max_bound_descriptor_sets as usize {
             return Err(ValidationError {
                 context: "set_layouts".into(),
-                problem: "the length exceeds the max_bound_descriptor_sets limit".into(),
+                problem: "the length exceeds the `max_bound_descriptor_sets` limit".into(),
                 vuids: &["VUID-VkPipelineLayoutCreateInfo-setLayoutCount-00286"],
                 ..Default::default()
             });
@@ -467,7 +467,7 @@ impl PipelineLayoutCreateInfo {
             vuids: &'static [&'static str],
         }
 
-        const PER_STAGE_DESCRIPTOR_LIMITS: [DescriptorLimit; 7] = [
+        const PER_STAGE_DESCRIPTOR_LIMITS: [DescriptorLimit; 8] = [
             DescriptorLimit {
                 descriptor_types: &[
                     DescriptorType::Sampler,
@@ -521,6 +521,15 @@ impl PipelineLayoutCreateInfo {
                 vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03021"],
             },
             DescriptorLimit {
+                descriptor_types: &[DescriptorType::InlineUniformBlock],
+                get_limit: |p| {
+                    p.max_per_stage_descriptor_inline_uniform_blocks
+                        .unwrap_or(0)
+                },
+                limit_name: "max_per_stage_descriptor_inline_uniform_blocks",
+                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-02214"],
+            },
+            DescriptorLimit {
                 descriptor_types: &[DescriptorType::AccelerationStructure],
                 get_limit: |p| {
                     p.max_per_stage_descriptor_acceleration_structures
@@ -531,7 +540,7 @@ impl PipelineLayoutCreateInfo {
             },
         ];
 
-        const TOTAL_DESCRIPTOR_LIMITS: [DescriptorLimit; 9] = [
+        const TOTAL_DESCRIPTOR_LIMITS: [DescriptorLimit; 10] = [
             DescriptorLimit {
                 descriptor_types: &[
                     DescriptorType::Sampler,
@@ -591,6 +600,12 @@ impl PipelineLayoutCreateInfo {
                 vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03035"],
             },
             DescriptorLimit {
+                descriptor_types: &[DescriptorType::InlineUniformBlock],
+                get_limit: |p| p.max_descriptor_set_inline_uniform_blocks.unwrap_or(0),
+                limit_name: "max_descriptor_set_inline_uniform_blocks",
+                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-02216"],
+            },
+            DescriptorLimit {
                 descriptor_types: &[DescriptorType::AccelerationStructure],
                 get_limit: |p| p.max_descriptor_set_acceleration_structures.unwrap_or(0),
                 limit_name: "max_descriptor_set_acceleration_structures",
@@ -614,7 +629,7 @@ impl PipelineLayoutCreateInfo {
                     return Err(ValidationError {
                         context: "set_layouts".into(),
                         problem: "contains more than one descriptor set layout whose flags \
-                                DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR"
+                            include `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`"
                             .into(),
                         vuids: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00293"],
                         ..Default::default()
@@ -663,11 +678,11 @@ impl PipelineLayoutCreateInfo {
                         context: "set_layouts".into(),
                         problem: format!(
                             "the combined number of {} descriptors accessible to the \
-                            ShaderStage::{:?} stage exceeds the {} limit",
+                            `ShaderStage::{:?}` stage exceeds the `{}` limit",
                             limit.descriptor_types[1..].iter().fold(
-                                format!("DescriptorType::{:?}", limit.descriptor_types[0]),
+                                format!("`DescriptorType::{:?}`", limit.descriptor_types[0]),
                                 |mut s, dt| {
-                                    write!(s, " + DescriptorType::{:?}", dt).unwrap();
+                                    write!(s, " + `DescriptorType::{:?}`", dt).unwrap();
                                     s
                                 }
                             ),
@@ -688,11 +703,11 @@ impl PipelineLayoutCreateInfo {
                     context: "set_layouts".into(),
                     problem: format!(
                         "the combined number of {} descriptors accessible across all \
-                        shader stages exceeds the {} limit",
+                        shader stages exceeds the `{}` limit",
                         limit.descriptor_types[1..].iter().fold(
-                            format!("DescriptorType::{:?}", limit.descriptor_types[0]),
+                            format!("`DescriptorType::{:?}`", limit.descriptor_types[0]),
                             |mut s, dt| {
-                                write!(s, " + DescriptorType::{:?}", dt).unwrap();
+                                write!(s, " + `DescriptorType::{:?}`", dt).unwrap();
                                 s
                             }
                         ),
@@ -814,7 +829,7 @@ impl PushConstantRange {
         if offset >= max_push_constants_size {
             return Err(ValidationError {
                 context: "offset".into(),
-                problem: "is not less than the max_push_constants_size limit".into(),
+                problem: "is not less than the `max_push_constants_size` limit".into(),
                 vuids: &["VUID-VkPushConstantRange-offset-00294"],
                 ..Default::default()
             });
@@ -849,7 +864,8 @@ impl PushConstantRange {
 
         if size > max_push_constants_size - offset {
             return Err(ValidationError {
-                problem: "size is greater than max_push_constants_size limit minus offset".into(),
+                problem: "`size` is greater than `max_push_constants_size` limit minus `offset`"
+                    .into(),
                 vuids: &["VUID-VkPushConstantRange-size-00298"],
                 ..Default::default()
             });

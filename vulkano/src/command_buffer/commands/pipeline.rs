@@ -1170,6 +1170,13 @@ where
                         check_sampler,
                     )?;
                 }
+                // Spec:
+                // Descriptor bindings with descriptor type of
+                // VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK can be undefined when
+                // the descriptor set is consumed; though values in that block will be undefined.
+                //
+                // TODO: We *may* still want to validate this?
+                DescriptorBindingResources::InlineUniformBlock => (),
                 DescriptorBindingResources::AccelerationStructure(elements) => {
                     validate_resources(
                         set_num,
@@ -1945,7 +1952,7 @@ where
             let descriptor_set_state = &descriptor_sets_state.descriptor_sets[&set];
 
             match descriptor_set_state.resources().binding(binding).unwrap() {
-                DescriptorBindingResources::None(_) => continue,
+                DescriptorBindingResources::None(_) => (),
                 DescriptorBindingResources::Buffer(elements) => {
                     if matches!(
                         descriptor_type,
@@ -2075,6 +2082,7 @@ where
                     }
                 }
                 DescriptorBindingResources::Sampler(_) => (),
+                DescriptorBindingResources::InlineUniformBlock => (),
                 DescriptorBindingResources::AccelerationStructure(elements) => {
                     for (index, element) in elements.iter().enumerate() {
                         if let Some(acceleration_structure) = element {

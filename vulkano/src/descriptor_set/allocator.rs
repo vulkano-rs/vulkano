@@ -19,16 +19,13 @@
 use self::sorted_map::SortedMap;
 use super::{
     layout::DescriptorSetLayout,
-    pool::{
-        DescriptorPool, DescriptorPoolAllocError, DescriptorPoolCreateInfo,
-        DescriptorSetAllocateInfo,
-    },
+    pool::{DescriptorPool, DescriptorPoolCreateInfo, DescriptorSetAllocateInfo},
     sys::UnsafeDescriptorSet,
 };
 use crate::{
-    descriptor_set::layout::DescriptorSetLayoutCreateFlags,
+    descriptor_set::layout::{DescriptorSetLayoutCreateFlags, DescriptorType},
     device::{Device, DeviceOwned},
-    RuntimeError,
+    RuntimeError, VulkanError,
 };
 use crossbeam_queue::ArrayQueue;
 use std::{cell::UnsafeCell, mem::ManuallyDrop, num::NonZeroU64, sync::Arc, thread};
@@ -267,41 +264,45 @@ impl FixedPool {
                 pool_sizes: layout
                     .descriptor_counts()
                     .iter()
-                    .map(|(&ty, &count)| (ty, count * set_count as u32))
+                    .map(|(&ty, &count)| {
+                        assert!(ty != DescriptorType::InlineUniformBlock);
+                        (ty, count * set_count as u32)
+                    })
                     .collect(),
                 ..Default::default()
             },
-        )?;
+        )
+        .map_err(VulkanError::unwrap_runtime)?;
 
         let allocate_infos = (0..set_count).map(|_| DescriptorSetAllocateInfo {
             layout,
             variable_descriptor_count: 0,
         });
 
-        let reserve = match unsafe { inner.allocate_descriptor_sets(allocate_infos) } {
-            Ok(allocs) => {
-                let reserve = ArrayQueue::new(set_count);
-                for alloc in allocs {
-                    let _ = reserve.push(alloc);
-                }
-
-                reserve
-            }
-            Err(DescriptorPoolAllocError::OutOfHostMemory) => {
-                return Err(RuntimeError::OutOfHostMemory);
-            }
-            Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
-                return Err(RuntimeError::OutOfDeviceMemory);
-            }
-            Err(DescriptorPoolAllocError::FragmentedPool) => {
-                // This can't happen as we don't free individual sets.
-                unreachable!();
-            }
-            Err(DescriptorPoolAllocError::OutOfPoolMemory) => {
-                // We created the pool with an exact size.
-                unreachable!();
-            }
+        let allocs = unsafe {
+            inner
+                .allocate_descriptor_sets(allocate_infos)
+                .map_err(|err| match err {
+                    RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory => err,
+                    RuntimeError::FragmentedPool => {
+                        // This can't happen as we don't free individual sets.
+                        unreachable!();
+                    }
+                    RuntimeError::OutOfPoolMemory => {
+                        // We created the pool with an exact size.
+                        unreachable!();
+                    }
+                    _ => {
+                        // Shouldn't ever be returned.
+                        unreachable!();
+                    }
+                })?
         };
+
+        let reserve = ArrayQueue::new(set_count);
+        for alloc in allocs {
+            let _ = reserve.push(alloc);
+        }
 
         Ok(Arc::new(FixedPool {
             _inner: inner,
@@ -356,28 +357,30 @@ impl VariableEntry {
             variable_descriptor_count,
         };
 
-        let inner = match unsafe { self.pool.inner.allocate_descriptor_sets([allocate_info]) } {
-            Ok(mut sets) => sets.next().unwrap(),
-            Err(DescriptorPoolAllocError::OutOfHostMemory) => {
-                return Err(RuntimeError::OutOfHostMemory);
-            }
-            Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
-                return Err(RuntimeError::OutOfDeviceMemory);
-            }
-            Err(DescriptorPoolAllocError::FragmentedPool) => {
-                // This can't happen as we don't free individual sets.
-                unreachable!();
-            }
-            Err(DescriptorPoolAllocError::OutOfPoolMemory) => {
-                // We created the pool to fit the maximum variable descriptor count.
-                unreachable!();
-            }
+        let mut sets = unsafe {
+            self.pool
+                .inner
+                .allocate_descriptor_sets([allocate_info])
+                .map_err(|err| match err {
+                    RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory => err,
+                    RuntimeError::FragmentedPool => {
+                        // This can't happen as we don't free individual sets.
+                        unreachable!();
+                    }
+                    RuntimeError::OutOfPoolMemory => {
+                        // We created the pool to fit the maximum variable descriptor count.
+                        unreachable!();
+                    }
+                    _ => {
+                        // Shouldn't ever be returned.
+                        unreachable!();
+                    }
+                })?
         };
-
         self.allocations += 1;
 
         Ok(StandardDescriptorSetAlloc {
-            inner: ManuallyDrop::new(inner),
+            inner: ManuallyDrop::new(sets.next().unwrap()),
             parent: AllocParent::Variable(self.pool.clone()),
         })
     }
@@ -403,7 +406,10 @@ impl VariablePool {
                 pool_sizes: layout
                     .descriptor_counts()
                     .iter()
-                    .map(|(&ty, &count)| (ty, count * MAX_SETS as u32))
+                    .map(|(&ty, &count)| {
+                        assert!(ty != DescriptorType::InlineUniformBlock);
+                        (ty, count * MAX_SETS as u32)
+                    })
                     .collect(),
                 ..Default::default()
             },
@@ -414,6 +420,7 @@ impl VariablePool {
                 reserve,
             })
         })
+        .map_err(VulkanError::unwrap_runtime)
     }
 }
 
