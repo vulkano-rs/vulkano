@@ -2130,8 +2130,9 @@ pub struct RenderPassBeginInfo {
     pub render_area_extent: [u32; 2],
 
     /// Provides, for each attachment in `render_pass` that has a load operation of
-    /// [`LoadOp::Clear`], the clear values that should be used for the attachments in the
-    /// framebuffer. There must be exactly [`framebuffer.attachments().len()`] elements provided,
+    /// [`AttachmentLoadOp::Clear`], the clear values that should be used for the attachments in
+    /// the framebuffer.
+    /// There must be exactly [`framebuffer.attachments().len()`] elements provided,
     /// and each one must match the attachment format.
     ///
     /// To skip over an attachment whose load operation is something else, provide `None`.
@@ -2362,16 +2363,16 @@ pub struct RenderingAttachmentInfo {
 
     /// What the implementation should do with the attachment at the start of rendering.
     ///
-    /// The default value is [`LoadOp::DontCare`].
+    /// The default value is [`AttachmentLoadOp::DontCare`].
     pub load_op: AttachmentLoadOp,
 
     /// What the implementation should do with the attachment at the end of rendering.
     ///
-    /// The default value is [`StoreOp::DontCare`].
+    /// The default value is [`AttachmentStoreOp::DontCare`].
     pub store_op: AttachmentStoreOp,
 
-    /// If `load_op` is [`LoadOp::Clear`], specifies the clear value that should be used for the
-    /// attachment.
+    /// If `load_op` is [`AttachmentLoadOp::Clear`],
+    /// specifies the clear value that should be used for the attachment.
     ///
     /// If `load_op` is something else, provide `None`.
     ///

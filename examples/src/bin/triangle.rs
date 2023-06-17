@@ -615,8 +615,8 @@ fn main() {
                             // one item for each attachment in the render pass. In this case, there
                             // is only one attachment, and we clear it with a blue color.
                             //
-                            // Only attachments that have `LoadOp::Clear` are provided with clear
-                            // values, any others should use `ClearValue::None` as the clear value.
+                            // Only attachments that have `AttachmentLoadOp::Clear` are provided
+                            // with clear values, any others should use `None` as the clear value.
                             clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
 
                             ..RenderPassBeginInfo::framebuffer(

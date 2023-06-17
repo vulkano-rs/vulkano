@@ -624,8 +624,8 @@ fn main() {
                             // The value to clear the attachment with. Here we clear it with a blue
                             // color.
                             //
-                            // Only attachments that have `LoadOp::Clear` are provided with clear
-                            // values, any others should use `None` as the clear value.
+                            // Only attachments that have `AttachmentLoadOp::Clear` are provided
+                            // with clear values, any others should use `None` as the clear value.
                             clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
                             ..RenderingAttachmentInfo::image_view(
                                 // We specify image view corresponding to the currently acquired

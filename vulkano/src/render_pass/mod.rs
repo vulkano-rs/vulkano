@@ -961,7 +961,7 @@ impl RenderPassCreateInfo {
                         problem: format!(
                             "attachment {0} is first used in \
                             `subpasses[{1}].color_attachments[{2}]`, and \
-                            `attachments[{0}].load_op` is `LoadOp::Clear`, but \
+                            `attachments[{0}].load_op` is `AttachmentLoadOp::Clear`, but \
                             `subpasses[{1}].color_attachments[{2}].layout` \
                             does not have a writable color aspect",
                             attachment, subpass_index, ref_index
@@ -1048,7 +1048,7 @@ impl RenderPassCreateInfo {
                             problem: format!(
                                 "attachment {0} is first used in \
                                 `subpasses[{1}].color_resolve_attachments[{2}]`, and \
-                                `attachments[{0}].load_op` is `LoadOp::Clear`, but \
+                                `attachments[{0}].load_op` is `AttachmentLoadOp::Clear`, but \
                                 `subpasses[{1}].color_resolve_attachments[{2}].layout` \
                                 does not have a writable color aspect",
                                 attachment, subpass_index, ref_index
@@ -1196,7 +1196,7 @@ impl RenderPassCreateInfo {
                             problem: format!(
                                 "attachment {0} is first used in \
                                 `subpasses[{1}].depth_stencil_attachment`, and \
-                                `attachments[{0}].load_op` is `LoadOp::Clear`, but \
+                                `attachments[{0}].load_op` is `AttachmentLoadOp::Clear`, but \
                                 `depth_stencil_attachment.layout` \
                                 does not have a writable depth aspect",
                                 attachment, subpass_index,
@@ -1222,8 +1222,8 @@ impl RenderPassCreateInfo {
                             problem: format!(
                                 "attachment {0} is first used in \
                                 `subpasses[{1}].depth_stencil_attachment`, and \
-                                `attachments[{0}].stencil_load_op` is `LoadOp::Clear`, but \
-                                `depth_stencil_attachment.stencil_layout` \
+                                `attachments[{0}].stencil_load_op` is `AttachmentLoadOp::Clear`, \
+                                but `depth_stencil_attachment.stencil_layout` \
                                 does not have a writable stencil aspect",
                                 attachment, subpass_index,
                             )
@@ -1316,7 +1316,7 @@ impl RenderPassCreateInfo {
                             problem: format!(
                                 "attachment {0} is first used in \
                                 `subpasses[{1}].depth_stencil_resolve_attachment`, and \
-                                `attachments[{0}].load_op` is `LoadOp::Clear`, but \
+                                `attachments[{0}].load_op` is `AttachmentLoadOp::Clear`, but \
                                 `depth_stencil_resolve_attachment.layout` \
                                 does not have a writable depth aspect",
                                 attachment, subpass_index,
@@ -1410,7 +1410,7 @@ impl RenderPassCreateInfo {
                         problem: format!(
                             "attachment {0} is first used in \
                             `subpasses[{1}].input_attachments[{2}]`, and \
-                            `attachments[{0}].load_op` is `LoadOp::Clear`",
+                            `attachments[{0}].load_op` is `AttachmentLoadOp::Clear`",
                             attachment, subpass_index, ref_index
                         )
                         .into(),
@@ -1659,13 +1659,13 @@ pub struct AttachmentDescription {
     /// What the implementation should do with the attachment at the start of the subpass that
     /// first uses it.
     ///
-    /// The default value is [`LoadOp::DontCare`].
+    /// The default value is [`AttachmentLoadOp::DontCare`].
     pub load_op: AttachmentLoadOp,
 
     /// What the implementation should do with the attachment at the end of the subpass that
     /// last uses it.
     ///
-    /// The default value is [`StoreOp::DontCare`].
+    /// The default value is [`AttachmentStoreOp::DontCare`].
     pub store_op: AttachmentStoreOp,
 
     /// The layout that the attachment must in at the start of the render pass.
@@ -2050,7 +2050,8 @@ impl AttachmentDescription {
             if load_op == AttachmentLoadOp::Load && initial_layout == ImageLayout::Undefined {
                 return Err(ValidationError {
                     problem: "`format` has a color component, `load_op` is \
-                        `LoadOp::Load`, and `initial_layout` is `ImageLayout::Undefined`"
+                        `AttachmentLoadOp::Load`, and `initial_layout` is \
+                        `ImageLayout::Undefined`"
                         .into(),
                     vuids: &["VUID-VkAttachmentDescription2-format-06699"],
                     ..Default::default()
@@ -2115,7 +2116,8 @@ impl AttachmentDescription {
                 if load_op == AttachmentLoadOp::Load && initial_layout == ImageLayout::Undefined {
                     return Err(ValidationError {
                         problem: "`format` has a depth component, `load_op` is \
-                            `LoadOp::Load`, and `initial_layout` is `ImageLayout::Undefined`"
+                            `AttachmentLoadOp::Load`, and `initial_layout` is \
+                            `ImageLayout::Undefined`"
                             .into(),
                         vuids: &["VUID-VkAttachmentDescription2-format-06699"],
                         ..Default::default()
@@ -2129,7 +2131,8 @@ impl AttachmentDescription {
                 {
                     return Err(ValidationError {
                         problem: "`format` has a stencil component, `stencil_load_op` is \
-                        `LoadOp::Load`, and `stencil_initial_layout` is `ImageLayout::Undefined`"
+                            `AttachmentLoadOp::Load`, and `stencil_initial_layout` is \
+                            `ImageLayout::Undefined`"
                             .into(),
                         vuids: &[
                             "VUID-VkAttachmentDescription2-pNext-06704",
@@ -2228,7 +2231,7 @@ pub struct SubpassDescription {
     ///
     /// If an attachment is used here for the first time in this render pass, and it's is not also
     /// used as a color or depth/stencil attachment in this subpass, then the attachment's `load_op`
-    /// must not be [`LoadOp::Clear`].
+    /// must not be [`AttachmentLoadOp::Clear`].
     ///
     /// The default value is empty.
     pub input_attachments: Vec<Option<AttachmentReference>>,
