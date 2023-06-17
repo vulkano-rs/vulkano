@@ -40,7 +40,7 @@ pub struct DescriptorPool {
 }
 
 impl DescriptorPool {
-    /// Creates a new `UnsafeDescriptorPool`.
+    /// Creates a new `DescriptorPool`.
     #[inline]
     pub fn new(
         device: Arc<Device>,

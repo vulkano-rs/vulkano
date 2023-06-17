@@ -652,7 +652,7 @@ impl DescriptorSetLayoutBinding {
 
             if descriptor_count % 4 != 0 {
                 return Err(ValidationError {
-                    problem: "`descriptor_type` is `DescriptorType::InlineUniformBlock`, and
+                    problem: "`descriptor_type` is `DescriptorType::InlineUniformBlock`, and \
                         `descriptor_count` is not a multiple of 4"
                         .into(),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-02209"],
@@ -668,8 +668,8 @@ impl DescriptorSetLayoutBinding {
                     .unwrap_or(0)
             {
                 return Err(ValidationError {
-                    problem: "`descriptor_type` is `DescriptorType::InlineUniformBlock`, and
-                        `descriptor_count` is greater than the `max_inline_uniform_block_size`
+                    problem: "`descriptor_type` is `DescriptorType::InlineUniformBlock`, and \
+                        `descriptor_count` is greater than the `max_inline_uniform_block_size` \
                         limit"
                         .into(),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-08004"],
