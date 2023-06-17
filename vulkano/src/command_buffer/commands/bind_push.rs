@@ -649,18 +649,17 @@ where
         offset: u32,
         _push_constants: &Pc,
     ) -> Result<(), BindPushError> {
-        let size = size_of::<Pc>() as u32;
+        let mut remaining_size = size_of::<Pc>();
 
         if offset % 4 != 0 {
             return Err(BindPushError::PushConstantsOffsetNotAligned);
         }
 
-        if size % 4 != 0 {
+        if remaining_size % 4 != 0 {
             return Err(BindPushError::PushConstantsSizeNotAligned);
         }
 
-        let mut current_offset = offset;
-        let mut remaining_size = u32::try_from(size).unwrap();
+        let mut current_offset = offset as usize;
 
         for range in pipeline_layout
             .push_constant_ranges_disjoint()
@@ -669,12 +668,13 @@ where
         {
             // there is a gap between ranges, but the passed push_constants contains
             // some bytes in this gap, exit the loop and report error
-            if range.offset > current_offset {
+            if range.offset as usize > current_offset {
                 break;
             }
 
             // push the minimum of the whole remaining data, and the part until the end of this range
-            let push_size = remaining_size.min(range.offset + range.size - current_offset);
+            let push_size =
+                remaining_size.min(range.offset as usize + range.size as usize - current_offset);
             current_offset += push_size;
             remaining_size -= push_size;
 
@@ -1248,7 +1248,7 @@ pub(in super::super) enum BindPushError {
 
     /// The push constants data to be written at an offset is not included in any push constant
     /// range of the pipeline layout.
-    PushConstantsDataOutOfRange { offset: u32 },
+    PushConstantsDataOutOfRange { offset: usize },
 
     /// The push constants offset is not a multiple of 4.
     PushConstantsOffsetNotAligned,
