@@ -19,11 +19,11 @@ use crate::{
     },
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, Format, NumericType},
-    image::{ImageAspects, ImageLayout, ImageUsage, ImageViewAbstract, SampleCount},
+    image::{ImageAspect, ImageAspects, ImageLayout, ImageUsage, ImageViewAbstract, SampleCount},
     pipeline::graphics::subpass::PipelineRenderingCreateInfo,
     render_pass::{
-        AttachmentDescription, Framebuffer, LoadOp, RenderPass, ResolveMode, StoreOp,
-        SubpassDescription,
+        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, Framebuffer, RenderPass,
+        ResolveMode, SubpassDescription,
     },
     sync::PipelineStageAccessFlags,
     RequirementNotMet, RequiresOneOf, Version, VulkanObject,
@@ -125,10 +125,20 @@ where
             let &AttachmentDescription {
                 initial_layout,
                 final_layout,
+                stencil_initial_layout,
+                stencil_final_layout,
                 ..
             } = attachment_desc;
 
-            for layout in [initial_layout, final_layout] {
+            for layout in [
+                Some(initial_layout),
+                Some(final_layout),
+                stencil_initial_layout,
+                stencil_final_layout,
+            ]
+            .into_iter()
+            .flatten()
+            {
                 match layout {
                     ImageLayout::ColorAttachmentOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03094
@@ -142,8 +152,13 @@ where
                     ImageLayout::DepthReadOnlyStencilAttachmentOptimal
                     | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
                     | ImageLayout::DepthStencilAttachmentOptimal
-                    | ImageLayout::DepthStencilReadOnlyOptimal => {
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::DepthReadOnlyOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+                    | ImageLayout::StencilReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03096
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-02844
                         if !image_view
                             .usage()
                             .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
@@ -184,27 +199,34 @@ where
                             });
                         }
                     }
-                    _ => (),
+                    ImageLayout::Undefined
+                    | ImageLayout::General
+                    | ImageLayout::Preinitialized
+                    | ImageLayout::PresentSrc => (),
                 }
             }
         }
 
         for subpass_desc in render_pass.subpasses() {
             let SubpassDescription {
+                flags: _,
                 view_mask: _,
                 input_attachments,
                 color_attachments,
-                resolve_attachments,
+                color_resolve_attachments,
                 depth_stencil_attachment,
+                depth_stencil_resolve_attachment,
+                depth_resolve_mode: _,
+                stencil_resolve_mode: _,
                 preserve_attachments: _,
                 _ne: _,
             } = subpass_desc;
 
-            for atch_ref in (input_attachments.iter())
-                .chain(color_attachments)
-                .chain(resolve_attachments)
-                .chain([depth_stencil_attachment])
-                .flatten()
+            for atch_ref in (input_attachments.iter().flatten())
+                .chain(color_attachments.iter().flatten())
+                .chain(color_resolve_attachments.iter().flatten())
+                .chain(depth_stencil_attachment.iter())
+                .chain(depth_stencil_resolve_attachment.iter())
             {
                 let image_view = &framebuffer.attachments()[atch_ref.attachment as usize];
 
@@ -221,8 +243,13 @@ where
                     ImageLayout::DepthReadOnlyStencilAttachmentOptimal
                     | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
                     | ImageLayout::DepthStencilAttachmentOptimal
-                    | ImageLayout::DepthStencilReadOnlyOptimal => {
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::DepthReadOnlyOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+                    | ImageLayout::StencilReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03096
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-02844
                         if !image_view
                             .usage()
                             .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
@@ -263,7 +290,10 @@ where
                             });
                         }
                     }
-                    _ => (),
+                    ImageLayout::Undefined
+                    | ImageLayout::General
+                    | ImageLayout::Preinitialized
+                    | ImageLayout::PresentSrc => (),
                 }
             }
         }
@@ -285,15 +315,18 @@ where
             let attachment_index = attachment_index as u32;
             let attachment_format = attachment_desc.format.unwrap();
 
-            if attachment_desc.load_op == LoadOp::Clear
-                || attachment_desc.stencil_load_op == LoadOp::Clear
+            if attachment_desc.load_op == AttachmentLoadOp::Clear
+                || attachment_desc
+                    .stencil_load_op
+                    .unwrap_or(attachment_desc.load_op)
+                    == AttachmentLoadOp::Clear
             {
                 let clear_value = match clear_value {
                     Some(x) => x,
                     None => return Err(RenderPassError::ClearValueMissing { attachment_index }),
                 };
 
-                if let (Some(numeric_type), LoadOp::Clear) =
+                if let (Some(numeric_type), AttachmentLoadOp::Clear) =
                     (attachment_format.type_color(), attachment_desc.load_op)
                 {
                     match numeric_type {
@@ -334,9 +367,12 @@ where
                 } else {
                     let attachment_aspects = attachment_format.aspects();
                     let need_depth = attachment_aspects.intersects(ImageAspects::DEPTH)
-                        && attachment_desc.load_op == LoadOp::Clear;
+                        && attachment_desc.load_op == AttachmentLoadOp::Clear;
                     let need_stencil = attachment_aspects.intersects(ImageAspects::STENCIL)
-                        && attachment_desc.stencil_load_op == LoadOp::Clear;
+                        && attachment_desc
+                            .stencil_load_op
+                            .unwrap_or(attachment_desc.load_op)
+                            == AttachmentLoadOp::Clear;
 
                     if need_depth && need_stencil {
                         if !matches!(clear_value, ClearValue::DepthStencil(_)) {
@@ -801,8 +837,6 @@ where
 
             // VUID-VkRenderingAttachmentInfo-imageView-06135
             // VUID-VkRenderingAttachmentInfo-imageView-06145
-            // VUID-VkRenderingInfo-colorAttachmentCount-06090
-            // VUID-VkRenderingInfo-colorAttachmentCount-06096
             if matches!(
                 image_layout,
                 ImageLayout::Undefined
@@ -811,10 +845,23 @@ where
                     | ImageLayout::TransferDstOptimal
                     | ImageLayout::Preinitialized
                     | ImageLayout::PresentSrc
-                    | ImageLayout::DepthStencilAttachmentOptimal
+            ) {
+                return Err(RenderPassError::ColorAttachmentLayoutInvalid { attachment_index });
+            }
+
+            // VUID-VkRenderingInfo-colorAttachmentCount-06090
+            // VUID-VkRenderingInfo-colorAttachmentCount-06096
+            // VUID-VkRenderingInfo-colorAttachmentCount-06100
+            if matches!(
+                image_layout,
+                ImageLayout::DepthStencilAttachmentOptimal
                     | ImageLayout::DepthStencilReadOnlyOptimal
                     | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
                     | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::DepthReadOnlyOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+                    | ImageLayout::StencilReadOnlyOptimal
             ) {
                 return Err(RenderPassError::ColorAttachmentLayoutInvalid { attachment_index });
             }
@@ -834,16 +881,14 @@ where
 
                 let resolve_image = resolve_image_view.image();
 
-                match image_view.format().unwrap().type_color() {
-                    Some(
-                        NumericType::SFLOAT
-                        | NumericType::UFLOAT
-                        | NumericType::SNORM
-                        | NumericType::UNORM
-                        | NumericType::SSCALED
-                        | NumericType::USCALED
-                        | NumericType::SRGB,
-                    ) => {
+                match image_view.format().unwrap().type_color().unwrap() {
+                    NumericType::SFLOAT
+                    | NumericType::UFLOAT
+                    | NumericType::SNORM
+                    | NumericType::UNORM
+                    | NumericType::SSCALED
+                    | NumericType::USCALED
+                    | NumericType::SRGB => {
                         // VUID-VkRenderingAttachmentInfo-imageView-06129
                         if mode != ResolveMode::Average {
                             return Err(RenderPassError::ColorAttachmentResolveModeNotSupported {
@@ -851,7 +896,7 @@ where
                             });
                         }
                     }
-                    Some(NumericType::SINT | NumericType::UINT) => {
+                    NumericType::SINT | NumericType::UINT => {
                         // VUID-VkRenderingAttachmentInfo-imageView-06130
                         if mode != ResolveMode::SampleZero {
                             return Err(RenderPassError::ColorAttachmentResolveModeNotSupported {
@@ -859,7 +904,6 @@ where
                             });
                         }
                     }
-                    None => (),
                 }
 
                 // VUID-VkRenderingAttachmentInfo-imageView-06132
@@ -885,8 +929,6 @@ where
 
                 // VUID-VkRenderingAttachmentInfo-imageView-06136
                 // VUID-VkRenderingAttachmentInfo-imageView-06146
-                // VUID-VkRenderingInfo-colorAttachmentCount-06091
-                // VUID-VkRenderingInfo-colorAttachmentCount-06097
                 if matches!(
                     resolve_image_layout,
                     ImageLayout::Undefined
@@ -895,11 +937,33 @@ where
                         | ImageLayout::TransferDstOptimal
                         | ImageLayout::Preinitialized
                         | ImageLayout::PresentSrc
-                        | ImageLayout::DepthStencilAttachmentOptimal
+                ) {
+                    return Err(RenderPassError::ColorAttachmentResolveLayoutInvalid {
+                        attachment_index,
+                    });
+                }
+
+                // VUID-VkRenderingInfo-colorAttachmentCount-06091
+                // VUID-VkRenderingInfo-colorAttachmentCount-06097
+                // VUID-VkRenderingInfo-colorAttachmentCount-06101
+                if matches!(
+                    resolve_image_layout,
+                    ImageLayout::DepthStencilAttachmentOptimal
                         | ImageLayout::DepthStencilReadOnlyOptimal
                         | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
                         | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                        | ImageLayout::DepthAttachmentOptimal
+                        | ImageLayout::DepthReadOnlyOptimal
+                        | ImageLayout::StencilAttachmentOptimal
+                        | ImageLayout::StencilReadOnlyOptimal
                 ) {
+                    return Err(RenderPassError::ColorAttachmentResolveLayoutInvalid {
+                        attachment_index,
+                    });
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06136
+                if !resolve_image_layout.is_writable(ImageAspect::Color) {
                     return Err(RenderPassError::ColorAttachmentResolveLayoutInvalid {
                         attachment_index,
                     });
@@ -964,7 +1028,6 @@ where
 
             // VUID-VkRenderingAttachmentInfo-imageView-06135
             // VUID-VkRenderingAttachmentInfo-imageView-06145
-            // VUID-VkRenderingInfo-pDepthAttachment-06092
             if matches!(
                 image_layout,
                 ImageLayout::Undefined
@@ -973,8 +1036,12 @@ where
                     | ImageLayout::TransferDstOptimal
                     | ImageLayout::Preinitialized
                     | ImageLayout::PresentSrc
-                    | ImageLayout::ColorAttachmentOptimal
             ) {
+                return Err(RenderPassError::DepthAttachmentLayoutInvalid);
+            }
+
+            // VUID-VkRenderingInfo-pDepthAttachment-06092
+            if matches!(image_layout, ImageLayout::ColorAttachmentOptimal) {
                 return Err(RenderPassError::DepthAttachmentLayoutInvalid);
             }
 
@@ -1018,20 +1085,27 @@ where
 
                 // VUID-VkRenderingAttachmentInfo-imageView-06136
                 // VUID-VkRenderingAttachmentInfo-imageView-06146
-                // VUID-VkRenderingInfo-pDepthAttachment-06093
-                // VUID-VkRenderingInfo-pDepthAttachment-06098
                 if matches!(
                     resolve_image_layout,
                     ImageLayout::Undefined
-                        | ImageLayout::DepthStencilReadOnlyOptimal
                         | ImageLayout::ShaderReadOnlyOptimal
                         | ImageLayout::TransferSrcOptimal
                         | ImageLayout::TransferDstOptimal
                         | ImageLayout::Preinitialized
                         | ImageLayout::PresentSrc
-                        | ImageLayout::ColorAttachmentOptimal
-                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
                 ) {
+                    return Err(RenderPassError::DepthAttachmentResolveLayoutInvalid);
+                }
+
+                // VUID-VkRenderingInfo-pDepthAttachment-06093
+                if matches!(resolve_image_layout, ImageLayout::ColorAttachmentOptimal) {
+                    return Err(RenderPassError::DepthAttachmentResolveLayoutInvalid);
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06136
+                // VUID-VkRenderingAttachmentInfo-imageView-06137
+                // VUID-VkRenderingInfo-pDepthAttachment-06098
+                if !resolve_image_layout.is_writable(ImageAspect::Depth) {
                     return Err(RenderPassError::DepthAttachmentResolveLayoutInvalid);
                 }
             }
@@ -1094,7 +1168,6 @@ where
 
             // VUID-VkRenderingAttachmentInfo-imageView-06135
             // VUID-VkRenderingAttachmentInfo-imageView-06145
-            // VUID-VkRenderingInfo-pStencilAttachment-06094
             if matches!(
                 image_layout,
                 ImageLayout::Undefined
@@ -1103,8 +1176,12 @@ where
                     | ImageLayout::TransferDstOptimal
                     | ImageLayout::Preinitialized
                     | ImageLayout::PresentSrc
-                    | ImageLayout::ColorAttachmentOptimal
             ) {
+                return Err(RenderPassError::StencilAttachmentLayoutInvalid);
+            }
+
+            // VUID-VkRenderingInfo-pStencilAttachment-06094
+            if matches!(image_layout, ImageLayout::ColorAttachmentOptimal) {
                 return Err(RenderPassError::StencilAttachmentLayoutInvalid);
             }
 
@@ -1148,20 +1225,27 @@ where
 
                 // VUID-VkRenderingAttachmentInfo-imageView-06136
                 // VUID-VkRenderingAttachmentInfo-imageView-06146
-                // VUID-VkRenderingInfo-pStencilAttachment-06095
-                // VUID-VkRenderingInfo-pStencilAttachment-06099
                 if matches!(
                     resolve_image_layout,
                     ImageLayout::Undefined
-                        | ImageLayout::DepthStencilReadOnlyOptimal
                         | ImageLayout::ShaderReadOnlyOptimal
                         | ImageLayout::TransferSrcOptimal
                         | ImageLayout::TransferDstOptimal
                         | ImageLayout::Preinitialized
                         | ImageLayout::PresentSrc
-                        | ImageLayout::ColorAttachmentOptimal
-                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
                 ) {
+                    return Err(RenderPassError::StencilAttachmentResolveLayoutInvalid);
+                }
+
+                // VUID-VkRenderingInfo-pStencilAttachment-06095
+                if matches!(resolve_image_layout, ImageLayout::ColorAttachmentOptimal) {
+                    return Err(RenderPassError::StencilAttachmentResolveLayoutInvalid);
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06136
+                // VUID-VkRenderingAttachmentInfo-imageView-06137
+                // VUID-VkRenderingInfo-pStencilAttachment-06099
+                if !resolve_image_layout.is_writable(ImageAspect::Stencil) {
                     return Err(RenderPassError::StencilAttachmentResolveLayoutInvalid);
                 }
             }
@@ -1173,6 +1257,21 @@ where
             // VUID-VkRenderingInfo-pDepthAttachment-06085
             if &depth_attachment_info.image_view != &stencil_attachment_info.image_view {
                 return Err(RenderPassError::DepthStencilAttachmentImageViewMismatch);
+            }
+
+            if depth_attachment_info.image_layout != stencil_attachment_info.image_layout
+                && !device.enabled_features().separate_depth_stencil_layouts
+            {
+                return Err(RenderPassError::RequirementNotMet {
+                    required_for: "`rendering_info.depth_attachment` and \
+                        `rendering_info.stencil_attachment` are both \
+                        `Some`, and `rendering_info.depth_attachment.image_layout` does not \
+                        equal `rendering_info.stencil_attachment.attachment_ref.layout`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["separate_depth_stencil_layouts"],
+                        ..Default::default()
+                    },
+                });
             }
 
             match (
@@ -1189,6 +1288,25 @@ where
                     }
                 }
                 (Some(depth_resolve_info), Some(stencil_resolve_info)) => {
+                    if depth_resolve_info.image_layout != stencil_resolve_info.image_layout
+                        && !device.enabled_features().separate_depth_stencil_layouts
+                    {
+                        return Err(RenderPassError::RequirementNotMet {
+                            required_for: "`rendering_info.depth_attachment` and \
+                                `rendering_info.stencil_attachment` are both `Some`, and \
+                                `rendering_info.depth_attachment.resolve_info` and \
+                                `rendering_info.stencil_attachment.resolve_info` are also both \
+                                `Some`, and \
+                                `rendering_info.depth_attachment.resolve_info.image_layout` \
+                                does not equal \
+                                `rendering_info.stencil_attachment.resolve_info.image_layout`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["separate_depth_stencil_layouts"],
+                                ..Default::default()
+                            },
+                        });
+                    }
+
                     // VUID-VkRenderingInfo-pDepthAttachment-06105
                     if !properties.independent_resolve.unwrap_or(false)
                         && depth_resolve_info.mode != stencil_resolve_info.mode
@@ -2012,8 +2130,9 @@ pub struct RenderPassBeginInfo {
     pub render_area_extent: [u32; 2],
 
     /// Provides, for each attachment in `render_pass` that has a load operation of
-    /// [`LoadOp::Clear`], the clear values that should be used for the attachments in the
-    /// framebuffer. There must be exactly [`framebuffer.attachments().len()`] elements provided,
+    /// [`AttachmentLoadOp::Clear`], the clear values that should be used for the attachments in
+    /// the framebuffer.
+    /// There must be exactly [`framebuffer.attachments().len()`] elements provided,
     /// and each one must match the attachment format.
     ///
     /// To skip over an attachment whose load operation is something else, provide `None`.
@@ -2244,16 +2363,16 @@ pub struct RenderingAttachmentInfo {
 
     /// What the implementation should do with the attachment at the start of rendering.
     ///
-    /// The default value is [`LoadOp::DontCare`].
-    pub load_op: LoadOp,
+    /// The default value is [`AttachmentLoadOp::DontCare`].
+    pub load_op: AttachmentLoadOp,
 
     /// What the implementation should do with the attachment at the end of rendering.
     ///
-    /// The default value is [`StoreOp::DontCare`].
-    pub store_op: StoreOp,
+    /// The default value is [`AttachmentStoreOp::DontCare`].
+    pub store_op: AttachmentStoreOp,
 
-    /// If `load_op` is [`LoadOp::Clear`], specifies the clear value that should be used for the
-    /// attachment.
+    /// If `load_op` is [`AttachmentLoadOp::Clear`],
+    /// specifies the clear value that should be used for the attachment.
     ///
     /// If `load_op` is something else, provide `None`.
     ///
@@ -2278,8 +2397,8 @@ impl RenderingAttachmentInfo {
             image_view,
             image_layout,
             resolve_info: None,
-            load_op: LoadOp::DontCare,
-            store_op: StoreOp::DontCare,
+            load_op: AttachmentLoadOp::DontCare,
+            store_op: AttachmentStoreOp::DontCare,
             clear_value: None,
             _ne: crate::NonExhaustive(()),
         }

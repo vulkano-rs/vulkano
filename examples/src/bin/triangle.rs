@@ -351,12 +351,6 @@ fn main() {
         attachments: {
             // `color` is a custom name we give to the first and only attachment.
             color: {
-                // `load: Clear` means that we ask the GPU to clear the content of this attachment
-                // at the start of the drawing.
-                load: Clear,
-                // `store: Store` means that we ask the GPU to store the output of the draw in the
-                // actual image. We could also ask it to discard the result.
-                store: Store,
                 // `format: <ty>` indicates the type of the format of the image. This has to be one
                 // of the types of the `vulkano::format` module (or alternatively one of your
                 // structs that implements the `FormatDesc` trait). Here we use the same format as
@@ -367,6 +361,12 @@ fn main() {
                 // (multisampling) for antialiasing. An example of this can be found in
                 // msaa-renderpass.rs.
                 samples: 1,
+                // `load_op: Clear` means that we ask the GPU to clear the content of this
+                // attachment at the start of the drawing.
+                load_op: Clear,
+                // `store_op: Store` means that we ask the GPU to store the output of the draw in
+                // the actual image. We could also ask it to discard the result.
+                store_op: Store,
             },
         },
         pass: {
@@ -615,8 +615,8 @@ fn main() {
                             // one item for each attachment in the render pass. In this case, there
                             // is only one attachment, and we clear it with a blue color.
                             //
-                            // Only attachments that have `LoadOp::Clear` are provided with clear
-                            // values, any others should use `ClearValue::None` as the clear value.
+                            // Only attachments that have `AttachmentLoadOp::Clear` are provided
+                            // with clear values, any others should use `None` as the clear value.
                             clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
 
                             ..RenderPassBeginInfo::framebuffer(

@@ -644,7 +644,9 @@ impl WriteDescriptorSet {
                                 | ImageLayout::ShaderReadOnlyOptimal
                                 | ImageLayout::General
                                 | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                                | ImageLayout::DepthReadOnlyOptimal
+                                | ImageLayout::StencilReadOnlyOptimal,
                         ) {
                             return Err(ValidationError {
                                 context: format!("elements[{}]", index).into(),
@@ -755,7 +757,9 @@ impl WriteDescriptorSet {
                                 | ImageLayout::ShaderReadOnlyOptimal
                                 | ImageLayout::General
                                 | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                                | ImageLayout::DepthReadOnlyOptimal
+                                | ImageLayout::StencilReadOnlyOptimal,
                         ) {
                             return Err(ValidationError {
                                 context: format!("elements[{}]", index).into(),
@@ -825,7 +829,9 @@ impl WriteDescriptorSet {
                             | ImageLayout::ShaderReadOnlyOptimal
                             | ImageLayout::General
                             | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                            | ImageLayout::DepthReadOnlyOptimal
+                            | ImageLayout::StencilReadOnlyOptimal,
                     ) {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
@@ -1161,7 +1167,9 @@ impl WriteDescriptorSet {
                             | ImageLayout::ShaderReadOnlyOptimal
                             | ImageLayout::General
                             | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal,
+                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                            | ImageLayout::DepthReadOnlyOptimal
+                            | ImageLayout::StencilReadOnlyOptimal,
                     ) {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),

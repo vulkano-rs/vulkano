@@ -92,10 +92,11 @@ pub fn process_event(
     mouse_pressed_w1: &mut bool,
     mouse_pressed_w2: &mut bool,
 ) -> bool {
-    match &event {
-        Event::WindowEvent {
-            event, window_id, ..
-        } => match event {
+    if let Event::WindowEvent {
+        event, window_id, ..
+    } = &event
+    {
+        match event {
             WindowEvent::CloseRequested => {
                 if *window_id == app.windows.primary_window_id().unwrap() {
                     return true;
@@ -130,8 +131,7 @@ pub fn process_event(
                 }
             }
             _ => (),
-        },
-        _ => (),
+        }
     }
     false
 }

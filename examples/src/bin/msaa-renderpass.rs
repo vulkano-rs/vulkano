@@ -191,31 +191,35 @@ fn main() {
         attachments: {
             // The first framebuffer attachment is the intermediary image.
             intermediary: {
-                load: Clear,
-                store: DontCare,
                 format: Format::R8G8B8A8_UNORM,
                 // This has to match the image definition.
                 samples: 4,
+                load_op: Clear,
+                store_op: DontCare,
             },
             // The second framebuffer attachment is the final image.
             color: {
-                load: DontCare,
-                store: Store,
                 format: Format::R8G8B8A8_UNORM,
                 // Same here, this has to match.
                 samples: 1,
+                load_op: DontCare,
+                store_op: Store,
             },
         },
         pass: {
             // When drawing, we have only one output which is the intermediary image.
+            //
+            // At the end of the pass, each color attachment will be *resolved* into the image
+            // given under `color_resolve`. In other words, here, at the end of the pass, the
+            // `intermediary` attachment will be copied to the attachment named `color`.
+            //
+            // For depth/stencil attachments, there is also a `depth_stencil_resolve` field.
+            // When you specify this, you must also specify at least one of the
+            // `depth_resolve_mode` and `stencil_resolve_mode` fields.
+            // We don't need that here, so it's skipped.
             color: [intermediary],
+            color_resolve: [color],
             depth_stencil: {},
-            // The `resolve` array here must contain either zero entry (if you don't use
-            // multisampling), or one entry per color attachment. At the end of the pass, each
-            // color attachment will be *resolved* into the given image. In other words, here, at
-            // the end of the pass, the `intermediary` attachment will be copied to the attachment
-            // named `color`.
-            resolve: [color],
         },
     )
     .unwrap();

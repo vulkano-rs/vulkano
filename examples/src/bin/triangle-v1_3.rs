@@ -49,7 +49,7 @@ use vulkano::{
         layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, PipelineLayout,
     },
-    render_pass::{LoadOp, StoreOp},
+    render_pass::{AttachmentLoadOp, AttachmentStoreOp},
     shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
@@ -617,15 +617,15 @@ fn main() {
                         color_attachments: vec![Some(RenderingAttachmentInfo {
                             // `Clear` means that we ask the GPU to clear the content of this
                             // attachment at the start of rendering.
-                            load_op: LoadOp::Clear,
+                            load_op: AttachmentLoadOp::Clear,
                             // `Store` means that we ask the GPU to store the rendered output in
                             // the attachment image. We could also ask it to discard the result.
-                            store_op: StoreOp::Store,
+                            store_op: AttachmentStoreOp::Store,
                             // The value to clear the attachment with. Here we clear it with a blue
                             // color.
                             //
-                            // Only attachments that have `LoadOp::Clear` are provided with clear
-                            // values, any others should use `None` as the clear value.
+                            // Only attachments that have `AttachmentLoadOp::Clear` are provided
+                            // with clear values, any others should use `None` as the clear value.
                             clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
                             ..RenderingAttachmentInfo::image_view(
                                 // We specify image view corresponding to the currently acquired

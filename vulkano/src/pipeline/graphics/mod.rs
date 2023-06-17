@@ -77,7 +77,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures, NumericType},
-    image::ImageAspects,
+    image::{ImageAspect, ImageAspects},
     macros::impl_id_counter,
     pipeline::{
         graphics::{
@@ -2509,7 +2509,18 @@ impl GraphicsPipeline {
         if let (Some(depth_stencil_state), Some(render_pass)) = (depth_stencil_state, render_pass) {
             if let Some(depth_state) = &depth_stencil_state.depth {
                 let has_depth_attachment = match render_pass {
-                    PipelineSubpassType::BeginRenderPass(subpass) => subpass.has_depth(),
+                    PipelineSubpassType::BeginRenderPass(subpass) => subpass
+                        .subpass_desc()
+                        .depth_stencil_attachment
+                        .as_ref()
+                        .map_or(false, |depth_stencil_attachment| {
+                            subpass.render_pass().attachments()
+                                [depth_stencil_attachment.attachment as usize]
+                                .format
+                                .unwrap()
+                                .aspects()
+                                .intersects(ImageAspects::DEPTH)
+                        }),
                     PipelineSubpassType::BeginRendering(rendering_info) => {
                         rendering_info.depth_attachment_format.is_some()
                     }
@@ -2524,7 +2535,24 @@ impl GraphicsPipeline {
                     match render_pass {
                         PipelineSubpassType::BeginRenderPass(subpass) => {
                             // VUID-VkGraphicsPipelineCreateInfo-renderPass-06039
-                            if !subpass.has_writable_depth() {
+                            if !subpass
+                                .subpass_desc()
+                                .depth_stencil_attachment
+                                .as_ref()
+                                .filter(|depth_stencil_attachment| {
+                                    depth_stencil_attachment
+                                        .layout
+                                        .is_writable(ImageAspect::Depth)
+                                })
+                                .map_or(false, |depth_stencil_attachment| {
+                                    subpass.render_pass().attachments()
+                                        [depth_stencil_attachment.attachment as usize]
+                                        .format
+                                        .unwrap()
+                                        .aspects()
+                                        .intersects(ImageAspects::DEPTH)
+                                })
+                            {
                                 return Err(GraphicsPipelineCreationError::NoDepthAttachment);
                             }
                         }
@@ -2537,7 +2565,18 @@ impl GraphicsPipeline {
 
             if depth_stencil_state.stencil.is_some() {
                 let has_stencil_attachment = match render_pass {
-                    PipelineSubpassType::BeginRenderPass(subpass) => subpass.has_stencil(),
+                    PipelineSubpassType::BeginRenderPass(subpass) => subpass
+                        .subpass_desc()
+                        .depth_stencil_attachment
+                        .as_ref()
+                        .map_or(false, |depth_stencil_attachment| {
+                            subpass.render_pass().attachments()
+                                [depth_stencil_attachment.attachment as usize]
+                                .format
+                                .unwrap()
+                                .aspects()
+                                .intersects(ImageAspects::STENCIL)
+                        }),
                     PipelineSubpassType::BeginRendering(rendering_info) => {
                         rendering_info.stencil_attachment_format.is_some()
                     }
@@ -2569,14 +2608,15 @@ impl GraphicsPipeline {
             for (attachment_index, state) in color_blend_state.attachments.iter().enumerate() {
                 if state.blend.is_some() {
                     let attachment_format = match render_pass {
-                        PipelineSubpassType::BeginRenderPass(subpass) => subpass
-                            .subpass_desc()
-                            .color_attachments[attachment_index]
-                            .as_ref()
-                            .and_then(|atch_ref| {
-                                subpass.render_pass().attachments()[atch_ref.attachment as usize]
-                                    .format
-                            }),
+                        PipelineSubpassType::BeginRenderPass(subpass) => {
+                            subpass.subpass_desc().color_attachments[attachment_index]
+                                .as_ref()
+                                .and_then(|color_attachment| {
+                                    subpass.render_pass().attachments()
+                                        [color_attachment.attachment as usize]
+                                        .format
+                                })
+                        }
                         PipelineSubpassType::BeginRendering(rendering_info) => {
                             rendering_info.color_attachment_formats[attachment_index]
                         }

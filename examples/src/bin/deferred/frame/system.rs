@@ -107,45 +107,45 @@ impl FrameSystem {
                 // The image that will contain the final rendering (in this example the swapchain
                 // image, but it could be another image).
                 final_color: {
-                    load: Clear,
-                    store: Store,
                     format: final_output_format,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
                 },
                 // Will be bound to `self.diffuse_buffer`.
                 diffuse: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::A2B10G10R10_UNORM_PACK32,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
                 // Will be bound to `self.normals_buffer`.
                 normals: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R16G16B16A16_SFLOAT,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
                 // Will be bound to `self.depth_buffer`.
-                depth: {
-                    load: Clear,
-                    store: DontCare,
+                depth_stencil: {
                     format: Format::D16_UNORM,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             passes: [
                 // Write to the diffuse, normals and depth attachments.
                 {
                     color: [diffuse, normals],
-                    depth_stencil: {depth},
+                    depth_stencil: {depth_stencil},
                     input: [],
                 },
                 // Apply lighting by reading these three attachments and writing to `final_color`.
                 {
                     color: [final_color],
                     depth_stencil: {},
-                    input: [diffuse, normals, depth],
+                    input: [diffuse, normals, depth_stencil],
                 },
             ],
         )

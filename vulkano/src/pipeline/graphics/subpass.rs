@@ -93,17 +93,27 @@ impl PipelineRenderingCreateInfo {
         Self {
             view_mask: subpass_desc.view_mask,
             color_attachment_formats: (subpass_desc.color_attachments.iter())
-                .map(|atch_ref| {
-                    atch_ref.as_ref().map(|atch_ref| {
-                        rp_attachments[atch_ref.attachment as usize].format.unwrap()
+                .map(|color_attachment| {
+                    color_attachment.as_ref().map(|color_attachment| {
+                        rp_attachments[color_attachment.attachment as usize]
+                            .format
+                            .unwrap()
                     })
                 })
                 .collect(),
             depth_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
-                .map(|atch_ref| rp_attachments[atch_ref.attachment as usize].format.unwrap())
+                .map(|depth_stencil_attachment| {
+                    rp_attachments[depth_stencil_attachment.attachment as usize]
+                        .format
+                        .unwrap()
+                })
                 .filter(|format| format.aspects().intersects(ImageAspects::DEPTH)),
             stencil_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
-                .map(|atch_ref| rp_attachments[atch_ref.attachment as usize].format.unwrap())
+                .map(|depth_stencil_attachment| {
+                    rp_attachments[depth_stencil_attachment.attachment as usize]
+                        .format
+                        .unwrap()
+                })
                 .filter(|format| format.aspects().intersects(ImageAspects::STENCIL)),
             _ne: crate::NonExhaustive(()),
         }

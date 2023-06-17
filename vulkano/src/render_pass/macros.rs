@@ -14,10 +14,15 @@ macro_rules! single_pass_renderpass {
         $device:expr,
         attachments: { $($a:tt)* },
         pass: {
-            color: [$($color_atch:ident),* $(,)?],
-            depth_stencil: {$($depth_atch:ident)?}
-            $(,resolve: [$($resolve_atch:ident),* $(,)?])*
-            $(,)*
+            color: [$($color_atch:ident),* $(,)?]
+            $(, color_resolve: [$($color_resolve_atch:ident),* $(,)?])?
+            , depth_stencil: {$($depth_stencil_atch:ident)?}
+            $(
+                , depth_stencil_resolve: {$depth_stencil_resolve_atch:ident}
+                $(, depth_resolve_mode: $depth_resolve_mode:ident)?
+                $(, stencil_resolve_mode: $stencil_resolve_mode:ident)?
+            )?
+            $(,)?
         } $(,)?
     ) => (
         $crate::ordered_passes_renderpass!(
@@ -25,10 +30,15 @@ macro_rules! single_pass_renderpass {
             attachments: { $($a)* },
             passes: [
                 {
-                    color: [$($color_atch),*],
-                    depth_stencil: {$($depth_atch)*},
-                    input: [],
-                    resolve: [$($($resolve_atch),*)*]
+                    color: [$($color_atch),*]
+                    $(, color_resolve: [$($color_resolve_atch),*])?
+                    , depth_stencil: {$($depth_stencil_atch)?}
+                    $(
+                        , depth_stencil_resolve: {$depth_stencil_resolve_atch}
+                        $(, depth_resolve_mode: $depth_resolve_mode)?
+                        $(, stencil_resolve_mode: $stencil_resolve_mode)?
+                    )?
+                    , input: [],
                 }
             ]
         )
@@ -43,10 +53,10 @@ macro_rules! ordered_passes_renderpass {
         attachments: {
             $(
                 $atch_name:ident: {
-                    load: $load:ident,
-                    store: $store:ident,
                     format: $format:expr,
-                    samples: $samples:expr
+                    samples: $samples:expr,
+                    load_op: $load_op:ident,
+                    store_op: $store_op:ident
                     $(,initial_layout: $init_layout:expr)?
                     $(,final_layout: $final_layout:expr)?
                     $(,)?
@@ -56,10 +66,15 @@ macro_rules! ordered_passes_renderpass {
         passes: [
             $(
                 {
-                    color: [$($color_atch:ident),* $(,)?],
-                    depth_stencil: {$($depth_atch:ident)* $(,)?},
-                    input: [$($input_atch:ident),* $(,)?]
-                    $(,resolve: [$($resolve_atch:ident),* $(,)?])?
+                    color: [$($color_atch:ident),* $(,)?]
+                    $(, color_resolve: [$($color_resolve_atch:ident),* $(,)?])?
+                    , depth_stencil: {$($depth_stencil_atch:ident)?}
+                    $(
+                        , depth_stencil_resolve: {$depth_stencil_resolve_atch:ident}
+                        $(, depth_resolve_mode: $depth_resolve_mode:ident)?
+                        $(, stencil_resolve_mode: $stencil_resolve_mode:ident)?
+                    )?
+                    , input: [$($input_atch:ident),* $(,)?]
                     $(,)*
                 }
             ),* $(,)?
@@ -76,19 +91,23 @@ macro_rules! ordered_passes_renderpass {
             )*
 
             #[allow(unused)]
-            let mut layouts: Vec<(
-                Option<$crate::image::ImageLayout>,
-                Option<$crate::image::ImageLayout>
-            )> = vec![(None, None); attachment_num as usize];
+            #[derive(Clone, Copy, Default)]
+            struct Layouts {
+                initial_layout: Option<$crate::image::ImageLayout>,
+                final_layout: Option<$crate::image::ImageLayout>,
+            }
+
+            #[allow(unused)]
+            let mut layouts: Vec<Layouts> = vec![Layouts::default(); attachment_num as usize];
 
             let subpasses = vec![
                 $({
                     let desc = $crate::render_pass::SubpassDescription {
                         color_attachments: vec![
                             $({
-                                let layout = &mut layouts[$color_atch as usize];
-                                layout.0 = layout.0.or(Some($crate::image::ImageLayout::ColorAttachmentOptimal));
-                                layout.1 = Some($crate::image::ImageLayout::ColorAttachmentOptimal);
+                                let layouts = &mut layouts[$color_atch as usize];
+                                layouts.initial_layout = layouts.initial_layout.or(Some($crate::image::ImageLayout::ColorAttachmentOptimal));
+                                layouts.final_layout = Some($crate::image::ImageLayout::ColorAttachmentOptimal);
 
                                 Some($crate::render_pass::AttachmentReference {
                                     attachment: $color_atch,
@@ -97,26 +116,60 @@ macro_rules! ordered_passes_renderpass {
                                 })
                             }),*
                         ],
-                        depth_stencil_attachment: {
-                            let depth: Option<$crate::render_pass::AttachmentReference> = None;
-                            $(
-                                let layout = &mut layouts[$depth_atch as usize];
-                                layout.1 = Some($crate::image::ImageLayout::DepthStencilAttachmentOptimal);
-                                layout.0 = layout.0.or(layout.1);
+                        color_resolve_attachments: vec![$(
+                            $({
+                                let layouts = &mut layouts[$color_resolve_atch as usize];
+                                layouts.final_layout = Some($crate::image::ImageLayout::TransferDstOptimal);
+                                layouts.initial_layout = layouts.initial_layout.or(layouts.final_layout);
 
-                                let depth = Some($crate::render_pass::AttachmentReference {
-                                    attachment: $depth_atch,
+                                Some($crate::render_pass::AttachmentReference {
+                                    attachment: $color_resolve_atch,
+                                    layout: $crate::image::ImageLayout::TransferDstOptimal,
+                                    ..Default::default()
+                                })
+                            }),*
+                        )?],
+                        depth_stencil_attachment: {
+                            None $(.or({
+                                let layouts = &mut layouts[$depth_stencil_atch as usize];
+                                layouts.final_layout = Some($crate::image::ImageLayout::DepthStencilAttachmentOptimal);
+                                layouts.initial_layout = layouts.initial_layout.or(layouts.final_layout);
+
+                                Some($crate::render_pass::AttachmentReference {
+                                    attachment: $depth_stencil_atch,
                                     layout: $crate::image::ImageLayout::DepthStencilAttachmentOptimal,
                                     ..Default::default()
-                                });
-                            )*
-                            depth
+                                })
+                            }))?
+                        },
+                        depth_stencil_resolve_attachment: {
+                            None $(.or({
+                                let layouts = &mut layouts[$depth_stencil_resolve_atch as usize];
+                                layouts.final_layout = Some($crate::image::ImageLayout::TransferDstOptimal);
+                                layouts.initial_layout = layouts.initial_layout.or(layouts.final_layout);
+
+                                Some($crate::render_pass::AttachmentReference {
+                                    attachment: $depth_stencil_resolve_atch,
+                                    layout: $crate::image::ImageLayout::TransferDstOptimal,
+                                    ..Default::default()
+                                })
+                            }))?
+                        },
+                        depth_resolve_mode: {
+                            None $($(.or({
+                                Some($crate::render_pass::ResolveMode::$depth_resolve_mode)
+                            }))?)?
+                        },
+                        stencil_resolve_mode: {
+                            None $($(.or({
+                                Some($crate::render_pass::ResolveMode::$stencil_resolve_mode)
+                            }))?)?
                         },
                         input_attachments: vec![
                             $({
-                                let layout = &mut layouts[$input_atch as usize];
-                                layout.1 = Some($crate::image::ImageLayout::ShaderReadOnlyOptimal);
-                                layout.0 = layout.0.or(layout.1);
+                                let layouts = &mut layouts[$input_atch as usize];
+                                layouts.final_layout = Some($crate::image::ImageLayout::ShaderReadOnlyOptimal);
+                                layouts.initial_layout = layouts.initial_layout.or(layouts.final_layout);
 
                                 Some($crate::render_pass::AttachmentReference {
                                     attachment: $input_atch,
@@ -125,31 +178,18 @@ macro_rules! ordered_passes_renderpass {
                                 })
                             }),*
                         ],
-                        resolve_attachments: vec![
-                            $($({
-                                let layout = &mut layouts[$resolve_atch as usize];
-                                layout.1 = Some($crate::image::ImageLayout::TransferDstOptimal);
-                                layout.0 = layout.0.or(layout.1);
-
-                                Some($crate::render_pass::AttachmentReference {
-                                    attachment: $resolve_atch,
-                                    layout: $crate::image::ImageLayout::TransferDstOptimal,
-                                    ..Default::default()
-                                })
-                            }),*)*
-                        ],
                         preserve_attachments: (0 .. attachment_num).filter(|&a| {
-                            $(if a == $color_atch { return false; })*
-                            $(if a == $depth_atch { return false; })*
-                            $(if a == $input_atch { return false; })*
-                            $($(if a == $resolve_atch { return false; })*)*
-                            true
+                            ![
+                                $($color_atch,)*
+                                $($($color_resolve_atch,)*)?
+                                $($depth_stencil_atch,)*
+                                $($depth_stencil_resolve_atch,)*
+                                $($input_atch,)*
+                            ].contains(&a)
                         }).collect(),
                         ..Default::default()
                     };
 
-                    assert!(desc.resolve_attachments.is_empty() ||
-                            desc.resolve_attachments.len() == desc.color_attachments.len());
                     desc
                 }),*
             ];
@@ -180,18 +220,16 @@ macro_rules! ordered_passes_renderpass {
 
             let attachments = vec![
                 $({
-                    let layout = &mut layouts[$atch_name as usize];
-                    $(layout.0 = Some($init_layout);)*
-                    $(layout.1 = Some($final_layout);)*
+                    let layouts = &mut layouts[$atch_name as usize];
+                    $(layouts.initial_layout = Some($init_layout);)*
+                    $(layouts.final_layout = Some($final_layout);)*
 
                     $crate::render_pass::AttachmentDescription {
                         format: Some($format),
                         samples: $crate::image::SampleCount::try_from($samples).unwrap(),
-                        load_op: $crate::render_pass::LoadOp::$load,
-                        store_op: $crate::render_pass::StoreOp::$store,
-                        stencil_load_op: $crate::render_pass::LoadOp::$load,
-                        stencil_store_op: $crate::render_pass::StoreOp::$store,
-                        initial_layout: layout.0.expect(
+                        load_op: $crate::render_pass::AttachmentLoadOp::$load_op,
+                        store_op: $crate::render_pass::AttachmentStoreOp::$store_op,
+                        initial_layout: layouts.initial_layout.expect(
                             format!(
                                 "Attachment {} is missing initial_layout, this is normally \
                                 automatically determined but you can manually specify it for an individual \
@@ -200,7 +238,7 @@ macro_rules! ordered_passes_renderpass {
                             )
                             .as_ref(),
                         ),
-                        final_layout: layout.1.expect(
+                        final_layout: layouts.final_layout.expect(
                             format!(
                                 "Attachment {} is missing final_layout, this is normally \
                                 automatically determined but you can manually specify it for an individual \
@@ -237,22 +275,22 @@ mod tests {
             device,
             attachments: {
                 a: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 4,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
                 b: {
-                    load: DontCare,
-                    store: Store,
                     format: Format::R8G8B8A8_UNORM,
                     samples: 1,
+                    load_op: DontCare,
+                    store_op: Store,
                 },
             },
             pass: {
                 color: [a],
+                color_resolve: [b],
                 depth_stencil: {},
-                resolve: [b],
             },
         )
         .unwrap();

@@ -14,7 +14,7 @@ use crate::{
     image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
     shader::ShaderStages,
-    DeviceSize,
+    DeviceSize, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
 use once_cell::sync::Lazy;
@@ -1717,6 +1717,506 @@ impl Default for MemoryBarrier {
             dst_access: AccessFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+impl MemoryBarrier {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            src_stages,
+            src_access,
+            dst_stages,
+            dst_access,
+            _ne: _,
+        } = self;
+
+        src_stages
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_stages".into(),
+                vuids: &["VUID-VkMemoryBarrier2-srcStageMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_stages
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_stages".into(),
+                vuids: &["VUID-VkMemoryBarrier2-dstStageMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        src_access
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_access".into(),
+                vuids: &["VUID-VkMemoryBarrier2-srcAccessMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_access
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_access".into(),
+                vuids: &["VUID-VkMemoryBarrier2-dstAccessMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !device.enabled_features().synchronization2 {
+            if src_stages.contains_flags2() {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["synchronization2"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            if dst_stages.contains_flags2() {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["synchronization2"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            if src_access.contains_flags2() {
+                return Err(ValidationError {
+                    context: "src_access".into(),
+                    problem: "contains flags from `VkAccessFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["synchronization2"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+
+            if dst_access.contains_flags2() {
+                return Err(ValidationError {
+                    context: "dst_access".into(),
+                    problem: "contains flags from `VkAccessFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["synchronization2"],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            }
+        }
+
+        if !device.enabled_features().geometry_shader {
+            if src_stages.intersects(PipelineStages::GEOMETRY_SHADER) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["geometry_shader"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03929"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::GEOMETRY_SHADER) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["geometry_shader"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03929"],
+                });
+            }
+        }
+
+        if !device.enabled_features().tessellation_shader {
+            if src_stages.intersects(
+                PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER,
+            ) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
+                        `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
+                        .into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["tessellation_shader"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03930"],
+                });
+            }
+
+            if dst_stages.intersects(
+                PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER,
+            ) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
+                        `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
+                        .into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["tessellation_shader"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03930"],
+                });
+            }
+        }
+
+        if !device.enabled_features().conditional_rendering {
+            if src_stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["conditional_rendering"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03931"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["conditional_rendering"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03931"],
+                });
+            }
+        }
+
+        if !device.enabled_features().fragment_density_map {
+            if src_stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["fragment_density_map"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03932"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["fragment_density_map"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03932"],
+                });
+            }
+        }
+
+        if !device.enabled_features().transform_feedback {
+            if src_stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["transform_feedback"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03933"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["transform_feedback"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03933"],
+                });
+            }
+        }
+
+        if !device.enabled_features().mesh_shader {
+            if src_stages.intersects(PipelineStages::MESH_SHADER) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::MESH_SHADER`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["mesh_shader"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03934"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::MESH_SHADER) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::MESH_SHADER`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["mesh_shader"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03934"],
+                });
+            }
+        }
+
+        if !device.enabled_features().task_shader {
+            if src_stages.intersects(PipelineStages::TASK_SHADER) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::TASK_SHADER`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["task_shader"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03935"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::TASK_SHADER) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::TASK_SHADER`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["task_shader"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03935"],
+                });
+            }
+        }
+
+        if !(device.enabled_features().attachment_fragment_shading_rate
+            || device.enabled_features().shading_rate_image)
+        {
+            if src_stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["attachment_fragment_shading_rate", "shading_rate_image"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["attachment_fragment_shading_rate", "shading_rate_image"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
+                });
+            }
+        }
+
+        if !device.enabled_features().subpass_shading {
+            if src_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["subpass_shading"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-04957"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["subpass_shading"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-04957"],
+                });
+            }
+        }
+
+        if !device.enabled_features().invocation_mask {
+            if src_stages.intersects(PipelineStages::INVOCATION_MASK) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["invocation_mask"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-04995"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::INVOCATION_MASK) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["invocation_mask"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-04995"],
+                });
+            }
+        }
+
+        if !(device.enabled_extensions().nv_ray_tracing
+            || device.enabled_features().ray_tracing_pipeline)
+        {
+            if src_stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
+                return Err(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["ray_tracing_pipeline"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-srcStageMask-07946"],
+                });
+            }
+
+            if dst_stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
+                return Err(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
+                    requires_one_of: RequiresOneOf {
+                        features: &["ray_tracing_pipeline"],
+                        ..Default::default()
+                    },
+                    vuids: &["VUID-VkMemoryBarrier2-dstStageMask-07946"],
+                });
+            }
+        }
+
+        if !AccessFlags::from(src_stages).contains(src_access) {
+            return Err(ValidationError {
+                problem: "`src_access` contains one or more access types that are not performed \
+                    by any stage in `src_stages`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03900",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03901",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03902",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03903",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03904",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03905",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03906",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03907",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-07454",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03909",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03910",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03911",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03912",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03913",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03914",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03915",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03916",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03917",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03918",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03919",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03920",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-04747",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03922",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03923",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-04994",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03924",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03925",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03926",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03927",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-03928",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-06256",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-07272",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-04858",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-04859",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-04860",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-04861",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-07455",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-07456",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-07457",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-07458",
+                    "VUID-VkMemoryBarrier2-srcAccessMask-08118",
+                ],
+                ..Default::default()
+            });
+        }
+
+        if !AccessFlags::from(dst_stages).contains(dst_access) {
+            return Err(ValidationError {
+                problem: "`dst_access` contains one or more access types that are not performed \
+                    by any stage in `dst_stages`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03900",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03901",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03902",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03903",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03904",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03905",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03906",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03907",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-07454",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03909",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03910",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03911",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03912",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03913",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03914",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03915",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03916",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03917",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03918",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03919",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03920",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-04747",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03922",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03923",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-04994",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03924",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03925",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03926",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03927",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-03928",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-06256",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-07272",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-04858",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-04859",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-04860",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-04861",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-07455",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-07456",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-07457",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-07458",
+                    "VUID-VkMemoryBarrier2-dstAccessMask-08118",
+                ],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
     }
 }
 
