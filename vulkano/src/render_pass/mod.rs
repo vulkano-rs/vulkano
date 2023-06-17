@@ -1170,7 +1170,7 @@ impl RenderPassCreateInfo {
                         return Err(ValidationError {
                             problem: format!(
                                 "`subpasses[{}].depth_stencil_attachment` uses an \
-                                attachment with a different number of samples than other color or
+                                attachment with a different number of samples than other color or \
                                 depth/stencil attachments in the subpass",
                                 subpass_index,
                             )
@@ -1530,7 +1530,7 @@ impl RenderPassCreateInfo {
                 if src_subpass as usize >= subpasses.len() {
                     return Err(ValidationError {
                         problem: format!(
-                            "`dependencies[{}].src_subpass` is not less than the length of 
+                            "`dependencies[{}].src_subpass` is not less than the length of \
                             `subpasses`",
                             dependency_index,
                         )
@@ -1545,7 +1545,7 @@ impl RenderPassCreateInfo {
                 if dst_subpass as usize >= subpasses.len() {
                     return Err(ValidationError {
                         problem: format!(
-                            "`dependencies[{}].dst_subpass` is not less than the length of 
+                            "`dependencies[{}].dst_subpass` is not less than the length of \
                             `subpasses`",
                             dependency_index,
                         )
