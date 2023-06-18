@@ -530,7 +530,7 @@ impl Sampler {
                 return Err(ValidationError {
                     problem: "the sampler has depth comparison enabled, and \
                         the image view's format features do not include \
-                        FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON"
+                        `FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON`"
                         .into(),
                     ..Default::default()
                 });
@@ -546,7 +546,7 @@ impl Sampler {
             {
                 return Err(ValidationError {
                     problem: "the sampler has depth comparison enabled, and \
-                        the image view's aspects do not include ImageAspects::DEPTH"
+                        the image view's aspects do not include `ImageAspects::DEPTH`"
                         .into(),
                     ..Default::default()
                 });
@@ -559,9 +559,9 @@ impl Sampler {
                 // VUID-vkCmdDispatch-magFilter-04553
                 if self.mag_filter == Filter::Linear || self.min_filter == Filter::Linear {
                     return Err(ValidationError {
-                        problem: "the sampler's mag_filter or min_filter is Filter::Linear, and \
-                            the image view's format features do not include \
-                            FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR"
+                        problem: "the sampler's `mag_filter` or `min_filter` is `Filter::Linear`, \
+                            and the image view's format features do not include \
+                            `FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR`"
                             .into(),
                         ..Default::default()
                     });
@@ -570,9 +570,9 @@ impl Sampler {
                 // VUID-vkCmdDispatch-mipmapMode-04770
                 if self.mipmap_mode == SamplerMipmapMode::Linear {
                     return Err(ValidationError {
-                        problem: "the sampler's mipmap_mode is SamplerMipmapMpde::Linear, and \
+                        problem: "the sampler's `mipmap_mode` is `SamplerMipmapMpde::Linear`, and \
                             the image view's format features do not include \
-                            FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR"
+                            `FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR`"
                             .into(),
                         ..Default::default()
                     });
@@ -587,9 +587,9 @@ impl Sampler {
                 .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC)
             {
                 return Err(ValidationError {
-                    problem: "the sampler's mag_filter or min_filter is Filter::Cubic, and \
+                    problem: "the sampler's `mag_filter` or `min_filter` is `Filter::Cubic`, and \
                         the image view's format features do not include \
-                        FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC"
+                        `FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC`"
                         .into(),
                     ..Default::default()
                 });
@@ -598,9 +598,9 @@ impl Sampler {
             // VUID-vkCmdDispatch-filterCubic-02694
             if !image_view.filter_cubic() {
                 return Err(ValidationError {
-                    problem: "the sampler's mag_filter or min_filter is Filter::Cubic, and \
+                    problem: "the sampler's `mag_filter` or `min_filter` is Filter::Cubic, and \
                         the image view does not support this, as returned by \
-                        PhysicalDevice::image_format_properties"
+                        `PhysicalDevice::image_format_properties`"
                         .into(),
                     ..Default::default()
                 });
@@ -613,11 +613,11 @@ impl Sampler {
             ) && !image_view.filter_cubic_minmax()
             {
                 return Err(ValidationError {
-                    problem: "the sampler's mag_filter or min_filter is Filter::Cubic, and \
-                        the its reduction_mode is SamplerReductionMode::Min or \
-                        SamplerReductionMode::Max, and
+                    problem: "the sampler's `mag_filter` or `min_filter` is `Filter::Cubic`, and \
+                        the its `reduction_mode` is `SamplerReductionMode::Min` or \
+                        `SamplerReductionMode::Max`, and \
                         the image view does not support this, as returned by \
-                        PhysicalDevice::image_format_properties"
+                        `PhysicalDevice::image_format_properties`"
                         .into(),
                     ..Default::default()
                 });
@@ -715,7 +715,8 @@ impl Sampler {
             ) {
                 return Err(ValidationError {
                     problem: "the sampler uses unnormalized coordinates, and \
-                        the image view's type is not ImageViewtype::Dim1d or ImageViewType::Dim2d"
+                        the image view's type is not `ImageViewtype::Dim1d` or \
+                        `ImageViewType::Dim2d`"
                         .into(),
                     ..Default::default()
                 });

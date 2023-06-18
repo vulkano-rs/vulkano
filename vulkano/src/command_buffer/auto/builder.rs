@@ -1491,7 +1491,7 @@ impl AutoSyncState {
                                     if !self.device.enabled_features().synchronization2 {
                                         panic!(
                                             "The command requires the `Preinitialized` layout, \
-                                            but this is not allowed in pipeline barriers without
+                                            but this is not allowed in pipeline barriers without \
                                             the `synchronization2` feature enabled"
                                         );
                                     }

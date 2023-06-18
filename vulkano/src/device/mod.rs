@@ -664,7 +664,7 @@ impl Device {
                     if primitive_count as u64 > max_primitive_count {
                         return Err(ValidationError {
                             context: format!("max_primitive_counts[{}]", index).into(),
-                            problem: "the max_primitive_count limit has been exceeded".into(),
+                            problem: "exceeds the `max_primitive_count` limit".into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795"],
                             ..Default::default()
                         });
@@ -678,7 +678,7 @@ impl Device {
                     if primitive_count as u64 > max_primitive_count {
                         return Err(ValidationError {
                             context: format!("max_primitive_counts[{}]", index).into(),
-                            problem: "the max_primitive_count limit has been exceeded".into(),
+                            problem: "exceeds the `max_primitive_count` limit".into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794"],
                             ..Default::default()
                         });
@@ -692,7 +692,7 @@ impl Device {
                     if instance_count as u64 > max_instance_count {
                         return Err(ValidationError {
                             context: format!("max_primitive_counts[{}]", index).into(),
-                            problem: "the max_instance_count limit has been exceeded".into(),
+                            problem: "exceeds the `max_instance_count` limit".into(),
                             vuids: &[
                                 "VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-03785",
                             ],
@@ -707,7 +707,7 @@ impl Device {
 
         if max_primitive_counts.len() != geometry_count {
             return Err(ValidationError {
-                problem: "build_info.geometries and max_primitive_counts \
+                problem: "`build_info.geometries` and `max_primitive_counts` \
                     do not have the same length"
                     .into(),
                 vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-03619"],

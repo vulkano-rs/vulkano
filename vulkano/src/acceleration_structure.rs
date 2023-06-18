@@ -412,7 +412,7 @@ impl AccelerationStructureCreateInfo {
         if buffer.offset() % 256 != 0 {
             return Err(ValidationError {
                 context: "buffer".into(),
-                problem: "the offset of the buffer was not a multiple of 256".into(),
+                problem: "the offset of the buffer is not a multiple of 256".into(),
                 vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-offset-03734"],
                 ..Default::default()
             });
@@ -538,7 +538,7 @@ impl AccelerationStructureBuildGeometryInfo {
                 if geometries.len() as u64 > max_geometry_count {
                     return Err(ValidationError {
                         context: "geometries".into(),
-                        problem: "the max_geometry_count limit has been exceeded".into(),
+                        problem: "the length exceeds the `max_geometry_count` limit".into(),
                         vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793"],
                         ..Default::default()
                     });
@@ -559,7 +559,7 @@ impl AccelerationStructureBuildGeometryInfo {
                 if geometries.len() as u64 > max_geometry_count {
                     return Err(ValidationError {
                         context: "geometries".into(),
-                        problem: "the max_geometry_count limit has been exceeded".into(),
+                        problem: "the length exceeds the `max_geometry_count` limit".into(),
                         vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793"],
                         ..Default::default()
                     });
@@ -590,8 +590,8 @@ impl AccelerationStructureBuildGeometryInfo {
         ) {
             return Err(ValidationError {
                 context: "flags".into(),
-                problem: "contains both BuildAccelerationStructureFlags::PREFER_FAST_TRACE and \
-                    BuildAccelerationStructureFlags::PREFER_FAST_BUILD"
+                problem: "contains both `BuildAccelerationStructureFlags::PREFER_FAST_TRACE` and \
+                    `BuildAccelerationStructureFlags::PREFER_FAST_BUILD`"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-03796"],
                 ..Default::default()
@@ -1036,7 +1036,7 @@ impl AccelerationStructureGeometryTrianglesData {
             return Err(ValidationError {
                 context: "vertex_format".into(),
                 problem: "format features do not contain \
-                    FormatFeature::ACCELERATION_STRUCTURE_VERTEX_BUFFER"
+                    `FormatFeature::ACCELERATION_STRUCTURE_VERTEX_BUFFER`"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexFormat-03797"],
                 ..Default::default()
@@ -1053,8 +1053,8 @@ impl AccelerationStructureGeometryTrianglesData {
 
         if vertex_stride % smallest_component_bytes != 0 {
             return Err(ValidationError {
-                problem: "vertex_stride is not a multiple of the byte size of the \
-                    smallest component of vertex_format"
+                problem: "`vertex_stride` is not a multiple of the byte size of the \
+                    smallest component of `vertex_format`"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexStride-03735"],
                 ..Default::default()
@@ -1065,7 +1065,7 @@ impl AccelerationStructureGeometryTrianglesData {
             if !matches!(index_data, IndexBuffer::U16(_) | IndexBuffer::U32(_)) {
                 return Err(ValidationError {
                     context: "index_data".into(),
-                    problem: "is not IndexBuffer::U16 or IndexBuffer::U32".into(),
+                    problem: "is not `IndexBuffer::U16` or `IndexBuffer::U32`".into(),
                     vuids: &[
                         "VUID-VkAccelerationStructureGeometryTrianglesDataKHR-indexType-03798",
                     ],
@@ -1414,8 +1414,8 @@ impl CopyAccelerationStructureInfo {
         ) {
             return Err(ValidationError {
                 context: "mode".into(),
-                problem: "is not CopyAccelerationStructureMode::Compact or \
-                    CopyAccelerationStructureMode::Clone"
+                problem: "is not `CopyAccelerationStructureMode::Compact` or \
+                    `CopyAccelerationStructureMode::Clone`"
                     .into(),
                 vuids: &["VUID-VkCopyAccelerationStructureInfoKHR-mode-03410"],
                 ..Default::default()
@@ -1424,7 +1424,7 @@ impl CopyAccelerationStructureInfo {
 
         if src.buffer() == dst.buffer() {
             return Err(ValidationError {
-                problem: "src and dst share the same buffer".into(),
+                problem: "`src` and `dst` share the same buffer".into(),
                 vuids: &["VUID-VkCopyAccelerationStructureInfoKHR-dst-07791"],
                 ..Default::default()
             });
@@ -1494,7 +1494,7 @@ impl CopyAccelerationStructureToMemoryInfo {
         if !matches!(mode, CopyAccelerationStructureMode::Serialize) {
             return Err(ValidationError {
                 context: "mode".into(),
-                problem: "is not CopyAccelerationStructureMode::Serialize".into(),
+                problem: "is not `CopyAccelerationStructureMode::Serialize`".into(),
                 vuids: &["VUID-VkCopyAccelerationStructureToMemoryInfoKHR-mode-03412"],
                 ..Default::default()
             });
@@ -1564,7 +1564,7 @@ impl CopyMemoryToAccelerationStructureInfo {
         if !matches!(mode, CopyAccelerationStructureMode::Deserialize) {
             return Err(ValidationError {
                 context: "mode".into(),
-                problem: "is not CopyAccelerationStructureMode::Deserialize".into(),
+                problem: "is not `CopyAccelerationStructureMode::Deserialize`".into(),
                 vuids: &["VUID-VkCopyMemoryToAccelerationStructureInfoKHR-mode-03413"],
                 ..Default::default()
             });

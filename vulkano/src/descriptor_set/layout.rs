@@ -441,7 +441,7 @@ impl DescriptorSetLayoutCreateInfo {
         {
             return Err(ValidationError {
                 problem: "`flags` contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`, and \
-                    the total number of descriptors in `bindings` exceeds the
+                    the total number of descriptors in `bindings` exceeds the \
                     `max_push_descriptors` limit"
                     .into(),
                 vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-00281"],
@@ -648,7 +648,7 @@ impl DescriptorSetLayoutBinding {
             if !device.enabled_features().inline_uniform_block {
                 return Err(ValidationError {
                     context: "descriptor_type".into(),
-                    problem: "DescriptorType::InlineUniformBlock".into(),
+                    problem: "`DescriptorType::InlineUniformBlock`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "inline_uniform_block",
                     )])]),

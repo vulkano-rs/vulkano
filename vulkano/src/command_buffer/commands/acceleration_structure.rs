@@ -167,7 +167,8 @@ where
         {
             return Err(ValidationError {
                 context: "info.scratch_data".into(),
-                problem: "the buffer was not created with the `STORAGE_BUFFER` usage".into(),
+                problem: "the buffer was not created with the `BufferUsage::STORAGE_BUFFER` usage"
+                    .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03674"],
                 ..Default::default()
             });
@@ -186,8 +187,8 @@ where
         {
             return Err(ValidationError {
                 context: "info.scratch_data".into(),
-                problem: "the device address of the buffer was not a multiple of the \
-                    min_acceleration_structure_scratch_offset_alignment device property"
+                problem: "the device address of the buffer is not a multiple of the \
+                    `min_acceleration_structure_scratch_offset_alignment` device property"
                     .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03710"],
                 ..Default::default()
@@ -199,9 +200,9 @@ where
                 if !matches!(geometries, AccelerationStructureGeometries::Instances(_)) {
                     return Err(ValidationError {
                         context: "info".into(),
-                        problem: "dst_acceleration_structure is a top-level \
-                            acceleration structure, but geometries is not \
-                            AccelerationStructureGeometries::Instances"
+                        problem: "`dst_acceleration_structure` is a top-level \
+                            acceleration structure, but `geometries` is not \
+                            `AccelerationStructureGeometries::Instances`"
                             .into(),
                         vuids: &[
                             "VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03789",
@@ -215,9 +216,9 @@ where
                 if matches!(geometries, AccelerationStructureGeometries::Instances(_)) {
                     return Err(ValidationError {
                         context: "info".into(),
-                        problem: "dst_acceleration_structure is a bottom-level \
-                            acceleration structure, but geometries is \
-                            AccelerationStructureGeometries::Instances"
+                        problem: "`dst_acceleration_structure` is a bottom-level \
+                            acceleration structure, but `geometries` is \
+                            `AccelerationStructureGeometries::Instances`"
                             .into(),
                         vuids: &[
                             "VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03791",
@@ -232,7 +233,8 @@ where
 
         if geometries.len() != build_range_infos.len() {
             return Err(ValidationError {
-                problem: "info.geometries and build_range_infos do not have the same length".into(),
+                problem: "`info.geometries` and `build_range_infos` do not have the same length"
+                    .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-ppBuildRangeInfos-03676"],
                 ..Default::default()
             });
@@ -281,7 +283,7 @@ where
                                 geometry_index
                             )
                             .into(),
-                            problem: "the max_primitive_count limit has been exceeded".into(),
+                            problem: "exceeds the `max_primitive_count` limit".into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795"],
                             ..Default::default()
                         });
@@ -296,7 +298,7 @@ where
                             context: format!("info.geometries[{}].vertex_data", geometry_index)
                                 .into(),
                             problem: "the buffer was not created with the \
-                                `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
                                 .into(),
                             vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                             ..Default::default()
@@ -318,7 +320,7 @@ where
                             context: format!("info.geometries[{}].vertex_data", geometry_index)
                                 .into(),
                             problem: "the buffer's device address is not a multiple of the byte \
-                                size of the smallest component of vertex_format"
+                                size of the smallest component of `vertex_format`"
                                 .into(),
                             vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03711"],
                             ..Default::default()
@@ -336,7 +338,8 @@ where
                                 context: format!("info.geometries[{}].index_data", geometry_index)
                                     .into(),
                                 problem: "the buffer was not created with the \
-                                    `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                    `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
+                                    usage"
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                                 ..Default::default()
@@ -361,10 +364,11 @@ where
                         if primitive_offset as u64 % index_data.index_type().size() != 0 {
                             return Err(ValidationError {
                                 problem: format!(
-                                    "info.geometries is \
-                                    AccelerationStructureGeometries::Triangles, and
-                                    build_range_infos[{}].primitive_offset is not a multiple of \
-                                    the size of the index type of info.geometries[{0}].index_data",
+                                    "`info.geometries` is \
+                                    `AccelerationStructureGeometries::Triangles`, and \
+                                    `build_range_infos[{}].primitive_offset` is not a multiple of \
+                                    the size of the index type of \
+                                    `info.geometries[{0}].index_data`",
                                     geometry_index,
                                 )
                                 .into(),
@@ -380,13 +384,13 @@ where
                         {
                             return Err(ValidationError {
                                 problem: format!(
-                                    "infos.geometries is \
-                                    AccelerationStructureGeometries::Triangles, \
-                                    info.geometries[{0}].index_data is Some, \
-                                    and build_range_infos[{0}].primitive_offset + \
-                                    3 * build_range_infos[{0}].primitive_count * \
-                                    info.geometries[{0}].index_data.index_type().size is greater \
-                                    than the size of infos.geometries[{0}].index_data",
+                                    "`infos.geometries` is \
+                                    `AccelerationStructureGeometries::Triangles`, \
+                                    `info.geometries[{0}].index_data` is `Some`, and \
+                                    `build_range_infos[{0}].primitive_offset` + \
+                                    3 * `build_range_infos[{0}].primitive_count` * \
+                                    `info.geometries[{0}].index_data.index_type().size` is \
+                                    greater than the size of `infos.geometries[{0}].index_data`",
                                     geometry_index,
                                 )
                                 .into(),
@@ -397,11 +401,11 @@ where
                         if primitive_offset % smallest_component_bytes != 0 {
                             return Err(ValidationError {
                                 problem: format!(
-                                    "info.geometries is \
-                                    AccelerationStructureGeometries::Triangles, and
-                                    build_range_infos[{}].primitive_offset is not a multiple of \
+                                    "`info.geometries` is \
+                                    `AccelerationStructureGeometries::Triangles`, and
+                                    `build_range_infos[{}].primitive_offset` is not a multiple of \
                                     the byte size of the smallest component of \
-                                    info.geometries[{0}].vertex_format",
+                                    `info.geometries[{0}].vertex_format`",
                                     geometry_index,
                                 )
                                 .into(),
@@ -417,14 +421,14 @@ where
                         {
                             return Err(ValidationError {
                                 problem: format!(
-                                    "infos.geometries is \
-                                    AccelerationStructureGeometries::Triangles, \
-                                    info.geometries[{0}].index_data is None, \
-                                    and build_range_infos[{0}].primitive_offset + \
-                                    (build_range_infos[{0}].first_vertex + 3 * \
-                                    build_range_infos[{0}].primitive_count) * \
-                                    info.geometries[{0}].vertex_stride is greater than the size \
-                                    of infos.geometries[{0}].vertex_data",
+                                    "`infos.geometries` is \
+                                    `AccelerationStructureGeometries::Triangles`, \
+                                    `info.geometries[{0}].index_data` is `None`, \
+                                    and `build_range_infos[{0}].primitive_offset` + \
+                                    (`build_range_infos[{0}].first_vertex` + 3 * \
+                                    `build_range_infos[{0}].primitive_count`) * \
+                                    `info.geometries[{0}].vertex_stride` is greater than the size \
+                                    of `infos.geometries[{0}].vertex_data`",
                                     geometry_index,
                                 )
                                 .into(),
@@ -446,7 +450,8 @@ where
                                 )
                                 .into(),
                                 problem: "the buffer was not created with the \
-                                    `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                    `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
+                                    usage"
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                                 ..Default::default()
@@ -470,9 +475,10 @@ where
                         if transform_offset % 16 != 0 {
                             return Err(ValidationError {
                                 problem: format!(
-                                    "info.geometries is \
-                                    AccelerationStructureGeometries::Triangles, and
-                                    build_range_infos[{}].transform_offset is not a multiple of 16",
+                                    "`info.geometries` is \
+                                    `AccelerationStructureGeometries::Triangles`, and \
+                                    `build_range_infos[{}].transform_offset` is not a multiple of \
+                                    16",
                                     geometry_index,
                                 )
                                 .into(),
@@ -487,11 +493,11 @@ where
                         {
                             return Err(ValidationError {
                                 problem: format!(
-                                    "infos.geometries is \
-                                    AccelerationStructureGeometries::Triangles, and \
-                                    build_range_infos[{0}].transform_offset + \
-                                    size_of::<TransformMatrix> is greater than the size of \
-                                    infos.geometries[{0}].transform_data",
+                                    "`infos.geometries` is \
+                                    `AccelerationStructureGeometries::Triangles`, and \
+                                    `build_range_infos[{0}].transform_offset` + \
+                                    `size_of::<TransformMatrix>` is greater than the size of \
+                                    `infos.geometries[{0}].transform_data`",
                                     geometry_index,
                                 )
                                 .into(),
@@ -522,7 +528,7 @@ where
                     if primitive_count as u64 > max_primitive_count {
                         return Err(ValidationError {
                             context: format!("build_range_infos[{}]", geometry_index).into(),
-                            problem: "the max_primitive_count limit has been exceeded".into(),
+                            problem: "exceeds the `max_primitive_count` limit".into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794"],
                             ..Default::default()
                         });
@@ -536,7 +542,8 @@ where
                         return Err(ValidationError {
                             context: format!("info.geometries[{}].data", geometry_index).into(),
                             problem: "the buffer was not created with the \
-                                `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
+                                usage"
                                 .into(),
                             vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                             ..Default::default()
@@ -555,9 +562,9 @@ where
                     if primitive_offset % 8 != 0 {
                         return Err(ValidationError {
                             problem: format!(
-                                "info.geometries is \
-                                AccelerationStructureGeometries::Aabbs, and
-                                build_range_infos[{}].primitive_offset is not a multiple of 8",
+                                "`info.geometries` is \
+                                `AccelerationStructureGeometries::Aabbs`, and \
+                                `build_range_infos[{}].primitive_offset` is not a multiple of 8",
                                 geometry_index,
                             )
                             .into(),
@@ -572,11 +579,11 @@ where
                     {
                         return Err(ValidationError {
                             problem: format!(
-                                "infos.geometries is AccelerationStructureGeometries::Aabbs,
-                                and build_range_infos[{0}].primitive_offset + \
-                                build_range_infos[{0}].primitive_count * \
-                                info.geometries[{0}].stride is greater than the size of
-                                infos.geometries[{0}].data",
+                                "`infos.geometries` is `AccelerationStructureGeometries::Aabbs`,
+                                and `build_range_infos[{0}].primitive_offset` + \
+                                `build_range_infos[{0}].primitive_count` * \
+                                `info.geometries[{0}].stride` is greater than the size of \
+                                `infos.geometries[{0}].data`",
                                 geometry_index,
                             )
                             .into(),
@@ -602,7 +609,7 @@ where
                 if primitive_count as u64 > max_instance_count {
                     return Err(ValidationError {
                         context: "build_range_infos[0]".into(),
-                        problem: "the max_instance_count limit has been exceeded".into(),
+                        problem: "exceeds the the `max_instance_count` limit".into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03801"],
                         ..Default::default()
                     });
@@ -610,9 +617,9 @@ where
 
                 if primitive_offset % 16 != 0 {
                     return Err(ValidationError {
-                        problem: "info.geometries is \
-                            AccelerationStructureGeometries::Instances, and
-                            build_range_infos[0].primitive_offset is not a multiple of 16"
+                        problem: "`info.geometries is` \
+                            `AccelerationStructureGeometries::Instances`, and \
+                            `build_range_infos[0].primitive_offset` is not a multiple of 16"
                             .into(),
                         vuids: &[
                             "VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03660",
@@ -626,8 +633,8 @@ where
                         if data.device_address().unwrap().get() % 16 != 0 {
                             return Err(ValidationError {
                                 context: "info.geometries.data".into(),
-                                problem: "is AccelerationStructureGeometryInstancesDataType::\
-                                    Values, and the buffer's device address is not a multiple of \
+                                problem: "is `AccelerationStructureGeometryInstancesDataType::\
+                                    Values`, and the buffer's device address is not a multiple of \
                                     16"
                                 .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03715"],
@@ -641,14 +648,14 @@ where
                             > data.size()
                         {
                             return Err(ValidationError {
-                                problem: "infos.geometries is
-                                    AccelerationStructureGeometries::Instances, \
-                                    infos.geometries.data is \
-                                    AccelerationStructureGeometryInstancesDataType::Values, and \
-                                    build_range_infos[0].primitive_offset + \
-                                    build_range_infos[0].primitive_count * \
-                                    size_of::<AccelerationStructureInstance>() is greater than the \
-                                    size of infos.geometries.data"
+                                problem: "`infos.geometries` is \
+                                    `AccelerationStructureGeometries::Instances`, \
+                                    `infos.geometries.data` is \
+                                    `AccelerationStructureGeometryInstancesDataType::Values`, and \
+                                    `build_range_infos[0].primitive_offset` + \
+                                    `build_range_infos[0].primitive_count` * \
+                                    `size_of::<AccelerationStructureInstance>()` is greater than \
+                                    the size of `infos.geometries.data`"
                                     .into(),
                                 ..Default::default()
                             });
@@ -665,7 +672,8 @@ where
                             return Err(ValidationError {
                                 context: "info.geometries.data".into(),
                                 problem: "the buffer was not created with the \
-                                    `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                    `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
+                                    usage"
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                                 ..Default::default()
@@ -675,10 +683,10 @@ where
                         if data.device_address().unwrap().get() % 8 != 0 {
                             return Err(ValidationError {
                                 context: "info.geometries.data".into(),
-                                problem:
-                                    "is AccelerationStructureGeometryInstancesDataType::\
-                                    Pointers and the buffer's device address is not a multiple of 8"
-                                        .into(),
+                                problem: "is `AccelerationStructureGeometryInstancesDataType::\
+                                    Pointers` and the buffer's device address is not a multiple \
+                                    of 8"
+                                    .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03716"],
                                 ..Default::default()
                             });
@@ -689,14 +697,14 @@ where
                             > data.size()
                         {
                             return Err(ValidationError {
-                                problem: "infos.geometries is
-                                    AccelerationStructureGeometries::Instances, \
-                                    infos.geometries.data is \
-                                    AccelerationStructureGeometryInstancesDataType::Pointers, and \
-                                    build_range_infos[0].primitive_offset + \
-                                    build_range_infos[0].primitive_count * \
-                                    size_of::<DeviceSize>() is greater than the \
-                                    size of infos.geometries.data"
+                                problem: "`infos.geometries` is \
+                                    `AccelerationStructureGeometries::Instances`, \
+                                    `infos.geometries.data` is \
+                                    `AccelerationStructureGeometryInstancesDataType::Pointers`, \
+                                    and `build_range_infos[0].primitive_offset` + \
+                                    `build_range_infos[0].primitive_count` * \
+                                    `size_of::<DeviceSize>()` is greater than the \
+                                    size of `infos.geometries.data`"
                                     .into(),
                                 ..Default::default()
                             });
@@ -716,7 +724,7 @@ where
                     return Err(ValidationError {
                         context: "info.geometries.data".into(),
                         problem: "the buffer was not created with the \
-                            `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                            `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
                             .into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                         ..Default::default()
@@ -962,7 +970,8 @@ where
         {
             return Err(ValidationError {
                 context: "info.scratch_data".into(),
-                problem: "the buffer was not created with the `STORAGE_BUFFER` usage".into(),
+                problem: "the buffer was not created with the `BufferUsage::STORAGE_BUFFER` usage"
+                    .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03674"],
                 ..Default::default()
             });
@@ -981,8 +990,8 @@ where
         {
             return Err(ValidationError {
                 context: "info.scratch_data".into(),
-                problem: "the device address of the buffer was not a multiple of the \
-                    min_acceleration_structure_scratch_offset_alignment device property"
+                problem: "the device address of the buffer is not a multiple of the \
+                    `min_acceleration_structure_scratch_offset_alignment` device property"
                     .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03710"],
                 ..Default::default()
@@ -994,9 +1003,9 @@ where
                 if !matches!(geometries, AccelerationStructureGeometries::Instances(_)) {
                     return Err(ValidationError {
                         context: "info".into(),
-                        problem: "dst_acceleration_structure is a top-level \
-                            acceleration structure, but geometries is not \
-                            AccelerationStructureGeometries::Instances"
+                        problem: "`dst_acceleration_structure` is a top-level \
+                            acceleration structure, but `geometries` is not \
+                            `AccelerationStructureGeometries::Instances`"
                             .into(),
                         vuids: &[
                             "VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03789",
@@ -1010,9 +1019,9 @@ where
                 if matches!(geometries, AccelerationStructureGeometries::Instances(_)) {
                     return Err(ValidationError {
                         context: "info".into(),
-                        problem: "dst_acceleration_structure is a bottom-level \
-                            acceleration structure, but geometries is \
-                            AccelerationStructureGeometries::Instances"
+                        problem: "`dst_acceleration_structure` is a bottom-level \
+                            acceleration structure, but `geometries` is \
+                            `AccelerationStructureGeometries::Instances`"
                             .into(),
                         vuids: &[
                             "VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03791",
@@ -1027,7 +1036,7 @@ where
 
         if geometries.len() != max_primitive_counts.len() {
             return Err(ValidationError {
-                problem: "info.geometries and max_primitive_counts do not have the same length"
+                problem: "`info.geometries` and `max_primitive_counts` do not have the same length"
                     .into(),
                 vuids: &[
                     "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-ppMaxPrimitiveCounts-parameter",
@@ -1062,7 +1071,7 @@ where
                             context: format!("info.geometries[{}].vertex_data", geometry_index)
                                 .into(),
                             problem: "the buffer was not created with the \
-                                `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
                                 .into(),
                             vuids: &[
                                 "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673",
@@ -1086,7 +1095,7 @@ where
                             context: format!("info.geometries[{}].vertex_data", geometry_index)
                                 .into(),
                             problem: "the buffer's device address is not a multiple of the byte \
-                                size of the smallest component of vertex_format"
+                                size of the smallest component of `vertex_format`"
                                 .into(),
                             vuids: &[
                                 "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03711",
@@ -1106,7 +1115,8 @@ where
                                 context: format!("info.geometries[{}].index_data", geometry_index)
                                     .into(),
                                 problem: "the buffer was not created with the \
-                                    `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                    `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
+                                    usage"
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673"],
                                 ..Default::default()
@@ -1150,7 +1160,8 @@ where
                                 )
                                 .into(),
                                 problem: "the buffer was not created with the \
-                                    `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                    `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
+                                    usage"
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673"],
                                 ..Default::default()
@@ -1198,7 +1209,7 @@ where
                         return Err(ValidationError {
                             context: format!("info.geometries[{}].data", geometry_index).into(),
                             problem: "the buffer was not created with the \
-                                `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
                                 .into(),
                             vuids: &[
                                 "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673",
@@ -1237,9 +1248,10 @@ where
                         if data.device_address().unwrap().get() % 16 != 0 {
                             return Err(ValidationError {
                                 context: "info.geometries.data".into(),
-                                problem: "is AccelerationStructureGeometryInstancesDataType::\
-                                    Values and the buffer's device address is not a multiple of 16"
-                                    .into(),
+                                problem: "is `AccelerationStructureGeometryInstancesDataType::\
+                                    Values` and the buffer's device address is not a multiple of \
+                                    16"
+                                .into(),
                                 vuids: &[
                                     "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03715",
                                 ],
@@ -1258,7 +1270,8 @@ where
                             return Err(ValidationError {
                                 context: "info.geometries.data".into(),
                                 problem: "the buffer was not created with the \
-                                    `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                                    `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
+                                    usage"
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673"],
                                 ..Default::default()
@@ -1268,10 +1281,10 @@ where
                         if data.device_address().unwrap().get() % 8 != 0 {
                             return Err(ValidationError {
                                 context: "info.geometries.data".into(),
-                                problem:
-                                    "is AccelerationStructureGeometryInstancesDataType::\
-                                    Pointers and the buffer's device address is not a multiple of 8"
-                                        .into(),
+                                problem: "is `AccelerationStructureGeometryInstancesDataType::\
+                                    Pointers` and the buffer's device address is not a multiple \
+                                    of 8"
+                                    .into(),
                                 vuids: &[
                                     "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03716",
                                 ],
@@ -1293,7 +1306,7 @@ where
                     return Err(ValidationError {
                         context: "info.geometries.data".into(),
                         problem: "the buffer was not created with the \
-                            `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
+                            `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
                             .into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673"],
                         ..Default::default()
@@ -1354,7 +1367,8 @@ where
 
         if geometries.len() as DeviceSize * stride as DeviceSize > indirect_buffer.size() {
             return Err(ValidationError {
-                problem: "info.geometries.len() * stride is greater than the size of indirect_buffer".into(),
+                problem: "`info.geometries.len()` * `stride` is greater than the size of \
+                    `indirect_buffer`".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03646"],
                 ..Default::default()
             });
@@ -1367,7 +1381,7 @@ where
         {
             return Err(ValidationError {
                 context: "indirect_buffer".into(),
-                problem: "the buffer was not created with the `INDIRECT_BUFFER` usage".into(),
+                problem: "the buffer was not created with the `BufferUsage::INDIRECT_BUFFER` usage".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03647"],
                 ..Default::default()
             });
@@ -1576,7 +1590,7 @@ where
         if info.dst.device_address().unwrap().get() % 256 != 0 {
             return Err(ValidationError {
                 context: "info.dst".into(),
-                problem: "the device address of the buffer was not a multiple of 256".into(),
+                problem: "the device address of the buffer is not a multiple of 256".into(),
                 vuids: &["VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-03740"],
                 ..Default::default()
             });
@@ -1686,7 +1700,7 @@ where
         if info.src.device_address().unwrap().get() % 256 != 0 {
             return Err(ValidationError {
                 context: "info.src".into(),
-                problem: "the device address of the buffer was not a multiple of 256".into(),
+                problem: "the device address of the buffer is not a multiple of 256".into(),
                 vuids: &["VUID-vkCmdCopyMemoryToAccelerationStructureKHR-pInfo-03743"],
                 ..Default::default()
             });
@@ -1834,8 +1848,8 @@ where
         if first_query as usize + acceleration_structures.len() > query_pool.query_count() as usize
         {
             return Err(ValidationError {
-                problem: "first_query + acceleration_structures.len() is greater than \
-                    query_pool.query_count"
+                problem: "`first_query` + `acceleration_structures.len()` is greater than \
+                    `query_pool.query_count`"
                     .into(),
                 vuids: &["VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-query-04880"],
                 ..Default::default()
