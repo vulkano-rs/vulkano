@@ -79,124 +79,143 @@ vulkan_enum! {
 
     /// A combination of `DepthReadOnlyOptimal` for the depth aspect of the image,
     /// and `StencilAttachmentOptimal` for the stencil aspect of the image.
-    DepthReadOnlyStencilAttachmentOptimal = DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL {
-        api_version: V1_1,
-        device_extensions: [khr_maintenance2],
-    },
+    DepthReadOnlyStencilAttachmentOptimal = DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_maintenance2)]),
+    ]),
 
     /// A combination of `DepthAttachmentOptimal` for the depth aspect of the image,
     /// and `StencilReadOnlyOptimal` for the stencil aspect of the image.
-    DepthAttachmentStencilReadOnlyOptimal = DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL {
-        api_version: V1_1,
-        device_extensions: [khr_maintenance2],
-    },
+    DepthAttachmentStencilReadOnlyOptimal = DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_maintenance2)]),
+    ]),
 
     /// For a depth image used as a depth attachment in a framebuffer.
-    DepthAttachmentOptimal = DEPTH_ATTACHMENT_OPTIMAL {
-        api_version: V1_2,
-        device_extensions: [khr_separate_depth_stencil_layouts],
-    },
+    DepthAttachmentOptimal = DEPTH_ATTACHMENT_OPTIMAL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(khr_separate_depth_stencil_layouts)]),
+    ]),
 
     /// For a depth image used as a read-only depth attachment in a framebuffer, or
     /// as a (combined) sampled image or input attachment in a shader.
-    DepthReadOnlyOptimal = DEPTH_READ_ONLY_OPTIMAL {
-        api_version: V1_2,
-        device_extensions: [khr_separate_depth_stencil_layouts],
-    },
+    DepthReadOnlyOptimal = DEPTH_READ_ONLY_OPTIMAL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(khr_separate_depth_stencil_layouts)]),
+    ]),
 
     /// For a stencil image used as a stencil attachment in a framebuffer.
-    StencilAttachmentOptimal = STENCIL_ATTACHMENT_OPTIMAL {
-        api_version: V1_2,
-        device_extensions: [khr_separate_depth_stencil_layouts],
-    },
+    StencilAttachmentOptimal = STENCIL_ATTACHMENT_OPTIMAL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(khr_separate_depth_stencil_layouts)]),
+    ]),
 
     /// For a stencil image used as a read-only stencil attachment in a framebuffer, or
     /// as a (combined) sampled image or input attachment in a shader.
-    StencilReadOnlyOptimal = STENCIL_READ_ONLY_OPTIMAL {
-        api_version: V1_2,
-        device_extensions: [khr_separate_depth_stencil_layouts],
-    },
+    StencilReadOnlyOptimal = STENCIL_READ_ONLY_OPTIMAL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(khr_separate_depth_stencil_layouts)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
-    ReadOnlyOptimal = READ_ONLY_OPTIMAL {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },*/
+    ReadOnlyOptimal = READ_ONLY_OPTIMAL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    AttachmentOptimal = ATTACHMENT_OPTIMAL {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },*/
+    AttachmentOptimal = ATTACHMENT_OPTIMAL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),*/
 
     /// The layout of images that are held in a swapchain. Images are in this layout when they are
     /// acquired from the swapchain, and must be transitioned back into this layout before
     /// presenting them.
-    PresentSrc = PRESENT_SRC_KHR {
-        device_extensions: [khr_swapchain],
-    },
+    PresentSrc = PRESENT_SRC_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_swapchain)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
-    VideoDecodeDst = VIDEO_DECODE_DST_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },*/
+    VideoDecodeDst = VIDEO_DECODE_DST_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VideoDecodeSrc = VIDEO_DECODE_SRC_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },*/
+    VideoDecodeSrc = VIDEO_DECODE_SRC_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VideoDecodeDpb = VIDEO_DECODE_DPB_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },*/
+    VideoDecodeDpb = VIDEO_DECODE_DPB_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SharedPresent = SHARED_PRESENT_KHR {
-        device_extensions: [khr_shared_presentable_image],
-    },*/
+    SharedPresent = SHARED_PRESENT_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_shared_presentable_image)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    FragmentDensityMapOptimal = FRAGMENT_DENSITY_MAP_OPTIMAL_EXT {
-        device_extensions: [ext_fragment_density_map],
-    },*/
+    FragmentDensityMapOptimal = FRAGMENT_DENSITY_MAP_OPTIMAL_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_fragment_density_map)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    FragmentShadingRateAttachmentOptimal = FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR {
-        device_extensions: [khr_fragment_shading_rate],
-    },*/
+    FragmentShadingRateAttachmentOptimal = FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_fragment_shading_rate)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VideoEncodeDst = VIDEO_ENCODE_DST_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },*/
+    VideoEncodeDst = VIDEO_ENCODE_DST_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VideoEncodeSrc = VIDEO_ENCODE_SRC_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },*/
+    VideoEncodeSrc = VIDEO_ENCODE_SRC_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VideoEncodeDpb = VIDEO_ENCODE_DPB_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },*/
+    VideoEncodeDpb = VIDEO_ENCODE_DPB_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    AttachmentFeedbackLoopOptimal = ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT {
-        device_extensions: [ext_attachment_feedback_loop_layout],
-    },*/
+    AttachmentFeedbackLoopOptimal = ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_attachment_feedback_loop_layout)]),
+    ]),*/
 }
 
 impl Default for ImageLayout {

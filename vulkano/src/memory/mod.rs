@@ -246,32 +246,36 @@ vulkan_bitflags! {
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
     /// [`HOST_COHERENT`]: MemoryPropertyFlags::HOST_COHERENT
     /// [`HOST_CACHED`]: MemoryPropertyFlags::HOST_CACHED
-    PROTECTED = PROTECTED {
-        api_version: V1_1,
-    },
+    PROTECTED = PROTECTED
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+    ]),
 
     /// Device accesses to the memory are automatically made available and visible to other device
     /// accesses.
     ///
     /// Memory of this type is slower to access by the device, so it is best avoided for general
     /// purpose use. Because of its coherence properties, however, it may be useful for debugging.
-    DEVICE_COHERENT = DEVICE_COHERENT_AMD {
-        device_extensions: [amd_device_coherent_memory],
-    },
+    DEVICE_COHERENT = DEVICE_COHERENT_AMD
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(amd_device_coherent_memory)]),
+    ]),
 
     /// The memory is not cached on the device.
     ///
     /// `DEVICE_UNCACHED` memory is always also [`DEVICE_COHERENT`].
     ///
     /// [`DEVICE_COHERENT`]: MemoryPropertyFlags::DEVICE_COHERENT
-    DEVICE_UNCACHED = DEVICE_UNCACHED_AMD {
-        device_extensions: [amd_device_coherent_memory],
-    },
+    DEVICE_UNCACHED = DEVICE_UNCACHED_AMD
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(amd_device_coherent_memory)]),
+    ]),
 
     /// Other devices can access the memory via remote direct memory access (RDMA).
-    RDMA_CAPABLE = RDMA_CAPABLE_NV {
-        device_extensions: [nv_external_memory_rdma],
-    },
+    RDMA_CAPABLE = RDMA_CAPABLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_external_memory_rdma)]),
+    ]),
 }
 
 /// A memory heap in a physical device.
@@ -296,10 +300,11 @@ vulkan_bitflags! {
 
     /// If used on a logical device that represents more than one physical device, allocations are
     /// replicated across each physical device's instance of this heap.
-    MULTI_INSTANCE = MULTI_INSTANCE {
-        api_version: V1_1,
-        instance_extensions: [khr_device_group_creation],
-    },
+    MULTI_INSTANCE = MULTI_INSTANCE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([InstanceExtension(khr_device_group_creation)]),
+    ]),
 }
 
 /// Represents requirements expressed by the Vulkan implementation when it comes to binding memory

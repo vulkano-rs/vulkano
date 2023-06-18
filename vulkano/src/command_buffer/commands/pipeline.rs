@@ -37,7 +37,7 @@ use crate::{
     sampler::Sampler,
     shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage, ShaderStages},
     sync::{PipelineStageAccess, PipelineStageAccessFlags},
-    DeviceSize, RequiresOneOf, ValidationError, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use std::{
     cmp::min,
@@ -382,10 +382,9 @@ where
         if draw_count > 1 && !self.device().enabled_features().multi_draw_indirect {
             return Err(PipelineExecutionError::RequirementNotMet {
                 required_for: "`draw_count` is greater than `1`",
-                requires_one_of: RequiresOneOf {
-                    features: &["multi_draw_indirect"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "multi_draw_indirect",
+                )])]),
             });
         }
 
@@ -642,10 +641,9 @@ where
         if draw_count > 1 && !self.device().enabled_features().multi_draw_indirect {
             return Err(PipelineExecutionError::RequirementNotMet {
                 required_for: "`draw_count` is greater than `1`",
-                requires_one_of: RequiresOneOf {
-                    features: &["multi_draw_indirect"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "multi_draw_indirect",
+                )])]),
             });
         }
 
@@ -1404,10 +1402,7 @@ where
                                             `DynamicState::PrimitiveRestartEnable` and the \
                                             current primitive topology is \
                                             `PrimitiveTopology::*List`",
-                                        requires_one_of: RequiresOneOf {
-                                            features: &["primitive_topology_list_restart"],
-                                            ..Default::default()
-                                        },
+                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("primitive_topology_list_restart")])]),
                                     });
                                 }
                             }
@@ -1422,10 +1417,7 @@ where
                                             `DynamicState::PrimitiveRestartEnable` and the \
                                             current primitive topology is \
                                             `PrimitiveTopology::PatchList`",
-                                        requires_one_of: RequiresOneOf {
-                                            features: &["primitive_topology_patch_list_restart"],
-                                            ..Default::default()
-                                        },
+                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("primitive_topology_patch_list_restart")])]),
                                     });
                                 }
                             }

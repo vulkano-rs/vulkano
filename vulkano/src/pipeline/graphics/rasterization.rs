@@ -250,9 +250,10 @@ vulkan_enum! {
 
     /* TODO: enable
     // TODO: document
-    FillRectangle = FILL_RECTANGLE_NV {
-        device_extensions: [nv_fill_rectangle],
-    },*/
+    FillRectangle = FILL_RECTANGLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_fill_rectangle)]),
+    ]),*/
 }
 
 impl Default for PolygonMode {

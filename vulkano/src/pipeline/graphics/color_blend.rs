@@ -424,279 +424,325 @@ vulkan_enum! {
 
     /* TODO: enable
     // TODO: document
-    Zero = ZERO_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Zero = ZERO_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Src = SRC_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Src = SRC_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Dst = DST_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Dst = DST_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SrcOver = SRC_OVER_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    SrcOver = SRC_OVER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    DstOver = DST_OVER_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    DstOver = DST_OVER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SrcIn = SRC_IN_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    SrcIn = SRC_IN_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    DstIn = DST_IN_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    DstIn = DST_IN_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SrcOut = SRC_OUT_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    SrcOut = SRC_OUT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    DstOut = DST_OUT_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    DstOut = DST_OUT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SrcAtop = SRC_ATOP_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    SrcAtop = SRC_ATOP_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    DstAtop = DST_ATOP_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    DstAtop = DST_ATOP_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Xor = XOR_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Xor = XOR_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Multiply = MULTIPLY_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Multiply = MULTIPLY_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Screen = SCREEN_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Screen = SCREEN_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Overlay = OVERLAY_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Overlay = OVERLAY_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Darken = DARKEN_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Darken = DARKEN_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Lighten = LIGHTEN_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Lighten = LIGHTEN_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Colordodge = COLORDODGE_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Colordodge = COLORDODGE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Colorburn = COLORBURN_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Colorburn = COLORBURN_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Hardlight = HARDLIGHT_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Hardlight = HARDLIGHT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Softlight = SOFTLIGHT_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Softlight = SOFTLIGHT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Difference = DIFFERENCE_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Difference = DIFFERENCE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Exclusion = EXCLUSION_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Exclusion = EXCLUSION_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Invert = INVERT_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Invert = INVERT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    InvertRgb = INVERT_RGB_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    InvertRgb = INVERT_RGB_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Lineardodge = LINEARDODGE_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Lineardodge = LINEARDODGE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Linearburn = LINEARBURN_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Linearburn = LINEARBURN_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Vividlight = VIVIDLIGHT_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Vividlight = VIVIDLIGHT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Linearlight = LINEARLIGHT_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Linearlight = LINEARLIGHT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Pinlight = PINLIGHT_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Pinlight = PINLIGHT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Hardmix = HARDMIX_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Hardmix = HARDMIX_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    HslHue = HSL_HUE_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    HslHue = HSL_HUE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    HslSaturation = HSL_SATURATION_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    HslSaturation = HSL_SATURATION_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    HslColor = HSL_COLOR_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    HslColor = HSL_COLOR_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    HslLuminosity = HSL_LUMINOSITY_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    HslLuminosity = HSL_LUMINOSITY_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Plus = PLUS_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Plus = PLUS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    PlusClamped = PLUS_CLAMPED_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    PlusClamped = PLUS_CLAMPED_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    PlusClampedAlpha = PLUS_CLAMPED_ALPHA_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    PlusClampedAlpha = PLUS_CLAMPED_ALPHA_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    PlusDarker = PLUS_DARKER_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    PlusDarker = PLUS_DARKER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Minus = MINUS_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Minus = MINUS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    MinusClamped = MINUS_CLAMPED_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    MinusClamped = MINUS_CLAMPED_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Contrast = CONTRAST_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Contrast = CONTRAST_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    InvertOvg = INVERT_OVG_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    InvertOvg = INVERT_OVG_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Red = RED_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Red = RED_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Green = GREEN_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Green = GREEN_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Blue = BLUE_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },*/
+    Blue = BLUE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),*/
 }
 
 vulkan_bitflags! {

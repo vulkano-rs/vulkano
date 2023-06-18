@@ -27,7 +27,8 @@ use crate::{
         graphics::{subpass::PipelineSubpassType, vertex_input::VertexBuffersCollection},
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
-    DeviceSize, RequirementNotMet, RequiresOneOf, ValidationError, VulkanObject,
+    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
+    VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -317,10 +318,9 @@ where
         {
             return Err(BindPushError::RequirementNotMet {
                 required_for: "`index_buffer` is `IndexBuffer::U8`",
-                requires_one_of: RequiresOneOf {
-                    features: &["index_type_uint8"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "index_type_uint8",
+                )])]),
             });
         }
 
@@ -769,10 +769,9 @@ where
     ) -> Result<(), ValidationError> {
         if !self.device().enabled_extensions().khr_push_descriptor {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_push_descriptor"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_push_descriptor",
+                )])]),
                 ..Default::default()
             });
         }

@@ -51,73 +51,85 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    VIDEO_DECODE_DST = VIDEO_DECODE_DST_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },*/
+    VIDEO_DECODE_DST = VIDEO_DECODE_DST_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VIDEO_DECODE_SRC = VIDEO_DECODE_SRC_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },*/
+    VIDEO_DECODE_SRC = VIDEO_DECODE_SRC_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VIDEO_DECODE_DPB = VIDEO_DECODE_DPB_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },*/
+    VIDEO_DECODE_DPB = VIDEO_DECODE_DPB_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    FRAGMENT_DENSITY_MAP = FRAGMENT_DENSITY_MAP_EXT {
-        device_extensions: [ext_fragment_density_map],
-    },*/
+    FRAGMENT_DENSITY_MAP = FRAGMENT_DENSITY_MAP_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_fragment_density_map)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    FRAGMENT_SHADING_RATE_ATTACHMENT = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
-        device_extensions: [khr_fragment_shading_rate],
-    },*/
+    FRAGMENT_SHADING_RATE_ATTACHMENT = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_fragment_shading_rate)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VIDEO_ENCODE_DST = VIDEO_ENCODE_DST_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },*/
+    VIDEO_ENCODE_DST = VIDEO_ENCODE_DST_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VIDEO_ENCODE_SRC = VIDEO_ENCODE_SRC_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },*/
+    VIDEO_ENCODE_SRC = VIDEO_ENCODE_SRC_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VIDEO_ENCODE_DPB = VIDEO_ENCODE_DPB_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },*/
+    VIDEO_ENCODE_DPB = VIDEO_ENCODE_DPB_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    ATTACHMENT_FEEDBACK_LOOP = ATTACHMENT_FEEDBACK_LOOP_EXT {
-        device_extensions: [ext_attachment_feedback_loop_layout],
-    },*/
+    ATTACHMENT_FEEDBACK_LOOP = ATTACHMENT_FEEDBACK_LOOP_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_attachment_feedback_loop_layout)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    INVOCATION_MASK = INVOCATION_MASK_HUAWEI {
-        device_extensions: [huawei_invocation_mask],
-    },*/
+    INVOCATION_MASK = INVOCATION_MASK_HUAWEI
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(huawei_invocation_mask)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SAMPLE_WEIGHT = SAMPLE_WEIGHT_QCOM {
-        device_extensions: [qcom_image_processing],
-    },*/
+    SAMPLE_WEIGHT = SAMPLE_WEIGHT_QCOM
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(qcom_image_processing)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SAMPLE_BLOCK_MATCH = SAMPLE_BLOCK_MATCH_QCOM {
-        device_extensions: [qcom_image_processing],
-    },*/
+    SAMPLE_BLOCK_MATCH = SAMPLE_BLOCK_MATCH_QCOM
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(qcom_image_processing)]),
+    ]),*/
 }

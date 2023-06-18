@@ -13,8 +13,8 @@
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, ValidationError, Version,
-    VulkanObject,
+    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    ValidationError, Version, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 #[cfg(unix)]
@@ -71,11 +71,10 @@ impl Semaphore {
             {
                 return Err(SemaphoreError::RequirementNotMet {
                     required_for: "`create_info.export_handle_types` is not empty",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        device_extensions: &["khr_external_semaphore"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_semaphore")]),
+                    ]),
                 });
             }
 
@@ -239,10 +238,9 @@ impl Semaphore {
         if !self.device.enabled_extensions().khr_external_semaphore_fd {
             return Err(SemaphoreError::RequirementNotMet {
                 required_for: "`Semaphore::export_fd`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_external_semaphore_fd"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_semaphore_fd",
+                )])]),
             });
         }
 
@@ -374,10 +372,9 @@ impl Semaphore {
         {
             return Err(SemaphoreError::RequirementNotMet {
                 required_for: "`Semaphore::export_win32_handle`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_external_semaphore_win32"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_semaphore_win32",
+                )])]),
             });
         }
 
@@ -509,10 +506,9 @@ impl Semaphore {
         if !self.device.enabled_extensions().fuchsia_external_semaphore {
             return Err(SemaphoreError::RequirementNotMet {
                 required_for: "`Semaphore::export_zircon_handle`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["fuchsia_external_semaphore"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "fuchsia_external_semaphore",
+                )])]),
             });
         }
 
@@ -640,10 +636,9 @@ impl Semaphore {
         if !self.device.enabled_extensions().khr_external_semaphore_fd {
             return Err(SemaphoreError::RequirementNotMet {
                 required_for: "`Semaphore::import_fd`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_external_semaphore_fd"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_semaphore_fd",
+                )])]),
             });
         }
 
@@ -769,10 +764,9 @@ impl Semaphore {
         {
             return Err(SemaphoreError::RequirementNotMet {
                 required_for: "`Semaphore::import_win32_handle`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_external_semaphore_win32"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_semaphore_win32",
+                )])]),
             });
         }
 
@@ -896,10 +890,9 @@ impl Semaphore {
         if !self.device.enabled_extensions().fuchsia_external_semaphore {
             return Err(SemaphoreError::RequirementNotMet {
                 required_for: "`Semaphore::import_zircon_handle`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["fuchsia_external_semaphore"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "fuchsia_external_semaphore",
+                )])]),
             });
         }
 
@@ -1231,9 +1224,10 @@ vulkan_bitflags_enum! {
     /// The [`fuchsia_external_semaphore`] extension must be enabled on the device.
     ///
     /// [`fuchsia_external_semaphore`]: crate::device::DeviceExtensions::fuchsia_external_semaphore
-    ZIRCON_EVENT, ZirconEvent = ZIRCON_EVENT_FUCHSIA {
-        device_extensions: [fuchsia_external_semaphore],
-    },
+    ZIRCON_EVENT, ZirconEvent = ZIRCON_EVENT_FUCHSIA
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(fuchsia_external_semaphore)]),
+    ]),
 }
 
 vulkan_bitflags! {

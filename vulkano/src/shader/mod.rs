@@ -774,18 +774,20 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    ALLOW_VARYING_SUBGROUP_SIZE = ALLOW_VARYING_SUBGROUP_SIZE {
-        api_version: V1_3,
-        device_extensions: [ext_subgroup_size_control],
-    },
+    ALLOW_VARYING_SUBGROUP_SIZE = ALLOW_VARYING_SUBGROUP_SIZE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_subgroup_size_control)]),
+    ]),
     */
 
     /* TODO: enable
     // TODO: document
-    REQUIRE_FULL_SUBGROUPS = REQUIRE_FULL_SUBGROUPS {
-        api_version: V1_3,
-        device_extensions: [ext_subgroup_size_control],
-    },
+    REQUIRE_FULL_SUBGROUPS = REQUIRE_FULL_SUBGROUPS
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_subgroup_size_control)]),
+    ]),
     */
 }
 
@@ -1108,49 +1110,66 @@ vulkan_bitflags_enum! {
     COMPUTE, Compute = COMPUTE,
 
     // TODO: document
-    RAYGEN, Raygen = RAYGEN_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },
+    RAYGEN, Raygen = RAYGEN_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     // TODO: document
-    ANY_HIT, AnyHit = ANY_HIT_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },
+    ANY_HIT, AnyHit = ANY_HIT_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     // TODO: document
-    CLOSEST_HIT, ClosestHit = CLOSEST_HIT_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },
+    CLOSEST_HIT, ClosestHit = CLOSEST_HIT_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     // TODO: document
-    MISS, Miss = MISS_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },
+    MISS, Miss = MISS_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     // TODO: document
-    INTERSECTION, Intersection = INTERSECTION_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },
+    INTERSECTION, Intersection = INTERSECTION_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     // TODO: document
-    CALLABLE, Callable = CALLABLE_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },
+    CALLABLE, Callable = CALLABLE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     // TODO: document
-    TASK, Task = TASK_EXT {
-        device_extensions: [ext_mesh_shader, nv_mesh_shader],
-    },
+    TASK, Task = TASK_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_mesh_shader)]),
+        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
+    ]),
 
     // TODO: document
-    MESH, Mesh = MESH_EXT {
-        device_extensions: [ext_mesh_shader, nv_mesh_shader],
-    },
+    MESH, Mesh = MESH_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_mesh_shader)]),
+        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
+    ]),
 
     // TODO: document
-    SUBPASS_SHADING, SubpassShading = SUBPASS_SHADING_HUAWEI {
-        device_extensions: [huawei_subpass_shading],
-    },
+    SUBPASS_SHADING, SubpassShading = SUBPASS_SHADING_HUAWEI
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(huawei_subpass_shading)]),
+    ]),
 }
 
 impl From<&ShaderExecution> for ShaderStage {

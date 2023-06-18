@@ -119,7 +119,8 @@ use crate::{
     instance::Instance,
     macros::{impl_id_counter, vulkan_bitflags},
     memory::ExternalMemoryHandleType,
-    OomError, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::Mutex;
@@ -172,27 +173,11 @@ pub struct Device {
 
 impl Device {
     /// Creates a new `Device`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `create_info.queues` is empty.
-    /// - Panics if one of the queue families in `create_info.queues` doesn't belong to the given
-    ///   physical device.
-    /// - Panics if `create_info.queues` contains multiple elements for the same queue family.
-    /// - Panics if `create_info.queues` contains an element where `queues` is empty.
-    /// - Panics if `create_info.queues` contains an element where `queues` contains a value that is
-    ///   not between 0.0 and 1.0 inclusive.
+    #[inline]
     pub fn new(
         physical_device: Arc<PhysicalDevice>,
-        mut create_info: DeviceCreateInfo,
+        create_info: DeviceCreateInfo,
     ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), VulkanError> {
-        if physical_device
-            .supported_extensions()
-            .khr_portability_subset
-        {
-            create_info.enabled_extensions.khr_portability_subset = true;
-        }
-
         Self::validate_new(&physical_device, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(physical_device, create_info)?) }
@@ -208,24 +193,11 @@ impl Device {
 
         let &DeviceCreateInfo {
             queue_create_infos: _,
-            ref enabled_extensions,
+            enabled_extensions: _,
             enabled_features: _,
             ref physical_devices,
             _ne: _,
         } = create_info;
-
-        enabled_extensions
-            .check_requirements(
-                physical_device.supported_extensions(),
-                physical_device.api_version(),
-                physical_device.instance().enabled_extensions(),
-            )
-            .map_err(|err| ValidationError {
-                context: "create_info.enabled_extensions".into(),
-                problem: err.to_string().into(),
-                vuids: &["VUID-vkCreateDevice-ppEnabledExtensionNames-01387"],
-                ..Default::default()
-            })?;
 
         if !physical_devices.is_empty()
             && !physical_devices
@@ -249,11 +221,59 @@ impl Device {
         physical_device: Arc<PhysicalDevice>,
         mut create_info: DeviceCreateInfo,
     ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), RuntimeError> {
+        // VUID-vkCreateDevice-ppEnabledExtensionNames-01387
+        create_info.enabled_extensions.enable_dependencies(
+            physical_device.api_version(),
+            physical_device.supported_extensions(),
+        );
+
+        // VUID-VkDeviceCreateInfo-pProperties-04451
         if physical_device
             .supported_extensions()
             .khr_portability_subset
         {
             create_info.enabled_extensions.khr_portability_subset = true;
+        }
+
+        if physical_device.api_version() >= Version::V1_1 {
+            // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-04476
+            if create_info.enabled_extensions.khr_shader_draw_parameters {
+                create_info.enabled_features.shader_draw_parameters = true;
+            }
+        }
+
+        if physical_device.api_version() >= Version::V1_2 {
+            // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02831
+            if create_info.enabled_extensions.khr_draw_indirect_count {
+                create_info.enabled_features.draw_indirect_count = true;
+            }
+
+            // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02832
+            if create_info
+                .enabled_extensions
+                .khr_sampler_mirror_clamp_to_edge
+            {
+                create_info.enabled_features.sampler_mirror_clamp_to_edge = true;
+            }
+
+            // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02833
+            if create_info.enabled_extensions.ext_descriptor_indexing {
+                create_info.enabled_features.descriptor_indexing = true;
+            }
+
+            // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02834
+            if create_info.enabled_extensions.ext_sampler_filter_minmax {
+                create_info.enabled_features.sampler_filter_minmax = true;
+            }
+
+            // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02835
+            if create_info
+                .enabled_extensions
+                .ext_shader_viewport_index_layer
+            {
+                create_info.enabled_features.shader_output_viewport_index = true;
+                create_info.enabled_features.shader_output_layer = true;
+            }
         }
 
         let &DeviceCreateInfo {
@@ -394,15 +414,8 @@ impl Device {
     pub unsafe fn from_handle(
         physical_device: Arc<PhysicalDevice>,
         handle: ash::vk::Device,
-        mut create_info: DeviceCreateInfo,
+        create_info: DeviceCreateInfo,
     ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
-        if physical_device
-            .supported_extensions()
-            .khr_portability_subset
-        {
-            create_info.enabled_extensions.khr_portability_subset = true;
-        }
-
         let DeviceCreateInfo {
             queue_create_infos,
             enabled_features,
@@ -533,12 +546,18 @@ impl Device {
     }
 
     /// Returns the extensions that have been enabled on the device.
+    ///
+    /// This includes both the extensions specified in [`DeviceCreateInfo::enabled_extensions`],
+    /// and any extensions that are required by those extensions.
     #[inline]
     pub fn enabled_extensions(&self) -> &DeviceExtensions {
         &self.enabled_extensions
     }
 
     /// Returns the features that have been enabled on the device.
+    ///
+    /// This includes both the features specified in [`DeviceCreateInfo::enabled_features`],
+    /// and any features that are required by the enabled extensions.
     #[inline]
     pub fn enabled_features(&self) -> &Features {
         &self.enabled_features
@@ -597,20 +616,19 @@ impl Device {
     ) -> Result<(), ValidationError> {
         if !self.enabled_extensions().khr_acceleration_structure {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_acceleration_structure"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_acceleration_structure",
+                )])]),
                 ..Default::default()
             });
         }
 
         if !(self.enabled_features().ray_tracing_pipeline || self.enabled_features().ray_query) {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    features: &["ray_tracing_pipeline", "ray_query"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::Feature("ray_tracing_pipeline")]),
+                    RequiresAllOf(&[Requires::Feature("ray_query")]),
+                ]),
                 vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-rayTracingPipeline-03617"],
                 ..Default::default()
             });
@@ -752,20 +770,19 @@ impl Device {
     ) -> Result<(), ValidationError> {
         if !self.enabled_extensions().khr_acceleration_structure {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_acceleration_structure"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_acceleration_structure",
+                )])]),
                 ..Default::default()
             });
         }
 
         if !(self.enabled_features().ray_tracing_pipeline || self.enabled_features().ray_query) {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    features: &["ray_tracing_pipeline", "ray_query"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::Feature("ray_tracing_pipeline")]),
+                    RequiresAllOf(&[Requires::Feature("ray_query")]),
+                ]),
                 vuids: &["VUID-vkGetDeviceAccelerationStructureCompatibilityKHR-rayTracingPipeline-03661"],
                 ..Default::default()
             });
@@ -825,11 +842,10 @@ impl Device {
     ) -> Result<(), ValidationError> {
         if !(self.api_version() >= Version::V1_1 || self.enabled_extensions().khr_maintenance3) {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_1),
-                    device_extensions: &["khr_maintenance3"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance3")]),
+                ]),
                 ..Default::default()
             });
         }
@@ -972,10 +988,9 @@ impl Device {
     ) -> Result<(), ValidationError> {
         if !self.enabled_extensions().khr_external_memory_fd {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_external_memory_fd"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_memory_fd",
+                )])]),
                 ..Default::default()
             });
         }
@@ -1125,6 +1140,9 @@ pub struct DeviceCreateInfo {
 
     /// The extensions to enable on the device.
     ///
+    /// You only need to enable the extensions that you need. If the extensions you specified
+    /// require additional extensions to be enabled, they will be automatically enabled as well.
+    ///
     /// If the [`khr_portability_subset`](DeviceExtensions::khr_portability_subset) extension is
     /// available, it will be enabled automatically, so you do not have to do this yourself.
     /// You are responsible for ensuring that your program can work correctly on such devices.
@@ -1135,6 +1153,9 @@ pub struct DeviceCreateInfo {
     pub enabled_extensions: DeviceExtensions,
 
     /// The features to enable on the device.
+    ///
+    /// You only need to enable the features that you need. If the extensions you specified
+    /// require certain features to be enabled, they will be automatically enabled as well.
     ///
     /// The default value is [`Features::empty()`].
     pub enabled_features: Features,
@@ -1231,6 +1252,19 @@ impl DeviceCreateInfo {
             }
         }
 
+        enabled_extensions
+            .check_requirements(
+                physical_device.supported_extensions(),
+                physical_device.api_version(),
+                physical_device.instance().enabled_extensions(),
+            )
+            .map_err(|err| ValidationError {
+                context: "enabled_extensions".into(),
+                problem: err.to_string().into(),
+                vuids: &["VUID-vkCreateDevice-ppEnabledExtensionNames-01387"],
+                ..Default::default()
+            })?;
+
         enabled_features
             .check_requirements(physical_device.supported_features())
             .map_err(|err| ValidationError {
@@ -1239,135 +1273,49 @@ impl DeviceCreateInfo {
                 ..Default::default()
             })?;
 
+        let mut dependency_extensions = *enabled_extensions;
+        dependency_extensions.enable_dependencies(
+            physical_device.api_version(),
+            physical_device.supported_extensions(),
+        );
+
         // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-01840
         // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-00374
         // Ensured because `DeviceExtensions` doesn't contain obsoleted extensions.
 
-        if enabled_extensions.khr_buffer_device_address
-            && enabled_extensions.ext_buffer_device_address
-        {
-            return Err(ValidationError {
-                context: "enabled_extensions".into(),
-                problem: "contains both `khr_buffer_device_address` and \
-                    `ext_buffer_device_address`"
-                    .into(),
-                vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-03328"],
-                ..Default::default()
-            });
-        }
+        if enabled_extensions.ext_buffer_device_address {
+            if enabled_extensions.khr_buffer_device_address {
+                return Err(ValidationError {
+                    context: "enabled_extensions".into(),
+                    problem: "contains `khr_buffer_device_address`, \
+                        but also contains `ext_buffer_device_address`"
+                        .into(),
+                    vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-03328"],
+                    ..Default::default()
+                });
+            } else if dependency_extensions.khr_buffer_device_address {
+                return Err(ValidationError {
+                    context: "enabled_extensions".into(),
+                    problem: "contains an extension that requires `khr_buffer_device_address`, \
+                        but also contains `ext_buffer_device_address`"
+                        .into(),
+                    vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-03328"],
+                    ..Default::default()
+                });
+            }
 
-        if enabled_features.buffer_device_address && enabled_extensions.ext_buffer_device_address {
-            return Err(ValidationError {
-                problem: "`enabled_features` contains `buffer_device_address`, and \
+            if physical_device.api_version() >= Version::V1_2
+                && enabled_features.buffer_device_address
+            {
+                return Err(ValidationError {
+                    problem: "the physical device API version is at least 1.2, \
+                    `enabled_features` contains `buffer_device_address`, and \
                     `enabled_extensions` contains `ext_buffer_device_address`"
-                    .into(),
-                vuids: &["VUID-VkDeviceCreateInfo-pNext-04748"],
-                ..Default::default()
-            });
-        }
-
-        if physical_device.api_version() >= Version::V1_1 {
-            if enabled_extensions.khr_shader_draw_parameters
-                && !enabled_features.shader_draw_parameters
-            {
-                return Err(ValidationError {
-                    problem: "the physical device API version is at least 1.1, and \
-                        `enabled_extensions` contains `khr_shader_draw_parameters`, but \
-                        `enabled_features` does not contain `shader_draw_parameters`"
                         .into(),
-                    vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-04476"],
+                    vuids: &["VUID-VkDeviceCreateInfo-pNext-04748"],
                     ..Default::default()
                 });
             }
-        }
-
-        if physical_device.api_version() >= Version::V1_2 {
-            if enabled_extensions.khr_draw_indirect_count && !enabled_features.draw_indirect_count {
-                return Err(ValidationError {
-                    problem: "the physical device API version is at least 1.2, and \
-                        `enabled_extensions` contains `khr_draw_indirect_count`, but \
-                        `enabled_features` does not contain `draw_indirect_count`"
-                        .into(),
-                    vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02831"],
-                    ..Default::default()
-                });
-            }
-
-            if enabled_extensions.khr_sampler_mirror_clamp_to_edge
-                && !enabled_features.sampler_mirror_clamp_to_edge
-            {
-                return Err(ValidationError {
-                    problem: "the physical device API version is at least 1.2, and \
-                        `enabled_extensions` contains `khr_sampler_mirror_clamp_to_edge`, but \
-                        `enabled_features` does not contain `sampler_mirror_clamp_to_edge`"
-                        .into(),
-                    vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02832"],
-                    ..Default::default()
-                });
-            }
-
-            if enabled_extensions.ext_descriptor_indexing && !enabled_features.descriptor_indexing {
-                return Err(ValidationError {
-                    problem: "the physical device API version is at least 1.2, and \
-                        `enabled_extensions` contains `ext_descriptor_indexing`, but \
-                        `enabled_features` does not contain `descriptor_indexing`"
-                        .into(),
-                    vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02833"],
-                    ..Default::default()
-                });
-            }
-
-            if enabled_extensions.ext_sampler_filter_minmax
-                && !enabled_features.sampler_filter_minmax
-            {
-                return Err(ValidationError {
-                    problem: "the physical device API version is at least 1.2, and \
-                        `enabled_extensions` contains `ext_sampler_filter_minmax`, but \
-                        `enabled_features` does not contain `sampler_filter_minmax`"
-                        .into(),
-                    vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02834"],
-                    ..Default::default()
-                });
-            }
-
-            if enabled_extensions.ext_shader_viewport_index_layer {
-                if !enabled_features.shader_output_viewport_index {
-                    return Err(ValidationError {
-                        problem: "the physical device API version is at least 1.2, and \
-                            `enabled_extensions` contains `ext_shader_viewport_index_layer`, but \
-                            `enabled_features` does not contain `shader_output_viewport_index`"
-                            .into(),
-                        vuids: &["
-
-                        VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02835"],
-                        ..Default::default()
-                    });
-                }
-
-                if !enabled_features.shader_output_layer {
-                    return Err(ValidationError {
-                        problem: "the physical device API version is at least 1.2, and \
-                            `enabled_extensions` contains `ext_shader_viewport_index_layer`, but \
-                            `enabled_features` does not contain `shader_output_layer`"
-                            .into(),
-                        vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02835"],
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-
-        let supported_extensions = physical_device.supported_extensions();
-
-        if supported_extensions.khr_portability_subset && !enabled_extensions.khr_portability_subset
-        {
-            return Err(ValidationError {
-                problem: "the physical device supports the `khr_portability_subset` extension, \
-                    but `enabled_extensions` does not contain `khr_portability_subset`"
-                    .into(),
-                vuids: &["VUID-VkDeviceCreateInfo-pProperties-04451"],
-                ..Default::default()
-            });
         }
 
         if enabled_features.shading_rate_image {
@@ -1528,11 +1476,10 @@ impl DeviceCreateInfo {
                 return Err(ValidationError {
                     context: "physical_devices".into(),
                     problem: "the length is greater than 1".into(),
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        instance_extensions: &["khr_device_group_creation"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::InstanceExtension("khr_device_group_creation")]),
+                    ]),
                     ..Default::default()
                 });
             }
@@ -1671,9 +1618,10 @@ vulkan_bitflags! {
     /// Flags specifying additional properties of a queue.
     QueueCreateFlags = DeviceQueueCreateFlags(u32);
 
-    PROTECTED = PROTECTED {
-        api_version: V1_1,
-    },
+    PROTECTED = PROTECTED
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+    ]),
 }
 
 /// Implemented on objects that belong to a Vulkan device.

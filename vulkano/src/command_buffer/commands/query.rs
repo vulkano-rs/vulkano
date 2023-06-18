@@ -18,7 +18,7 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags, QueryType},
     sync::{PipelineStage, PipelineStageAccessFlags, PipelineStages},
-    DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanObject,
+    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, Version, VulkanObject,
 };
 use std::{
     error::Error,
@@ -97,10 +97,9 @@ where
                 {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`flags` contains `QueryControlFlags::PRECISE`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["occlusion_query_precise"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "occlusion_query_precise",
+                        )])]),
                     });
                 }
             }
@@ -298,10 +297,9 @@ where
         {
             return Err(QueryError::RequirementNotMet {
                 required_for: "`stage` has flags set from `VkPipelineStageFlagBits2`",
-                requires_one_of: RequiresOneOf {
-                    features: &["synchronization2"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "synchronization2",
+                )])]),
             });
         }
 
@@ -337,10 +335,9 @@ where
                 if !device.enabled_features().geometry_shader {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::GeometryShader`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["geometry_shadere"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "geometry_shadere",
+                        )])]),
                     });
                 }
             }
@@ -351,10 +348,9 @@ where
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::TessellationControlShader` or \
                             `PipelineStage::TessellationEvaluationShader`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["tessellation_shader"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "tessellation_shader",
+                        )])]),
                     });
                 }
             }
@@ -363,10 +359,9 @@ where
                 if !device.enabled_features().conditional_rendering {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::ConditionalRendering`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["conditional_rendering"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "conditional_rendering",
+                        )])]),
                     });
                 }
             }
@@ -375,10 +370,9 @@ where
                 if !device.enabled_features().fragment_density_map {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::FragmentDensityProcess`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["fragment_density_map"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "fragment_density_map",
+                        )])]),
                     });
                 }
             }
@@ -387,10 +381,9 @@ where
                 if !device.enabled_features().transform_feedback {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::TransformFeedback`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["transform_feedback"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "transform_feedback",
+                        )])]),
                     });
                 }
             }
@@ -399,10 +392,9 @@ where
                 if !device.enabled_features().mesh_shader {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::MeshShader`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["mesh_shader"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "mesh_shader",
+                        )])]),
                     });
                 }
             }
@@ -411,10 +403,9 @@ where
                 if !device.enabled_features().task_shader {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::TaskShader`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["task_shader"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "task_shader",
+                        )])]),
                     });
                 }
             }
@@ -425,10 +416,10 @@ where
                 {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::FragmentShadingRateAttachment`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["attachment_fragment_shading_rate", "shading_rate_image"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                            RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                        ]),
                     });
                 }
             }
@@ -437,10 +428,9 @@ where
                 if !device.enabled_features().subpass_shading {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::SubpassShading`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["subpass_shading"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "subpass_shading",
+                        )])]),
                     });
                 }
             }
@@ -449,10 +439,9 @@ where
                 if !device.enabled_features().invocation_mask {
                     return Err(QueryError::RequirementNotMet {
                         required_for: "`stage` is `PipelineStage::InvocationMask`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["invocation_mask"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "invocation_mask",
+                        )])]),
                     });
                 }
             }

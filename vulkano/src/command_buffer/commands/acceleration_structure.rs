@@ -28,7 +28,7 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     query::{QueryPool, QueryType},
     sync::PipelineStageAccessFlags,
-    DeviceSize, RequiresOneOf, ValidationError, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{mem::size_of, sync::Arc};
@@ -894,10 +894,7 @@ where
             .acceleration_structure_indirect_build
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    features: &["acceleration_structure_indirect_build"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("acceleration_structure_indirect_build")])]),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-accelerationStructureIndirectBuild-03650"],
                 ..Default::default()
             });

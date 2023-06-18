@@ -12,7 +12,8 @@ use crate::{
     device::{Device, DeviceOwned},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     memory::{is_aligned, MemoryPropertyFlags},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    Version, VulkanObject,
 };
 use std::{
     error::Error,
@@ -182,10 +183,9 @@ impl DeviceMemory {
             return Err(DeviceMemoryError::RequirementNotMet {
                 required_for: "`allocate_info.memory_type_index` refers to a memory type where \
                     `property_flags` contains `MemoryPropertyFlags::PROTECTED`",
-                requires_one_of: RequiresOneOf {
-                    features: &["protected_memory"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "protected_memory",
+                )])]),
             });
         }
 
@@ -210,10 +210,9 @@ impl DeviceMemory {
             return Err(DeviceMemoryError::RequirementNotMet {
                 required_for: "`allocate_info.memory_type_index` refers to a memory type where \
                     `property_flags` contains `MemoryPropertyFlags::DEVICE_COHERENT`",
-                requires_one_of: RequiresOneOf {
-                    features: &["device_coherent_memory"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "device_coherent_memory",
+                )])]),
             });
         }
 
@@ -256,11 +255,10 @@ impl DeviceMemory {
             {
                 return Err(DeviceMemoryError::RequirementNotMet {
                     required_for: "`allocate_info.export_handle_types` is not empty",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        device_extensions: &["khr_external_memory"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
+                    ]),
                 });
             }
 
@@ -287,10 +285,9 @@ impl DeviceMemory {
                         return Err(DeviceMemoryError::RequirementNotMet {
                             required_for: "`allocate_info.import_info` is \
                                 `Some(MemoryImportInfo::Fd)`",
-                            requires_one_of: RequiresOneOf {
-                                device_extensions: &["khr_external_memory_fd"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceExtension("khr_external_memory_fd"),
+                            ])]),
                         });
                     }
 
@@ -339,10 +336,9 @@ impl DeviceMemory {
                         return Err(DeviceMemoryError::RequirementNotMet {
                             required_for: "`allocate_info.import_info` is \
                                 `Some(MemoryImportInfo::Win32)`",
-                            requires_one_of: RequiresOneOf {
-                                device_extensions: &["khr_external_memory_win32"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceExtension("khr_external_memory_win32"),
+                            ])]),
                         });
                     }
 
@@ -389,11 +385,10 @@ impl DeviceMemory {
         {
             return Err(DeviceMemoryError::RequirementNotMet {
                 required_for: "`allocate_info.flags` is not empty",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_1),
-                    device_extensions: &["khr_device_group"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("khr_device_group")]),
+                ]),
             });
         }
 
@@ -403,10 +398,9 @@ impl DeviceMemory {
                 return Err(DeviceMemoryError::RequirementNotMet {
                     required_for: "`allocate_info.flags` contains \
                         `MemoryAllocateFlags::DEVICE_ADDRESS`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["buffer_device_address"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "buffer_device_address",
+                    )])]),
                 });
             }
 
@@ -414,11 +408,10 @@ impl DeviceMemory {
                 return Err(DeviceMemoryError::RequirementNotMet {
                     required_for: "`allocate_info.flags` contains \
                         `MemoryAllocateFlags::DEVICE_ADDRESS`",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_2),
-                        device_extensions: &["khr_buffer_device_address"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_buffer_device_address")]),
+                    ]),
                 });
             }
         }
@@ -902,34 +895,40 @@ vulkan_bitflags_enum! {
     D3D12_RESOURCE, D3D12Resource = D3D12_RESOURCE,
 
     /// A POSIX file descriptor handle that refers to a Linux dma-buf.
-    DMA_BUF, DmaBuf = DMA_BUF_EXT {
-        device_extensions: [ext_external_memory_dma_buf],
-    },
+    DMA_BUF, DmaBuf = DMA_BUF_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_external_memory_dma_buf)]),
+    ]),
 
     /// A handle for an Android `AHardwareBuffer` object.
-    ANDROID_HARDWARE_BUFFER, AndroidHardwareBuffer = ANDROID_HARDWARE_BUFFER_ANDROID {
-        device_extensions: [android_external_memory_android_hardware_buffer],
-    },
+    ANDROID_HARDWARE_BUFFER, AndroidHardwareBuffer = ANDROID_HARDWARE_BUFFER_ANDROID
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(android_external_memory_android_hardware_buffer)]),
+    ]),
 
     /// A pointer to memory that was allocated by the host.
-    HOST_ALLOCATION, HostAllocation = HOST_ALLOCATION_EXT {
-        device_extensions: [ext_external_memory_host],
-    },
+    HOST_ALLOCATION, HostAllocation = HOST_ALLOCATION_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_external_memory_host)]),
+    ]),
 
     /// A pointer to a memory mapping on the host that maps non-host memory.
-    HOST_MAPPED_FOREIGN_MEMORY, HostMappedForeignMemory = HOST_MAPPED_FOREIGN_MEMORY_EXT {
-        device_extensions: [ext_external_memory_host],
-    },
+    HOST_MAPPED_FOREIGN_MEMORY, HostMappedForeignMemory = HOST_MAPPED_FOREIGN_MEMORY_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_external_memory_host)]),
+    ]),
 
     /// A Zircon handle to a virtual memory object.
-    ZIRCON_VMO, ZirconVmo = ZIRCON_VMO_FUCHSIA {
-        device_extensions: [fuchsia_external_memory],
-    },
+    ZIRCON_VMO, ZirconVmo = ZIRCON_VMO_FUCHSIA
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(fuchsia_external_memory)]),
+    ]),
 
     /// A Remote Direct Memory Address handle to an allocation that is accessible by remote devices.
-    RDMA_ADDRESS, RdmaAddress = RDMA_ADDRESS_NV {
-        device_extensions: [nv_external_memory_rdma],
-    },
+    RDMA_ADDRESS, RdmaAddress = RDMA_ADDRESS_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_external_memory_rdma)]),
+    ]),
 }
 
 vulkan_bitflags! {

@@ -14,7 +14,8 @@ use crate::{
     },
     device::{Device, DeviceOwned},
     macros::{impl_id_counter, vulkan_bitflags},
-    RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -468,11 +469,10 @@ impl DescriptorPoolCreateInfo {
             return Err(ValidationError {
                 context: "max_inline_uniform_block_bindings".into(),
                 problem: "is not zero".into(),
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    device_extensions: &["ext_inline_uniform_block"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("ext_inline_uniform_block")]),
+                ]),
                 // vuids?
                 ..Default::default()
             });

@@ -757,9 +757,10 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    INDEPENDENT_SETS = INDEPENDENT_SETS_EXT {
-        device_extensions: [ext_graphics_pipeline_library],
-    }, */
+    INDEPENDENT_SETS = INDEPENDENT_SETS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_graphics_pipeline_library)]),
+    ]), */
 }
 
 /// Description of a range of the push constants of a pipeline layout.

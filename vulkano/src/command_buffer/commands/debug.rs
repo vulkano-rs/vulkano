@@ -14,7 +14,7 @@ use crate::{
     },
     device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
-    RequiresOneOf, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, VulkanObject,
 };
 use std::{
     error::Error,
@@ -57,10 +57,9 @@ where
         {
             return Err(DebugUtilsError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::begin_debug_utils_label`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_debug_utils"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_debug_utils",
+                )])]),
             });
         }
 
@@ -117,10 +116,9 @@ where
         {
             return Err(DebugUtilsError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::end_debug_utils_label`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_debug_utils"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_debug_utils",
+                )])]),
             });
         }
 
@@ -182,10 +180,9 @@ where
         {
             return Err(DebugUtilsError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::insert_debug_utils_label`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_debug_utils"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_debug_utils",
+                )])]),
             });
         }
 

@@ -18,7 +18,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    RequiresOneOf, RuntimeError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -55,10 +55,9 @@ impl DeferredOperation {
         if !device.enabled_extensions().khr_deferred_host_operations {
             return Err(DeferredOperationCreateError::RequirementNotMet {
                 required_for: "`DeferredOperation::new`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_deferred_host_operations"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_deferred_host_operations",
+                )])]),
             });
         }
 

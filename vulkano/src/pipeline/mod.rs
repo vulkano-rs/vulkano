@@ -68,15 +68,18 @@ vulkan_enum! {
 
     /* TODO: enable
     // TODO: document
-    RayTracing = RAY_TRACING_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },*/
+    RayTracing = RAY_TRACING_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SubpassShading = SUBPASS_SHADING_HUAWEI {
-        device_extensions: [huawei_subpass_shading],
-    },*/
+    SubpassShading = SUBPASS_SHADING_HUAWEI
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(huawei_subpass_shading)]),
+    ]),*/
 }
 
 vulkan_bitflags! {
@@ -98,31 +101,35 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    VIEW_INDEX_FROM_DEVICE_INDEX = VIEW_INDEX_FROM_DEVICE_INDEX {
-        api_version: V1_1,
-        device_extensions: [khr_device_group],
-    },*/
+    VIEW_INDEX_FROM_DEVICE_INDEX = VIEW_INDEX_FROM_DEVICE_INDEX
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_device_group)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    DISPATCH_BASE = DISPATCH_BASE {
-        api_version: V1_1,
-        device_extensions: [khr_device_group],
-    },*/
+    DISPATCH_BASE = DISPATCH_BASE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_device_group)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    FAIL_ON_PIPELINE_COMPILE_REQUIRED = FAIL_ON_PIPELINE_COMPILE_REQUIRED {
-        api_version: V1_3,
-        device_extensions: [ext_pipeline_creation_cache_control],
-    },*/
+    FAIL_ON_PIPELINE_COMPILE_REQUIRED = FAIL_ON_PIPELINE_COMPILE_REQUIRED
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_pipeline_creation_cache_control)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    EARLY_RETURN_ON_FAILURE = EARLY_RETURN_ON_FAILURE {
-        api_version: V1_3,
-        device_extensions: [ext_pipeline_creation_cache_control],
-    },
+    EARLY_RETURN_ON_FAILURE = EARLY_RETURN_ON_FAILURE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_pipeline_creation_cache_control)]),
+    ]),
     */
 
     /* TODO: enable
@@ -139,57 +146,66 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_NO_NULL_ANY_HIT_SHADERS = RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_KHR {
-        device_extensions: [khr_ray_tracing_pipeline],
-    },*/
+    RAY_TRACING_NO_NULL_ANY_HIT_SHADERS = RAY_TRACING_NO_NULL_ANY_HIT_SHADERS_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS = RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS_KHR {
-        device_extensions: [khr_ray_tracing_pipeline],
-    },*/
+    RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS = RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_NO_NULL_MISS_SHADERS = RAY_TRACING_NO_NULL_MISS_SHADERS_KHR {
-        device_extensions: [khr_ray_tracing_pipeline],
-    },*/
+    RAY_TRACING_NO_NULL_MISS_SHADERS = RAY_TRACING_NO_NULL_MISS_SHADERS_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_NO_NULL_INTERSECTION_SHADERS = RAY_TRACING_NO_NULL_INTERSECTION_SHADERS_KHR {
-        device_extensions: [khr_ray_tracing_pipeline],
-    },*/
+    RAY_TRACING_NO_NULL_INTERSECTION_SHADERS = RAY_TRACING_NO_NULL_INTERSECTION_SHADERS_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_SKIP_TRIANGLES = RAY_TRACING_SKIP_TRIANGLES_KHR {
-        device_extensions: [khr_ray_tracing_pipeline],
-    },*/
+    RAY_TRACING_SKIP_TRIANGLES = RAY_TRACING_SKIP_TRIANGLES_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_SKIP_AABBS = RAY_TRACING_SKIP_AABBS_KHR {
-        device_extensions: [khr_ray_tracing_pipeline],
-    },*/
+    RAY_TRACING_SKIP_AABBS = RAY_TRACING_SKIP_AABBS_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY = RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_KHR {
-        device_extensions: [khr_ray_tracing_pipeline],
-    },*/
+    RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY = RAY_TRACING_SHADER_GROUP_HANDLE_CAPTURE_REPLAY_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    DEFER_COMPILE = DEFER_COMPILE_NV {
-        device_extensions: [nv_ray_tracing],
-    },*/
+    DEFER_COMPILE = DEFER_COMPILE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    CAPTURE_STATISTICS = CAPTURE_STATISTICS_KHR {
-        device_extensions: [khr_pipeline_executable_properties],
-    },*/
+    CAPTURE_STATISTICS = CAPTURE_STATISTICS_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_pipeline_executable_properties)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
@@ -205,69 +221,80 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    LIBRARY = LIBRARY_KHR {
-        device_extensions: [khr_pipeline_library],
-    },*/
+    LIBRARY = LIBRARY_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_pipeline_library)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    DESCRIPTOR_BUFFER = DESCRIPTOR_BUFFER_EXT {
-        device_extensions: [ext_descriptor_buffer],
-    },*/
+    DESCRIPTOR_BUFFER = DESCRIPTOR_BUFFER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_descriptor_buffer)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RETAIN_LINK_TIME_OPTIMIZATION_INFO = RETAIN_LINK_TIME_OPTIMIZATION_INFO_EXT {
-        device_extensions: [ext_graphics_pipeline_library],
-    },*/
+    RETAIN_LINK_TIME_OPTIMIZATION_INFO = RETAIN_LINK_TIME_OPTIMIZATION_INFO_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_graphics_pipeline_library)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    LINK_TIME_OPTIMIZATION = LINK_TIME_OPTIMIZATION_EXT {
-        device_extensions: [ext_graphics_pipeline_library],
-    },*/
+    LINK_TIME_OPTIMIZATION = LINK_TIME_OPTIMIZATION_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_graphics_pipeline_library)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_ALLOW_MOTION = RAY_TRACING_ALLOW_MOTION_NV {
-        device_extensions: [nv_ray_tracing_motion_blur],
-    },*/
+    RAY_TRACING_ALLOW_MOTION = RAY_TRACING_ALLOW_MOTION_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_ray_tracing_motion_blur)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    COLOR_ATTACHMENT_FEEDBACK_LOOP = COLOR_ATTACHMENT_FEEDBACK_LOOP_EXT {
-        device_extensions: [ext_attachment_feedback_loop_layout],
-    },*/
+    COLOR_ATTACHMENT_FEEDBACK_LOOP = COLOR_ATTACHMENT_FEEDBACK_LOOP_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_attachment_feedback_loop_layout)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP = DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_EXT {
-        device_extensions: [ext_attachment_feedback_loop_layout],
-    },*/
+    DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP = DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_attachment_feedback_loop_layout)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_OPACITY_MICROMAP = RAY_TRACING_OPACITY_MICROMAP_EXT {
-        device_extensions: [ext_opacity_micromap],
-    },*/
+    RAY_TRACING_OPACITY_MICROMAP = RAY_TRACING_OPACITY_MICROMAP_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_opacity_micromap)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RAY_TRACING_DISPLACEMENT_MICROMAP = RAY_TRACING_DISPLACEMENT_MICROMAP_NV {
-        device_extensions: [nv_displacement_micromap],
-    },*/
+    RAY_TRACING_DISPLACEMENT_MICROMAP = RAY_TRACING_DISPLACEMENT_MICROMAP_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_displacement_micromap)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    NO_PROTECTED_ACCESS = NO_PROTECTED_ACCESS_EXT {
-        device_extensions: [ext_pipeline_protected_access],
-    },*/
+    NO_PROTECTED_ACCESS = NO_PROTECTED_ACCESS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_pipeline_protected_access)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    PROTECTED_ACCESS_ONLY = PROTECTED_ACCESS_ONLY_EXT {
-        device_extensions: [ext_pipeline_protected_access],
-    },*/
+    PROTECTED_ACCESS_ONLY = PROTECTED_ACCESS_ONLY_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_pipeline_protected_access)]),
+    ]),*/
 }
 
 vulkan_enum! {
@@ -305,314 +332,373 @@ vulkan_enum! {
     StencilReference = STENCIL_REFERENCE,
 
     // TODO: document
-    CullMode = CULL_MODE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    CullMode = CULL_MODE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    FrontFace = FRONT_FACE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    FrontFace = FRONT_FACE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    PrimitiveTopology = PRIMITIVE_TOPOLOGY {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    PrimitiveTopology = PRIMITIVE_TOPOLOGY
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    ViewportWithCount = VIEWPORT_WITH_COUNT {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    ViewportWithCount = VIEWPORT_WITH_COUNT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    ScissorWithCount = SCISSOR_WITH_COUNT {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    ScissorWithCount = SCISSOR_WITH_COUNT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    VertexInputBindingStride = VERTEX_INPUT_BINDING_STRIDE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    VertexInputBindingStride = VERTEX_INPUT_BINDING_STRIDE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    DepthTestEnable = DEPTH_TEST_ENABLE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    DepthTestEnable = DEPTH_TEST_ENABLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    DepthWriteEnable = DEPTH_WRITE_ENABLE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    DepthWriteEnable = DEPTH_WRITE_ENABLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    DepthCompareOp = DEPTH_COMPARE_OP {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    DepthCompareOp = DEPTH_COMPARE_OP
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    DepthBoundsTestEnable = DEPTH_BOUNDS_TEST_ENABLE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    DepthBoundsTestEnable = DEPTH_BOUNDS_TEST_ENABLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    StencilTestEnable = STENCIL_TEST_ENABLE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    StencilTestEnable = STENCIL_TEST_ENABLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    StencilOp = STENCIL_OP {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state],
-    },
+    StencilOp = STENCIL_OP
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
+    ]),
 
     // TODO: document
-    RasterizerDiscardEnable = RASTERIZER_DISCARD_ENABLE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state2],
-    },
+    RasterizerDiscardEnable = RASTERIZER_DISCARD_ENABLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
+    ]),
 
     // TODO: document
-    DepthBiasEnable = DEPTH_BIAS_ENABLE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state2],
-    },
+    DepthBiasEnable = DEPTH_BIAS_ENABLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
+    ]),
 
     // TODO: document
-    PrimitiveRestartEnable = PRIMITIVE_RESTART_ENABLE {
-        api_version: V1_3,
-        device_extensions: [ext_extended_dynamic_state2],
-    },
+    PrimitiveRestartEnable = PRIMITIVE_RESTART_ENABLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
+    ]),
 
     // TODO: document
-    ViewportWScaling = VIEWPORT_W_SCALING_NV {
-        device_extensions: [nv_clip_space_w_scaling],
-    },
+    ViewportWScaling = VIEWPORT_W_SCALING_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_clip_space_w_scaling)]),
+    ]),
 
     // TODO: document
-    DiscardRectangle = DISCARD_RECTANGLE_EXT {
-        device_extensions: [ext_discard_rectangles],
-    },
+    DiscardRectangle = DISCARD_RECTANGLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_discard_rectangles)]),
+    ]),
 
     // TODO: document
-    SampleLocations = SAMPLE_LOCATIONS_EXT {
-        device_extensions: [ext_sample_locations],
-    },
+    SampleLocations = SAMPLE_LOCATIONS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_sample_locations)]),
+    ]),
 
     // TODO: document
-    RayTracingPipelineStackSize = RAY_TRACING_PIPELINE_STACK_SIZE_KHR {
-        device_extensions: [khr_ray_tracing_pipeline],
-    },
+    RayTracingPipelineStackSize = RAY_TRACING_PIPELINE_STACK_SIZE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+    ]),
 
     // TODO: document
-    ViewportShadingRatePalette = VIEWPORT_SHADING_RATE_PALETTE_NV {
-        device_extensions: [nv_shading_rate_image],
-    },
+    ViewportShadingRatePalette = VIEWPORT_SHADING_RATE_PALETTE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_shading_rate_image)]),
+    ]),
 
     // TODO: document
-    ViewportCoarseSampleOrder = VIEWPORT_COARSE_SAMPLE_ORDER_NV {
-        device_extensions: [nv_shading_rate_image],
-    },
+    ViewportCoarseSampleOrder = VIEWPORT_COARSE_SAMPLE_ORDER_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_shading_rate_image)]),
+    ]),
 
     // TODO: document
-    ExclusiveScissor = EXCLUSIVE_SCISSOR_NV {
-        device_extensions: [nv_scissor_exclusive],
-    },
+    ExclusiveScissor = EXCLUSIVE_SCISSOR_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_scissor_exclusive)]),
+    ]),
 
     // TODO: document
-    FragmentShadingRate = FRAGMENT_SHADING_RATE_KHR {
-        device_extensions: [khr_fragment_shading_rate],
-    },
+    FragmentShadingRate = FRAGMENT_SHADING_RATE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_fragment_shading_rate)]),
+    ]),
 
     // TODO: document
-    LineStipple = LINE_STIPPLE_EXT {
-        device_extensions: [ext_line_rasterization],
-    },
+    LineStipple = LINE_STIPPLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_line_rasterization)]),
+    ]),
 
     // TODO: document
-    VertexInput = VERTEX_INPUT_EXT {
-        device_extensions: [ext_vertex_input_dynamic_state],
-    },
+    VertexInput = VERTEX_INPUT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_vertex_input_dynamic_state)]),
+    ]),
 
     // TODO: document
-    PatchControlPoints = PATCH_CONTROL_POINTS_EXT {
-        device_extensions: [ext_extended_dynamic_state2],
-    },
+    PatchControlPoints = PATCH_CONTROL_POINTS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
+    ]),
 
     // TODO: document
-    LogicOp = LOGIC_OP_EXT {
-        device_extensions: [ext_extended_dynamic_state2],
-    },
+    LogicOp = LOGIC_OP_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
+    ]),
 
     // TODO: document
-    ColorWriteEnable = COLOR_WRITE_ENABLE_EXT {
-        device_extensions: [ext_color_write_enable],
-    },
+    ColorWriteEnable = COLOR_WRITE_ENABLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_color_write_enable)]),
+    ]),
 
     // TODO: document
-    TessellationDomainOrigin = TESSELLATION_DOMAIN_ORIGIN_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    TessellationDomainOrigin = TESSELLATION_DOMAIN_ORIGIN_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    DepthClampEnable = DEPTH_CLAMP_ENABLE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    DepthClampEnable = DEPTH_CLAMP_ENABLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    PolygonMode = POLYGON_MODE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    PolygonMode = POLYGON_MODE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    RasterizationSamples = RASTERIZATION_SAMPLES_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    RasterizationSamples = RASTERIZATION_SAMPLES_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    SampleMask = SAMPLE_MASK_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    SampleMask = SAMPLE_MASK_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    AlphaToCoverageEnable = ALPHA_TO_COVERAGE_ENABLE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    AlphaToCoverageEnable = ALPHA_TO_COVERAGE_ENABLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    AlphaToOneEnable = ALPHA_TO_ONE_ENABLE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    AlphaToOneEnable = ALPHA_TO_ONE_ENABLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    LogicOpEnable = LOGIC_OP_ENABLE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    LogicOpEnable = LOGIC_OP_ENABLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ColorBlendEnable = COLOR_BLEND_ENABLE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ColorBlendEnable = COLOR_BLEND_ENABLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ColorBlendEquation = COLOR_BLEND_EQUATION_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ColorBlendEquation = COLOR_BLEND_EQUATION_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ColorWriteMask = COLOR_WRITE_MASK_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ColorWriteMask = COLOR_WRITE_MASK_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    RasterizationStream = RASTERIZATION_STREAM_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    RasterizationStream = RASTERIZATION_STREAM_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ConservativeRasterizationMode = CONSERVATIVE_RASTERIZATION_MODE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ConservativeRasterizationMode = CONSERVATIVE_RASTERIZATION_MODE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ExtraPrimitiveOverestimationSize = EXTRA_PRIMITIVE_OVERESTIMATION_SIZE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ExtraPrimitiveOverestimationSize = EXTRA_PRIMITIVE_OVERESTIMATION_SIZE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    DepthClipEnable = DEPTH_CLIP_ENABLE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    DepthClipEnable = DEPTH_CLIP_ENABLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    SampleLocationsEnable = SAMPLE_LOCATIONS_ENABLE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    SampleLocationsEnable = SAMPLE_LOCATIONS_ENABLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ColorBlendAdvanced = COLOR_BLEND_ADVANCED_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ColorBlendAdvanced = COLOR_BLEND_ADVANCED_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ProvokingVertexMode = PROVOKING_VERTEX_MODE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ProvokingVertexMode = PROVOKING_VERTEX_MODE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    LineRasterizationMode = LINE_RASTERIZATION_MODE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    LineRasterizationMode = LINE_RASTERIZATION_MODE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    LineStippleEnable = LINE_STIPPLE_ENABLE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    LineStippleEnable = LINE_STIPPLE_ENABLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    DepthClipNegativeOneToOne = DEPTH_CLIP_NEGATIVE_ONE_TO_ONE_EXT {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    DepthClipNegativeOneToOne = DEPTH_CLIP_NEGATIVE_ONE_TO_ONE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ViewportWScalingEnable = VIEWPORT_W_SCALING_ENABLE_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ViewportWScalingEnable = VIEWPORT_W_SCALING_ENABLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ViewportSwizzle = VIEWPORT_SWIZZLE_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ViewportSwizzle = VIEWPORT_SWIZZLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    CoverageToColorEnable = COVERAGE_TO_COLOR_ENABLE_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    CoverageToColorEnable = COVERAGE_TO_COLOR_ENABLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    CoverageToColorLocation = COVERAGE_TO_COLOR_LOCATION_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    CoverageToColorLocation = COVERAGE_TO_COLOR_LOCATION_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    CoverageModulationMode = COVERAGE_MODULATION_MODE_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    CoverageModulationMode = COVERAGE_MODULATION_MODE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    CoverageModulationTableEnable = COVERAGE_MODULATION_TABLE_ENABLE_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    CoverageModulationTableEnable = COVERAGE_MODULATION_TABLE_ENABLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    CoverageModulationTable = COVERAGE_MODULATION_TABLE_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    CoverageModulationTable = COVERAGE_MODULATION_TABLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    ShadingRateImageEnable = SHADING_RATE_IMAGE_ENABLE_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    ShadingRateImageEnable = SHADING_RATE_IMAGE_ENABLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    RepresentativeFragmentTestEnable = REPRESENTATIVE_FRAGMENT_TEST_ENABLE_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    RepresentativeFragmentTestEnable = REPRESENTATIVE_FRAGMENT_TEST_ENABLE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 
     // TODO: document
-    CoverageReductionMode = COVERAGE_REDUCTION_MODE_NV {
-        device_extensions: [ext_extended_dynamic_state3],
-    },
+    CoverageReductionMode = COVERAGE_REDUCTION_MODE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
+    ]),
 }
 
 /// Specifies how a dynamic state is handled by a graphics pipeline.

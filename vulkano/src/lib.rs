@@ -425,9 +425,9 @@ impl Display for ValidationError {
 
         if !self.requires_one_of.is_empty() {
             if self.problem.is_empty() {
-                write!(f, "{}", self.requires_one_of)?;
+                write!(f, "requires one of: {}", self.requires_one_of)?;
             } else {
-                write!(f, " -- {}", self.requires_one_of)?;
+                write!(f, " -- requires one of: {}", self.requires_one_of)?;
             }
         }
 
@@ -449,115 +449,85 @@ impl Error for ValidationError {}
 
 /// Used in errors to indicate a set of alternatives that needs to be available/enabled to allow
 /// a given operation.
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub struct RequiresOneOf {
-    /// A minimum Vulkan API version that would allow the operation.
-    pub api_version: Option<Version>,
-
-    /// Enabled features that would allow the operation.
-    pub features: &'static [&'static str],
-
-    /// Available/enabled device extensions that would allow the operation.
-    pub device_extensions: &'static [&'static str],
-
-    /// Available/enabled instance extensions that would allow the operation.
-    pub instance_extensions: &'static [&'static str],
-}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RequiresOneOf(pub &'static [RequiresAllOf]);
 
 impl RequiresOneOf {
-    /// Returns whether there is more than one possible requirement.
+    /// Returns the number of alternatives.
     pub fn len(&self) -> usize {
-        self.api_version.map_or(0, |_| 1)
-            + self.features.len()
-            + self.device_extensions.len()
-            + self.instance_extensions.len()
+        self.0.len()
     }
 
-    /// Returns whether there are any requirements.
+    /// Returns whether there are any alternatives.
     pub fn is_empty(&self) -> bool {
-        self.api_version.is_none()
-            && self.features.is_empty()
-            && self.device_extensions.is_empty()
-            && self.instance_extensions.is_empty()
-    }
-}
-
-impl Debug for RequiresOneOf {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(f, "Requires one of:")?;
-
-        if let Some(Version { major, minor, .. }) = self.api_version {
-            write!(f, "\n    Vulkan API version {}.{}", major, minor)?;
-        }
-
-        for feature in self.features {
-            write!(f, "\n    The `{}` feature", feature)?;
-        }
-
-        for extension in self.device_extensions {
-            write!(f, "\n    The `{}` device extension", extension)?;
-        }
-
-        for extension in self.instance_extensions {
-            write!(f, "\n    The `{}` instance extension", extension)?;
-        }
-
-        Ok(())
+        self.0.is_empty()
     }
 }
 
 impl Display for RequiresOneOf {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(f, "requires one of: ")?;
-
-        let mut written = false;
-
-        if let Some(Version { major, minor, .. }) = self.api_version {
-            write!(f, "Vulkan API version {}.{}", major, minor)?;
-            written = true;
-        }
-
-        if let Some((first, rest)) = self.features.split_first() {
-            if written {
-                write!(f, ", ")?;
+        if let Some((first, rest)) = self.0.split_first() {
+            if first.0.len() > 1 {
+                write!(f, "({})", first)?;
+            } else {
+                write!(f, "{}", first)?;
             }
 
-            write!(f, "feature `{}`", first)?;
-
-            for feature in rest {
-                write!(f, ", feature `{}`", feature)?;
-            }
-
-            written = true;
-        }
-
-        if let Some((first, rest)) = self.device_extensions.split_first() {
-            if written {
-                write!(f, ", ")?;
-            }
-
-            write!(f, "device extension `{}`", first)?;
-
-            for extension in rest {
-                write!(f, ", device extension `{}`", extension)?;
-            }
-
-            written = true;
-        }
-
-        if let Some((first, rest)) = self.instance_extensions.split_first() {
-            if written {
-                write!(f, ", ")?;
-            }
-
-            write!(f, "instance extension `{}`", first)?;
-
-            for extension in rest {
-                write!(f, ", instance extension `{}`", extension)?;
+            for rest in rest {
+                if first.0.len() > 1 {
+                    write!(f, "or ({})", rest)?;
+                } else {
+                    write!(f, " or {}", rest)?;
+                }
             }
         }
 
         Ok(())
+    }
+}
+
+/// Used in errors to indicate a set of requirements that all need to be available/enabled to allow
+/// a given operation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RequiresAllOf(pub &'static [Requires]);
+
+impl Display for RequiresAllOf {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        if let Some((first, rest)) = self.0.split_first() {
+            write!(f, "{}", first)?;
+
+            for rest in rest {
+                write!(f, " + {}", rest)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Something that needs to be supported or enabled to allow a particular operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Requires {
+    APIVersion(Version),
+    Feature(&'static str),
+    DeviceExtension(&'static str),
+    InstanceExtension(&'static str),
+}
+
+impl Display for Requires {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Requires::APIVersion(Version { major, minor, .. }) => {
+                write!(f, "Vulkan API version {}.{}", major, minor)
+            }
+            Requires::Feature(feature) => write!(f, "feature `{}`", feature),
+            Requires::DeviceExtension(device_extension) => {
+                write!(f, "device extension `{}`", device_extension)
+            }
+            Requires::InstanceExtension(instance_extension) => {
+                write!(f, "instance extension `{}`", instance_extension)
+            }
+        }
     }
 }
 

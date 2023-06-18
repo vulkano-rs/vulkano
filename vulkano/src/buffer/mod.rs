@@ -123,8 +123,8 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{future::AccessError, CurrentAccess, Sharing},
-    DeviceSize, NonZeroDeviceSize, RequirementNotMet, RequiresOneOf, RuntimeError, ValidationError,
-    Version, VulkanObject,
+    DeviceSize, NonZeroDeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf,
+    RuntimeError, ValidationError, Version, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -506,10 +506,9 @@ impl Buffer {
         if !device.enabled_features().buffer_device_address {
             return Err(BufferError::RequirementNotMet {
                 required_for: "`Buffer::device_address`",
-                requires_one_of: RequiresOneOf {
-                    features: &["buffer_device_address"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "buffer_device_address",
+                )])]),
             });
         }
 
@@ -1072,9 +1071,10 @@ vulkan_bitflags! {
     /// protected objects.
     ///
     /// The device API version must be at least 1.1.
-    PROTECTED = PROTECTED {
-        api_version: V1_1,
-    },*/
+    PROTECTED = PROTECTED
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+    ]),*/
 
     /* TODO: enable
     /// The buffer's device address can be saved and reused on a subsequent run.
@@ -1167,9 +1167,10 @@ vulkan_enum! {
     IndexType = IndexType(i32);
 
     /// Indices are 8-bit unsigned integers.
-    U8 = UINT8_EXT {
-        device_extensions: [ext_index_type_uint8],
-    },
+    U8 = UINT8_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_index_type_uint8)]),
+    ]),
 
     /// Indices are 16-bit unsigned integers.
     U16 = UINT16,

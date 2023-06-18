@@ -19,7 +19,7 @@ use crate::{
     command_buffer::CommandBufferLevel,
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
-    OomError, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -286,11 +286,10 @@ impl CommandPool {
         {
             return Err(CommandPoolTrimError::RequirementNotMet {
                 required_for: "`CommandPool::trim`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_1),
-                    device_extensions: &["khr_maintenance1"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance1")]),
+                ]),
             });
         }
 
@@ -535,7 +534,7 @@ mod tests {
     };
     use crate::{
         command_buffer::{pool::CommandBufferAllocateInfo, CommandBufferLevel},
-        RequiresOneOf, Version,
+        Requires, RequiresAllOf, RequiresOneOf, Version,
     };
 
     #[test]
@@ -596,11 +595,11 @@ mod tests {
             if matches!(
                 pool.trim(),
                 Err(CommandPoolTrimError::RequirementNotMet {
-                    requires_one_of: RequiresOneOf {
-                        device_extensions,
-                        ..
-                    }, ..
-                }) if device_extensions.contains(&"khr_maintenance1")
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf([Requires::DeviceExtension(
+                        "khr_maintenance1"
+                    )]),]),
+                    ..
+                })
             ) {
                 panic!()
             }
@@ -608,11 +607,11 @@ mod tests {
             if !matches!(
                 pool.trim(),
                 Err(CommandPoolTrimError::RequirementNotMet {
-                    requires_one_of: RequiresOneOf {
-                        device_extensions,
-                        ..
-                    }, ..
-                }) if device_extensions.contains(&"khr_maintenance1")
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf([Requires::DeviceExtension(
+                        "khr_maintenance1"
+                    )]),]),
+                    ..
+                })
             ) {
                 panic!()
             }

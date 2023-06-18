@@ -54,7 +54,8 @@ use crate::{
     macros::{impl_id_counter, vulkan_enum},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, ValidationError, VulkanObject,
+    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    ValidationError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -164,17 +165,18 @@ impl Sampler {
         }
 
         if address_mode.contains(&SamplerAddressMode::MirrorClampToEdge) {
-            if !device.enabled_features().sampler_mirror_clamp_to_edge
-                && !device.enabled_extensions().khr_sampler_mirror_clamp_to_edge
+            if !(device.enabled_features().sampler_mirror_clamp_to_edge
+                || device.enabled_extensions().khr_sampler_mirror_clamp_to_edge)
             {
                 return Err(SamplerCreationError::RequirementNotMet {
                     required_for: "`create_info.address_mode` contains \
                         `SamplerAddressMode::MirrorClampToEdge`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["sampler_mirror_clamp_to_edge"],
-                        device_extensions: &["khr_sampler_mirror_clamp_to_edge"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("sampler_mirror_clamp_to_edge")]),
+                        RequiresAllOf(&[Requires::DeviceExtension(
+                            "khr_sampler_mirror_clamp_to_edge",
+                        )]),
+                    ]),
                 });
             }
         }
@@ -198,10 +200,9 @@ impl Sampler {
             return Err(SamplerCreationError::RequirementNotMet {
                 required_for: "this device is a portability subset device, and \
                     `create_info.mip_lod_bias` is not zero",
-                requires_one_of: RequiresOneOf {
-                    features: &["sampler_mip_lod_bias"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "sampler_mip_lod_bias",
+                )])]),
             });
         }
 
@@ -211,10 +212,9 @@ impl Sampler {
             if !device.enabled_features().sampler_anisotropy {
                 return Err(SamplerCreationError::RequirementNotMet {
                     required_for: "`create_info.anisotropy` is `Some`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["sampler_anisotropy"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "sampler_anisotropy",
+                    )])]),
                 });
             }
 
@@ -296,32 +296,32 @@ impl Sampler {
             }
         }
 
-        let mut sampler_reduction_mode_create_info =
-            if reduction_mode != SamplerReductionMode::WeightedAverage {
-                if !(device.enabled_features().sampler_filter_minmax
-                    || device.enabled_extensions().ext_sampler_filter_minmax)
-                {
-                    return Err(SamplerCreationError::RequirementNotMet {
-                        required_for: "`create_info.reduction_mode` is not \
+        let mut sampler_reduction_mode_create_info = if reduction_mode
+            != SamplerReductionMode::WeightedAverage
+        {
+            if !(device.enabled_features().sampler_filter_minmax
+                || device.enabled_extensions().ext_sampler_filter_minmax)
+            {
+                return Err(SamplerCreationError::RequirementNotMet {
+                    required_for: "`create_info.reduction_mode` is not \
                             `SamplerReductionMode::WeightedAverage`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["sampler_filter_minmax"],
-                            device_extensions: &["ext_sampler_filter_minmax"],
-                            ..Default::default()
-                        },
-                    });
-                }
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("sampler_filter_minmax")]),
+                        RequiresAllOf(&[Requires::DeviceExtension("ext_sampler_filter_minmax")]),
+                    ]),
+                });
+            }
 
-                // VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter
-                reduction_mode.validate_device(&device)?;
+            // VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter
+            reduction_mode.validate_device(&device)?;
 
-                Some(ash::vk::SamplerReductionModeCreateInfo {
-                    reduction_mode: reduction_mode.into(),
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
+            Some(ash::vk::SamplerReductionModeCreateInfo {
+                reduction_mode: reduction_mode.into(),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
 
         // Don't need to check features because you can't create a conversion object without the
         // feature anyway.
@@ -1410,9 +1410,11 @@ vulkan_enum! {
     /// The [`ext_filter_cubic`](crate::device::DeviceExtensions::ext_filter_cubic) extension must
     /// be enabled on the device, and anisotropy must be disabled. Sampled image views must have
     /// a type of [`Dim2d`](crate::image::view::ImageViewType::Dim2d).
-    Cubic = CUBIC_EXT {
-        device_extensions: [ext_filter_cubic, img_filter_cubic],
-    },
+    Cubic = CUBIC_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_filter_cubic)]),
+        RequiresAllOf([DeviceExtension(img_filter_cubic)]),
+    ]),
 }
 
 vulkan_enum! {
@@ -1465,10 +1467,11 @@ vulkan_enum! {
     /// feature or the
     /// [`khr_sampler_mirror_clamp_to_edge`](crate::device::DeviceExtensions::khr_sampler_mirror_clamp_to_edge)
     /// extension must be enabled on the device.
-    MirrorClampToEdge = MIRROR_CLAMP_TO_EDGE {
-        api_version: V1_2,
-        device_extensions: [khr_sampler_mirror_clamp_to_edge],
-    },
+    MirrorClampToEdge = MIRROR_CLAMP_TO_EDGE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_mirror_clamp_to_edge)]),
+    ]),
 }
 
 vulkan_enum! {
@@ -1502,15 +1505,17 @@ vulkan_enum! {
 
     /* TODO: enable
     // TODO: document
-    FloatCustom = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT {
-        device_extensions: [ext_custom_border_color],
-    },*/
+    FloatCustom = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_custom_border_color)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    IntCustom = INT_CUSTOM_EXT {
-        device_extensions: [ext_custom_border_color],
-    },*/
+    IntCustom = INT_CUSTOM_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_custom_border_color)]),
+    ]),*/
 }
 
 vulkan_enum! {
@@ -1549,7 +1554,7 @@ mod tests {
             Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError,
             SamplerReductionMode,
         },
-        RequiresOneOf,
+        Requires, RequiresAllOf, RequiresOneOf,
     };
 
     #[test]
@@ -1681,9 +1686,10 @@ mod tests {
 
         match r {
             Err(SamplerCreationError::RequirementNotMet {
-                requires_one_of: RequiresOneOf { features, .. },
+                requires_one_of:
+                    RequiresOneOf([RequiresAllOf([Requires::Feature("sampler_anisotropy")])]),
                 ..
-            }) if features.contains(&"sampler_anisotropy") => (),
+            }) => (),
             _ => panic!(),
         }
     }
@@ -1752,14 +1758,13 @@ mod tests {
         match r {
             Err(SamplerCreationError::RequirementNotMet {
                 requires_one_of:
-                    RequiresOneOf {
-                        features,
-                        device_extensions,
-                        ..
-                    },
+                    RequiresOneOf(
+                        [RequiresAllOf([Requires::Feature("sampler_mirror_clamp_to_edge")]), RequiresAllOf(
+                            [Requires::DeviceExtension("khr_sampler_mirror_clamp_to_edge")],
+                        )],
+                    ),
                 ..
-            }) if features.contains(&"sampler_mirror_clamp_to_edge")
-                && device_extensions.contains(&"khr_sampler_mirror_clamp_to_edge") => {}
+            }) => {}
             _ => panic!(),
         }
     }
@@ -1781,14 +1786,11 @@ mod tests {
         match r {
             Err(SamplerCreationError::RequirementNotMet {
                 requires_one_of:
-                    RequiresOneOf {
-                        features,
-                        device_extensions,
-                        ..
-                    },
+                    RequiresOneOf(
+                        [RequiresAllOf([Requires::Feature("sampler_filter_minmax")]), RequiresAllOf([Requires::DeviceExtension("ext_sampler_filter_minmax")])],
+                    ),
                 ..
-            }) if features.contains(&"sampler_filter_minmax")
-                && device_extensions.contains(&"ext_sampler_filter_minmax") => {}
+            }) => {}
             _ => panic!(),
         }
     }

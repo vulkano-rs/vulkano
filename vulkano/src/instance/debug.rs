@@ -44,7 +44,8 @@
 use super::{Instance, InstanceExtensions};
 use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
-    RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use std::{
     ffi::{c_void, CStr},
@@ -92,10 +93,9 @@ impl DebugUtilsMessenger {
     ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().ext_debug_utils {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_debug_utils"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_debug_utils",
+                )])]),
                 ..Default::default()
             });
         }
