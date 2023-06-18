@@ -623,13 +623,14 @@ impl Device {
             });
         }
 
-        if !(self.enabled_features().ray_tracing_pipeline || self.enabled_features().ray_query) {
+        if !self.enabled_features().acceleration_structure {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::Feature("ray_tracing_pipeline")]),
-                    RequiresAllOf(&[Requires::Feature("ray_query")]),
-                ]),
-                vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-rayTracingPipeline-03617"],
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "acceleration_structure",
+                )])]),
+                vuids: &[
+                    "VUID-vkGetAccelerationStructureBuildSizesKHR-accelerationStructure-08933",
+                ],
                 ..Default::default()
             });
         }
@@ -777,13 +778,12 @@ impl Device {
             });
         }
 
-        if !(self.enabled_features().ray_tracing_pipeline || self.enabled_features().ray_query) {
+        if !self.enabled_features().acceleration_structure {
             return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::Feature("ray_tracing_pipeline")]),
-                    RequiresAllOf(&[Requires::Feature("ray_query")]),
+                    RequiresAllOf(&[Requires::Feature("acceleration_structure")]),
                 ]),
-                vuids: &["VUID-vkGetDeviceAccelerationStructureCompatibilityKHR-rayTracingPipeline-03661"],
+                vuids: &["VUID-vkGetDeviceAccelerationStructureCompatibilityKHR-accelerationStructure-08928"],
                 ..Default::default()
             });
         }
