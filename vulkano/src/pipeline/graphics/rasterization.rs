@@ -9,7 +9,10 @@
 
 //! Configures how primitives should be converted into collections of fragments.
 
-use crate::{macros::vulkan_enum, pipeline::StateMode};
+use crate::{
+    device::Device, macros::vulkan_enum, pipeline::StateMode, Requires, RequiresAllOf,
+    RequiresOneOf, ValidationError, Version,
+};
 
 /// The state in a graphics pipeline describing how the rasterization stage should behave.
 #[derive(Clone, Debug)]
@@ -132,6 +135,354 @@ impl RasterizationState {
     pub fn front_face_dynamic(mut self) -> Self {
         self.front_face = StateMode::Dynamic;
         self
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            depth_clamp_enable,
+            rasterizer_discard_enable,
+            polygon_mode,
+            cull_mode,
+            front_face,
+            ref depth_bias,
+            line_width,
+            line_rasterization_mode,
+            ref line_stipple,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        polygon_mode
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "polygon_mode".into(),
+                vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        line_rasterization_mode
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "line_rasterization_mode".into(),
+                vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if depth_clamp_enable && !device.enabled_features().depth_clamp {
+            return Err(ValidationError {
+                context: "depth_clamp_enable".into(),
+                problem: "is `true`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "depth_clamp",
+                )])]),
+                vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782"],
+            });
+        }
+
+        if polygon_mode != PolygonMode::Fill && !device.enabled_features().fill_mode_non_solid {
+            return Err(ValidationError {
+                context: "polygon_mode".into(),
+                problem: "is not `PolygonMode::Fill`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "fill_mode_non_solid",
+                )])]),
+                vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-01507"],
+            });
+        }
+
+        match rasterizer_discard_enable {
+            StateMode::Fixed(false) => {
+                if device.enabled_extensions().khr_portability_subset
+                    && !device.enabled_features().point_polygons
+                    && polygon_mode == PolygonMode::Point
+                {
+                    return Err(ValidationError {
+                        problem: "this device is a portability subset device, \
+                            `rasterizer_discard_enable` is `false`, and \
+                            `polygon_mode` is `PolygonMode::Point`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "point_polygons",
+                        )])]),
+                        vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-pointPolygons-04458"],
+                        ..Default::default()
+                    });
+                }
+            }
+            StateMode::Dynamic => {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state2)
+                {
+                    return Err(ValidationError {
+                        context: "rasterizer_discard_enable".into(),
+                        problem: "is dynamic".into(),
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                        ]),
+                        // vuids?
+                        ..Default::default()
+                    });
+                }
+            }
+            _ => (),
+        }
+
+        match cull_mode {
+            StateMode::Fixed(cull_mode) => {
+                cull_mode
+                    .validate_device(device)
+                    .map_err(|err| ValidationError {
+                        context: "cull_mode".into(),
+                        vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-cullMode-parameter"],
+                        ..ValidationError::from_requirement(err)
+                    })?;
+            }
+            StateMode::Dynamic => {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state)
+                {
+                    return Err(ValidationError {
+                        context: "cull_mode".into(),
+                        problem: "is dynamic".into(),
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                        ]),
+                        // vuids?
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        match front_face {
+            StateMode::Fixed(front_face) => {
+                front_face
+                    .validate_device(device)
+                    .map_err(|err| ValidationError {
+                        context: "front_face".into(),
+                        vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-frontFace-parameter"],
+                        ..ValidationError::from_requirement(err)
+                    })?;
+            }
+            StateMode::Dynamic => {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state)
+                {
+                    return Err(ValidationError {
+                        context: "front_face".into(),
+                        problem: "is dynamic".into(),
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                        ]),
+                        // vuids?
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        if let Some(depth_bias_state) = depth_bias {
+            let &DepthBiasState {
+                enable_dynamic,
+                bias,
+            } = depth_bias_state;
+
+            if enable_dynamic
+                && !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state2)
+            {
+                return Err(ValidationError {
+                    context: "depth_bias.enable_dynamic".into(),
+                    problem: "is `true`".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                        RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                    ]),
+                    // vuids?
+                    ..Default::default()
+                });
+            }
+
+            if matches!(bias, StateMode::Fixed(bias) if bias.clamp != 0.0)
+                && !device.enabled_features().depth_bias_clamp
+            {
+                return Err(ValidationError {
+                    context: "depth_bias.bias.clamp".into(),
+                    problem: "is not 0.0".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "depth_bias_clamp",
+                    )])]),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00754"],
+                });
+            }
+        }
+
+        if matches!(line_width, StateMode::Fixed(line_width) if line_width != 1.0)
+            && !device.enabled_features().wide_lines
+        {
+            return Err(ValidationError {
+                context: "line_width".into(),
+                problem: "is not 1.0".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "wide_lines",
+                )])]),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00749"],
+            });
+        }
+
+        if line_rasterization_mode != LineRasterizationMode::Default {
+            if !device.enabled_extensions().ext_line_rasterization {
+                return Err(ValidationError {
+                    context: "line_rasterization_mode".into(),
+                    problem: "`is not `LineRasterizationMode::Default`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_line_rasterization",
+                    )])]),
+                    ..Default::default()
+                });
+            }
+
+            match line_rasterization_mode {
+                LineRasterizationMode::Default => (),
+                LineRasterizationMode::Rectangular => {
+                    if !device.enabled_features().rectangular_lines {
+                        return Err(ValidationError {
+                            context: "line_rasterization_mode".into(),
+                            problem: "is `LineRasterizationMode::Rectangular`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "rectangular_lines",
+                            )])]),
+                            vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02768"],
+                        });
+                    }
+                }
+                LineRasterizationMode::Bresenham => {
+                    if !device.enabled_features().bresenham_lines {
+                        return Err(ValidationError {
+                            context: "line_rasterization_mode".into(),
+                            problem: "is `LineRasterizationMode::Bresenham`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "bresenham_lines",
+                            )])]),
+                            vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02769"],
+                        });
+                    }
+                }
+                LineRasterizationMode::RectangularSmooth => {
+                    if !device.enabled_features().smooth_lines {
+                        return Err(ValidationError {
+                            context: "line_rasterization_mode".into(),
+                            problem: "is `LineRasterizationMode::RectangularSmooth`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "smooth_lines",
+                            )])]),
+                            vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02770"],
+                        });
+                    }
+                }
+            }
+        }
+
+        if let Some(line_stipple) = line_stipple {
+            if !device.enabled_extensions().ext_line_rasterization {
+                return Err(ValidationError {
+                    context: "line_stipple".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_line_rasterization",
+                    )])]),
+                    ..Default::default()
+                });
+            }
+
+            if let StateMode::Fixed(line_stipple) = line_stipple {
+                let &LineStipple { factor, pattern: _ } = line_stipple;
+
+                if !(1..=256).contains(&factor) {
+                    return Err(ValidationError {
+                        context: "line_stipple.factor".into(),
+                        problem: "is not between 1 and 256 inclusive".into(),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-stippledLineEnable-02767"],
+                        ..Default::default()
+                    });
+                }
+            }
+
+            match line_rasterization_mode {
+                LineRasterizationMode::Default => {
+                    if !device.enabled_features().stippled_rectangular_lines {
+                        return Err(ValidationError {
+                            problem: "`line_stipple` is `Some`, and \
+                                `line_rasterization_mode` is \
+                                `LineRasterizationMode::Default`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "stippled_rectangular_lines",
+                            )])]),
+                            vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02774"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if !properties.strict_lines {
+                        return Err(ValidationError {
+                            problem: "`line_stipple` is `Some`, and \
+                                `line_rasterization_mode` is \
+                                `LineRasterizationMode::Default`, \
+                                but the `strict_lines` property is `false`".into(),
+                            vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02774"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                LineRasterizationMode::Rectangular => {
+                    if !device.enabled_features().stippled_rectangular_lines {
+                        return Err(ValidationError {
+                            problem: "`line_stipple` is `Some`, and \
+                                `line_rasterization_mode` is \
+                                `LineRasterizationMode::Rectangular`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "stippled_rectangular_lines",
+                            )])]),
+                            vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02771"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                LineRasterizationMode::Bresenham => {
+                    if !device.enabled_features().stippled_bresenham_lines {
+                        return Err(ValidationError {
+                            problem: "`line_stipple` is `Some`, and \
+                                `line_rasterization_mode` is \
+                                `LineRasterizationMode::Bresenham`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "stippled_bresenham_lines",
+                            )])]),
+                            vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02772"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                LineRasterizationMode::RectangularSmooth => {
+                    if !device.enabled_features().stippled_smooth_lines {
+                        return Err(ValidationError {
+                            problem: "`line_stipple` is `Some`, and \
+                                `line_rasterization_mode` is \
+                                `LineRasterizationMode::RectangularSmooth`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "stippled_smooth_lines",
+                            )])]),
+                            vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02773"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

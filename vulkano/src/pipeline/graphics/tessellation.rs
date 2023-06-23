@@ -9,7 +9,10 @@
 
 //! Subdivides primitives into smaller primitives.
 
-use crate::{macros::vulkan_enum, pipeline::StateMode};
+use crate::{
+    device::Device, macros::vulkan_enum, pipeline::StateMode, Requires, RequiresAllOf,
+    RequiresOneOf, ValidationError, Version,
+};
 
 /// The state in a graphics pipeline describing the tessellation shader execution of a graphics
 /// pipeline.
@@ -54,6 +57,83 @@ impl TessellationState {
     pub fn patch_control_points_dynamic(mut self) -> Self {
         self.patch_control_points = StateMode::Dynamic;
         self
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            patch_control_points,
+            domain_origin,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        match patch_control_points {
+            StateMode::Fixed(patch_control_points) => {
+                if patch_control_points == 0 {
+                    return Err(ValidationError {
+                        context: "patch_control_points".into(),
+                        problem: "is zero".into(),
+                        vuids: &[
+                            "VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214",
+                        ],
+                        ..Default::default()
+                    });
+                }
+
+                if patch_control_points > properties.max_tessellation_patch_size {
+                    return Err(ValidationError {
+                        context: "patch_control_points".into(),
+                        problem: "exceeds the `max_tessellation_patch_size` limit".into(),
+                        vuids: &[
+                            "VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214",
+                        ],
+                        ..Default::default()
+                    });
+                }
+            }
+            StateMode::Dynamic => {
+                if !device
+                    .enabled_features()
+                    .extended_dynamic_state2_patch_control_points
+                {
+                    return Err(ValidationError {
+                        context: "patch_control_points".into(),
+                        problem: "is dynamic".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "extended_dynamic_state2_patch_control_points",
+                        )])]),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04870"],
+                    });
+                }
+            }
+        };
+
+        domain_origin
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "domain_origin".into(),
+                vuids: &[
+                    "VUID-VkPipelineTessellationDomainOriginStateCreateInfo-domainOrigin-parameter",
+                ],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if domain_origin != TessellationDomainOrigin::UpperLeft
+            && !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_maintenance2)
+        {
+            return Err(ValidationError {
+                context: "domain_origin".into(),
+                problem: "is not `TessellationDomainOrigin::UpperLeft`".into(),
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance2")]),
+                ]),
+                ..Default::default()
+            });
+        }
+
+        Ok(())
     }
 }
 

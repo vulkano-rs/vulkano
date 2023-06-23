@@ -35,10 +35,11 @@ use vulkano::{
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     pipeline::{
-        cache::PipelineCache, compute::ComputePipelineCreateInfo,
-        layout::PipelineDescriptorSetLayoutCreateInfo, ComputePipeline, PipelineLayout,
+        cache::{PipelineCache, PipelineCacheCreateInfo},
+        compute::ComputePipelineCreateInfo,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
-    shader::PipelineShaderStageCreateInfo,
     VulkanLibrary,
 };
 
@@ -100,7 +101,7 @@ fn main() {
     .unwrap();
 
     // We are creating an empty PipelineCache to start somewhere.
-    let pipeline_cache = PipelineCache::empty(device.clone()).unwrap();
+    let pipeline_cache = unsafe { PipelineCache::new(device.clone(), Default::default()).unwrap() };
 
     // We need to create the compute pipeline that describes our operation. We are using the shader
     // from the basic-compute-shader example.
@@ -135,7 +136,7 @@ fn main() {
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+        let stage = PipelineShaderStageCreateInfo::new(cs);
         let layout = PipelineLayout::new(
             device.clone(),
             PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
@@ -175,24 +176,29 @@ fn main() {
     // To load the cache from the file, we just need to load the data into a Vec<u8> and build the
     // `PipelineCache` from that. Note that this function is currently unsafe as there are no
     // checks, as it was mentioned at the start of this example.
-    let data = {
+    let initial_data = {
         if let Ok(mut file) = File::open("pipeline_cache.bin") {
             let mut data = Vec::new();
             if file.read_to_end(&mut data).is_ok() {
-                Some(data)
+                data
             } else {
-                None
+                Vec::new()
             }
         } else {
-            None
+            Vec::new()
         }
     };
 
-    let second_cache = if let Some(data) = data {
-        // This is unsafe because there is no way to be sure that the file contains valid data.
-        unsafe { PipelineCache::with_data(device, &data).unwrap() }
-    } else {
-        PipelineCache::empty(device).unwrap()
+    // This is unsafe because there is no way to be sure that the file contains valid data.
+    let second_cache = unsafe {
+        PipelineCache::new(
+            device,
+            PipelineCacheCreateInfo {
+                initial_data,
+                ..Default::default()
+            },
+        )
+        .unwrap()
     };
 
     // As the `PipelineCache` of the Vulkan implementation saves an opaque blob of data, there is

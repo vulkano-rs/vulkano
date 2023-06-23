@@ -32,8 +32,8 @@ use vulkano::{
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
-    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     DeviceSize, VulkanLibrary,
 };
@@ -127,7 +127,7 @@ fn main() {
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+        let stage = PipelineShaderStageCreateInfo::new(cs);
         let layout = {
             let mut layout_create_info =
                 PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage]);

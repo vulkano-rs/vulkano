@@ -19,9 +19,10 @@
 
 pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::PipelineLayout};
 use crate::{
-    device::DeviceOwned,
+    device::{Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
-    shader::DescriptorBindingRequirements,
+    shader::{DescriptorBindingRequirements, EntryPoint, ShaderStage, SpecializationConstant},
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
 use std::sync::Arc;
@@ -85,7 +86,7 @@ vulkan_enum! {
 vulkan_bitflags! {
     #[non_exhaustive]
 
-    /// Flags that control how a pipeline is created.
+    /// Flags specifying additional properties of a pipeline.
     PipelineCreateFlags = PipelineCreateFlags(u32);
 
     /// The pipeline will not be optimized.
@@ -295,6 +296,212 @@ vulkan_bitflags! {
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_pipeline_protected_access)]),
     ]),*/
+}
+
+/// Specifies a single shader stage when creating a pipeline.
+#[derive(Clone, Debug)]
+pub struct PipelineShaderStageCreateInfo {
+    /// Additional properties of the shader stage.
+    ///
+    /// The default value is empty.
+    pub flags: PipelineShaderStageCreateFlags,
+
+    /// The shader entry point for the stage.
+    ///
+    /// There is no default value.
+    pub entry_point: EntryPoint,
+
+    /// Values for the specialization constants in the shader, indexed by their `constant_id`.
+    ///
+    /// Specialization constants are constants whose value can be overridden when you create
+    /// a pipeline. When provided, they must have the same type as defined in the shader.
+    /// Constants that are not given a value here will have the default value that was specified
+    /// for them in the shader code.
+    ///
+    /// The default value is empty.
+    pub specialization_info: HashMap<u32, SpecializationConstant>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl PipelineShaderStageCreateInfo {
+    /// Returns a `PipelineShaderStageCreateInfo` with the specified `entry_point`.
+    #[inline]
+    pub fn new(entry_point: EntryPoint) -> Self {
+        Self {
+            flags: PipelineShaderStageCreateFlags::empty(),
+            entry_point,
+            specialization_info: HashMap::default(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            flags,
+            ref entry_point,
+            ref specialization_info,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkPipelineShaderStageCreateInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        let entry_point_info = entry_point.info();
+        let stage_enum = ShaderStage::from(&entry_point_info.execution);
+
+        stage_enum
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "entry_point.info().execution".into(),
+                vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-VkPipelineShaderStageCreateInfo-pName-00707
+        // Guaranteed by definition of `EntryPoint`.
+
+        // TODO:
+        // VUID-VkPipelineShaderStageCreateInfo-maxClipDistances-00708
+        // VUID-VkPipelineShaderStageCreateInfo-maxCullDistances-00709
+        // VUID-VkPipelineShaderStageCreateInfo-maxCombinedClipAndCullDistances-00710
+        // VUID-VkPipelineShaderStageCreateInfo-maxSampleMaskWords-00711
+        // VUID-VkPipelineShaderStageCreateInfo-stage-02596
+        // VUID-VkPipelineShaderStageCreateInfo-stage-02597
+
+        match stage_enum {
+            ShaderStage::Vertex => {
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00712
+                // TODO:
+            }
+            ShaderStage::TessellationControl | ShaderStage::TessellationEvaluation => {
+                if !device.enabled_features().tessellation_shader {
+                    return Err(ValidationError {
+                        context: "entry_point".into(),
+                        problem: "specifies a `ShaderStage::TessellationControl` or \
+                            `ShaderStage::TessellationEvaluation` entry point"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "tessellation_shader",
+                        )])]),
+                        vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00705"],
+                    });
+                }
+
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00713
+                // TODO:
+            }
+            ShaderStage::Geometry => {
+                if !device.enabled_features().geometry_shader {
+                    return Err(ValidationError {
+                        context: "entry_point".into(),
+                        problem: "specifies a `ShaderStage::Geometry` entry point".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "geometry_shader",
+                        )])]),
+                        vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00704"],
+                    });
+                }
+
+                // TODO:
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00714
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00715
+            }
+            ShaderStage::Fragment => {
+                // TODO:
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00718
+                // VUID-VkPipelineShaderStageCreateInfo-stage-06685
+                // VUID-VkPipelineShaderStageCreateInfo-stage-06686
+            }
+            ShaderStage::Compute => (),
+            ShaderStage::Raygen => (),
+            ShaderStage::AnyHit => (),
+            ShaderStage::ClosestHit => (),
+            ShaderStage::Miss => (),
+            ShaderStage::Intersection => (),
+            ShaderStage::Callable => (),
+            ShaderStage::Task => {
+                if !device.enabled_features().task_shader {
+                    return Err(ValidationError {
+                        context: "entry_point".into(),
+                        problem: "specifies a `ShaderStage::Task` entry point".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "task_shader",
+                        )])]),
+                        vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-02092"],
+                    });
+                }
+            }
+            ShaderStage::Mesh => {
+                if !device.enabled_features().mesh_shader {
+                    return Err(ValidationError {
+                        context: "entry_point".into(),
+                        problem: "specifies a `ShaderStage::Mesh` entry point".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "mesh_shader",
+                        )])]),
+                        vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-02091"],
+                    });
+                }
+            }
+            ShaderStage::SubpassShading => (),
+        }
+
+        for (&constant_id, provided_value) in specialization_info {
+            // Per `VkSpecializationMapEntry` spec:
+            // "If a constantID value is not a specialization constant ID used in the shader,
+            // that map entry does not affect the behavior of the pipeline."
+            // We *may* want to be stricter than this for the sake of catching user errors?
+            if let Some(default_value) = entry_point_info.specialization_constants.get(&constant_id)
+            {
+                // Check for equal types rather than only equal size.
+                if !provided_value.eq_type(default_value) {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`specialization_info[{0}]` does not have the same type as \
+                            `entry_point.info().specialization_constants[{0}]`",
+                            constant_id
+                        )
+                        .into(),
+                        vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags specifying additional properties of a pipeline shader stage.
+    PipelineShaderStageCreateFlags = PipelineShaderStageCreateFlags(u32);
+
+    /* TODO: enable
+    // TODO: document
+    ALLOW_VARYING_SUBGROUP_SIZE = ALLOW_VARYING_SUBGROUP_SIZE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_subgroup_size_control)]),
+    ]),
+    */
+
+    /* TODO: enable
+    // TODO: document
+    REQUIRE_FULL_SUBGROUPS = REQUIRE_FULL_SUBGROUPS
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_subgroup_size_control)]),
+    ]),
+    */
 }
 
 vulkan_enum! {

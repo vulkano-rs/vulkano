@@ -41,14 +41,13 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout,
+        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentReference, AttachmentStoreOp,
         Framebuffer, FramebufferCreateInfo, RenderPass, RenderPassCreateInfo, Subpass,
         SubpassDescription,
     },
-    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
 };
@@ -272,8 +271,8 @@ fn main() {
             .definition(&vs.info().input_interface)
             .unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::entry_point(vs),
-            PipelineShaderStageCreateInfo::entry_point(fs),
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
         ];
         let layout = PipelineLayout::new(
             device.clone(),
@@ -292,12 +291,12 @@ fn main() {
                 input_assembly_state: Some(InputAssemblyState::default()),
                 viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([
                     Viewport {
-                        origin: [0.0, 0.0],
-                        dimensions: [
+                        offset: [0.0, 0.0],
+                        extent: [
                             image.dimensions().width() as f32,
                             image.dimensions().height() as f32,
                         ],
-                        depth_range: 0.0..1.0,
+                        depth_range: 0.0..=1.0,
                     },
                 ])),
                 rasterization_state: Some(RasterizationState::default()),

@@ -2341,7 +2341,6 @@ where
     ) -> &mut Self {
         let rectangles = rectangles
             .iter()
-            .copied()
             .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if rectangles.is_empty() {
@@ -2550,7 +2549,6 @@ where
     pub unsafe fn set_scissor(&mut self, first_scissor: u32, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
             .iter()
-            .copied()
             .map(ash::vk::Rect2D::from)
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
@@ -2574,7 +2572,6 @@ where
     pub unsafe fn set_scissor_with_count(&mut self, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
             .iter()
-            .copied()
             .map(ash::vk::Rect2D::from)
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
@@ -2611,7 +2608,6 @@ where
     ) -> &mut Self {
         let viewports = viewports
             .iter()
-            .cloned()
             .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
@@ -2635,7 +2631,6 @@ where
     pub unsafe fn set_viewport_with_count(&mut self, viewports: &[Viewport]) -> &mut Self {
         let viewports = viewports
             .iter()
-            .cloned()
             .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {

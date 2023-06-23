@@ -48,94 +48,86 @@
 //! In all cases the number of viewports and scissor boxes must be the same.
 //!
 
-use std::ops::Range;
+use crate::{
+    device::Device,
+    pipeline::{PartialStateMode, StateMode},
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
+};
+use smallvec::{smallvec, SmallVec};
+use std::ops::RangeInclusive;
 
 /// List of viewports and scissors that are used when creating a graphics pipeline object.
 ///
 /// Note that the number of viewports and scissors must be the same.
-#[derive(Debug, Clone)]
-pub enum ViewportState {
-    /// The state is known in advance.
-    Fixed {
-        /// State of the viewports and scissors.
-        data: Vec<(Viewport, Scissor)>,
-    },
+#[derive(Clone, Debug)]
+pub struct ViewportState {
+    /// Specifies the viewport transforms.
+    ///
+    /// If the value is `PartialStateMode::Dynamic`, then the viewports are set dynamically, but
+    /// the number of viewports is still fixed.
+    ///
+    /// If the value is `PartialStateMode::Dynamic(StateMode::Dynamic)`, then the number of
+    /// viewports is also dynamic. The device API version must be at least 1.3, or the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
+    /// be enabled on the device.
+    ///
+    /// If neither the number of viewports nor the number of scissors is dynamic, then the
+    /// number of both must be identical.
+    ///
+    /// The default value is `PartialStateMode::Fixed` with no viewports.
+    pub viewports: PartialStateMode<SmallVec<[Viewport; 1]>, StateMode<u32>>,
 
-    /// The state of viewports is known in advance, but the state of scissors is dynamic and will
-    /// be set when drawing.
-    FixedViewport {
-        /// State of the viewports.
-        viewports: Vec<Viewport>,
+    /// Specifies the scissor rectangles.
+    ///
+    /// If the value is `PartialStateMode::Dynamic`, then the scissors are set dynamically, but
+    /// the number of scissors is still fixed.
+    ///
+    /// If the value is `PartialStateMode::Dynamic(StateMode::Dynamic)`, then the number of
+    /// scissors is also dynamic. The device API version must be at least 1.3, or the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
+    /// be enabled on the device.
+    ///
+    /// If neither the number of viewports nor the number of scissors is dynamic, then the
+    /// number of both must be identical.
+    ///
+    /// The default value is `PartialStateMode::Fixed` with no scissors.
+    pub scissors: PartialStateMode<SmallVec<[Scissor; 1]>, StateMode<u32>>,
 
-        /// Sets whether the scissor count is also dynamic, or only the scissors themselves.
-        ///
-        /// If set to `true`, the device API version must be at least 1.3, or the
-        /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
-        /// be enabled on the device.
-        scissor_count_dynamic: bool,
-    },
-
-    /// The state of scissors is known in advance, but the state of viewports is dynamic and will
-    /// be set when drawing.
-    FixedScissor {
-        /// State of the scissors.
-        scissors: Vec<Scissor>,
-
-        /// Sets whether the viewport count is also dynamic, or only the viewports themselves.
-        ///
-        /// If set to `true`, the device API version must be at least 1.3, or the
-        /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
-        /// be enabled on the device.
-        viewport_count_dynamic: bool,
-    },
-
-    /// The state of both the viewports and scissors is dynamic and will be set when drawing.
-    Dynamic {
-        /// Number of viewports and scissors.
-        ///
-        /// This is ignored if both `viewport_count_dynamic` and `scissor_count_dynamic` are `true`.
-        count: u32,
-
-        /// Sets whether the viewport count is also dynamic, or only the viewports themselves.
-        ///
-        /// If set to `true`, the device API version must be at least 1.3, or the
-        /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
-        /// be enabled on the device.
-        viewport_count_dynamic: bool,
-
-        /// Sets whether the scissor count is also dynamic, or only the scissors themselves.
-        ///
-        /// If set to `true`, the device API version must be at least 1.3, or the
-        /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
-        /// be enabled on the device.
-        scissor_count_dynamic: bool,
-    },
+    pub _ne: crate::NonExhaustive,
 }
 
 impl ViewportState {
     /// Creates a `ViewportState` with fixed state and no viewports or scissors.
     #[inline]
     pub fn new() -> Self {
-        Self::Fixed { data: Vec::new() }
+        Self {
+            viewports: PartialStateMode::Fixed(SmallVec::new()),
+            scissors: PartialStateMode::Fixed(SmallVec::new()),
+            _ne: crate::NonExhaustive(()),
+        }
     }
 
     /// Creates a `ViewportState` with fixed state from the given viewports and scissors.
     pub fn viewport_fixed_scissor_fixed(
         data: impl IntoIterator<Item = (Viewport, Scissor)>,
     ) -> Self {
-        Self::Fixed {
-            data: data.into_iter().collect(),
+        let (viewports, scissors) = data.into_iter().unzip();
+        Self {
+            viewports: PartialStateMode::Fixed(viewports),
+            scissors: PartialStateMode::Fixed(scissors),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Creates a `ViewportState` with fixed state from the given viewports, and matching scissors
     /// that cover the whole viewport.
     pub fn viewport_fixed_scissor_irrelevant(data: impl IntoIterator<Item = Viewport>) -> Self {
-        Self::Fixed {
-            data: data
-                .into_iter()
-                .map(|viewport| (viewport, Scissor::irrelevant()))
-                .collect(),
+        let viewports: SmallVec<_> = data.into_iter().collect();
+        let scissors = smallvec![Scissor::irrelevant(); viewports.len()];
+        Self {
+            viewports: PartialStateMode::Fixed(viewports),
+            scissors: PartialStateMode::Fixed(scissors),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -143,48 +135,213 @@ impl ViewportState {
     /// the whole viewport.
     #[inline]
     pub fn viewport_dynamic_scissor_irrelevant() -> Self {
-        Self::FixedScissor {
-            scissors: vec![Scissor::irrelevant()],
-            viewport_count_dynamic: false,
+        Self {
+            viewports: PartialStateMode::Dynamic(StateMode::Fixed(1)),
+            scissors: PartialStateMode::Fixed(smallvec![Scissor::irrelevant(); 1]),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Creates a `ViewportState` with dynamic viewports and scissors, but a fixed count.
     #[inline]
     pub fn viewport_dynamic_scissor_dynamic(count: u32) -> Self {
-        Self::Dynamic {
-            count,
-            viewport_count_dynamic: false,
-            scissor_count_dynamic: false,
+        Self {
+            viewports: PartialStateMode::Dynamic(StateMode::Fixed(count)),
+            scissors: PartialStateMode::Dynamic(StateMode::Fixed(count)),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Creates a `ViewportState` with dynamic viewport count and scissor count.
     #[inline]
     pub fn viewport_count_dynamic_scissor_count_dynamic() -> Self {
-        Self::Dynamic {
-            count: 0,
-            viewport_count_dynamic: true,
-            scissor_count_dynamic: true,
+        Self {
+            viewports: PartialStateMode::Dynamic(StateMode::Dynamic),
+            scissors: PartialStateMode::Dynamic(StateMode::Dynamic),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Returns the number of viewports and scissors.
     ///
-    /// `None` is returned if both `viewport_count_dynamic` and `scissor_count_dynamic` are `true`.
+    /// `None` is returned if both counts are dynamic.
     #[inline]
-    pub fn count(&self) -> Option<u32> {
-        Some(match *self {
-            ViewportState::Fixed { ref data } => data.len() as u32,
-            ViewportState::FixedViewport { ref viewports, .. } => viewports.len() as u32,
-            ViewportState::FixedScissor { ref scissors, .. } => scissors.len() as u32,
-            ViewportState::Dynamic {
-                viewport_count_dynamic: true,
-                scissor_count_dynamic: true,
-                ..
-            } => return None,
-            ViewportState::Dynamic { count, .. } => count,
-        })
+    pub(crate) fn count(&self) -> Option<u32> {
+        match &self.viewports {
+            PartialStateMode::Fixed(viewports) => return Some(viewports.len() as u32),
+            PartialStateMode::Dynamic(StateMode::Fixed(count)) => return Some(*count),
+            PartialStateMode::Dynamic(StateMode::Dynamic) => (),
+        }
+
+        match &self.scissors {
+            PartialStateMode::Fixed(scissors) => return Some(scissors.len() as u32),
+            PartialStateMode::Dynamic(StateMode::Fixed(count)) => return Some(*count),
+            PartialStateMode::Dynamic(StateMode::Dynamic) => (),
+        }
+
+        None
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let Self {
+            viewports,
+            scissors,
+            _ne: _,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        let viewport_count = match viewports {
+            PartialStateMode::Fixed(viewports) => {
+                if viewports.is_empty() {
+                    return Err(ValidationError {
+                        context: "viewports".into(),
+                        problem: "is empty".into(),
+                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135"],
+                        ..Default::default()
+                    });
+                }
+
+                for (index, viewport) in viewports.iter().enumerate() {
+                    viewport
+                        .validate(device)
+                        .map_err(|err| err.add_context(format!("viewports[{}].0", index)))?;
+                }
+
+                viewports.len() as u32
+            }
+            PartialStateMode::Dynamic(StateMode::Fixed(count)) => {
+                if *count == 0 {
+                    return Err(ValidationError {
+                        context: "viewports".into(),
+                        problem: "is empty".into(),
+                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135"],
+                        ..Default::default()
+                    });
+                }
+
+                *count
+            }
+            PartialStateMode::Dynamic(StateMode::Dynamic) => {
+                // VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135
+                0
+            }
+        };
+
+        let scissor_count = match scissors {
+            PartialStateMode::Fixed(scissors) => {
+                if scissors.is_empty() {
+                    return Err(ValidationError {
+                        context: "scissors".into(),
+                        problem: "is empty".into(),
+                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136"],
+                        ..Default::default()
+                    });
+                }
+
+                for (index, scissor) in scissors.iter().enumerate() {
+                    let &Scissor { offset, extent } = scissor;
+
+                    // VUID-VkPipelineViewportStateCreateInfo-x-02821
+                    // Ensured by the use of an unsigned integer.
+
+                    if (i32::try_from(offset[0]).ok())
+                        .zip(i32::try_from(extent[0]).ok())
+                        .and_then(|(o, e)| o.checked_add(e))
+                        .is_none()
+                    {
+                        return Err(ValidationError {
+                            context: format!("scissors[{}]", index).into(),
+                            problem: "`offset[0] + extent[0]` is greater than `i32::MAX`".into(),
+                            vuids: &["VUID-VkPipelineViewportStateCreateInfo-offset-02822"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if (i32::try_from(offset[1]).ok())
+                        .zip(i32::try_from(extent[1]).ok())
+                        .and_then(|(o, e)| o.checked_add(e))
+                        .is_none()
+                    {
+                        return Err(ValidationError {
+                            context: format!("scissors[{}]", index).into(),
+                            problem: "`offset[1] + extent[1]` is greater than `i32::MAX`".into(),
+                            vuids: &["VUID-VkPipelineViewportStateCreateInfo-offset-02823"],
+                            ..Default::default()
+                        });
+                    }
+                }
+
+                scissors.len() as u32
+            }
+            PartialStateMode::Dynamic(StateMode::Fixed(count)) => {
+                if *count == 0 {
+                    return Err(ValidationError {
+                        context: "scissors".into(),
+                        problem: "is empty".into(),
+                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136"],
+                        ..Default::default()
+                    });
+                }
+
+                *count
+            }
+            PartialStateMode::Dynamic(StateMode::Dynamic) => {
+                // VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136
+                0
+            }
+        };
+
+        if viewport_count != 0 && scissor_count != 0 && viewport_count != scissor_count {
+            return Err(ValidationError {
+                problem: "the length of `viewports` and the length of `scissors` are not equal"
+                    .into(),
+                vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04134"],
+                ..Default::default()
+            });
+        }
+
+        if viewport_count > 1 && !device.enabled_features().multi_viewport {
+            return Err(ValidationError {
+                context: "viewports".into(),
+                problem: "the length is greater than 1".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "multi_viewport",
+                )])]),
+                vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-01216"],
+            });
+        }
+
+        if scissor_count > 1 && !device.enabled_features().multi_viewport {
+            return Err(ValidationError {
+                context: "scissors".into(),
+                problem: "the length is greater than 1".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "multi_viewport",
+                )])]),
+                vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-01217"],
+            });
+        }
+
+        if viewport_count > properties.max_viewports {
+            return Err(ValidationError {
+                context: "viewports".into(),
+                problem: "the length exceeds the `max_viewports` limit".into(),
+                vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-01218"],
+                ..Default::default()
+            });
+        }
+
+        if scissor_count > properties.max_viewports {
+            return Err(ValidationError {
+                context: "scissors".into(),
+                problem: "the length exceeds the `max_viewports` limit".into(),
+                vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-01219"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
     }
 }
 
@@ -197,16 +354,13 @@ impl Default for ViewportState {
 }
 
 /// State of a single viewport.
-// FIXME: check that:
-//        x + width must be less than or equal to viewportBoundsRange[0]
-//        y + height must be less than or equal to viewportBoundsRange[1]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Viewport {
     /// Coordinates in pixels of the top-left hand corner of the viewport.
-    pub origin: [f32; 2],
+    pub offset: [f32; 2],
 
     /// Dimensions in pixels of the viewport.
-    pub dimensions: [f32; 2],
+    pub extent: [f32; 2],
 
     /// Minimum and maximum values of the depth.
     ///
@@ -215,34 +369,166 @@ pub struct Viewport {
     ///
     /// This is equivalents to `glDepthRange` in OpenGL, except that OpenGL uses the Z coordinate
     /// range from `-1.0` to `1.0` instead.
-    pub depth_range: Range<f32>,
+    pub depth_range: RangeInclusive<f32>,
 }
 
-impl From<Viewport> for ash::vk::Viewport {
+impl Viewport {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            offset,
+            extent,
+            ref depth_range,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        if extent[0] <= 0.0 {
+            return Err(ValidationError {
+                context: "extent[0]".into(),
+                problem: "is not greater than zero".into(),
+                vuids: &["VUID-VkViewport-width-01770"],
+                ..Default::default()
+            });
+        }
+
+        if extent[0] > properties.max_viewport_dimensions[0] as f32 {
+            return Err(ValidationError {
+                context: "extent[0]".into(),
+                problem: "exceeds the `max_viewport_dimensions[0]` limit".into(),
+                vuids: &["VUID-VkViewport-width-01771"],
+                ..Default::default()
+            });
+        }
+
+        if extent[1] <= 0.0
+            && !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_maintenance1)
+        {
+            return Err(ValidationError {
+                context: "extent[1]".into(),
+                problem: "is not greater than zero".into(),
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance1")]),
+                ]),
+                vuids: &["VUID-VkViewport-apiVersion-07917"],
+            });
+        }
+
+        if extent[1].abs() > properties.max_viewport_dimensions[1] as f32 {
+            return Err(ValidationError {
+                context: "extent[1]".into(),
+                problem: "exceeds the `max_viewport_dimensions[1]` limit".into(),
+                vuids: &["VUID-VkViewport-height-01773"],
+                ..Default::default()
+            });
+        }
+
+        if offset[0] < properties.viewport_bounds_range[0] {
+            return Err(ValidationError {
+                problem: "`offset[0]` is less than the `viewport_bounds_range[0]` property".into(),
+                vuids: &["VUID-VkViewport-x-01774"],
+                ..Default::default()
+            });
+        }
+
+        if offset[0] + extent[0] > properties.viewport_bounds_range[1] {
+            return Err(ValidationError {
+                problem: "`offset[0] + extent[0]` is greater than the \
+                    `viewport_bounds_range[1]` property"
+                    .into(),
+                vuids: &["VUID-VkViewport-x-01232"],
+                ..Default::default()
+            });
+        }
+
+        if offset[1] < properties.viewport_bounds_range[0] {
+            return Err(ValidationError {
+                problem: "`offset[1]` is less than the `viewport_bounds_range[0]` property".into(),
+                vuids: &["VUID-VkViewport-y-01775"],
+                ..Default::default()
+            });
+        }
+
+        if offset[1] > properties.viewport_bounds_range[1] {
+            return Err(ValidationError {
+                problem: "`offset[1]` is greater than the `viewport_bounds_range[1]` property"
+                    .into(),
+                vuids: &["VUID-VkViewport-y-01776"],
+                ..Default::default()
+            });
+        }
+
+        if offset[1] + extent[1] < properties.viewport_bounds_range[0] {
+            return Err(ValidationError {
+                problem: "`offset[1] + extent[1]` is less than the \
+                    `viewport_bounds_range[0]` property"
+                    .into(),
+                vuids: &["VUID-VkViewport-y-01777"],
+                ..Default::default()
+            });
+        }
+
+        if offset[1] + extent[1] > properties.viewport_bounds_range[1] {
+            return Err(ValidationError {
+                problem: "`offset[1] + extent[1]` is greater than the \
+                    `viewport_bounds_range[1]` property"
+                    .into(),
+                vuids: &["VUID-VkViewport-y-01233"],
+                ..Default::default()
+            });
+        }
+
+        if !device.enabled_extensions().ext_depth_range_unrestricted {
+            if *depth_range.start() < 0.0 || *depth_range.start() > 1.0 {
+                return Err(ValidationError {
+                    problem: "`depth_range.start` is not between 0.0 and 1.0 inclusive".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_depth_range_unrestricted",
+                    )])]),
+                    vuids: &["VUID-VkViewport-minDepth-01234"],
+                    ..Default::default()
+                });
+            }
+
+            if *depth_range.end() < 0.0 || *depth_range.end() > 1.0 {
+                return Err(ValidationError {
+                    problem: "`depth_range.end` is not between 0.0 and 1.0 inclusive".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_depth_range_unrestricted",
+                    )])]),
+                    vuids: &["VUID-VkViewport-maxDepth-01235"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl From<&Viewport> for ash::vk::Viewport {
     #[inline]
-    fn from(val: Viewport) -> Self {
+    fn from(val: &Viewport) -> Self {
         ash::vk::Viewport {
-            x: val.origin[0],
-            y: val.origin[1],
-            width: val.dimensions[0],
-            height: val.dimensions[1],
-            min_depth: val.depth_range.start,
-            max_depth: val.depth_range.end,
+            x: val.offset[0],
+            y: val.offset[1],
+            width: val.extent[0],
+            height: val.extent[1],
+            min_depth: *val.depth_range.start(),
+            max_depth: *val.depth_range.end(),
         }
     }
 }
 
 /// State of a single scissor box.
-// FIXME: add a check:
-//      Evaluation of (offset.x + extent.width) must not cause a signed integer addition overflow
-//      Evaluation of (offset.y + extent.height) must not cause a signed integer addition overflow
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Scissor {
     /// Coordinates in pixels of the top-left hand corner of the box.
-    pub origin: [u32; 2],
+    pub offset: [u32; 2],
 
     /// Dimensions in pixels of the box.
-    pub dimensions: [u32; 2],
+    pub extent: [u32; 2],
 }
 
 impl Scissor {
@@ -251,8 +537,8 @@ impl Scissor {
     #[inline]
     pub fn irrelevant() -> Scissor {
         Scissor {
-            origin: [0, 0],
-            dimensions: [0x7fffffff, 0x7fffffff],
+            offset: [0, 0],
+            extent: [0x7fffffff, 0x7fffffff],
         }
     }
 }
@@ -264,17 +550,17 @@ impl Default for Scissor {
     }
 }
 
-impl From<Scissor> for ash::vk::Rect2D {
+impl From<&Scissor> for ash::vk::Rect2D {
     #[inline]
-    fn from(val: Scissor) -> Self {
+    fn from(val: &Scissor) -> Self {
         ash::vk::Rect2D {
             offset: ash::vk::Offset2D {
-                x: val.origin[0] as i32,
-                y: val.origin[1] as i32,
+                x: val.offset[0] as i32,
+                y: val.offset[1] as i32,
             },
             extent: ash::vk::Extent2D {
-                width: val.dimensions[0],
-                height: val.dimensions[1],
+                width: val.extent[0],
+                height: val.extent[1],
             },
         }
     }

@@ -33,9 +33,9 @@ use vulkano::{
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
-    shader::PipelineShaderStageCreateInfo,
 };
 
 use super::LightingVertex;
@@ -102,8 +102,8 @@ impl DirectionalLightingSystem {
                 .definition(&vs.info().input_interface)
                 .unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::entry_point(vs),
-                PipelineShaderStageCreateInfo::entry_point(fs),
+                PipelineShaderStageCreateInfo::new(vs),
+                PipelineShaderStageCreateInfo::new(fs),
             ];
             let layout = PipelineLayout::new(
                 device.clone(),
@@ -125,12 +125,12 @@ impl DirectionalLightingSystem {
                     color_blend_state: Some(
                         ColorBlendState::new(subpass.num_color_attachments()).blend(
                             AttachmentBlend {
-                                color_op: BlendOp::Add,
-                                color_source: BlendFactor::One,
-                                color_destination: BlendFactor::One,
-                                alpha_op: BlendOp::Max,
-                                alpha_source: BlendFactor::One,
-                                alpha_destination: BlendFactor::One,
+                                color_blend_op: BlendOp::Add,
+                                src_color_blend_factor: BlendFactor::One,
+                                dst_color_blend_factor: BlendFactor::One,
+                                alpha_blend_op: BlendOp::Max,
+                                src_alpha_blend_factor: BlendFactor::One,
+                                dst_alpha_blend_factor: BlendFactor::One,
                             },
                         ),
                     ),
@@ -195,9 +195,9 @@ impl DirectionalLightingSystem {
         .unwrap();
 
         let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
-            depth_range: 0.0..1.0,
+            offset: [0.0, 0.0],
+            extent: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+            depth_range: 0.0..=1.0,
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary(

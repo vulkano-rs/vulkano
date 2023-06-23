@@ -42,9 +42,9 @@ use vulkano::{
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, PresentMode, Surface, Swapchain, SwapchainCreateInfo,
         SwapchainPresentInfo,
@@ -422,7 +422,7 @@ fn main() {
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo::entry_point(cs);
+        let stage = PipelineShaderStageCreateInfo::new(cs);
         let layout = PipelineLayout::new(
             device.clone(),
             PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
@@ -459,9 +459,9 @@ fn main() {
 
     // Fixed viewport dimensions.
     let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32],
-        depth_range: 0.0..1.0,
+        offset: [0.0, 0.0],
+        extent: [WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32],
+        depth_range: 0.0..=1.0,
     };
 
     // Create a basic graphics pipeline for rendering particles.
@@ -478,8 +478,8 @@ fn main() {
             .definition(&vs.info().input_interface)
             .unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::entry_point(vs),
-            PipelineShaderStageCreateInfo::entry_point(fs),
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
         ];
         let layout = PipelineLayout::new(
             device.clone(),
