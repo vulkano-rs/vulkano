@@ -529,8 +529,8 @@ impl<'a> QueueGuard<'a> {
         states: &mut States<'_>,
     ) -> Result<impl ExactSizeIterator<Item = Result<bool, RuntimeError>>, RuntimeError> {
         let PresentInfo {
-            ref wait_semaphores,
-            ref swapchain_infos,
+            wait_semaphores,
+            swapchain_infos,
             _ne: _,
         } = present_info;
 
@@ -542,11 +542,13 @@ impl<'a> QueueGuard<'a> {
         let mut swapchains_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
         let mut image_indices_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
         let mut present_ids_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_modes_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
         let mut present_regions_vk: SmallVec<[_; 4]> =
             SmallVec::with_capacity(swapchain_infos.len());
         let mut rectangles_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
 
         let mut has_present_ids = false;
+        let mut has_present_modes = false;
         let mut has_present_regions = false;
 
         for swapchain_info in swapchain_infos {
@@ -554,6 +556,7 @@ impl<'a> QueueGuard<'a> {
                 ref swapchain,
                 image_index,
                 present_id,
+                present_mode,
                 ref present_regions,
                 _ne: _,
             } = swapchain_info;
@@ -561,6 +564,7 @@ impl<'a> QueueGuard<'a> {
             swapchains_vk.push(swapchain.handle());
             image_indices_vk.push(image_index);
             present_ids_vk.push(present_id.map_or(0, u64::from));
+            present_modes_vk.push(present_mode.map_or_else(Default::default, Into::into));
             present_regions_vk.push(ash::vk::PresentRegionKHR::default());
             rectangles_vk.push(
                 present_regions
@@ -571,6 +575,10 @@ impl<'a> QueueGuard<'a> {
 
             if present_id.is_some() {
                 has_present_ids = true;
+            }
+
+            if present_mode.is_some() {
+                has_present_modes = true;
             }
 
             if !present_regions.is_empty() {
@@ -589,6 +597,7 @@ impl<'a> QueueGuard<'a> {
             ..Default::default()
         };
         let mut present_id_info_vk = None;
+        let mut present_mode_info_vk = None;
         let mut present_region_info_vk = None;
 
         if has_present_ids {
@@ -599,6 +608,17 @@ impl<'a> QueueGuard<'a> {
             });
 
             next.p_next = info_vk.p_next;
+            info_vk.p_next = next as *const _ as *const _;
+        }
+
+        if has_present_modes {
+            let next = present_mode_info_vk.insert(ash::vk::SwapchainPresentModeInfoEXT {
+                swapchain_count: present_modes_vk.len() as u32,
+                p_present_modes: present_modes_vk.as_ptr(),
+                ..Default::default()
+            });
+
+            next.p_next = info_vk.p_next as _;
             info_vk.p_next = next as *const _ as *const _;
         }
 

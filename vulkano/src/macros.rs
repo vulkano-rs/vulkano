@@ -591,11 +591,16 @@ macro_rules! vulkan_enum {
             )+
         }
 
-        $(
-            impl $ty {
+        impl $ty {
+            #[allow(dead_code)]
+            pub(crate) const COUNT: usize = [
+                $(ash::vk::$ty_ffi::$flag_name_ffi.as_raw()),+
+            ].len();
+
+            $(
                 $($impls)*
-            }
-        )?
+            )?
+        }
 
         impl From<$ty> for ash::vk::$ty_ffi {
             #[inline]
@@ -653,6 +658,11 @@ macro_rules! vulkan_enum {
         }
 
         impl $ty {
+            #[allow(dead_code)]
+            pub(crate) const COUNT: usize = [
+                $(ash::vk::$ty_ffi::$flag_name_ffi.as_raw()),+
+            ].len();
+
             #[allow(dead_code)]
             #[inline]
             pub(crate) fn validate_device(

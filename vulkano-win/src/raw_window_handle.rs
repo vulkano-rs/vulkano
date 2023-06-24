@@ -6,17 +6,14 @@ use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
 use std::{any::Any, sync::Arc};
-use vulkano::{
-    instance::Instance,
-    swapchain::{Surface, SurfaceCreationError},
-};
+use vulkano::{instance::Instance, swapchain::Surface, VulkanError};
 
 /// Creates a Vulkan surface from a generic window which implements `HasRawWindowHandle` and thus
 /// can reveal the OS-dependent handle.
 pub fn create_surface_from_handle(
     window: Arc<impl Any + Send + Sync + HasRawWindowHandle + HasRawDisplayHandle>,
     instance: Arc<Instance>,
-) -> Result<Arc<Surface>, SurfaceCreationError> {
+) -> Result<Arc<Surface>, VulkanError> {
     unsafe {
         match window.raw_window_handle() {
             RawWindowHandle::AndroidNdk(h) => {
@@ -85,7 +82,7 @@ pub fn create_surface_from_handle(
 pub unsafe fn create_surface_from_handle_ref(
     window: &(impl HasRawWindowHandle + HasRawDisplayHandle),
     instance: Arc<Instance>,
-) -> Result<Arc<Surface>, SurfaceCreationError> {
+) -> Result<Arc<Surface>, VulkanError> {
     unsafe {
         match window.raw_window_handle() {
             RawWindowHandle::AndroidNdk(h) => {

@@ -89,7 +89,7 @@ fn main() {
             .build(&event_loop)
             .unwrap(),
     );
-    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
+    let surface = Surface::from_window(instance.clone(), window).unwrap();
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
@@ -524,11 +524,6 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::RedrawEventsCleared => {
-                let dimensions = window.inner_size();
-                if dimensions.width == 0 || dimensions.height == 0 {
-                    return;
-                }
-
                 // Update per-frame variables.
                 let now = SystemTime::now();
                 let time = now.duration_since(start_time).unwrap().as_secs_f32();

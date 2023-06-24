@@ -5,8 +5,8 @@ use std::{
 };
 use vulkano::{
     instance::{Instance, InstanceExtensions},
-    swapchain::{Surface, SurfaceCreationError},
-    VulkanLibrary,
+    swapchain::Surface,
+    VulkanError, VulkanLibrary,
 };
 use winit::{
     error::OsError as WindowCreationError,
@@ -37,7 +37,7 @@ pub fn required_extensions(library: &VulkanLibrary) -> InstanceExtensions {
 pub fn create_surface_from_winit(
     window: Arc<Window>,
     instance: Arc<Instance>,
-) -> Result<Arc<Surface>, SurfaceCreationError> {
+) -> Result<Arc<Surface>, VulkanError> {
     unsafe { winit_to_surface(instance, window) }
 }
 
@@ -65,7 +65,8 @@ impl<E> VkSurfaceBuild<E> for WindowBuilder {
 #[derive(Debug)]
 pub enum CreationError {
     /// Error when creating the surface.
-    SurfaceCreationError(SurfaceCreationError),
+    VulkanError(VulkanError),
+
     /// Error when creating the window.
     WindowCreationError(WindowCreationError),
 }
@@ -73,7 +74,7 @@ pub enum CreationError {
 impl Error for CreationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            CreationError::SurfaceCreationError(err) => Some(err),
+            CreationError::VulkanError(err) => Some(err),
             CreationError::WindowCreationError(err) => Some(err),
         }
     }
@@ -85,16 +86,16 @@ impl Display for CreationError {
             f,
             "{}",
             match self {
-                CreationError::SurfaceCreationError(_) => "error while creating the surface",
+                CreationError::VulkanError(_) => "error while creating the surface",
                 CreationError::WindowCreationError(_) => "error while creating the window",
             }
         )
     }
 }
 
-impl From<SurfaceCreationError> for CreationError {
-    fn from(err: SurfaceCreationError) -> CreationError {
-        CreationError::SurfaceCreationError(err)
+impl From<VulkanError> for CreationError {
+    fn from(err: VulkanError) -> CreationError {
+        CreationError::VulkanError(err)
     }
 }
 
@@ -108,7 +109,7 @@ impl From<WindowCreationError> for CreationError {
 unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
-) -> Result<Arc<Surface>, SurfaceCreationError> {
+) -> Result<Arc<Surface>, VulkanError> {
     use raw_window_handle::HasRawWindowHandle;
     use raw_window_handle::RawWindowHandle::AndroidNdk;
     if let AndroidNdk(handle) = window.raw_window_handle() {
@@ -127,7 +128,7 @@ unsafe fn winit_to_surface(
 unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
-) -> Result<Arc<Surface>, SurfaceCreationError> {
+) -> Result<Arc<Surface>, VulkanError> {
     use winit::platform::{wayland::WindowExtWayland, x11::WindowExtX11};
 
     match (window.wayland_display(), window.wayland_surface()) {
@@ -193,7 +194,7 @@ pub(crate) unsafe fn get_metal_layer_macos(view: *mut std::ffi::c_void) -> *mut 
 unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
-) -> Result<Arc<Surface>, SurfaceCreationError> {
+) -> Result<Arc<Surface>, VulkanError> {
     use winit::platform::macos::WindowExtMacOS;
     let layer = get_metal_layer_macos(window.ns_view());
     Surface::from_mac_os(instance, layer as *const (), Some(window))
@@ -224,7 +225,7 @@ pub(crate) unsafe fn get_metal_layer_ios(view: *mut std::ffi::c_void) -> IOSMeta
 unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
-) -> Result<Arc<Surface>, SurfaceCreationError> {
+) -> Result<Arc<Surface>, VulkanError> {
     use winit::platform::ios::WindowExtIOS;
     let layer = get_metal_layer_ios(window.ui_view());
     Surface::from_ios(instance, layer, Some(window))
@@ -234,7 +235,7 @@ unsafe fn winit_to_surface(
 unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
-) -> Result<Arc<Surface>, SurfaceCreationError> {
+) -> Result<Arc<Surface>, VulkanError> {
     use winit::platform::windows::WindowExtWindows;
 
     Surface::from_win32(

@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{FullScreenExclusive, Win32Monitor};
+use super::{FullScreenExclusive, PresentGravityFlags, PresentScalingFlags, Win32Monitor};
 use crate::{
     cache::OnceCache,
     device::physical::PhysicalDevice,
@@ -15,25 +15,23 @@ use crate::{
     image::ImageUsage,
     instance::{Instance, InstanceExtensions},
     macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
-    swapchain::{
-        display::{DisplayMode, DisplayPlane},
-        SurfaceSwapchainLock,
-    },
-    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanObject,
+    swapchain::display::{DisplayMode, DisplayPlane},
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
+    VulkanObject,
 };
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
+use smallvec::SmallVec;
 use std::{
     any::Any,
-    error::Error,
-    fmt::{Debug, Display, Error as FmtError, Formatter},
+    fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
-    sync::{atomic::AtomicBool, Arc},
+    sync::Arc,
 };
 
 /// Represents a surface on the screen.
@@ -45,9 +43,6 @@ pub struct Surface {
     id: NonZeroU64,
     api: SurfaceApi,
     object: Option<Arc<dyn Any + Send + Sync>>,
-    // If true, a swapchain has been associated to this surface, and that any new swapchain
-    // creation should be forbidden.
-    has_swapchain: AtomicBool,
     // FIXME: This field is never set.
     #[cfg(target_os = "ios")]
     metal_layer: IOSMetalLayer,
@@ -88,7 +83,7 @@ impl Surface {
     pub fn from_window(
         instance: Arc<Instance>,
         window: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Any + Send + Sync>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         let mut surface = unsafe { Self::from_window_ref(instance, &*window) }?;
         Arc::get_mut(&mut surface).unwrap().object = Some(window);
 
@@ -104,7 +99,7 @@ impl Surface {
     pub unsafe fn from_window_ref(
         instance: Arc<Instance>,
         window: &(impl HasRawWindowHandle + HasRawDisplayHandle),
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         match (window.raw_window_handle(), window.raw_display_handle()) {
             (RawWindowHandle::AndroidNdk(window), RawDisplayHandle::Android(_display)) => {
                 Self::from_android(instance, window.a_native_window, None)
@@ -159,7 +154,6 @@ impl Surface {
             id: Self::next_id(),
             api,
             object,
-            has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
             surface_formats: OnceCache::new(),
@@ -175,19 +169,19 @@ impl Surface {
     pub fn headless(
         instance: Arc<Instance>,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_headless(&instance)?;
 
         unsafe { Ok(Self::headless_unchecked(instance, object)?) }
     }
 
-    fn validate_headless(instance: &Instance) -> Result<(), SurfaceCreationError> {
+    fn validate_headless(instance: &Instance) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().ext_headless_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::headless`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "ext_headless_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -235,7 +229,7 @@ impl Surface {
     pub fn from_display_plane(
         display_mode: &DisplayMode,
         plane: &DisplayPlane,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_display_plane(display_mode, plane)?;
 
         unsafe { Ok(Self::from_display_plane_unchecked(display_mode, plane)?) }
@@ -244,7 +238,7 @@ impl Surface {
     fn validate_from_display_plane(
         display_mode: &DisplayMode,
         plane: &DisplayPlane,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !display_mode
             .display()
             .physical_device()
@@ -252,11 +246,11 @@ impl Surface {
             .enabled_extensions()
             .khr_display
         {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_display_plane`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_display",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -325,7 +319,7 @@ impl Surface {
         instance: Arc<Instance>,
         window: *const W,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_android(&instance, window)?;
 
         Ok(Self::from_android_unchecked(instance, window, object)?)
@@ -334,13 +328,13 @@ impl Surface {
     fn validate_from_android<W>(
         instance: &Instance,
         _window: *const W,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().khr_android_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_android`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_android_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -397,7 +391,7 @@ impl Surface {
         dfb: *const D,
         surface: *const S,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_directfb(&instance, dfb, surface)?;
 
         Ok(Self::from_directfb_unchecked(
@@ -409,13 +403,13 @@ impl Surface {
         instance: &Instance,
         _dfb: *const D,
         _surface: *const S,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().ext_directfb_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_directfb`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "ext_directfb_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -475,7 +469,7 @@ impl Surface {
         instance: Arc<Instance>,
         image_pipe_handle: ash::vk::zx_handle_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_fuchsia_image_pipe(&instance, image_pipe_handle)?;
 
         Ok(Self::from_fuchsia_image_pipe_unchecked(
@@ -488,13 +482,13 @@ impl Surface {
     fn validate_from_fuchsia_image_pipe(
         instance: &Instance,
         _image_pipe_handle: ash::vk::zx_handle_t,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().fuchsia_imagepipe_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_fuchsia_image_pipe`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "fuchsia_imagepipe_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -550,7 +544,7 @@ impl Surface {
         instance: Arc<Instance>,
         stream_descriptor: ash::vk::GgpStreamDescriptor,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_ggp_stream_descriptor(&instance, stream_descriptor)?;
 
         Ok(Self::from_ggp_stream_descriptor_unchecked(
@@ -563,13 +557,13 @@ impl Surface {
     fn validate_from_ggp_stream_descriptor(
         instance: &Instance,
         _stream_descriptor: ash::vk::GgpStreamDescriptor,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().ggp_stream_descriptor_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_ggp_stream_descriptor`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "ggp_stream_descriptor_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -627,7 +621,7 @@ impl Surface {
         instance: Arc<Instance>,
         metal_layer: IOSMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_ios(&instance, &metal_layer)?;
 
         Ok(Self::from_ios_unchecked(instance, metal_layer, object)?)
@@ -637,13 +631,13 @@ impl Surface {
     fn validate_from_ios(
         instance: &Instance,
         _metal_layer: &IOSMetalLayer,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().mvk_ios_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_ios`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "mvk_ios_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -704,7 +698,7 @@ impl Surface {
         instance: Arc<Instance>,
         view: *const V,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_mac_os(&instance, view)?;
 
         Ok(Self::from_mac_os_unchecked(instance, view, object)?)
@@ -714,13 +708,13 @@ impl Surface {
     fn validate_from_mac_os<V>(
         instance: &Instance,
         _view: *const V,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().mvk_macos_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_mac_os`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "mvk_macos_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -779,7 +773,7 @@ impl Surface {
         instance: Arc<Instance>,
         layer: *const L,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_metal(&instance, layer)?;
 
         Ok(Self::from_metal_unchecked(instance, layer, object)?)
@@ -788,13 +782,13 @@ impl Surface {
     fn validate_from_metal<L>(
         instance: &Instance,
         _layer: *const L,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().ext_metal_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_metal`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "ext_metal_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -848,7 +842,7 @@ impl Surface {
         context: *const C,
         window: *const W,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_qnx_screen(&instance, context, window)?;
 
         Ok(Self::from_qnx_screen_unchecked(
@@ -860,13 +854,13 @@ impl Surface {
         instance: &Instance,
         _context: *const C,
         _window: *const W,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().qnx_screen_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_qnx_screen`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "qnx_screen_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -926,22 +920,19 @@ impl Surface {
         instance: Arc<Instance>,
         window: *const W,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_vi(&instance, window)?;
 
         Ok(Self::from_vi_unchecked(instance, window, object)?)
     }
 
-    fn validate_from_vi<W>(
-        instance: &Instance,
-        _window: *const W,
-    ) -> Result<(), SurfaceCreationError> {
+    fn validate_from_vi<W>(instance: &Instance, _window: *const W) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().nn_vi_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_vi`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "nn_vi_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -1000,7 +991,7 @@ impl Surface {
         display: *const D,
         surface: *const S,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_wayland(&instance, display, surface)?;
 
         Ok(Self::from_wayland_unchecked(
@@ -1012,13 +1003,13 @@ impl Surface {
         instance: &Instance,
         _display: *const D,
         _surface: *const S,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().khr_wayland_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_wayland`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_wayland_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -1082,7 +1073,7 @@ impl Surface {
         hinstance: *const I,
         hwnd: *const W,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_win32(&instance, hinstance, hwnd)?;
 
         Ok(Self::from_win32_unchecked(
@@ -1094,13 +1085,13 @@ impl Surface {
         instance: &Instance,
         _hinstance: *const I,
         _hwnd: *const W,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().khr_win32_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_win32`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_win32_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -1164,7 +1155,7 @@ impl Surface {
         connection: *const C,
         window: ash::vk::xcb_window_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_xcb(&instance, connection, window)?;
 
         Ok(Self::from_xcb_unchecked(
@@ -1176,13 +1167,13 @@ impl Surface {
         instance: &Instance,
         _connection: *const C,
         _window: ash::vk::xcb_window_t,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().khr_xcb_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_xcb`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_xcb_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -1246,7 +1237,7 @@ impl Surface {
         display: *const D,
         window: ash::vk::Window,
         object: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<Arc<Self>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         Self::validate_from_xlib(&instance, display, window)?;
 
         Ok(Self::from_xlib_unchecked(
@@ -1258,13 +1249,13 @@ impl Surface {
         instance: &Instance,
         _display: *const D,
         _window: ash::vk::Window,
-    ) -> Result<(), SurfaceCreationError> {
+    ) -> Result<(), ValidationError> {
         if !instance.enabled_extensions().khr_xlib_surface {
-            return Err(SurfaceCreationError::RequirementNotMet {
-                required_for: "`Surface::from_xlib`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_xlib_surface",
                 )])]),
+                ..Default::default()
             });
         }
 
@@ -1379,7 +1370,6 @@ impl Debug for Surface {
             instance,
             api,
             object: _,
-            has_swapchain,
             ..
         } = self;
 
@@ -1388,15 +1378,7 @@ impl Debug for Surface {
             .field("instance", instance)
             .field("api", api)
             .field("window", &())
-            .field("has_swapchain", &has_swapchain)
             .finish()
-    }
-}
-
-unsafe impl SurfaceSwapchainLock for Surface {
-    #[inline]
-    fn flag(&self) -> &AtomicBool {
-        &self.has_swapchain
     }
 }
 
@@ -1444,63 +1426,6 @@ unsafe fn get_metal_layer_macos(ns_view: *mut std::ffi::c_void) -> *mut Object {
         new_layer
     } else {
         main_layer
-    }
-}
-
-/// Error that can happen when creating a surface.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum SurfaceCreationError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-}
-
-impl Error for SurfaceCreationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            SurfaceCreationError::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for SurfaceCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-        }
-    }
-}
-
-impl From<OomError> for SurfaceCreationError {
-    fn from(err: OomError) -> SurfaceCreationError {
-        SurfaceCreationError::OomError(err)
-    }
-}
-
-impl From<RuntimeError> for SurfaceCreationError {
-    fn from(err: RuntimeError) -> SurfaceCreationError {
-        match err {
-            err @ RuntimeError::OutOfHostMemory => {
-                SurfaceCreationError::OomError(OomError::from(err))
-            }
-            err @ RuntimeError::OutOfDeviceMemory => {
-                SurfaceCreationError::OomError(OomError::from(err))
-            }
-            _ => panic!("unexpected error: {:?}", err),
-        }
     }
 }
 
@@ -1882,8 +1807,21 @@ vulkan_enum! {
 /// [`PhysicalDevice::surface_formats`]: crate::device::physical::PhysicalDevice::surface_formats
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceInfo {
+    /// If this is `Some`, the
+    /// [`ext_surface_maintenance1`](crate::instance::InstanceExtensions::ext_surface_maintenance1)
+    /// extension must be enabled on the instance.
+    pub present_mode: Option<PresentMode>,
+
+    /// If this is not [`FullScreenExclusive::Default`], the
+    /// [`ext_full_screen_exclusive`](crate::device::DeviceExtensions::ext_full_screen_exclusive)
+    /// extension must be supported by the physical device.
     pub full_screen_exclusive: FullScreenExclusive,
+
+    /// If `full_screen_exclusive` is [`FullScreenExclusive::ApplicationControlled`], and the
+    /// surface being queried is a Win32 surface, then this must be `Some`. Otherwise, it must be
+    /// `None`.
     pub win32_monitor: Option<Win32Monitor>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1891,6 +1829,7 @@ impl Default for SurfaceInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            present_mode: None,
             full_screen_exclusive: FullScreenExclusive::Default,
             win32_monitor: None,
             _ne: crate::NonExhaustive(()),
@@ -1901,15 +1840,41 @@ impl Default for SurfaceInfo {
 impl SurfaceInfo {
     pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
         let &Self {
+            present_mode,
             full_screen_exclusive,
             win32_monitor: _,
             _ne: _,
         } = self;
 
-        if !physical_device
-            .supported_extensions()
-            .ext_full_screen_exclusive
-            && full_screen_exclusive != FullScreenExclusive::Default
+        if let Some(present_mode) = present_mode {
+            if !physical_device
+                .instance()
+                .enabled_extensions()
+                .ext_surface_maintenance1
+            {
+                return Err(ValidationError {
+                    context: "present_mode".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                        Requires::InstanceExtension("ext_surface_maintenance1"),
+                    ])]),
+                    ..Default::default()
+                });
+            }
+
+            present_mode
+                .validate_physical_device(physical_device)
+                .map_err(|err| ValidationError {
+                    context: "present_mode".into(),
+                    vuids: &["VUID-VkSurfacePresentModeEXT-presentMode-parameter"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+        }
+
+        if full_screen_exclusive != FullScreenExclusive::Default
+            && !physical_device
+                .supported_extensions()
+                .ext_full_screen_exclusive
         {
             return Err(ValidationError {
                 context: "full_screen_exclusive".into(),
@@ -1972,8 +1937,9 @@ pub struct SurfaceCapabilities {
     /// you may still get out of memory errors.
     pub max_image_count: Option<u32>,
 
-    /// The current dimensions of the surface. `None` means that the surface's dimensions will
-    /// depend on the dimensions of the swapchain that you are going to create.
+    /// The current dimensions of the surface.
+    ///
+    /// `None` means that the surface's dimensions will depend on the dimensions of the swapchain.
     pub current_extent: Option<[u32; 2]>,
 
     /// Minimum width and height of a swapchain that uses this surface.
@@ -1998,6 +1964,49 @@ pub struct SurfaceCapabilities {
     /// the `color_attachment` usage is guaranteed to be supported.
     pub supported_usage_flags: ImageUsage,
 
+    /// When [`SurfaceInfo::present_mode`] is provided,
+    /// lists that present mode and any modes that are compatible with that present mode.
+    ///
+    /// If [`SurfaceInfo::present_mode`] was not provided, the value will be empty.
+    pub compatible_present_modes: SmallVec<[PresentMode; PresentMode::COUNT]>,
+
+    /// When [`SurfaceInfo::present_mode`] is provided,
+    /// the supported present scaling modes for the queried present mode.
+    ///
+    /// If [`SurfaceInfo::present_mode`] was not provided, the value will be empty.
+    pub supported_present_scaling: PresentScalingFlags,
+
+    /// When [`SurfaceInfo::present_mode`] is provided,
+    /// the supported present gravity modes, horizontally and vertically,
+    /// for the queried present mode.
+    ///
+    /// If [`SurfaceInfo::present_mode`] was not provided, both values will be empty.
+    pub supported_present_gravity: [PresentGravityFlags; 2],
+
+    /// When [`SurfaceInfo::present_mode`] is provided,
+    /// the smallest allowed extent for a swapchain, if it uses the queried present mode, and
+    /// one of the scaling modes in `supported_present_scaling`.
+    ///
+    /// This is never greater than [`SurfaceCapabilities::min_image_extent`].
+    ///
+    /// `None` means that the surface's dimensions will depend on the dimensions of the swapchain.
+    ///
+    /// If [`SurfaceInfo::present_mode`] was not provided, this is will be equal to
+    /// `min_image_extent`.
+    pub min_scaled_image_extent: Option<[u32; 2]>,
+
+    /// When [`SurfaceInfo::present_mode`] is provided,
+    /// the largest allowed extent for a swapchain, if it uses the queried present mode, and
+    /// one of the scaling modes in `supported_present_scaling`.
+    ///
+    /// This is never less than [`SurfaceCapabilities::max_image_extent`].
+    ///
+    /// `None` means that the surface's dimensions will depend on the dimensions of the swapchain.
+    ///
+    /// If [`SurfaceInfo::present_mode`] was not provided, this is will be equal to
+    /// `max_image_extent`.
+    pub max_scaled_image_extent: Option<[u32; 2]>,
+
     /// Whether creating a protected swapchain is supported.
     pub supports_protected: bool,
 
@@ -2008,8 +2017,7 @@ pub struct SurfaceCapabilities {
 #[cfg(test)]
 mod tests {
     use crate::{
-        swapchain::{Surface, SurfaceCreationError},
-        Requires, RequiresAllOf, RequiresOneOf,
+        swapchain::Surface, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanError,
     };
     use std::ptr;
 
@@ -2017,11 +2025,11 @@ mod tests {
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_win32(instance, ptr::null::<u8>(), ptr::null::<u8>(), None) } {
-            Err(SurfaceCreationError::RequirementNotMet {
+            Err(VulkanError::ValidationError(ValidationError {
                 requires_one_of:
                     RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_win32_surface")])]),
                 ..
-            }) => (),
+            })) => (),
             _ => panic!(),
         }
     }
@@ -2030,11 +2038,11 @@ mod tests {
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0, None) } {
-            Err(SurfaceCreationError::RequirementNotMet {
+            Err(VulkanError::ValidationError(ValidationError {
                 requires_one_of:
                     RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_xcb_surface")])]),
                 ..
-            }) => (),
+            })) => (),
             _ => panic!(),
         }
     }
@@ -2043,11 +2051,11 @@ mod tests {
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0, None) } {
-            Err(SurfaceCreationError::RequirementNotMet {
+            Err(VulkanError::ValidationError(ValidationError {
                 requires_one_of:
                     RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_xlib_surface")])]),
                 ..
-            }) => (),
+            })) => (),
             _ => panic!(),
         }
     }
@@ -2057,11 +2065,11 @@ mod tests {
         let instance = instance!();
         match unsafe { Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>(), None) }
         {
-            Err(SurfaceCreationError::RequirementNotMet {
+            Err(VulkanError::ValidationError(ValidationError {
                 requires_one_of:
                     RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_wayland_surface")])]),
                 ..
-            }) => (),
+            })) => (),
             _ => panic!(),
         }
     }
@@ -2070,11 +2078,11 @@ mod tests {
     fn khr_android_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_android(instance, ptr::null::<u8>(), None) } {
-            Err(SurfaceCreationError::RequirementNotMet {
+            Err(VulkanError::ValidationError(ValidationError {
                 requires_one_of:
                     RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_android_surface")])]),
                 ..
-            }) => (),
+            })) => (),
             _ => panic!(),
         }
     }

@@ -310,8 +310,12 @@ where
                         .map_err(|err| OutcomeErr::Full(err.into()))
                 }
                 SubmitAnyBuilder::QueuePresent(present_info) => {
-                    let intermediary_result = if partially_flushed {
-                        Ok(())
+                    if partially_flushed {
+                        queue
+                            .with(|mut q| {
+                                q.submit_unchecked([Default::default()], Some(new_fence.clone()))
+                            })
+                            .map_err(|err| OutcomeErr::Partial(err.into()))
                     } else {
                         // VUID-VkPresentIdKHR-presentIds-04999
                         for swapchain_info in &present_info.swapchain_infos {
@@ -334,19 +338,22 @@ where
                             }
                         }
 
-                        queue
+                        let intermediary_result = queue
                             .with(|mut q| q.present_unchecked(present_info))?
                             .map(|r| r.map(|_| ()))
-                            .fold(Ok(()), Result::and)
-                    };
+                            .fold(Ok(()), Result::and);
 
-                    match intermediary_result {
-                        Ok(()) => queue
-                            .with(|mut q| {
-                                q.submit_unchecked([Default::default()], Some(new_fence.clone()))
-                            })
-                            .map_err(|err| OutcomeErr::Partial(err.into())),
-                        Err(err) => Err(OutcomeErr::Full(err.into())),
+                        match intermediary_result {
+                            Ok(()) => queue
+                                .with(|mut q| {
+                                    q.submit_unchecked(
+                                        [Default::default()],
+                                        Some(new_fence.clone()),
+                                    )
+                                })
+                                .map_err(|err| OutcomeErr::Partial(err.into())),
+                            Err(err) => Err(OutcomeErr::Full(err.into())),
+                        }
                     }
                 }
             };
