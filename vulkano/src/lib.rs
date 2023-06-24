@@ -425,9 +425,9 @@ impl Display for ValidationError {
 
         if !self.requires_one_of.is_empty() {
             if self.problem.is_empty() {
-                write!(f, "requires one of: {}", self.requires_one_of)?;
+                write!(f, "{}", self.requires_one_of)?;
             } else {
-                write!(f, " -- requires one of: {}", self.requires_one_of)?;
+                write!(f, " -- {}", self.requires_one_of)?;
             }
         }
 
@@ -449,7 +449,7 @@ impl Error for ValidationError {}
 
 /// Used in errors to indicate a set of alternatives that needs to be available/enabled to allow
 /// a given operation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct RequiresOneOf(pub &'static [RequiresAllOf]);
 
 impl RequiresOneOf {
@@ -464,8 +464,22 @@ impl RequiresOneOf {
     }
 }
 
+impl Debug for RequiresOneOf {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "Requires one of:")?;
+
+        for requires_all_of in self.0 {
+            write!(f, "\n    {}", requires_all_of)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl Display for RequiresOneOf {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "requires one of: ")?;
+
         if let Some((first, rest)) = self.0.split_first() {
             if first.0.len() > 1 {
                 write!(f, "({})", first)?;
@@ -475,7 +489,7 @@ impl Display for RequiresOneOf {
 
             for rest in rest {
                 if first.0.len() > 1 {
-                    write!(f, "or ({})", rest)?;
+                    write!(f, " or ({})", rest)?;
                 } else {
                     write!(f, " or {}", rest)?;
                 }
@@ -515,7 +529,7 @@ pub enum Requires {
 }
 
 impl Display for Requires {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Requires::APIVersion(Version { major, minor, .. }) => {
                 write!(f, "Vulkan API version {}.{}", major, minor)
