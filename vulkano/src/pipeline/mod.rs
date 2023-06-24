@@ -21,7 +21,10 @@ pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::Pip
 use crate::{
     device::{Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
-    shader::{DescriptorBindingRequirements, EntryPoint, ShaderStage, SpecializationConstant},
+    shader::{
+        DescriptorBindingRequirements, EntryPoint, ShaderStage, ShaderStages,
+        SpecializationConstant,
+    },
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
@@ -301,7 +304,7 @@ vulkan_bitflags! {
 /// Specifies a single shader stage when creating a pipeline.
 #[derive(Clone, Debug)]
 pub struct PipelineShaderStageCreateInfo {
-    /// Additional properties of the shader stage.
+    /// Specifies how to create the shader stage.
     ///
     /// The default value is empty.
     pub flags: PipelineShaderStageCreateFlags,
@@ -321,6 +324,21 @@ pub struct PipelineShaderStageCreateInfo {
     /// The default value is empty.
     pub specialization_info: HashMap<u32, SpecializationConstant>,
 
+    /// The required subgroup size.
+    ///
+    /// Requires [`subgroup_size_control`](crate::device::Features::subgroup_size_control). The
+    /// shader stage must be included in
+    /// [`required_subgroup_size_stages`](crate::device::Properties::required_subgroup_size_stages).
+    /// Subgroup size must be power of 2 and within
+    /// [`min_subgroup_size`](crate::device::Properties::min_subgroup_size)
+    /// and [`max_subgroup_size`](crate::device::Properties::max_subgroup_size).
+    ///
+    /// For compute shaders, `max_compute_workgroup_subgroups * required_subgroup_size` must be
+    /// greater than or equal to `workgroup_size.x * workgroup_size.y * workgroup_size.z`.
+    ///
+    /// The default value is None.
+    pub required_subgroup_size: Option<u32>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -332,6 +350,7 @@ impl PipelineShaderStageCreateInfo {
             flags: PipelineShaderStageCreateFlags::empty(),
             entry_point,
             specialization_info: HashMap::default(),
+            required_subgroup_size: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -341,6 +360,7 @@ impl PipelineShaderStageCreateInfo {
             flags,
             ref entry_point,
             ref specialization_info,
+            ref required_subgroup_size,
             _ne: _,
         } = self;
 
@@ -473,10 +493,58 @@ impl PipelineShaderStageCreateInfo {
                     }));
                 }
             }
+
+            if let Some(required_subgroup_size) = required_subgroup_size {
+                // TODO: Workgroup size could be reflected?
+                let workgroup_size = None;
+                validate_required_subgroup_size(
+                    device,
+                    stage_enum,
+                    workgroup_size,
+                    *required_subgroup_size,
+                )?;
+            }
         }
 
         Ok(())
     }
+}
+
+pub(crate) fn validate_required_subgroup_size(
+    device: &Device,
+    stage: ShaderStage,
+    workgroup_size: Option<u32>,
+    subgroup_size: u32,
+) -> Result<(), crate::ValidationError> {
+    if !device.enabled_features().subgroup_size_control {
+        todo!("requires subgroup_size_control");
+    }
+    let stages: ShaderStages = [stage].into_iter().collect();
+    let properties = device.physical_device().properties();
+    if !properties
+        .required_subgroup_size_stages
+        .unwrap_or_default()
+        .contains(stages)
+    {
+        todo!("shader stage {stage:?} not supported");
+    }
+    if subgroup_size.is_power_of_two() {
+        todo!("not power of 2")
+    }
+    let min_subgroup_size = properties.min_subgroup_size.unwrap_or(1);
+    let max_subgroup_size = properties.max_subgroup_size.unwrap_or(128);
+    if !(min_subgroup_size..=max_subgroup_size).contains(&subgroup_size) {
+        todo!("out of range")
+    }
+    if let Some(workgroup_size) = workgroup_size {
+        let max_compute_workgroup_subgroups = properties
+            .max_compute_workgroup_subgroups
+            .unwrap_or_default();
+        if max_compute_workgroup_subgroups * subgroup_size < workgroup_size {
+            todo!("too many subgroups");
+        }
+    }
+    Ok(())
 }
 
 vulkan_bitflags! {
