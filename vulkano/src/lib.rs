@@ -427,7 +427,7 @@ impl Display for ValidationError {
             if self.problem.is_empty() {
                 write!(f, "requires one of: {}", self.requires_one_of)?;
             } else {
-                write!(f, " -- requires one of: {}", self.requires_one_of)?;
+                write!(f, " -- {}", self.requires_one_of)?;
             }
         }
 
