@@ -10,8 +10,10 @@
 //! Configures how input vertices are assembled into primitives.
 
 use crate::{
+    device::Device,
     macros::vulkan_enum,
     pipeline::{PartialStateMode, StateMode},
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
 };
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
@@ -77,6 +79,166 @@ impl InputAssemblyState {
     pub fn primitive_restart_enable_dynamic(mut self) -> Self {
         self.primitive_restart_enable = StateMode::Dynamic;
         self
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            topology,
+            primitive_restart_enable,
+        } = self;
+
+        match topology {
+            PartialStateMode::Fixed(topology) => {
+                topology
+                    .validate_device(device)
+                    .map_err(|err| ValidationError {
+                        context: "topology".into(),
+                        vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter"],
+                        ..ValidationError::from_requirement(err)
+                    })?;
+
+                match topology {
+                    PrimitiveTopology::TriangleFan => {
+                        if device.enabled_extensions().khr_portability_subset
+                            && !device.enabled_features().triangle_fans
+                        {
+                            return Err(ValidationError {
+                                problem: "this device is a portability subset device, and \
+                                    `topology` is `PrimitiveTopology::TriangleFan`"
+                                    .into(),
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("triangle_fans"),
+                                ])]),
+                                vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-triangleFans-04452"],
+                                ..Default::default()
+                            });
+                        }
+                    }
+                    PrimitiveTopology::LineListWithAdjacency
+                    | PrimitiveTopology::LineStripWithAdjacency
+                    | PrimitiveTopology::TriangleListWithAdjacency
+                    | PrimitiveTopology::TriangleStripWithAdjacency => {
+                        if !device.enabled_features().geometry_shader {
+                            return Err(ValidationError {
+                                context: "topology".into(),
+                                problem: "is `PrimitiveTopology::*WithAdjacency`".into(),
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("geometry_shader"),
+                                ])]),
+                                vuids: &[
+                                    "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429",
+                                ],
+                            });
+                        }
+                    }
+                    PrimitiveTopology::PatchList => {
+                        if !device.enabled_features().tessellation_shader {
+                            return Err(ValidationError {
+                                context: "topology".into(),
+                                problem: "is `PrimitiveTopology::PatchList`".into(),
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("tessellation_shader"),
+                                ])]),
+                                vuids: &[
+                                    "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430",
+                                ],
+                            });
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            PartialStateMode::Dynamic(topology_class) => {
+                topology_class
+                    .example()
+                    .validate_device(device)
+                    .map_err(|err| ValidationError {
+                        context: "topology".into(),
+                        vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter"],
+                        ..ValidationError::from_requirement(err)
+                    })?;
+
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state)
+                {
+                    return Err(ValidationError {
+                        context: "topology".into(),
+                        problem: "is dynamic".into(),
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                        ]),
+                        // vuids?
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        match primitive_restart_enable {
+            StateMode::Fixed(primitive_restart_enable) => {
+                if primitive_restart_enable {
+                    match topology {
+                        PartialStateMode::Fixed(
+                            PrimitiveTopology::PointList
+                            | PrimitiveTopology::LineList
+                            | PrimitiveTopology::TriangleList
+                            | PrimitiveTopology::LineListWithAdjacency
+                            | PrimitiveTopology::TriangleListWithAdjacency,
+                        ) => {
+                            if !device.enabled_features().primitive_topology_list_restart {
+                                return Err(ValidationError {
+                                    problem: "`topology` is `PrimitiveTopology::*List`, and \
+                                        `primitive_restart_enable` is `true`"
+                                        .into(),
+                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                        Requires::Feature("primitive_topology_list_restart"),
+                                    ])]),
+                                    vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06252"],
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                        PartialStateMode::Fixed(PrimitiveTopology::PatchList) => {
+                            if !device
+                                .enabled_features()
+                                .primitive_topology_patch_list_restart
+                            {
+                                return Err(ValidationError {
+                                    problem: "`topology` is `PrimitiveTopology::PatchList`, and \
+                                        `primitive_restart_enable` is `true`"
+                                        .into(),
+                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                        Requires::Feature("primitive_topology_patch_list_restart"),
+                                    ])]),
+                                    vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06253"],
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+            }
+            StateMode::Dynamic => {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state2)
+                {
+                    return Err(ValidationError {
+                        context: "primitive_restart_enable".into(),
+                        problem: "is dynamic".into(),
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                        ]),
+                        // vuids?
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

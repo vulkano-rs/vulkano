@@ -9,10 +9,9 @@
 
 use super::VertexBufferDescription;
 use crate::{
-    pipeline::graphics::vertex_input::{
-        IncompatibleVertexDefinitionError, Vertex, VertexDefinition, VertexInputState,
-    },
+    pipeline::graphics::vertex_input::{Vertex, VertexDefinition, VertexInputState},
     shader::ShaderInterface,
+    ValidationError,
 };
 
 /// A vertex definition for any number of vertex and instance buffers.
@@ -63,10 +62,7 @@ impl BuffersDefinition {
 #[allow(deprecated)]
 unsafe impl VertexDefinition for BuffersDefinition {
     #[inline]
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<VertexInputState, IncompatibleVertexDefinitionError> {
+    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
         self.0.definition(interface)
     }
 }

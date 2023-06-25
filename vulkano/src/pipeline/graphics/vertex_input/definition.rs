@@ -11,65 +11,19 @@ use super::{
     VertexBufferDescription, VertexInputAttributeDescription, VertexInputBindingDescription,
 };
 use crate::{
-    pipeline::graphics::vertex_input::{VertexInputState, VertexMemberInfo},
-    shader::{ShaderInterface, ShaderInterfaceEntryType},
-    DeviceSize,
-};
-use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
+    pipeline::graphics::vertex_input::VertexInputState, shader::ShaderInterface, DeviceSize,
+    ValidationError,
 };
 
 /// Trait for types that can create a [`VertexInputState`] from a [`ShaderInterface`].
 pub unsafe trait VertexDefinition {
     /// Builds the `VertexInputState` for the provided `interface`.
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<VertexInputState, IncompatibleVertexDefinitionError>;
-}
-
-/// Error that can happen when the vertex definition doesn't match the input of the vertex shader.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum IncompatibleVertexDefinitionError {
-    /// An attribute of the vertex shader is missing in the vertex source.
-    MissingAttribute {
-        /// Name of the missing attribute.
-        attribute: String,
-    },
-
-    /// The format of an attribute does not match.
-    FormatMismatch {
-        /// Name of the attribute.
-        attribute: String,
-        /// The format in the vertex shader.
-        shader: ShaderInterfaceEntryType,
-        /// The format in the vertex definition.
-        definition: VertexMemberInfo,
-    },
-}
-
-impl Error for IncompatibleVertexDefinitionError {}
-
-impl Display for IncompatibleVertexDefinitionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            IncompatibleVertexDefinitionError::MissingAttribute { .. } => {
-                write!(f, "an attribute is missing")
-            }
-            IncompatibleVertexDefinitionError::FormatMismatch { .. } => {
-                write!(f, "the format of an attribute does not match")
-            }
-        }
-    }
+    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError>;
 }
 
 unsafe impl VertexDefinition for &[VertexBufferDescription] {
     #[inline]
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<VertexInputState, IncompatibleVertexDefinitionError> {
+    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
         let bindings = self.iter().enumerate().map(|(binding, buffer)| {
             (
                 binding as u32,
@@ -82,7 +36,7 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
         let mut attributes: Vec<(u32, VertexInputAttributeDescription)> = Vec::new();
 
         for element in interface.elements() {
-            let name = element.name.as_ref().unwrap().clone().into_owned();
+            let name = element.name.as_ref().unwrap();
 
             let (infos, binding) = self
                 .iter()
@@ -90,11 +44,17 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
                 .find_map(|(binding, buffer)| {
                     buffer
                         .members
-                        .get(&name)
+                        .get(name.as_ref())
                         .map(|infos| (infos.clone(), binding as u32))
                 })
-                .ok_or_else(|| IncompatibleVertexDefinitionError::MissingAttribute {
-                    attribute: name.clone(),
+                .ok_or_else(|| ValidationError {
+                    problem: format!(
+                        "the shader interface contains a variable named \"{}\", \
+                        but no such attribute exists in the vertex definition",
+                        name,
+                    )
+                    .into(),
+                    ..Default::default()
                 })?;
 
             // TODO: ShaderInterfaceEntryType does not properly support 64bit.
@@ -103,10 +63,15 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
             if infos.num_components() != element.ty.num_components
                 || infos.num_elements != element.ty.num_locations()
             {
-                return Err(IncompatibleVertexDefinitionError::FormatMismatch {
-                    attribute: name,
-                    shader: element.ty,
-                    definition: infos,
+                return Err(ValidationError {
+                    problem: format!(
+                        "for the variable \"{}\", the number of locations and components \
+                        required by the shader don't match the number of locations and components \
+                        of the type provided in the vertex definition",
+                        name,
+                    )
+                    .into(),
+                    ..Default::default()
                 });
             }
 
@@ -141,30 +106,21 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
 
 unsafe impl<const N: usize> VertexDefinition for [VertexBufferDescription; N] {
     #[inline]
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<VertexInputState, IncompatibleVertexDefinitionError> {
+    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
         self.as_slice().definition(interface)
     }
 }
 
 unsafe impl VertexDefinition for Vec<VertexBufferDescription> {
     #[inline]
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<VertexInputState, IncompatibleVertexDefinitionError> {
+    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
         self.as_slice().definition(interface)
     }
 }
 
 unsafe impl VertexDefinition for VertexBufferDescription {
     #[inline]
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<VertexInputState, IncompatibleVertexDefinitionError> {
+    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
         std::slice::from_ref(self).definition(interface)
     }
 }

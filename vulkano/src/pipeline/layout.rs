@@ -63,16 +63,15 @@
 //! A pipeline layout is a Vulkan object type, represented in Vulkano with the `PipelineLayout`
 //! type. Each pipeline that you create holds a pipeline layout object.
 
+use super::PipelineShaderStageCreateInfo;
 use crate::{
     descriptor_set::layout::{
-        DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorSetLayoutBinding,
-        DescriptorSetLayoutCreateFlags, DescriptorSetLayoutCreateInfo, DescriptorType,
+        DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateFlags,
+        DescriptorSetLayoutCreateInfo, DescriptorType,
     },
     device::{Device, DeviceOwned, Properties},
     macros::{impl_id_counter, vulkan_bitflags},
-    shader::{
-        DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderStage, ShaderStages,
-    },
+    shader::{DescriptorBindingRequirements, ShaderStage, ShaderStages},
     RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
@@ -82,7 +81,7 @@ use std::{
     cmp::max,
     collections::hash_map::Entry,
     error::Error,
-    fmt::{Display, Error as FmtError, Formatter, Write},
+    fmt::{Display, Formatter, Write},
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -323,7 +322,7 @@ impl PipelineLayout {
             Item = ((u32, u32), &'a DescriptorBindingRequirements),
         >,
         push_constant_range: Option<&PushConstantRange>,
-    ) -> Result<(), PipelineLayoutSupersetError> {
+    ) -> Result<(), ValidationError> {
         for ((set_num, binding_num), reqs) in descriptor_requirements.into_iter() {
             let layout_binding = self
                 .set_layouts
@@ -333,32 +332,41 @@ impl PipelineLayout {
             let layout_binding = match layout_binding {
                 Some(x) => x,
                 None => {
-                    return Err(PipelineLayoutSupersetError::DescriptorMissing {
-                        set_num,
-                        binding_num,
-                    })
+                    return Err(ValidationError {
+                        problem: format!(
+                            "the requirements for descriptor set {} binding {} were not met: \
+                            no such binding exists in the pipeline layout",
+                            set_num, binding_num,
+                        )
+                        .into(),
+                        ..Default::default()
+                    });
                 }
             };
 
             if let Err(error) = layout_binding.ensure_compatible_with_shader(reqs) {
-                return Err(PipelineLayoutSupersetError::DescriptorRequirementsNotMet {
-                    set_num,
-                    binding_num,
-                    error,
+                return Err(ValidationError {
+                    problem: format!(
+                        "the requirements for descriptor set {} binding {} were not met: {}",
+                        set_num, binding_num, error,
+                    )
+                    .into(),
+                    ..Default::default()
                 });
             }
         }
 
-        // FIXME: check push constants
         if let Some(range) = push_constant_range {
             for own_range in self.push_constant_ranges.iter() {
                 if range.stages.intersects(own_range.stages) &&       // check if it shares any stages
                     (range.offset < own_range.offset || // our range must start before and end after the given range
                         own_range.offset + own_range.size < range.offset + range.size)
                 {
-                    return Err(PipelineLayoutSupersetError::PushConstantRange {
-                        first_range: *own_range,
-                        second_range: *range,
+                    return Err(ValidationError {
+                        problem: "the required push constant range is larger than the \
+                            push constant range in the pipeline layout"
+                            .into(),
+                        ..Default::default()
                     });
                 }
             }
@@ -399,7 +407,9 @@ impl_id_counter!(PipelineLayout);
 /// Parameters to create a new `PipelineLayout`.
 #[derive(Clone, Debug)]
 pub struct PipelineLayoutCreateInfo {
-    /// Specifies how to create the pipeline layout.
+    /// Additional properties of the pipeline layout.
+    ///
+    /// The default value is empty.
     pub flags: PipelineLayoutCreateFlags,
 
     /// The descriptor set layouts that should be part of the pipeline layout.
@@ -752,7 +762,7 @@ impl PipelineLayoutCreateInfo {
 vulkan_bitflags! {
     #[non_exhaustive]
 
-    /// Flags that control how a pipeline layout is created.
+    /// Flags specifying additional properties of a pipeline layout.
     PipelineLayoutCreateFlags = PipelineLayoutCreateFlags(u32);
 
     /* TODO: enable
@@ -873,78 +883,6 @@ impl PushConstantRange {
         }
 
         Ok(())
-    }
-}
-
-/// Error when checking whether a pipeline layout is a superset of another one.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PipelineLayoutSupersetError {
-    DescriptorMissing {
-        set_num: u32,
-        binding_num: u32,
-    },
-    DescriptorRequirementsNotMet {
-        set_num: u32,
-        binding_num: u32,
-        error: DescriptorRequirementsNotMet,
-    },
-    PushConstantRange {
-        first_range: PushConstantRange,
-        second_range: PushConstantRange,
-    },
-}
-
-impl Error for PipelineLayoutSupersetError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            PipelineLayoutSupersetError::DescriptorRequirementsNotMet { error, .. } => Some(error),
-            _ => None,
-        }
-    }
-}
-
-impl Display for PipelineLayoutSupersetError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            PipelineLayoutSupersetError::DescriptorRequirementsNotMet {
-                set_num,
-                binding_num,
-                ..
-            } => write!(
-                f,
-                "the descriptor at set {} binding {} does not meet the requirements",
-                set_num, binding_num,
-            ),
-            PipelineLayoutSupersetError::DescriptorMissing {
-                set_num,
-                binding_num,
-            } => write!(
-                f,
-                "a descriptor at set {} binding {} is required by the shaders, but is missing from \
-                the pipeline layout",
-                set_num, binding_num,
-            ),
-            PipelineLayoutSupersetError::PushConstantRange {
-                first_range,
-                second_range,
-            } => {
-                writeln!(f, "our range did not completely encompass the other range")?;
-                writeln!(f, "    our stages: {:?}", first_range.stages)?;
-                writeln!(
-                    f,
-                    "    our range: {} - {}",
-                    first_range.offset,
-                    first_range.offset + first_range.size,
-                )?;
-                writeln!(f, "    other stages: {:?}", second_range.stages)?;
-                write!(
-                    f,
-                    "    other range: {} - {}",
-                    second_range.offset,
-                    second_range.offset + second_range.size,
-                )
-            }
-        }
     }
 }
 

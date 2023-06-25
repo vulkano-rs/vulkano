@@ -22,14 +22,12 @@
 //! any descriptor sets and/or push constants that the pipeline needs, and then issuing a `dispatch`
 //! command on the command buffer.
 
-use super::PipelineCreateFlags;
+use super::{PipelineCreateFlags, PipelineShaderStageCreateInfo};
 use crate::{
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
     pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
-    shader::{
-        DescriptorBindingRequirements, PipelineShaderStageCreateInfo, ShaderExecution, ShaderStage,
-    },
+    shader::{DescriptorBindingRequirements, ShaderExecution, ShaderStage},
     RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
@@ -82,93 +80,9 @@ impl ComputePipeline {
             assert_eq!(device, cache.device().as_ref());
         }
 
-        let &ComputePipelineCreateInfo {
-            flags: _,
-            ref stage,
-            ref layout,
-            _ne: _,
-        } = create_info;
-
-        {
-            let &PipelineShaderStageCreateInfo {
-                flags,
-                ref entry_point,
-                ref specialization_info,
-                _ne: _,
-            } = &stage;
-
-            flags
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "create_info.stage.flags".into(),
-                    vuids: &["VUID-VkPipelineShaderStageCreateInfo-flags-parameter"],
-                    ..ValidationError::from_requirement(err)
-                })?;
-
-            let entry_point_info = entry_point.info();
-
-            if !matches!(entry_point_info.execution, ShaderExecution::Compute) {
-                return Err(ValidationError {
-                    context: "create_info.stage.entry_point".into(),
-                    problem: "is not a compute shader".into(),
-                    vuids: &[
-                        "VUID-VkComputePipelineCreateInfo-stage-00701",
-                        "VUID-VkPipelineShaderStageCreateInfo-stage-parameter",
-                    ],
-                    ..Default::default()
-                });
-            }
-
-            for (&constant_id, provided_value) in specialization_info {
-                // Per `VkSpecializationMapEntry` spec:
-                // "If a constantID value is not a specialization constant ID used in the shader,
-                // that map entry does not affect the behavior of the pipeline."
-                // We *may* want to be stricter than this for the sake of catching user errors?
-                if let Some(default_value) =
-                    entry_point_info.specialization_constants.get(&constant_id)
-                {
-                    // Check for equal types rather than only equal size.
-                    if !provided_value.eq_type(default_value) {
-                        return Err(ValidationError {
-                            context: format!(
-                                "create_info.stage.specialization_info[{}]",
-                                constant_id
-                            )
-                            .into(),
-                            problem: "the provided value has a different type than the constant's \
-                                default value"
-                                .into(),
-                            vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
-                            ..Default::default()
-                        });
-                    }
-                }
-            }
-
-            // TODO: Make sure that all VUIDs are indeed checked.
-            layout
-                .ensure_compatible_with_shader(
-                    entry_point_info
-                        .descriptor_binding_requirements
-                        .iter()
-                        .map(|(k, v)| (*k, v)),
-                    entry_point_info.push_constant_requirements.as_ref(),
-                )
-                .map_err(|err| ValidationError {
-                    context: "create_info.stage.entry_point".into(),
-                    vuids: &[
-                        "VUID-VkComputePipelineCreateInfo-layout-07987",
-                        "VUID-VkComputePipelineCreateInfo-layout-07988",
-                        "VUID-VkComputePipelineCreateInfo-layout-07990",
-                        "VUID-VkComputePipelineCreateInfo-layout-07991",
-                    ],
-                    ..ValidationError::from_error(err)
-                })?;
-
-            // VUID-VkComputePipelineCreateInfo-stage-00702
-            // VUID-VkComputePipelineCreateInfo-layout-01687
-            // TODO:
-        }
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
 
         Ok(())
     }
@@ -379,7 +293,7 @@ impl Drop for ComputePipeline {
 /// Parameters to create a new `ComputePipeline`.
 #[derive(Clone, Debug)]
 pub struct ComputePipelineCreateInfo {
-    /// Specifies how to create the pipeline.
+    /// Additional properties of the pipeline.
     ///
     /// The default value is empty.
     pub flags: PipelineCreateFlags,
@@ -408,6 +322,71 @@ impl ComputePipelineCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            flags,
+            ref stage,
+            ref layout,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkComputePipelineCreateInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        stage
+            .validate(device)
+            .map_err(|err| err.add_context("stage"))?;
+
+        let &PipelineShaderStageCreateInfo {
+            flags: _,
+            ref entry_point,
+            specialization_info: _,
+            _ne: _,
+        } = &stage;
+
+        let entry_point_info = entry_point.info();
+
+        if !matches!(entry_point_info.execution, ShaderExecution::Compute) {
+            return Err(ValidationError {
+                context: "stage.entry_point".into(),
+                problem: "is not a `ShaderStage::Compute` entry point".into(),
+                vuids: &["VUID-VkComputePipelineCreateInfo-stage-00701"],
+                ..Default::default()
+            });
+        }
+
+        // TODO: Make sure that all VUIDs are indeed checked.
+        layout
+            .ensure_compatible_with_shader(
+                entry_point_info
+                    .descriptor_binding_requirements
+                    .iter()
+                    .map(|(k, v)| (*k, v)),
+                entry_point_info.push_constant_requirements.as_ref(),
+            )
+            .map_err(|err| ValidationError {
+                context: "stage.entry_point".into(),
+                vuids: &[
+                    "VUID-VkComputePipelineCreateInfo-layout-07987",
+                    "VUID-VkComputePipelineCreateInfo-layout-07988",
+                    "VUID-VkComputePipelineCreateInfo-layout-07990",
+                    "VUID-VkComputePipelineCreateInfo-layout-07991",
+                ],
+                ..ValidationError::from_error(err)
+            })?;
+
+        // TODO:
+        // VUID-VkComputePipelineCreateInfo-stage-00702
+        // VUID-VkComputePipelineCreateInfo-layout-01687
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -424,8 +403,9 @@ mod tests {
         pipeline::{
             compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
             ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+            PipelineShaderStageCreateInfo,
         },
-        shader::{PipelineShaderStageCreateInfo, ShaderModule},
+        shader::ShaderModule,
         sync::{now, GpuFuture},
     };
 
@@ -473,7 +453,7 @@ mod tests {
         let pipeline = {
             let stage = PipelineShaderStageCreateInfo {
                 specialization_info: [(83, 0x12345678i32.into())].into_iter().collect(),
-                ..PipelineShaderStageCreateInfo::entry_point(cs)
+                ..PipelineShaderStageCreateInfo::new(cs)
             };
             let layout = PipelineLayout::new(
                 device.clone(),

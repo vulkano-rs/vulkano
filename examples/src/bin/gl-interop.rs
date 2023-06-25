@@ -41,15 +41,15 @@ mod linux {
                 multisample::MultisampleState,
                 rasterization::RasterizationState,
                 vertex_input::{Vertex, VertexDefinition},
-                viewport::{Scissor, Viewport, ViewportState},
+                viewport::{Viewport, ViewportState},
                 GraphicsPipelineCreateInfo,
             },
             layout::PipelineDescriptorSetLayoutCreateInfo,
             GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+            PipelineShaderStageCreateInfo,
         },
         render_pass::{Framebuffer, RenderPass, Subpass},
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
-        shader::PipelineShaderStageCreateInfo,
         swapchain::{
             AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
             SwapchainPresentInfo,
@@ -621,8 +621,8 @@ mod linux {
                 .definition(&vs.info().input_interface)
                 .unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::entry_point(vs),
-                PipelineShaderStageCreateInfo::entry_point(fs),
+                PipelineShaderStageCreateInfo::new(vs),
+                PipelineShaderStageCreateInfo::new(fs),
             ];
             let layout = PipelineLayout::new(
                 device.clone(),
@@ -641,10 +641,7 @@ mod linux {
                     input_assembly_state: Some(
                         InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
                     ),
-                    viewport_state: Some(ViewportState::FixedScissor {
-                        scissors: (0..1).map(|_| Scissor::irrelevant()).collect(),
-                        viewport_count_dynamic: false,
-                    }),
+                    viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
                     rasterization_state: Some(RasterizationState::default()),
                     multisample_state: Some(MultisampleState::default()),
                     color_blend_state: Some(
@@ -658,9 +655,9 @@ mod linux {
         };
 
         let mut viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [0.0, 0.0],
-            depth_range: 0.0..1.0,
+            offset: [0.0, 0.0],
+            extent: [0.0, 0.0],
+            depth_range: 0.0..=1.0,
         };
         let framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
@@ -705,7 +702,7 @@ mod linux {
     ) -> Vec<Arc<Framebuffer>> {
         use vulkano::{image::ImageAccess, render_pass::FramebufferCreateInfo};
         let dimensions = images[0].dimensions().width_height();
-        viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
+        viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
 
         images
             .iter()

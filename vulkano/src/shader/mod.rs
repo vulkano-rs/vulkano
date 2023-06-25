@@ -136,7 +136,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::{Format, NumericType},
     image::view::ImageViewType,
-    macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
+    macros::{impl_id_counter, vulkan_bitflags_enum},
     pipeline::{graphics::input_assembly::PrimitiveTopology, layout::PushConstantRange},
     shader::spirv::{Capability, Spirv, SpirvError},
     sync::PipelineStages,
@@ -725,70 +725,6 @@ impl DescriptorRequirements {
         sampler_with_images.extend(&other.sampler_with_images);
         *storage_image_atomic |= other.storage_image_atomic;
     }
-}
-
-/// Specifies a single shader stage when creating a pipeline.
-#[derive(Clone, Debug)]
-pub struct PipelineShaderStageCreateInfo {
-    /// Specifies how to create the shader stage.
-    ///
-    /// The default value is empty.
-    pub flags: PipelineShaderStageCreateFlags,
-
-    /// The shader entry point for the stage.
-    ///
-    /// There is no default value.
-    pub entry_point: EntryPoint,
-
-    /// Values for the specialization constants in the shader, indexed by their `constant_id`.
-    ///
-    /// Specialization constants are constants whose value can be overridden when you create
-    /// a pipeline. When provided, they must have the same type as defined in the shader.
-    /// Constants that are not given a value here will have the default value that was specified
-    /// for them in the shader code.
-    ///
-    /// The default value is empty.
-    pub specialization_info: HashMap<u32, SpecializationConstant>,
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl PipelineShaderStageCreateInfo {
-    /// Returns a `PipelineShaderStageCreateInfo` with the specified `entry_point`.
-    #[inline]
-    pub fn entry_point(entry_point: EntryPoint) -> Self {
-        Self {
-            flags: PipelineShaderStageCreateFlags::empty(),
-            entry_point,
-            specialization_info: HashMap::default(),
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-vulkan_bitflags! {
-    #[non_exhaustive]
-
-    /// Flags that control how a pipeline shader stage is created.
-    PipelineShaderStageCreateFlags = PipelineShaderStageCreateFlags(u32);
-
-    /* TODO: enable
-    // TODO: document
-    ALLOW_VARYING_SUBGROUP_SIZE = ALLOW_VARYING_SUBGROUP_SIZE
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_3)]),
-        RequiresAllOf([DeviceExtension(ext_subgroup_size_control)]),
-    ]),
-    */
-
-    /* TODO: enable
-    // TODO: document
-    REQUIRE_FULL_SUBGROUPS = REQUIRE_FULL_SUBGROUPS
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_3)]),
-        RequiresAllOf([DeviceExtension(ext_subgroup_size_control)]),
-    ]),
-    */
 }
 
 /// The value to provide for a specialization constant, when creating a pipeline.

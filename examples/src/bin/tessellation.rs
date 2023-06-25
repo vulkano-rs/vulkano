@@ -47,10 +47,9 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout,
+        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::PipelineShaderStageCreateInfo,
     swapchain::{
         acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
         SwapchainCreationError, SwapchainPresentInfo,
@@ -357,10 +356,10 @@ fn main() {
             .definition(&vs.info().input_interface)
             .unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::entry_point(vs),
-            PipelineShaderStageCreateInfo::entry_point(tcs),
-            PipelineShaderStageCreateInfo::entry_point(tes),
-            PipelineShaderStageCreateInfo::entry_point(fs),
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(tcs),
+            PipelineShaderStageCreateInfo::new(tes),
+            PipelineShaderStageCreateInfo::new(fs),
         ];
         let layout = PipelineLayout::new(
             device.clone(),
@@ -402,9 +401,9 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
     let mut viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [0.0, 0.0],
-        depth_range: 0.0..1.0,
+        offset: [0.0, 0.0],
+        extent: [0.0, 0.0],
+        depth_range: 0.0..=1.0,
     };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
@@ -525,7 +524,7 @@ fn window_size_dependent_setup(
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
     let dimensions = images[0].dimensions().width_height();
-    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
+    viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()
