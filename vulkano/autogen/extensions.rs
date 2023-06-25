@@ -138,10 +138,12 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             let dependency_check_items = requires_all_of.iter().filter_map(
                 |RequiresOneOf {
                      api_version,
-                     device_extensions: _,
+                     device_extensions,
                      instance_extensions,
                  }| {
-                    (api_version.is_some() || !instance_extensions.is_empty()).then(|| {
+                    (device_extensions.is_empty()
+                        && (api_version.is_some() || !instance_extensions.is_empty()))
+                    .then(|| {
                         let condition_items = (api_version.iter().map(|version| {
                             let version = format_ident!("V{}_{}", version.0, version.1);
                             quote! { api_version >= crate::Version::#version }
@@ -318,9 +320,9 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 |RequiresOneOf {
                      api_version,
                      device_extensions: _,
-                     instance_extensions: _,
+                     instance_extensions,
                  }| {
-                    api_version.map(|(major, minor)| {
+                    api_version.filter(|_| instance_extensions.is_empty()).map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
                         let problem = format!("contains `{}`", name_string);
 
