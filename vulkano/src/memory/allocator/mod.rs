@@ -234,7 +234,7 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    DeviceSize, RequirementNotMet, RequiresOneOf, RuntimeError, Version,
+    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
@@ -728,11 +728,10 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             {
                 return Err(GenericMemoryAllocatorCreationError::RequirementNotMet {
                     required_for: "`create_info.export_handle_types` is not empty",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        device_extensions: &["khr_external_memory"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
+                    ]),
                 });
             }
 

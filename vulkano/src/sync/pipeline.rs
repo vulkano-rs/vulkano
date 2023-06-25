@@ -14,7 +14,7 @@ use crate::{
     image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
     shader::ShaderStages,
-    DeviceSize, RequiresOneOf, ValidationError,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
 use once_cell::sync::Lazy;
@@ -256,41 +256,47 @@ vulkan_bitflags_enum! {
 
     /// The `copy_buffer`, `copy_image`, `copy_buffer_to_image`, `copy_image_to_buffer` and
     /// `copy_query_pool_results` commands are executed.
-    COPY, Copy = COPY {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    COPY, Copy = COPY
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// The `resolve_image` command is executed.
-    RESOLVE, Resolve = RESOLVE {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    RESOLVE, Resolve = RESOLVE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// The `blit_image` command is executed.
-    BLIT, Blit = BLIT {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    BLIT, Blit = BLIT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// The `clear_color_image`, `clear_depth_stencil_image`, `fill_buffer` and `update_buffer`
     /// commands are executed.
-    CLEAR, Clear = CLEAR {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    CLEAR, Clear = CLEAR
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// Index buffers are read.
-    INDEX_INPUT, IndexInput = INDEX_INPUT {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    INDEX_INPUT, IndexInput = INDEX_INPUT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// Vertex buffers are read.
-    VERTEX_ATTRIBUTE_INPUT, VertexAttributeInput = VERTEX_ATTRIBUTE_INPUT {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    VERTEX_ATTRIBUTE_INPUT, VertexAttributeInput = VERTEX_ATTRIBUTE_INPUT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// The various pre-rasterization shader types are executed.
     ///
@@ -303,92 +309,127 @@ vulkan_bitflags_enum! {
     /// - `geometry_shader`
     /// - `task_shader`
     /// - `mesh_shader`
-    PRE_RASTERIZATION_SHADERS, PreRasterizationShaders = PRE_RASTERIZATION_SHADERS {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    PRE_RASTERIZATION_SHADERS, PreRasterizationShaders = PRE_RASTERIZATION_SHADERS
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// Video decode operations are performed.
-    VIDEO_DECODE, VideoDecode = VIDEO_DECODE_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },
+    VIDEO_DECODE, VideoDecode = VIDEO_DECODE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),
 
     /// Video encode operations are performed.
-    VIDEO_ENCODE, VideoEncode = VIDEO_ENCODE_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },
+    VIDEO_ENCODE, VideoEncode = VIDEO_ENCODE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),
 
     /// Vertex attribute output values are written to the transform feedback buffers.
-    TRANSFORM_FEEDBACK, TransformFeedback = TRANSFORM_FEEDBACK_EXT {
-        device_extensions: [ext_transform_feedback],
-    },
+    TRANSFORM_FEEDBACK, TransformFeedback = TRANSFORM_FEEDBACK_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_transform_feedback)]),
+    ]),
 
     /// The predicate of conditional rendering is read.
-    CONDITIONAL_RENDERING, ConditionalRendering = CONDITIONAL_RENDERING_EXT {
-        device_extensions: [ext_conditional_rendering],
-    },
+    CONDITIONAL_RENDERING, ConditionalRendering = CONDITIONAL_RENDERING_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_conditional_rendering)]),
+    ]),
 
     /// Acceleration_structure commands are executed.
-    ACCELERATION_STRUCTURE_BUILD, AccelerationStructureBuild = ACCELERATION_STRUCTURE_BUILD_KHR {
-        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
-    },
+    ACCELERATION_STRUCTURE_BUILD, AccelerationStructureBuild = ACCELERATION_STRUCTURE_BUILD_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     /// The various ray tracing shader types are executed.
-    RAY_TRACING_SHADER, RayTracingShader = RAY_TRACING_SHADER_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },
+    RAY_TRACING_SHADER, RayTracingShader = RAY_TRACING_SHADER_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     /// The fragment density map is read to generate the fragment areas.
-    FRAGMENT_DENSITY_PROCESS, FragmentDensityProcess = FRAGMENT_DENSITY_PROCESS_EXT {
-        device_extensions: [ext_fragment_density_map],
-    },
+    FRAGMENT_DENSITY_PROCESS, FragmentDensityProcess = FRAGMENT_DENSITY_PROCESS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_fragment_density_map)]),
+    ]),
 
     /// The fragment shading rate attachment or shading rate image is read to determine the
     /// fragment shading rate for portions of a rasterized primitive.
-    FRAGMENT_SHADING_RATE_ATTACHMENT, FragmentShadingRateAttachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
-        device_extensions: [khr_fragment_shading_rate],
-    },
+    FRAGMENT_SHADING_RATE_ATTACHMENT, FragmentShadingRateAttachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_fragment_shading_rate)]),
+    ]),
 
     /// Device-side preprocessing for generated commands via the `preprocess_generated_commands`
     /// command is handled.
-    COMMAND_PREPROCESS, CommandPreprocess = COMMAND_PREPROCESS_NV {
-        device_extensions: [nv_device_generated_commands],
-    },
+    COMMAND_PREPROCESS, CommandPreprocess = COMMAND_PREPROCESS_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_device_generated_commands)]),
+    ]),
 
     /// Task shaders are executed.
-    TASK_SHADER, TaskShader = TASK_SHADER_EXT {
-        device_extensions: [ext_mesh_shader, nv_mesh_shader],
-    },
+    TASK_SHADER, TaskShader = TASK_SHADER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_mesh_shader)]),
+        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
+    ]),
 
     /// Mesh shaders are executed.
-    MESH_SHADER, MeshShader = MESH_SHADER_EXT {
-        device_extensions: [ext_mesh_shader, nv_mesh_shader],
-    },
+    MESH_SHADER, MeshShader = MESH_SHADER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_mesh_shader)]),
+        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
+    ]),
 
     /// Subpass shading shaders are executed.
-    SUBPASS_SHADING, SubpassShading = SUBPASS_SHADING_HUAWEI {
-        device_extensions: [huawei_subpass_shading],
-    },
+    SUBPASS_SHADING, SubpassShading = SUBPASS_SHADING_HUAWEI
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(huawei_subpass_shading),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(huawei_subpass_shading),
+        ]),
+    ]),
 
     /// The invocation mask image is read to optimize ray dispatch.
-    INVOCATION_MASK, InvocationMask = INVOCATION_MASK_HUAWEI {
-        device_extensions: [huawei_invocation_mask],
-    },
+    INVOCATION_MASK, InvocationMask = INVOCATION_MASK_HUAWEI
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(huawei_invocation_mask),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(huawei_invocation_mask),
+        ]),
+    ]),
 
     /// The `copy_acceleration_structure` command is executed.
-    ACCELERATION_STRUCTURE_COPY, AccelerationStructureCopy = ACCELERATION_STRUCTURE_COPY_KHR {
-        device_extensions: [khr_ray_tracing_maintenance1],
-    },
+    ACCELERATION_STRUCTURE_COPY, AccelerationStructureCopy = ACCELERATION_STRUCTURE_COPY_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_maintenance1)]),
+    ]),
 
     /// Micromap commands are executed.
-    MICROMAP_BUILD, MicromapBuild = MICROMAP_BUILD_EXT {
-        device_extensions: [ext_opacity_micromap],
-    },
+    MICROMAP_BUILD, MicromapBuild = MICROMAP_BUILD_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_opacity_micromap)]),
+    ]),
 
     /// Optical flow operations are performed.
-    OPTICAL_FLOW, OpticalFlow = OPTICAL_FLOW_NV {
-        device_extensions: [nv_optical_flow],
-    },
+    OPTICAL_FLOW, OpticalFlow = OPTICAL_FLOW_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_optical_flow)]),
+    ]),
 }
 
 impl From<PipelineStage> for ash::vk::PipelineStageFlags {
@@ -685,130 +726,228 @@ vulkan_bitflags! {
     MEMORY_WRITE = MEMORY_WRITE,
 
     /// Read access to a uniform texel buffer or sampled image in a shader.
-    SHADER_SAMPLED_READ = SHADER_SAMPLED_READ {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    SHADER_SAMPLED_READ = SHADER_SAMPLED_READ
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// Read access to a storage buffer, storage texel buffer or storage image in a shader.
-    SHADER_STORAGE_READ = SHADER_STORAGE_READ {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    SHADER_STORAGE_READ = SHADER_STORAGE_READ
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// Write access to a storage buffer, storage texel buffer or storage image in a shader.
-    SHADER_STORAGE_WRITE = SHADER_STORAGE_WRITE {
-        api_version: V1_3,
-        device_extensions: [khr_synchronization2],
-    },
+    SHADER_STORAGE_WRITE = SHADER_STORAGE_WRITE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 
     /// Read access to an image or buffer as part of a video decode operation.
-    VIDEO_DECODE_READ = VIDEO_DECODE_READ_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },
+    VIDEO_DECODE_READ = VIDEO_DECODE_READ_KHR
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(khr_video_decode_queue),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(khr_video_decode_queue),
+        ]),
+    ]),
 
     /// Write access to an image or buffer as part of a video decode operation.
-    VIDEO_DECODE_WRITE = VIDEO_DECODE_WRITE_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },
+    VIDEO_DECODE_WRITE = VIDEO_DECODE_WRITE_KHR
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(khr_video_decode_queue),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(khr_video_decode_queue),
+        ]),
+    ]),
 
     /// Read access to an image or buffer as part of a video encode operation.
-    VIDEO_ENCODE_READ = VIDEO_ENCODE_READ_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },
+    VIDEO_ENCODE_READ = VIDEO_ENCODE_READ_KHR
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(khr_video_encode_queue),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(khr_video_encode_queue),
+        ]),
+    ]),
 
     /// Write access to an image or buffer as part of a video encode operation.
-    VIDEO_ENCODE_WRITE = VIDEO_ENCODE_WRITE_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },
+    VIDEO_ENCODE_WRITE = VIDEO_ENCODE_WRITE_KHR
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(khr_video_encode_queue),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(khr_video_encode_queue),
+        ]),
+    ]),
 
     /// Write access to a transform feedback buffer during transform feedback operations.
-    TRANSFORM_FEEDBACK_WRITE = TRANSFORM_FEEDBACK_WRITE_EXT {
-        device_extensions: [ext_transform_feedback],
-    },
+    TRANSFORM_FEEDBACK_WRITE = TRANSFORM_FEEDBACK_WRITE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_transform_feedback)]),
+    ]),
 
     /// Read access to a transform feedback counter buffer during transform feedback operations.
-    TRANSFORM_FEEDBACK_COUNTER_READ = TRANSFORM_FEEDBACK_COUNTER_READ_EXT {
-        device_extensions: [ext_transform_feedback],
-    },
+    TRANSFORM_FEEDBACK_COUNTER_READ = TRANSFORM_FEEDBACK_COUNTER_READ_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_transform_feedback)]),
+    ]),
 
     /// Write access to a transform feedback counter buffer during transform feedback operations.
-    TRANSFORM_FEEDBACK_COUNTER_WRITE = TRANSFORM_FEEDBACK_COUNTER_WRITE_EXT {
-        device_extensions: [ext_transform_feedback],
-    },
+    TRANSFORM_FEEDBACK_COUNTER_WRITE = TRANSFORM_FEEDBACK_COUNTER_WRITE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_transform_feedback)]),
+    ]),
 
     /// Read access to a predicate during conditional rendering.
-    CONDITIONAL_RENDERING_READ = CONDITIONAL_RENDERING_READ_EXT {
-        device_extensions: [ext_conditional_rendering],
-    },
+    CONDITIONAL_RENDERING_READ = CONDITIONAL_RENDERING_READ_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_conditional_rendering)]),
+    ]),
 
     /// Read access to preprocess buffers input to `preprocess_generated_commands`.
-    COMMAND_PREPROCESS_READ = COMMAND_PREPROCESS_READ_NV {
-        device_extensions: [nv_device_generated_commands],
-    },
+    COMMAND_PREPROCESS_READ = COMMAND_PREPROCESS_READ_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_device_generated_commands)]),
+    ]),
 
     /// Read access to sequences buffers output by `preprocess_generated_commands`.
-    COMMAND_PREPROCESS_WRITE = COMMAND_PREPROCESS_WRITE_NV {
-        device_extensions: [nv_device_generated_commands],
-    },
+    COMMAND_PREPROCESS_WRITE = COMMAND_PREPROCESS_WRITE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_device_generated_commands)]),
+    ]),
 
     /// Read access to a fragment shading rate attachment during rasterization.
-    FRAGMENT_SHADING_RATE_ATTACHMENT_READ = FRAGMENT_SHADING_RATE_ATTACHMENT_READ_KHR {
-        device_extensions: [khr_fragment_shading_rate],
-    },
+    FRAGMENT_SHADING_RATE_ATTACHMENT_READ = FRAGMENT_SHADING_RATE_ATTACHMENT_READ_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_fragment_shading_rate)]),
+    ]),
 
     /// Read access to an acceleration structure or acceleration structure scratch buffer during
     /// trace, build or copy commands.
-    ACCELERATION_STRUCTURE_READ = ACCELERATION_STRUCTURE_READ_KHR {
-        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
-    },
+    ACCELERATION_STRUCTURE_READ = ACCELERATION_STRUCTURE_READ_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     /// Write access to an acceleration structure or acceleration structure scratch buffer during
     /// trace, build or copy commands.
-    ACCELERATION_STRUCTURE_WRITE = ACCELERATION_STRUCTURE_WRITE_KHR {
-        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
-    },
+    ACCELERATION_STRUCTURE_WRITE = ACCELERATION_STRUCTURE_WRITE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),
 
     /// Read access to a fragment density map attachment during dynamic fragment density map
     /// operations.
-    FRAGMENT_DENSITY_MAP_READ = FRAGMENT_DENSITY_MAP_READ_EXT {
-        device_extensions: [ext_fragment_density_map],
-    },
+    FRAGMENT_DENSITY_MAP_READ = FRAGMENT_DENSITY_MAP_READ_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_fragment_density_map)]),
+    ]),
 
     /// Read access to color attachments when performing advanced blend operations.
-    COLOR_ATTACHMENT_READ_NONCOHERENT = COLOR_ATTACHMENT_READ_NONCOHERENT_EXT {
-        device_extensions: [ext_blend_operation_advanced],
-    },
+    COLOR_ATTACHMENT_READ_NONCOHERENT = COLOR_ATTACHMENT_READ_NONCOHERENT_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_blend_operation_advanced)]),
+    ]),
 
     /// Read access to an invocation mask image.
-    INVOCATION_MASK_READ = INVOCATION_MASK_READ_HUAWEI {
-        device_extensions: [huawei_invocation_mask],
-    },
+    INVOCATION_MASK_READ = INVOCATION_MASK_READ_HUAWEI
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(huawei_invocation_mask),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(huawei_invocation_mask),
+        ]),
+    ]),
 
     /// Read access to a shader binding table.
-    SHADER_BINDING_TABLE_READ = SHADER_BINDING_TABLE_READ_KHR {
-        device_extensions: [khr_ray_tracing_maintenance1],
-    },
+    SHADER_BINDING_TABLE_READ = SHADER_BINDING_TABLE_READ_KHR
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(khr_ray_tracing_pipeline),
+            DeviceExtension(khr_ray_tracing_maintenance1),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(khr_ray_tracing_pipeline),
+            DeviceExtension(khr_ray_tracing_maintenance1),
+        ]),
+    ]),
 
     /// Read access to a micromap object.
-    MICROMAP_READ = MICROMAP_READ_EXT {
-        device_extensions: [ext_opacity_micromap],
-    },
+    MICROMAP_READ = MICROMAP_READ_EXT
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(ext_opacity_micromap),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(ext_opacity_micromap),
+        ]),
+    ]),
 
     /// Write access to a micromap object.
-    MICROMAP_WRITE = MICROMAP_WRITE_EXT {
-        device_extensions: [ext_opacity_micromap],
-    },
+    MICROMAP_WRITE = MICROMAP_WRITE_EXT
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(ext_opacity_micromap),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(ext_opacity_micromap),
+        ]),
+    ]),
 
     /// Read access to a buffer or image during optical flow operations.
-    OPTICAL_FLOW_READ = OPTICAL_FLOW_READ_NV {
-        device_extensions: [nv_optical_flow],
-    },
+    OPTICAL_FLOW_READ = OPTICAL_FLOW_READ_NV
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(nv_optical_flow),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(nv_optical_flow),
+        ]),
+    ]),
 
     /// Write access to a buffer or image during optical flow operations.
-    OPTICAL_FLOW_WRITE = OPTICAL_FLOW_WRITE_NV {
-        device_extensions: [nv_optical_flow],
-    },
+    OPTICAL_FLOW_WRITE = OPTICAL_FLOW_WRITE_NV
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(nv_optical_flow),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_synchronization2),
+            DeviceExtension(nv_optical_flow),
+        ]),
+    ]),
 }
 
 impl From<AccessFlags> for ash::vk::AccessFlags {
@@ -1661,10 +1800,11 @@ vulkan_bitflags! {
     /// enabled on the device.
     ///
     /// [`khr_device_group`]: crate::device::DeviceExtensions::khr_device_group
-    DEVICE_GROUP = DEVICE_GROUP {
-        api_version: V1_1,
-        device_extensions: [khr_device_group],
-    },
+    DEVICE_GROUP = DEVICE_GROUP
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_device_group)]),
+    ]),
 
 
     /// For subpass dependencies, and pipeline barriers executing within a render pass instance,
@@ -1676,10 +1816,11 @@ vulkan_bitflags! {
     /// enabled on the device.
     ///
     /// [`khr_multiview`]: crate::device::DeviceExtensions::khr_multiview
-    VIEW_LOCAL = VIEW_LOCAL {
-        api_version: V1_1,
-        device_extensions: [khr_multiview],
-    },
+    VIEW_LOCAL = VIEW_LOCAL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_multiview)]),
+    ]),
 }
 
 /// A memory barrier that is applied globally.
@@ -1767,10 +1908,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["synchronization2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
                     ..Default::default()
                 });
             }
@@ -1779,10 +1919,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["synchronization2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
                     ..Default::default()
                 });
             }
@@ -1791,10 +1930,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["synchronization2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
                     ..Default::default()
                 });
             }
@@ -1803,10 +1941,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["synchronization2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
                     ..Default::default()
                 });
             }
@@ -1817,10 +1954,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["geometry_shader"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "geometry_shader",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03929"],
                 });
             }
@@ -1829,10 +1965,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["geometry_shader"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "geometry_shader",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03929"],
                 });
             }
@@ -1848,10 +1983,9 @@ impl MemoryBarrier {
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                         .into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["tessellation_shader"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "tessellation_shader",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03930"],
                 });
             }
@@ -1865,10 +1999,9 @@ impl MemoryBarrier {
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                         .into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["tessellation_shader"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "tessellation_shader",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03930"],
                 });
             }
@@ -1879,10 +2012,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["conditional_rendering"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "conditional_rendering",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03931"],
                 });
             }
@@ -1891,10 +2023,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["conditional_rendering"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "conditional_rendering",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03931"],
                 });
             }
@@ -1905,10 +2036,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["fragment_density_map"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "fragment_density_map",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03932"],
                 });
             }
@@ -1917,10 +2047,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["fragment_density_map"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "fragment_density_map",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03932"],
                 });
             }
@@ -1931,10 +2060,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["transform_feedback"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "transform_feedback",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03933"],
                 });
             }
@@ -1943,10 +2071,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["transform_feedback"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "transform_feedback",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03933"],
                 });
             }
@@ -1957,10 +2084,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["mesh_shader"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "mesh_shader",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03934"],
                 });
             }
@@ -1969,10 +2095,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["mesh_shader"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "mesh_shader",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03934"],
                 });
             }
@@ -1983,10 +2108,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["task_shader"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "task_shader",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03935"],
                 });
             }
@@ -1995,10 +2119,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["task_shader"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "task_shader",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03935"],
                 });
             }
@@ -2011,10 +2134,10 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["attachment_fragment_shading_rate", "shading_rate_image"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                    ]),
                     vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
                 });
             }
@@ -2023,10 +2146,10 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["attachment_fragment_shading_rate", "shading_rate_image"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                    ]),
                     vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
                 });
             }
@@ -2037,10 +2160,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["subpass_shading"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "subpass_shading",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-04957"],
                 });
             }
@@ -2049,10 +2171,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["subpass_shading"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "subpass_shading",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-04957"],
                 });
             }
@@ -2063,10 +2184,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["invocation_mask"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "invocation_mask",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-04995"],
                 });
             }
@@ -2075,10 +2195,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["invocation_mask"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "invocation_mask",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-04995"],
                 });
             }
@@ -2091,10 +2210,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["ray_tracing_pipeline"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "ray_tracing_pipeline",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-07946"],
                 });
             }
@@ -2103,10 +2221,9 @@ impl MemoryBarrier {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["ray_tracing_pipeline"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "ray_tracing_pipeline",
+                    )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-07946"],
                 });
             }

@@ -20,7 +20,7 @@ use crate::{
     format::Format,
     image::SampleCount,
     query::{QueryControlFlags, QueryPipelineStatisticFlags, QueryType},
-    RequiresOneOf, SafeDeref, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, SafeDeref, VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -303,10 +303,9 @@ where
         {
             return Err(ExecuteCommandsError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::execute_commands` when a query is active",
-                requires_one_of: RequiresOneOf {
-                    features: &["inherited_queries"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "inherited_queries",
+                )])]),
             });
         }
 

@@ -28,8 +28,8 @@ use crate::{
         fence::{ExternalFenceInfo, ExternalFenceProperties},
         semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
     },
-    ExtensionProperties, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
-    VulkanObject,
+    ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
+    Version, VulkanError, VulkanObject,
 };
 use bytemuck::cast_slice;
 use std::{
@@ -442,10 +442,9 @@ impl PhysicalDevice {
     ) -> Result<(), ValidationError> {
         if !self.instance.enabled_extensions().ext_directfb_surface {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_directfb_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_directfb_surface",
+                )])]),
                 ..Default::default()
             });
         }
@@ -514,11 +513,12 @@ impl PhysicalDevice {
                 .khr_external_memory_capabilities)
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_1),
-                    instance_extensions: &["khr_external_memory_capabilities"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                    RequiresAllOf(&[Requires::InstanceExtension(
+                        "khr_external_memory_capabilities",
+                    )]),
+                ]),
                 ..Default::default()
             });
         }
@@ -613,11 +613,12 @@ impl PhysicalDevice {
                 .khr_external_fence_capabilities)
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_1),
-                    instance_extensions: &["khr_external_fence_capabilities"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                    RequiresAllOf(&[Requires::InstanceExtension(
+                        "khr_external_fence_capabilities",
+                    )]),
+                ]),
                 ..Default::default()
             });
         }
@@ -715,11 +716,12 @@ impl PhysicalDevice {
                 .khr_external_semaphore_capabilities)
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_1),
-                    instance_extensions: &["khr_external_semaphore_capabilities"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                    RequiresAllOf(&[Requires::InstanceExtension(
+                        "khr_external_semaphore_capabilities",
+                    )]),
+                ]),
                 ..Default::default()
             });
         }
@@ -1109,10 +1111,9 @@ impl PhysicalDevice {
     ) -> Result<(), ValidationError> {
         if !self.instance.enabled_extensions().qnx_screen_surface {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["qnx_screen_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "qnx_screen_surface",
+                )])]),
                 ..Default::default()
             });
         }
@@ -1358,10 +1359,10 @@ impl PhysicalDevice {
             || self.instance.enabled_extensions().khr_surface)
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::InstanceExtension("khr_get_surface_capabilities2")]),
+                    RequiresAllOf(&[Requires::InstanceExtension("khr_surface")]),
+                ]),
                 ..Default::default()
             });
         }
@@ -1606,10 +1607,10 @@ impl PhysicalDevice {
             || self.instance.enabled_extensions().khr_surface)
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::InstanceExtension("khr_get_surface_capabilities2")]),
+                    RequiresAllOf(&[Requires::InstanceExtension("khr_surface")]),
+                ]),
                 ..Default::default()
             });
         }
@@ -1644,10 +1645,9 @@ impl PhysicalDevice {
                 return Err(ValidationError {
                     context: "surface_info.full_screen_exclusive".into(),
                     problem: "is not `FullScreenExclusive::Default`".into(),
-                    requires_one_of: RequiresOneOf {
-                        instance_extensions: &["khr_get_surface_capabilities2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                        Requires::InstanceExtension("khr_get_surface_capabilities2"),
+                    ])]),
                     ..Default::default()
                 });
             }
@@ -1656,10 +1656,9 @@ impl PhysicalDevice {
                 return Err(ValidationError {
                     context: "surface_info.win32_monitor".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf {
-                        instance_extensions: &["khr_get_surface_capabilities2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                        Requires::InstanceExtension("khr_get_surface_capabilities2"),
+                    ])]),
                     ..Default::default()
                 });
             }
@@ -1858,10 +1857,9 @@ impl PhysicalDevice {
     fn validate_surface_present_modes(&self, surface: &Surface) -> Result<(), ValidationError> {
         if !self.instance.enabled_extensions().khr_surface {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_surface",
+                )])]),
                 ..Default::default()
             });
         }
@@ -1956,10 +1954,9 @@ impl PhysicalDevice {
     ) -> Result<(), ValidationError> {
         if !self.instance.enabled_extensions().khr_surface {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_surface",
+                )])]),
                 ..Default::default()
             });
         }
@@ -2020,11 +2017,10 @@ impl PhysicalDevice {
     fn validate_tool_properties(&self) -> Result<(), ValidationError> {
         if !(self.api_version() >= Version::V1_3 || self.supported_extensions().ext_tooling_info) {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    device_extensions: &["ext_tooling_info"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("ext_tooling_info")]),
+                ]),
                 ..Default::default()
             });
         }
@@ -2131,10 +2127,9 @@ impl PhysicalDevice {
     ) -> Result<(), ValidationError> {
         if !self.instance.enabled_extensions().khr_wayland_surface {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_wayland_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_wayland_surface",
+                )])]),
                 ..Default::default()
             });
         }
@@ -2190,10 +2185,9 @@ impl PhysicalDevice {
     ) -> Result<(), ValidationError> {
         if !self.instance.enabled_extensions().khr_win32_surface {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_win32_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_win32_surface",
+                )])]),
                 ..Default::default()
             });
         }
@@ -2248,10 +2242,9 @@ impl PhysicalDevice {
     ) -> Result<(), ValidationError> {
         if !self.instance.enabled_extensions().khr_xcb_surface {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_xcb_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_xcb_surface",
+                )])]),
                 ..Default::default()
             });
         }
@@ -2316,10 +2309,9 @@ impl PhysicalDevice {
     ) -> Result<(), ValidationError> {
         if !self.instance.enabled_extensions().khr_xlib_surface {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_xlib_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_xlib_surface",
+                )])]),
                 ..Default::default()
             });
         }
@@ -2578,16 +2570,19 @@ vulkan_bitflags! {
 
     /// The tool reports information to the user via a
     /// [`DebugUtilsMessenger`](crate::instance::debug::DebugUtilsMessenger).
-    DEBUG_REPORTING = DEBUG_REPORTING_EXT {
-        instance_extensions: [ext_debug_utils, ext_debug_report],
-    },
+    DEBUG_REPORTING = DEBUG_REPORTING_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_debug_utils)]),
+        RequiresAllOf([InstanceExtension(ext_debug_report)]),
+    ]),
 
     /// The tool consumes debug markers or object debug annotation, queue labels or command buffer
     /// labels.
-    DEBUG_MARKERS = DEBUG_MARKERS_EXT {
-        device_extensions: [ext_debug_marker],
-        instance_extensions: [ext_debug_utils],
-    },
+    DEBUG_MARKERS = DEBUG_MARKERS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_debug_marker)]),
+        RequiresAllOf([InstanceExtension(ext_debug_utils)]),
+    ]),
 }
 
 vulkan_bitflags! {
@@ -2621,9 +2616,10 @@ vulkan_bitflags! {
     QUAD = QUAD,
 
     // TODO: document
-    PARTITIONED = PARTITIONED_NV {
-        device_extensions: [nv_shader_subgroup_partitioned],
-    },
+    PARTITIONED = PARTITIONED_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_shader_subgroup_partitioned)]),
+    ]),
 }
 
 vulkan_enum! {

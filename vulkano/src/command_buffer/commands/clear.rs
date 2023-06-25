@@ -17,7 +17,8 @@ use crate::{
     format::{ClearColorValue, ClearDepthStencilValue, Format, FormatFeatures},
     image::{ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage},
     sync::PipelineStageAccessFlags,
-    DeviceSize, RequirementNotMet, RequiresOneOf, SafeDeref, Version, VulkanObject,
+    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, SafeDeref, Version,
+    VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -301,10 +302,9 @@ where
             return Err(ClearError::RequirementNotMet {
                 required_for: "`clear_info.clear_value.depth` is not between `0.0` and `1.0` \
                     inclusive",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["ext_depth_range_unrestricted"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_depth_range_unrestricted",
+                )])]),
             });
         }
 

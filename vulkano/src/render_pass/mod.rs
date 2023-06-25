@@ -33,7 +33,8 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     shader::ShaderInterface,
     sync::{AccessFlags, DependencyFlags, MemoryBarrier, PipelineStages},
-    RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use ahash::HashMap;
 use std::{
@@ -1450,11 +1451,13 @@ impl RenderPassCreateInfo {
                                 subpass_index, ref_index,
                             )
                             .into(),
-                            requires_one_of: RequiresOneOf {
-                                api_version: Some(Version::V1_1),
-                                device_extensions: &["khr_create_renderpass2", "khr_maintenance2"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[
+                                RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                                RequiresAllOf(&[Requires::DeviceExtension(
+                                    "khr_create_renderpass2",
+                                )]),
+                                RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance2")]),
+                            ]),
                             // vuids?
                             ..Default::default()
                         });
@@ -1840,10 +1843,9 @@ impl AttachmentDescription {
                     problem: "specifies a layout for only the depth aspect or only the \
                         stencil aspect"
                         .into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["separate_depth_stencil_layouts"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "separate_depth_stencil_layouts",
+                    )])]),
                     vuids: &["VUID-VkAttachmentDescription2-separateDepthStencilLayouts-03284"],
                 });
             }
@@ -1860,10 +1862,9 @@ impl AttachmentDescription {
                     problem: "specifies a layout for only the depth aspect or only the \
                         stencil aspect"
                         .into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["separate_depth_stencil_layouts"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "separate_depth_stencil_layouts",
+                    )])]),
                     vuids: &["VUID-VkAttachmentDescription2-separateDepthStencilLayouts-03285"],
                 });
             }
@@ -1903,10 +1904,9 @@ impl AttachmentDescription {
                 return Err(ValidationError {
                     context: "stencil_initial_layout".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["separate_depth_stencil_layouts"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "separate_depth_stencil_layouts",
+                    )])]),
                     ..Default::default()
                 });
             }
@@ -1947,10 +1947,9 @@ impl AttachmentDescription {
                 return Err(ValidationError {
                     context: "stencil_final_layout".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["separate_depth_stencil_layouts"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "separate_depth_stencil_layouts",
+                    )])]),
                     ..Default::default()
                 });
             }
@@ -2706,11 +2705,12 @@ impl SubpassDescription {
                     return Err(ValidationError {
                         context: "depth_stencil_resolve_attachment".into(),
                         problem: "is `Some`".into(),
-                        requires_one_of: RequiresOneOf {
-                            api_version: Some(Version::V1_2),
-                            device_extensions: &["khr_depth_stencil_resolve"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                            RequiresAllOf(&[Requires::DeviceExtension(
+                                "khr_depth_stencil_resolve",
+                            )]),
+                        ]),
                         // vuids?
                         ..Default::default()
                     });
@@ -2998,10 +2998,7 @@ impl SubpassDescription {
             return Err(ValidationError {
                 context: "view_mask".into(),
                 problem: "is not 0".into(),
-                requires_one_of: RequiresOneOf {
-                    features: &["multiview"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
                 vuids: &["VUID-VkSubpassDescription2-multiview-06558"],
             });
         }
@@ -3184,10 +3181,9 @@ impl AttachmentReference {
                 context: "layout".into(),
                 problem: "specifies a layout for only the depth aspect or only the stencil aspect"
                     .into(),
-                requires_one_of: RequiresOneOf {
-                    features: &["separate_depth_stencil_layouts"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "separate_depth_stencil_layouts",
+                )])]),
                 vuids: &["VUID-VkAttachmentReference2-separateDepthStencilLayouts-03313"],
             });
         }
@@ -3197,10 +3193,9 @@ impl AttachmentReference {
                 return Err(ValidationError {
                     context: "stencil_layout".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["separate_depth_stencil_layouts"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "separate_depth_stencil_layouts",
+                    )])]),
                     ..Default::default()
                 });
             }
@@ -3410,11 +3405,10 @@ impl SubpassDependency {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_2),
-                        device_extensions: &["khr_create_renderpass2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_create_renderpass2")]),
+                    ]),
                     ..Default::default()
                 });
             }
@@ -3423,11 +3417,10 @@ impl SubpassDependency {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_2),
-                        device_extensions: &["khr_create_renderpass2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_create_renderpass2")]),
+                    ]),
                     ..Default::default()
                 });
             }
@@ -3436,11 +3429,10 @@ impl SubpassDependency {
                 return Err(ValidationError {
                     context: "src_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_2),
-                        device_extensions: &["khr_create_renderpass2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_create_renderpass2")]),
+                    ]),
                     ..Default::default()
                 });
             }
@@ -3449,11 +3441,10 @@ impl SubpassDependency {
                 return Err(ValidationError {
                     context: "dst_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_2),
-                        device_extensions: &["khr_create_renderpass2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_create_renderpass2")]),
+                    ]),
                     ..Default::default()
                 });
             }
@@ -3464,10 +3455,9 @@ impl SubpassDependency {
                 return Err(ValidationError {
                     context: "src_stages".into(),
                     problem: "is empty".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["synchronization2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
                     vuids: &["VUID-VkSubpassDependency2-srcStageMask-03937"],
                 });
             }
@@ -3476,10 +3466,9 @@ impl SubpassDependency {
                 return Err(ValidationError {
                     context: "dst_stages".into(),
                     problem: "is empty".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["synchronization2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
                     vuids: &["VUID-VkSubpassDependency2-dstStageMask-03937"],
                 });
             }
@@ -3612,9 +3601,10 @@ vulkan_enum! {
 
     /* TODO: enable
     // TODO: document
-    None = NONE_EXT {
-        device_extensions: [ext_load_store_op_none],
-    },*/
+    None = NONE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_load_store_op_none)]),
+    ]),*/
 }
 
 vulkan_enum! {

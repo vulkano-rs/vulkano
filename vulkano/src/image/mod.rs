@@ -67,7 +67,7 @@ use crate::{
     format::Format,
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{ExternalMemoryHandleType, ExternalMemoryProperties},
-    DeviceSize, RequiresOneOf, ValidationError, Version,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
 };
 use std::{cmp, ops::Range};
 
@@ -145,17 +145,19 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    ALIAS = ALIAS {
-        api_version: V1_1,
-        device_extensions: [khr_bind_memory2],
-    },*/
+    ALIAS = ALIAS
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_bind_memory2)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SPLIT_INSTANCE_BIND_REGIONS = SPLIT_INSTANCE_BIND_REGIONS {
-        api_version: V1_1,
-        device_extensions: [khr_device_group],
-    },*/
+    SPLIT_INSTANCE_BIND_REGIONS = SPLIT_INSTANCE_BIND_REGIONS
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_device_group)]),
+    ]),*/
 
     /// For 3D images, whether an image view of type [`ImageViewType::Dim2d`] or
     /// [`ImageViewType::Dim2dArray`] can be created from the image.
@@ -167,76 +169,87 @@ vulkan_bitflags! {
     /// [`ImageViewType::Dim2dArray`]: crate::image::view::ImageViewType::Dim2dArray
     /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
     /// [`image_view2_d_on3_d_image`]: crate::device::Features::image_view2_d_on3_d_image
-    ARRAY_2D_COMPATIBLE = TYPE_2D_ARRAY_COMPATIBLE {
-        api_version: V1_1,
-        device_extensions: [khr_maintenance1],
-    },
+    ARRAY_2D_COMPATIBLE = TYPE_2D_ARRAY_COMPATIBLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_maintenance1)]),
+    ]),
 
     /// For images with a compressed format, whether an image view with an uncompressed
     /// format can be created from the image, where each texel in the view will correspond to a
     /// compressed texel block in the image.
     ///
     /// Requires `mutable_format`.
-    BLOCK_TEXEL_VIEW_COMPATIBLE = BLOCK_TEXEL_VIEW_COMPATIBLE {
-        api_version: V1_1,
-        device_extensions: [khr_maintenance2],
-    },
+    BLOCK_TEXEL_VIEW_COMPATIBLE = BLOCK_TEXEL_VIEW_COMPATIBLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_maintenance2)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
-    EXTENDED_USAGE = EXTENDED_USAGE {
-        api_version: V1_1,
-        device_extensions: [khr_maintenance2],
-    },*/
+    EXTENDED_USAGE = EXTENDED_USAGE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_maintenance2)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    PROTECTED = PROTECTED {
-        api_version: V1_1,
-    },*/
+    PROTECTED = PROTECTED
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+    ]),*/
 
     /// For images with a multi-planar format, whether each plane will have its memory bound
     /// separately, rather than having a single memory binding for the whole image.
-    DISJOINT = DISJOINT {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    DISJOINT = DISJOINT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
-    CORNER_SAMPLED = CORNER_SAMPLED_NV {
-        device_extensions: [nv_corner_sampled_image],
-    },*/
+    CORNER_SAMPLED = CORNER_SAMPLED_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_corner_sampled_image)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SAMPLE_LOCATIONS_COMPATIBLE_DEPTH = SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_EXT {
-        device_extensions: [ext_sample_locations],
-    },*/
+    SAMPLE_LOCATIONS_COMPATIBLE_DEPTH = SAMPLE_LOCATIONS_COMPATIBLE_DEPTH_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_sample_locations)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SUBSAMPLED = SUBSAMPLED_EXT {
-        device_extensions: [ext_fragment_density_map],
-    },*/
+    SUBSAMPLED = SUBSAMPLED_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_fragment_density_map)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED = MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_EXT {
-        device_extensions: [ext_multisampled_render_to_single_sampled],
-    },*/
+    MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED = MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_multisampled_render_to_single_sampled)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    TYPE_2D_VIEW_COMPATIBLE = TYPE_2D_VIEW_COMPATIBLE_EXT {
-        device_extensions: [ext_image_2d_view_of_3d],
-    },*/
+    TYPE_2D_VIEW_COMPATIBLE = TYPE_2D_VIEW_COMPATIBLE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_image_2d_view_of_3d)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    FRAGMENT_DENSITY_MAP_OFFSET = FRAGMENT_DENSITY_MAP_OFFSET_QCOM {
-        device_extensions: [qcom_fragment_density_map_offset],
-    },*/
+    FRAGMENT_DENSITY_MAP_OFFSET = FRAGMENT_DENSITY_MAP_OFFSET_QCOM
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(qcom_fragment_density_map_offset)]),
+    ]),*/
 }
 
 vulkan_bitflags_enum! {
@@ -373,9 +386,10 @@ vulkan_enum! {
     Linear = LINEAR,
 
     // TODO: document
-    DrmFormatModifier = DRM_FORMAT_MODIFIER_EXT {
-        device_extensions: [ext_image_drm_format_modifier],
-    },
+    DrmFormatModifier = DRM_FORMAT_MODIFIER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_image_drm_format_modifier)]),
+    ]),
 }
 
 /// The dimensions of an image.
@@ -909,11 +923,10 @@ impl ImageFormatInfo {
                     problem: "`stencil_usage` is `Some`, and `format` has both a depth and a \
                         stencil aspect"
                         .into(),
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_2),
-                        device_extensions: &["ext_separate_stencil_usage"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("ext_separate_stencil_usage")]),
+                    ]),
                     ..Default::default()
                 });
             }
@@ -945,11 +958,12 @@ impl ImageFormatInfo {
             {
                 return Err(ValidationError {
                     problem: "`external_memory_handle_type` is `Some`".into(),
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        instance_extensions: &["khr_external_memory_capabilities"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::InstanceExtension(
+                            "khr_external_memory_capabilities",
+                        )]),
+                    ]),
                     ..Default::default()
                 });
             }
@@ -967,10 +981,9 @@ impl ImageFormatInfo {
             if !physical_device.supported_extensions().ext_filter_cubic {
                 return Err(ValidationError {
                     problem: "`image_view_type` is `Some`".into(),
-                    requires_one_of: RequiresOneOf {
-                        device_extensions: &["ext_filter_cubic"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_filter_cubic",
+                    )])]),
                     ..Default::default()
                 });
             }

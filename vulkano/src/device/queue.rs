@@ -26,7 +26,8 @@ use crate::{
         future::{AccessCheckError, FlushError, GpuFuture},
         semaphore::SemaphoreState,
     },
-    OomError, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    VulkanObject,
 };
 use ahash::HashMap;
 use parking_lot::{Mutex, MutexGuard};
@@ -1155,10 +1156,9 @@ impl<'a> QueueGuard<'a> {
             .ext_debug_utils
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_debug_utils"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_debug_utils",
+                )])]),
                 ..Default::default()
             });
         }
@@ -1212,10 +1212,9 @@ impl<'a> QueueGuard<'a> {
             .ext_debug_utils
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_debug_utils"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_debug_utils",
+                )])]),
                 ..Default::default()
             });
         }
@@ -1262,10 +1261,9 @@ impl<'a> QueueGuard<'a> {
             .ext_debug_utils
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_debug_utils"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_debug_utils",
+                )])]),
                 ..Default::default()
             });
         }
@@ -1655,24 +1653,28 @@ vulkan_bitflags! {
     SPARSE_BINDING = SPARSE_BINDING,
 
     /// Queues of this family can be created using the `protected` flag.
-    PROTECTED = PROTECTED {
-        api_version: V1_1,
-    },
+    PROTECTED = PROTECTED
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+    ]),
 
     /// Queues of this family can execute video decode operations.
-    VIDEO_DECODE = VIDEO_DECODE_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },
+    VIDEO_DECODE = VIDEO_DECODE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),
 
     /// Queues of this family can execute video encode operations.
-    VIDEO_ENCODE = VIDEO_ENCODE_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },
+    VIDEO_ENCODE = VIDEO_ENCODE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),
 
     /// Queues of this family can execute optical flow operations.
-    OPTICAL_FLOW = OPTICAL_FLOW_NV {
-        device_extensions: [nv_optical_flow],
-    },
+    OPTICAL_FLOW = OPTICAL_FLOW_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_optical_flow)]),
+    ]),
 }
 
 #[cfg(test)]

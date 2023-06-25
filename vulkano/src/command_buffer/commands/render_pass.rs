@@ -26,7 +26,7 @@ use crate::{
         ResolveMode, SubpassDescription,
     },
     sync::PipelineStageAccessFlags,
-    RequirementNotMet, RequiresOneOf, Version, VulkanObject,
+    RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -698,10 +698,9 @@ where
         if !device.enabled_features().dynamic_rendering {
             return Err(RenderPassError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::begin_rendering`",
-                requires_one_of: RequiresOneOf {
-                    features: &["dynamic_rendering"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "dynamic_rendering",
+                )])]),
             });
         }
 
@@ -751,10 +750,7 @@ where
         if view_mask != 0 && !device.enabled_features().multiview {
             return Err(RenderPassError::RequirementNotMet {
                 required_for: "`rendering_info.viewmask` is not `0`",
-                requires_one_of: RequiresOneOf {
-                    features: &["multiview"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
             });
         }
 
@@ -1267,10 +1263,9 @@ where
                         `rendering_info.stencil_attachment` are both \
                         `Some`, and `rendering_info.depth_attachment.image_layout` does not \
                         equal `rendering_info.stencil_attachment.attachment_ref.layout`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["separate_depth_stencil_layouts"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "separate_depth_stencil_layouts",
+                    )])]),
                 });
             }
 
@@ -1300,10 +1295,9 @@ where
                                 `rendering_info.depth_attachment.resolve_info.image_layout` \
                                 does not equal \
                                 `rendering_info.stencil_attachment.resolve_info.image_layout`",
-                            requires_one_of: RequiresOneOf {
-                                features: &["separate_depth_stencil_layouts"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "separate_depth_stencil_layouts",
+                            )])]),
                         });
                     }
 

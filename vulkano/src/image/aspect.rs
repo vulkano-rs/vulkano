@@ -49,48 +49,54 @@ vulkan_bitflags_enum! {
     /// The first plane of an image with a multi-planar [format], holding the green color component.
     ///
     /// [format]: crate::format::Format
-    PLANE_0, Plane0 = PLANE_0 {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    PLANE_0, Plane0 = PLANE_0
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /// The second plane of an image with a multi-planar [format], holding the blue color component
     /// if the format has three planes, and a combination of blue and red if the format has two
     /// planes.
     ///
     /// [format]: crate::format::Format
-    PLANE_1, Plane1 = PLANE_1 {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    PLANE_1, Plane1 = PLANE_1
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /// The third plane of an image with a multi-planar [format], holding the red color component.
-    PLANE_2, Plane2 = PLANE_2 {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    PLANE_2, Plane2 = PLANE_2
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /// The first memory plane of images created through the [`ext_image_drm_format_modifier`]
     /// extension.
     ///
     /// [`ext_image_drm_format_modifier`]: crate::device::DeviceExtensions::ext_image_drm_format_modifier
-    MEMORY_PLANE_0, MemoryPlane0 = MEMORY_PLANE_0_EXT {
-        device_extensions: [ext_image_drm_format_modifier],
-    },
+    MEMORY_PLANE_0, MemoryPlane0 = MEMORY_PLANE_0_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_image_drm_format_modifier)]),
+    ]),
 
     /// The second memory plane of images created through the [`ext_image_drm_format_modifier`]
     /// extension.
     ///
     /// [`ext_image_drm_format_modifier`]: crate::device::DeviceExtensions::ext_image_drm_format_modifier
-    MEMORY_PLANE_1, MemoryPlane1 = MEMORY_PLANE_1_EXT {
-        device_extensions: [ext_image_drm_format_modifier],
-    },
+    MEMORY_PLANE_1, MemoryPlane1 = MEMORY_PLANE_1_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_image_drm_format_modifier)]),
+    ]),
 
     /// The third memory plane of images created through the [`ext_image_drm_format_modifier`]
     /// extension.
     ///
     /// [`ext_image_drm_format_modifier`]: crate::device::DeviceExtensions::ext_image_drm_format_modifier
-    MEMORY_PLANE_2, MemoryPlane2 = MEMORY_PLANE_2_EXT {
-        device_extensions: [ext_image_drm_format_modifier],
-    },
+    MEMORY_PLANE_2, MemoryPlane2 = MEMORY_PLANE_2_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_image_drm_format_modifier)]),
+    ]),
 }

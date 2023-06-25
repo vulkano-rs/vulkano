@@ -95,7 +95,8 @@ use crate::{
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     macros::{impl_id_counter, vulkan_enum},
     sampler::{ComponentMapping, ComponentSwizzle, Filter},
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
+    VulkanObject,
 };
 use std::{
     error::Error,
@@ -145,10 +146,9 @@ impl SamplerYcbcrConversion {
         if !device.enabled_features().sampler_ycbcr_conversion {
             return Err(SamplerYcbcrConversionCreationError::RequirementNotMet {
                 required_for: "`SamplerYcbcrConversion::new`",
-                requires_one_of: RequiresOneOf {
-                    features: &["sampler_ycbcr_conversion"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "sampler_ycbcr_conversion",
+                )])]),
             });
         }
 
@@ -791,7 +791,7 @@ vulkan_enum! {
 #[cfg(test)]
 mod tests {
     use super::{SamplerYcbcrConversion, SamplerYcbcrConversionCreationError};
-    use crate::RequiresOneOf;
+    use crate::{Requires, RequiresAllOf, RequiresOneOf};
 
     #[test]
     fn feature_not_enabled() {
@@ -801,9 +801,10 @@ mod tests {
 
         match r {
             Err(SamplerYcbcrConversionCreationError::RequirementNotMet {
-                requires_one_of: RequiresOneOf { features, .. },
+                requires_one_of:
+                    RequiresOneOf([RequiresAllOf([Requires::Feature("sampler_ycbcr_conversion")])]),
                 ..
-            }) if features.contains(&"sampler_ycbcr_conversion") => (),
+            }) => (),
             _ => panic!(),
         }
     }

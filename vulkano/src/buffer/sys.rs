@@ -23,7 +23,7 @@ use crate::{
         MemoryPropertyFlags, MemoryRequirements,
     },
     sync::Sharing,
-    DeviceSize, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -104,10 +104,7 @@ impl RawBuffer {
             if !device.enabled_features().sparse_binding {
                 return Err(BufferError::RequirementNotMet {
                     required_for: "`create_info.sparse` is `Some`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["sparse_binding"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("sparse_binding")])]),
                 });
             }
 
@@ -116,10 +113,7 @@ impl RawBuffer {
                 return Err(BufferError::RequirementNotMet {
                     required_for: "`create_info.sparse` is `Some(sparse_level)`, where \
                         `sparse_level` contains `BufferCreateFlags::SPARSE_RESIDENCY`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["sparse_residency_buffer"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("sparse_residency_buffer")])]),
                 });
             }
 
@@ -128,10 +122,7 @@ impl RawBuffer {
                 return Err(BufferError::RequirementNotMet {
                     required_for: "`create_info.sparse` is `Some(sparse_level)`, where \
                         `sparse_level` contains `BufferCreateFlags::SPARSE_ALIASED`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["sparse_residency_aliased"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("sparse_residency_aliased")])]),
                 });
             }
 
@@ -178,11 +169,10 @@ impl RawBuffer {
             {
                 return Err(BufferError::RequirementNotMet {
                     required_for: "`create_info.external_memory_handle_types` is not empty",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        device_extensions: &["khr_external_memory"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
+                    ]),
                 });
             }
 

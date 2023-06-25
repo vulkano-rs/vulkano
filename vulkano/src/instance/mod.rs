@@ -90,7 +90,8 @@ use crate::{
     },
     instance::debug::trampoline,
     macros::{impl_id_counter, vulkan_bitflags},
-    RequiresOneOf, RuntimeError, ValidationError, VulkanError, VulkanLibrary, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
+    VulkanLibrary, VulkanObject,
 };
 pub use crate::{fns::InstanceFunctions, version::Version};
 use parking_lot::RwLock;
@@ -284,6 +285,7 @@ impl RefUnwindSafe for Instance {}
 
 impl Instance {
     /// Creates a new `Instance`.
+    #[inline]
     pub fn new(
         library: Arc<VulkanLibrary>,
         create_info: InstanceCreateInfo,
@@ -372,10 +374,9 @@ impl Instance {
                 return Err(ValidationError {
                     context: "debug_utils_messengers".into(),
                     problem: "is not empty".into(),
-                    requires_one_of: RequiresOneOf {
-                        instance_extensions: &["ext_debug_utils"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                        Requires::InstanceExtension("ext_debug_utils"),
+                    ])]),
                     vuids: &["VUID-VkInstanceCreateInfo-pNext-04926"],
                 });
             }
@@ -412,6 +413,17 @@ impl Instance {
                 Version::HEADER_VERSION
             }
         });
+        create_info.enabled_extensions.enable_dependencies(
+            std::cmp::min(
+                create_info.max_api_version.unwrap_or_default(),
+                library.api_version(),
+            ),
+            &library
+                .supported_extensions_with_layers(
+                    create_info.enabled_layers.iter().map(String::as_str),
+                )
+                .unwrap(),
+        );
 
         let &InstanceCreateInfo {
             mut flags,
@@ -665,6 +677,9 @@ impl Instance {
     }
 
     /// Returns the extensions that have been enabled on the instance.
+    ///
+    /// This includes both the extensions specified in [`InstanceCreateInfo::enabled_extensions`],
+    /// and any extensions that are required by those extensions.
     #[inline]
     pub fn enabled_extensions(&self) -> &InstanceExtensions {
         &self.enabled_extensions
@@ -763,11 +778,10 @@ impl Instance {
             || self.enabled_extensions().khr_device_group_creation)
         {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_1),
-                    instance_extensions: &["khr_device_group_creation"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                    RequiresAllOf(&[Requires::InstanceExtension("khr_device_group_creation")]),
+                ]),
                 ..Default::default()
             });
         }
@@ -988,6 +1002,9 @@ pub struct InstanceCreateInfo {
 
     /// The extensions to enable on the instance.
     ///
+    /// You only need to enable the extensions that you need. If the extensions you specified
+    /// require additional extensions to be enabled, they will be automatically enabled as well.
+    ///
     /// The default value is [`InstanceExtensions::empty()`].
     pub enabled_extensions: InstanceExtensions,
 
@@ -1088,10 +1105,9 @@ impl InstanceCreateInfo {
                 return Err(ValidationError {
                     context: "enabled_validation_features".into(),
                     problem: "is not empty".into(),
-                    requires_one_of: RequiresOneOf {
-                        instance_extensions: &["ext_validation_features"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                        Requires::InstanceExtension("ext_validation_features"),
+                    ])]),
                     ..Default::default()
                 });
             }
@@ -1142,10 +1158,9 @@ impl InstanceCreateInfo {
                 return Err(ValidationError {
                     context: "disabled_validation_features".into(),
                     problem: "is not empty".into(),
-                    requires_one_of: RequiresOneOf {
-                        instance_extensions: &["ext_validation_features"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                        Requires::InstanceExtension("ext_validation_features"),
+                    ])]),
                     ..Default::default()
                 });
             }

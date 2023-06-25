@@ -27,7 +27,7 @@
 use crate::{
     device::{Device, DeviceOwned},
     macros::impl_id_counter,
-    OomError, RequiresOneOf, RuntimeError, VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -66,10 +66,7 @@ impl Event {
             return Err(EventError::RequirementNotMet {
                 required_for: "this device is a portability subset device, and `Event::new` was \
                     called",
-                requires_one_of: RequiresOneOf {
-                    features: &["events"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("events")])]),
             });
         }
 

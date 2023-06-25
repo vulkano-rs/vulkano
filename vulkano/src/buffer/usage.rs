@@ -52,96 +52,114 @@ vulkan_bitflags! {
     ///
     /// [`MemoryAllocateFlags::DEVICE_ADDRESS`]: crate::memory::MemoryAllocateFlags::DEVICE_ADDRESS
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
-    SHADER_DEVICE_ADDRESS = SHADER_DEVICE_ADDRESS {
-        api_version: V1_2,
-        device_extensions: [khr_buffer_device_address, ext_buffer_device_address],
-    },
+    SHADER_DEVICE_ADDRESS = SHADER_DEVICE_ADDRESS
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(khr_buffer_device_address)]),
+        RequiresAllOf([DeviceExtension(ext_buffer_device_address)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
-    VIDEO_DECODE_SRC = VIDEO_DECODE_SRC_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },*/
+    VIDEO_DECODE_SRC = VIDEO_DECODE_SRC_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VIDEO_DECODE_DST = VIDEO_DECODE_DST_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },*/
+    VIDEO_DECODE_DST = VIDEO_DECODE_DST_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    TRANSFORM_FEEDBACK_BUFFER = TRANSFORM_FEEDBACK_BUFFER_EXT {
-        device_extensions: [ext_transform_feedback],
-    },*/
+    TRANSFORM_FEEDBACK_BUFFER = TRANSFORM_FEEDBACK_BUFFER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_transform_feedback)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    TRANSFORM_FEEDBACK_COUNTER_BUFFER = TRANSFORM_FEEDBACK_COUNTER_BUFFER_EXT {
-        device_extensions: [ext_transform_feedback],
-    },*/
+    TRANSFORM_FEEDBACK_COUNTER_BUFFER = TRANSFORM_FEEDBACK_COUNTER_BUFFER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_transform_feedback)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    CONDITIONAL_RENDERING = CONDITIONAL_RENDERING_EXT {
-        device_extensions: [ext_conditional_rendering],
-    },*/
+    CONDITIONAL_RENDERING = CONDITIONAL_RENDERING_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_conditional_rendering)]),
+    ]),*/
 
     /// The buffer can be used as input data for an acceleration structure build operation.
-    ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR {
-        device_extensions: [khr_acceleration_structure],
-    },
+    ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
+    ]),
 
     /// An acceleration structure can be created from the buffer.
-    ACCELERATION_STRUCTURE_STORAGE = ACCELERATION_STRUCTURE_STORAGE_KHR {
-        device_extensions: [khr_acceleration_structure],
-    },
+    ACCELERATION_STRUCTURE_STORAGE = ACCELERATION_STRUCTURE_STORAGE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
-    SHADER_BINDING_TABLE = SHADER_BINDING_TABLE_KHR {
-        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
-    },*/
+    SHADER_BINDING_TABLE = SHADER_BINDING_TABLE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VIDEO_ENCODE_DST = VIDEO_ENCODE_DST_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },*/
+    VIDEO_ENCODE_DST = VIDEO_ENCODE_DST_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    VIDEO_ENCODE_SRC = VIDEO_ENCODE_SRC_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },*/
+    VIDEO_ENCODE_SRC = VIDEO_ENCODE_SRC_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SAMPLER_DESCRIPTOR_BUFFER = SAMPLER_DESCRIPTOR_BUFFER_EXT {
-        device_extensions: [ext_descriptor_buffer],
-    },*/
+    SAMPLER_DESCRIPTOR_BUFFER = SAMPLER_DESCRIPTOR_BUFFER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_descriptor_buffer)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    RESOURCE_DESCRIPTOR_BUFFER = RESOURCE_DESCRIPTOR_BUFFER_EXT {
-        device_extensions: [ext_descriptor_buffer],
-    },*/
+    RESOURCE_DESCRIPTOR_BUFFER = RESOURCE_DESCRIPTOR_BUFFER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_descriptor_buffer)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER = PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_EXT {
-        device_extensions: [ext_descriptor_buffer],
-    },*/
+    PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER = PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_descriptor_buffer)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    MICROMAP_BUILD_INPUT_READ_ONLY = MICROMAP_BUILD_INPUT_READ_ONLY_EXT {
-        device_extensions: [ext_opacity_micromap],
-    },*/
+    MICROMAP_BUILD_INPUT_READ_ONLY = MICROMAP_BUILD_INPUT_READ_ONLY_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_opacity_micromap)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    MICROMAP_STORAGE = MICROMAP_STORAGE_EXT {
-        device_extensions: [ext_opacity_micromap],
-    },*/
+    MICROMAP_STORAGE = MICROMAP_STORAGE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_opacity_micromap)]),
+    ]),*/
 }

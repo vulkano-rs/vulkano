@@ -23,7 +23,7 @@ use crate::{
         },
         DynamicState,
     },
-    RequirementNotMet, RequiresOneOf, Version, VulkanObject,
+    RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -149,10 +149,9 @@ where
         if !self.device().enabled_features().color_write_enable {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_color_write_enable`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["ext_color_write_enable"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_color_write_enable",
+                )])]),
             });
         }
 
@@ -235,11 +234,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_cull_mode`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -306,10 +304,9 @@ where
         if clamp != 0.0 && !self.device().enabled_features().depth_bias_clamp {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`clamp` is not `0.0`",
-                requires_one_of: RequiresOneOf {
-                    features: &["depth_bias_clamp"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "depth_bias_clamp",
+                )])]),
             });
         }
 
@@ -377,11 +374,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_depth_bias_enable`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state2"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                ]),
             });
         }
 
@@ -448,10 +444,9 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`bounds` is not between `0.0` and `1.0` inclusive",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["ext_depth_range_unrestricted"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_depth_range_unrestricted",
+                )])]),
             });
         }
 
@@ -513,11 +508,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_depth_bounds_test_enable`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -582,11 +576,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_depth_compare_op`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -645,11 +638,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_depth_test_enable`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -708,11 +700,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_depth_write_enable`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -780,10 +771,9 @@ where
         if self.device().enabled_extensions().ext_discard_rectangles {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_discard_rectangle`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["ext_discard_rectangles"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_discard_rectangles",
+                )])]),
             });
         }
 
@@ -873,11 +863,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_front_face`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -937,10 +926,9 @@ where
         if !self.device().enabled_extensions().ext_line_rasterization {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_line_stipple`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["ext_line_rasterization"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_line_rasterization",
+                )])]),
             });
         }
 
@@ -1001,10 +989,9 @@ where
         if !self.device().enabled_features().wide_lines && line_width != 1.0 {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`line_width` is not `1.0`",
-                requires_one_of: RequiresOneOf {
-                    features: &["wide_lines"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "wide_lines",
+                )])]),
             });
         }
 
@@ -1068,10 +1055,9 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_logic_op`",
-                requires_one_of: RequiresOneOf {
-                    features: &["extended_dynamic_state2_logic_op"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "extended_dynamic_state2_logic_op",
+                )])]),
             });
         }
 
@@ -1136,10 +1122,9 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_patch_control_points`",
-                requires_one_of: RequiresOneOf {
-                    features: &["extended_dynamic_state2_patch_control_points"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "extended_dynamic_state2_patch_control_points",
+                )])]),
             });
         }
 
@@ -1222,11 +1207,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_primitive_restart_enable`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state2"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                ]),
             });
         }
 
@@ -1295,11 +1279,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_primitive_topology`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -1314,10 +1297,9 @@ where
                     return Err(SetDynamicStateError::RequirementNotMet {
                         required_for: "this device is a portability subset device, and `topology` \
                             is `PrimitiveTopology::TriangleFan`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["triangle_fans"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "triangle_fans",
+                        )])]),
                     });
                 }
             }
@@ -1328,10 +1310,9 @@ where
                 if !self.device().enabled_features().geometry_shader {
                     return Err(SetDynamicStateError::RequirementNotMet {
                         required_for: "`topology` is `PrimitiveTopology::*WithAdjacency`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["geometry_shader"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "geometry_shader",
+                        )])]),
                     });
                 }
             }
@@ -1339,10 +1320,9 @@ where
                 if !self.device().enabled_features().tessellation_shader {
                     return Err(SetDynamicStateError::RequirementNotMet {
                         required_for: "`topology` is `PrimitiveTopology::PatchList`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["tessellation_shader"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "tessellation_shader",
+                        )])]),
                     });
                 }
             }
@@ -1410,11 +1390,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_rasterizer_discard_enable`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state2"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                ]),
             });
         }
 
@@ -1491,10 +1470,9 @@ where
             if first_scissor != 0 {
                 return Err(SetDynamicStateError::RequirementNotMet {
                     required_for: "`first_scissor` is not `0`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["multi_viewport"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_viewport",
+                    )])]),
                 });
             }
 
@@ -1502,10 +1480,9 @@ where
             if scissors.len() > 1 {
                 return Err(SetDynamicStateError::RequirementNotMet {
                     required_for: "`scissors.len()` is greater than `1`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["multi_viewport"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_viewport",
+                    )])]),
                 });
             }
         }
@@ -1582,11 +1559,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_scissor_with_count`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -1602,10 +1578,9 @@ where
         if !self.device().enabled_features().multi_viewport && scissors.len() > 1 {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`scissors.len()` is greater than `1`",
-                requires_one_of: RequiresOneOf {
-                    features: &["multi_viewport"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "multi_viewport",
+                )])]),
             });
         }
 
@@ -1768,11 +1743,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_stencil_op`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -1924,11 +1898,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_stencil_test_enable`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -2073,10 +2046,9 @@ where
             if first_viewport != 0 {
                 return Err(SetDynamicStateError::RequirementNotMet {
                     required_for: "`first_scissors` is not `0`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["multi_viewport"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_viewport",
+                    )])]),
                 });
             }
 
@@ -2084,10 +2056,9 @@ where
             if viewports.len() > 1 {
                 return Err(SetDynamicStateError::RequirementNotMet {
                     required_for: "`viewports.len()` is greater than `1`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["multi_viewport"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_viewport",
+                    )])]),
                 });
             }
         }
@@ -2162,11 +2133,10 @@ where
         {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`AutoCommandBufferBuilder::set_viewport_with_count`",
-                requires_one_of: RequiresOneOf {
-                    api_version: Some(Version::V1_3),
-                    features: &["extended_dynamic_state"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
             });
         }
 
@@ -2182,10 +2152,9 @@ where
         if !self.device().enabled_features().multi_viewport && viewports.len() > 1 {
             return Err(SetDynamicStateError::RequirementNotMet {
                 required_for: "`viewports.len()` is greater than `1`",
-                requires_one_of: RequiresOneOf {
-                    features: &["multi_viewport"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "multi_viewport",
+                )])]),
             });
         }
 

@@ -761,17 +761,19 @@ vulkan_bitflags! {
 
     /// Can be used with a storage image descriptor for reading, without specifying a format on the
     /// image view.
-    STORAGE_READ_WITHOUT_FORMAT = STORAGE_READ_WITHOUT_FORMAT {
-        api_version: V1_3,
-        device_extensions: [khr_format_feature_flags2],
-    },
+    STORAGE_READ_WITHOUT_FORMAT = STORAGE_READ_WITHOUT_FORMAT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_format_feature_flags2)]),
+    ]),
 
     /// Can be used with a storage image descriptor for writing, without specifying a format on the
     /// image view.
-    STORAGE_WRITE_WITHOUT_FORMAT = STORAGE_WRITE_WITHOUT_FORMAT {
-        api_version: V1_3,
-        device_extensions: [khr_format_feature_flags2],
-    },
+    STORAGE_WRITE_WITHOUT_FORMAT = STORAGE_WRITE_WITHOUT_FORMAT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_format_feature_flags2)]),
+    ]),
 
     /// Can be used with a color attachment in a framebuffer, or with an input attachment
     /// descriptor.
@@ -786,26 +788,30 @@ vulkan_bitflags! {
     DEPTH_STENCIL_ATTACHMENT = DEPTH_STENCIL_ATTACHMENT,
 
     /// Can be used with a fragment density map attachment in a framebuffer.
-    FRAGMENT_DENSITY_MAP = FRAGMENT_DENSITY_MAP_EXT {
-        device_extensions: [ext_fragment_density_map],
-    },
+    FRAGMENT_DENSITY_MAP = FRAGMENT_DENSITY_MAP_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_fragment_density_map)]),
+    ]),
 
     /// Can be used with a fragment shading rate attachment in a framebuffer.
-    FRAGMENT_SHADING_RATE_ATTACHMENT = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
-        device_extensions: [khr_fragment_shading_rate],
-    },
+    FRAGMENT_SHADING_RATE_ATTACHMENT = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_fragment_shading_rate)]),
+    ]),
 
     /// Can be used with the source image in a transfer (copy) operation.
-    TRANSFER_SRC = TRANSFER_SRC {
-        api_version: V1_1,
-        device_extensions: [khr_maintenance1],
-    },
+    TRANSFER_SRC = TRANSFER_SRC
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_maintenance1)]),
+    ]),
 
     /// Can be used with the destination image in a transfer (copy) operation.
-    TRANSFER_DST = TRANSFER_DST {
-        api_version: V1_1,
-        device_extensions: [khr_maintenance1],
-    },
+    TRANSFER_DST = TRANSFER_DST
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_maintenance1)]),
+    ]),
 
     /// Can be used with the source image in a blit operation.
     BLIT_SRC = BLIT_SRC,
@@ -821,136 +827,215 @@ vulkan_bitflags! {
 
     /// Can be used with samplers or as a blit source, using the
     /// [`Cubic`](crate::sampler::Filter::Cubic) filter.
-    SAMPLED_IMAGE_FILTER_CUBIC = SAMPLED_IMAGE_FILTER_CUBIC_EXT {
-        device_extensions: [ext_filter_cubic, img_filter_cubic],
-    },
+    SAMPLED_IMAGE_FILTER_CUBIC = SAMPLED_IMAGE_FILTER_CUBIC_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_filter_cubic)]),
+        RequiresAllOf([DeviceExtension(img_filter_cubic)]),
+    ]),
 
     /// Can be used with samplers using a reduction mode of
     /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
     /// [`Max`](crate::sampler::SamplerReductionMode::Max).
-    SAMPLED_IMAGE_FILTER_MINMAX = SAMPLED_IMAGE_FILTER_MINMAX {
-        api_version: V1_2,
-        device_extensions: [ext_sampler_filter_minmax],
-    },
+    SAMPLED_IMAGE_FILTER_MINMAX = SAMPLED_IMAGE_FILTER_MINMAX
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(ext_sampler_filter_minmax)]),
+    ]),
 
     /// Can be used with sampler YCbCr conversions using a chroma offset of
     /// [`Midpoint`](crate::sampler::ycbcr::ChromaLocation::Midpoint).
-    MIDPOINT_CHROMA_SAMPLES = MIDPOINT_CHROMA_SAMPLES {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    MIDPOINT_CHROMA_SAMPLES = MIDPOINT_CHROMA_SAMPLES
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /// Can be used with sampler YCbCr conversions using a chroma offset of
     /// [`CositedEven`](crate::sampler::ycbcr::ChromaLocation::CositedEven).
-    COSITED_CHROMA_SAMPLES = COSITED_CHROMA_SAMPLES {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    COSITED_CHROMA_SAMPLES = COSITED_CHROMA_SAMPLES
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /// Can be used with sampler YCbCr conversions using the
     /// [`Linear`](crate::sampler::Filter::Linear) chroma filter.
-    SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER = SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER = SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /// Can be used with sampler YCbCr conversions whose chroma filter differs from the filters of
     /// the base sampler.
-    SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER = SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER = SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /// When used with a sampler YCbCr conversion, the implementation will always perform
     /// explicit chroma reconstruction.
-    SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /// Can be used with sampler YCbCr conversions with forced explicit reconstruction.
-    SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     /// Can be used with samplers using depth comparison.
-    SAMPLED_IMAGE_DEPTH_COMPARISON = SAMPLED_IMAGE_DEPTH_COMPARISON {
-        api_version: V1_3,
-        device_extensions: [khr_format_feature_flags2],
-    },
+    SAMPLED_IMAGE_DEPTH_COMPARISON = SAMPLED_IMAGE_DEPTH_COMPARISON
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_format_feature_flags2)]),
+    ]),
 
     /* Video */
 
     /// Can be used with the output image of a video decode operation.
-    VIDEO_DECODE_OUTPUT = VIDEO_DECODE_OUTPUT_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },
+    VIDEO_DECODE_OUTPUT = VIDEO_DECODE_OUTPUT_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),
 
     /// Can be used with the DPB image of a video decode operation.
-    VIDEO_DECODE_DPB = VIDEO_DECODE_DPB_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },
+    VIDEO_DECODE_DPB = VIDEO_DECODE_DPB_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
+    ]),
 
     /// Can be used with the input image of a video encode operation.
-    VIDEO_ENCODE_INPUT = VIDEO_ENCODE_INPUT_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },
+    VIDEO_ENCODE_INPUT = VIDEO_ENCODE_INPUT_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),
 
     /// Can be used with the DPB image of a video encode operation.
-    VIDEO_ENCODE_DPB = VIDEO_ENCODE_DPB_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },
+    VIDEO_ENCODE_DPB = VIDEO_ENCODE_DPB_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_encode_queue)]),
+    ]),
 
     /* Misc image features */
 
     /// For multi-planar formats, can be used with images created with the [`DISJOINT`] flag.
     ///
     /// [`DISJOINT`]: crate::image::ImageCreateFlags::DISJOINT
-    DISJOINT = DISJOINT {
-        api_version: V1_1,
-        device_extensions: [khr_sampler_ycbcr_conversion],
-    },
+    DISJOINT = DISJOINT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_sampler_ycbcr_conversion)]),
+    ]),
 
     // TODO: document
-    LINEAR_COLOR_ATTACHMENT = LINEAR_COLOR_ATTACHMENT_NV {
-        device_extensions: [nv_linear_color_attachment],
-    },
+    LINEAR_COLOR_ATTACHMENT = LINEAR_COLOR_ATTACHMENT_NV
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(nv_linear_color_attachment),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_format_feature_flags2),
+            DeviceExtension(nv_linear_color_attachment),
+        ]),
+    ]),
 
     // TODO: document
-    WEIGHT_IMAGE = WEIGHT_IMAGE_QCOM {
-        device_extensions: [qcom_image_processing],
-    },
+    WEIGHT_IMAGE = WEIGHT_IMAGE_QCOM
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(qcom_image_processing),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_format_feature_flags2),
+            DeviceExtension(qcom_image_processing),
+        ]),
+    ]),
 
     // TODO: document
-    WEIGHT_SAMPLED_IMAGE = WEIGHT_SAMPLED_IMAGE_QCOM {
-        device_extensions: [qcom_image_processing],
-    },
+    WEIGHT_SAMPLED_IMAGE = WEIGHT_SAMPLED_IMAGE_QCOM
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(qcom_image_processing),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_format_feature_flags2),
+            DeviceExtension(qcom_image_processing),
+        ]),
+    ]),
 
     // TODO: document
-    BLOCK_MATCHING = BLOCK_MATCHING_QCOM {
-        device_extensions: [qcom_image_processing],
-    },
+    BLOCK_MATCHING = BLOCK_MATCHING_QCOM
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(qcom_image_processing),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_format_feature_flags2),
+            DeviceExtension(qcom_image_processing),
+        ]),
+    ]),
 
     // TODO: document
-    BOX_FILTER_SAMPLED = BOX_FILTER_SAMPLED_QCOM {
-        device_extensions: [qcom_image_processing],
-    },
+    BOX_FILTER_SAMPLED = BOX_FILTER_SAMPLED_QCOM
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(qcom_image_processing),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_format_feature_flags2),
+            DeviceExtension(qcom_image_processing),
+        ]),
+    ]),
 
     // TODO: document
-    OPTICAL_FLOW_IMAGE = OPTICAL_FLOW_IMAGE_NV {
-        device_extensions: [nv_optical_flow],
-    },
+    OPTICAL_FLOW_IMAGE = OPTICAL_FLOW_IMAGE_NV
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(nv_optical_flow),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_format_feature_flags2),
+            DeviceExtension(nv_optical_flow),
+        ]),
+    ]),
 
     // TODO: document
-    OPTICAL_FLOW_VECTOR = OPTICAL_FLOW_VECTOR_NV {
-        device_extensions: [nv_optical_flow],
-    },
+    OPTICAL_FLOW_VECTOR = OPTICAL_FLOW_VECTOR_NV
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(nv_optical_flow),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_format_feature_flags2),
+            DeviceExtension(nv_optical_flow),
+        ]),
+    ]),
 
     // TODO: document
-    OPTICAL_FLOW_COST = OPTICAL_FLOW_COST_NV {
-        device_extensions: [nv_optical_flow],
-    },
+    OPTICAL_FLOW_COST = OPTICAL_FLOW_COST_NV
+    RequiresOneOf([
+        RequiresAllOf([
+            APIVersion(V1_3),
+            DeviceExtension(nv_optical_flow),
+        ]),
+        RequiresAllOf([
+            DeviceExtension(khr_format_feature_flags2),
+            DeviceExtension(nv_optical_flow),
+        ]),
+    ]),
 
     /* Buffer usage  */
 
@@ -968,9 +1053,10 @@ vulkan_bitflags! {
     VERTEX_BUFFER = VERTEX_BUFFER,
 
     /// Can be used as the vertex format when building an acceleration structure.
-    ACCELERATION_STRUCTURE_VERTEX_BUFFER = ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR {
-        device_extensions: [khr_acceleration_structure],
-    },
+    ACCELERATION_STRUCTURE_VERTEX_BUFFER = ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
+    ]),
 }
 
 impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {

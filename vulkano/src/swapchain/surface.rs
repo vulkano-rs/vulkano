@@ -19,7 +19,7 @@ use crate::{
         display::{DisplayMode, DisplayPlane},
         SurfaceSwapchainLock,
     },
-    OomError, RequiresOneOf, RuntimeError, ValidationError, VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanObject,
 };
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
@@ -185,10 +185,9 @@ impl Surface {
         if !instance.enabled_extensions().ext_headless_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::headless`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_headless_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_headless_surface",
+                )])]),
             });
         }
 
@@ -255,10 +254,9 @@ impl Surface {
         {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_display_plane`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_display"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_display",
+                )])]),
             });
         }
 
@@ -340,10 +338,9 @@ impl Surface {
         if !instance.enabled_extensions().khr_android_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_android`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_android_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_android_surface",
+                )])]),
             });
         }
 
@@ -416,10 +413,9 @@ impl Surface {
         if !instance.enabled_extensions().ext_directfb_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_directfb`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_directfb_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_directfb_surface",
+                )])]),
             });
         }
 
@@ -496,10 +492,9 @@ impl Surface {
         if !instance.enabled_extensions().fuchsia_imagepipe_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_fuchsia_image_pipe`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["fuchsia_imagepipe_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "fuchsia_imagepipe_surface",
+                )])]),
             });
         }
 
@@ -572,10 +567,9 @@ impl Surface {
         if !instance.enabled_extensions().ggp_stream_descriptor_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_ggp_stream_descriptor`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ggp_stream_descriptor_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ggp_stream_descriptor_surface",
+                )])]),
             });
         }
 
@@ -647,10 +641,9 @@ impl Surface {
         if !instance.enabled_extensions().mvk_ios_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_ios`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["mvk_ios_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "mvk_ios_surface",
+                )])]),
             });
         }
 
@@ -725,10 +718,9 @@ impl Surface {
         if !instance.enabled_extensions().mvk_macos_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_mac_os`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["mvk_macos_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "mvk_macos_surface",
+                )])]),
             });
         }
 
@@ -800,10 +792,9 @@ impl Surface {
         if !instance.enabled_extensions().ext_metal_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_metal`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["ext_metal_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_metal_surface",
+                )])]),
             });
         }
 
@@ -873,10 +864,9 @@ impl Surface {
         if !instance.enabled_extensions().qnx_screen_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_qnx_screen`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["qnx_screen_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "qnx_screen_surface",
+                )])]),
             });
         }
 
@@ -949,10 +939,9 @@ impl Surface {
         if !instance.enabled_extensions().nn_vi_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_vi`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["nn_vi_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "nn_vi_surface",
+                )])]),
             });
         }
 
@@ -1027,10 +1016,9 @@ impl Surface {
         if !instance.enabled_extensions().khr_wayland_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_wayland`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_wayland_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_wayland_surface",
+                )])]),
             });
         }
 
@@ -1110,10 +1098,9 @@ impl Surface {
         if !instance.enabled_extensions().khr_win32_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_win32`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_win32_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_win32_surface",
+                )])]),
             });
         }
 
@@ -1193,10 +1180,9 @@ impl Surface {
         if !instance.enabled_extensions().khr_xcb_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_xcb`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_xcb_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_xcb_surface",
+                )])]),
             });
         }
 
@@ -1276,10 +1262,9 @@ impl Surface {
         if !instance.enabled_extensions().khr_xlib_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`Surface::from_xlib`",
-                requires_one_of: RequiresOneOf {
-                    instance_extensions: &["khr_xlib_surface"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_xlib_surface",
+                )])]),
             });
         }
 
@@ -1619,15 +1604,17 @@ vulkan_enum! {
 
     /* TODO: enable
     // TODO: document
-    SharedDemandRefresh = SHARED_DEMAND_REFRESH_KHR {
-        device_extensions: [khr_shared_presentable_image],
-    },*/
+    SharedDemandRefresh = SHARED_DEMAND_REFRESH_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_shared_presentable_image)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SharedContinuousRefresh = SHARED_CONTINUOUS_REFRESH_KHR {
-        device_extensions: [khr_shared_presentable_image],
-    },*/
+    SharedContinuousRefresh = SHARED_CONTINUOUS_REFRESH_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_shared_presentable_image)]),
+    ]),*/
 }
 
 vulkan_bitflags_enum! {
@@ -1799,79 +1786,94 @@ vulkan_enum! {
     SrgbNonLinear = SRGB_NONLINEAR,
 
     // TODO: document
-    DisplayP3NonLinear = DISPLAY_P3_NONLINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    DisplayP3NonLinear = DISPLAY_P3_NONLINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    ExtendedSrgbLinear = EXTENDED_SRGB_LINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    ExtendedSrgbLinear = EXTENDED_SRGB_LINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    ExtendedSrgbNonLinear = EXTENDED_SRGB_NONLINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    ExtendedSrgbNonLinear = EXTENDED_SRGB_NONLINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    DisplayP3Linear = DISPLAY_P3_LINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    DisplayP3Linear = DISPLAY_P3_LINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    DciP3NonLinear = DCI_P3_NONLINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    DciP3NonLinear = DCI_P3_NONLINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    Bt709Linear = BT709_LINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    Bt709Linear = BT709_LINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    Bt709NonLinear = BT709_NONLINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    Bt709NonLinear = BT709_NONLINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    Bt2020Linear = BT2020_LINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    Bt2020Linear = BT2020_LINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    Hdr10St2084 = HDR10_ST2084_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    Hdr10St2084 = HDR10_ST2084_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    DolbyVision = DOLBYVISION_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    DolbyVision = DOLBYVISION_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    Hdr10Hlg = HDR10_HLG_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    Hdr10Hlg = HDR10_HLG_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    AdobeRgbLinear = ADOBERGB_LINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    AdobeRgbLinear = ADOBERGB_LINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    AdobeRgbNonLinear = ADOBERGB_NONLINEAR_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    AdobeRgbNonLinear = ADOBERGB_NONLINEAR_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    PassThrough = PASS_THROUGH_EXT {
-        instance_extensions: [ext_swapchain_colorspace],
-    },
+    PassThrough = PASS_THROUGH_EXT
+    RequiresOneOf([
+        RequiresAllOf([InstanceExtension(ext_swapchain_colorspace)]),
+    ]),
 
     // TODO: document
-    DisplayNative = DISPLAY_NATIVE_AMD {
-        device_extensions: [amd_display_native_hdr],
-    },
+    DisplayNative = DISPLAY_NATIVE_AMD
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(amd_display_native_hdr)]),
+    ]),
 }
 
 /// Parameters for [`PhysicalDevice::surface_capabilities`] and [`PhysicalDevice::surface_formats`].
@@ -1912,10 +1914,9 @@ impl SurfaceInfo {
             return Err(ValidationError {
                 context: "full_screen_exclusive".into(),
                 problem: "is not `FullScreenExclusive::Default`".into(),
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["ext_full_screen_exclusive"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_full_screen_exclusive",
+                )])]),
                 ..Default::default()
             });
         }
@@ -2008,7 +2009,7 @@ pub struct SurfaceCapabilities {
 mod tests {
     use crate::{
         swapchain::{Surface, SurfaceCreationError},
-        RequiresOneOf,
+        Requires, RequiresAllOf, RequiresOneOf,
     };
     use std::ptr;
 
@@ -2018,12 +2019,9 @@ mod tests {
         match unsafe { Surface::from_win32(instance, ptr::null::<u8>(), ptr::null::<u8>(), None) } {
             Err(SurfaceCreationError::RequirementNotMet {
                 requires_one_of:
-                    RequiresOneOf {
-                        instance_extensions,
-                        ..
-                    },
+                    RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_win32_surface")])]),
                 ..
-            }) if instance_extensions.contains(&"khr_win32_surface") => (),
+            }) => (),
             _ => panic!(),
         }
     }
@@ -2034,12 +2032,9 @@ mod tests {
         match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0, None) } {
             Err(SurfaceCreationError::RequirementNotMet {
                 requires_one_of:
-                    RequiresOneOf {
-                        instance_extensions,
-                        ..
-                    },
+                    RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_xcb_surface")])]),
                 ..
-            }) if instance_extensions.contains(&"khr_xcb_surface") => (),
+            }) => (),
             _ => panic!(),
         }
     }
@@ -2050,12 +2045,9 @@ mod tests {
         match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0, None) } {
             Err(SurfaceCreationError::RequirementNotMet {
                 requires_one_of:
-                    RequiresOneOf {
-                        instance_extensions,
-                        ..
-                    },
+                    RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_xlib_surface")])]),
                 ..
-            }) if instance_extensions.contains(&"khr_xlib_surface") => (),
+            }) => (),
             _ => panic!(),
         }
     }
@@ -2067,12 +2059,9 @@ mod tests {
         {
             Err(SurfaceCreationError::RequirementNotMet {
                 requires_one_of:
-                    RequiresOneOf {
-                        instance_extensions,
-                        ..
-                    },
+                    RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_wayland_surface")])]),
                 ..
-            }) if instance_extensions.contains(&"khr_wayland_surface") => (),
+            }) => (),
             _ => panic!(),
         }
     }
@@ -2083,12 +2072,9 @@ mod tests {
         match unsafe { Surface::from_android(instance, ptr::null::<u8>(), None) } {
             Err(SurfaceCreationError::RequirementNotMet {
                 requires_one_of:
-                    RequiresOneOf {
-                        instance_extensions,
-                        ..
-                    },
+                    RequiresOneOf([RequiresAllOf([Requires::InstanceExtension("khr_android_surface")])]),
                 ..
-            }) if instance_extensions.contains(&"khr_android_surface") => (),
+            }) => (),
             _ => panic!(),
         }
     }

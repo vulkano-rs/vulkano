@@ -36,7 +36,8 @@ use crate::{
     range_map::RangeMap,
     swapchain::Swapchain,
     sync::{future::AccessError, CurrentAccess, Sharing},
-    DeviceSize, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
+    VulkanObject,
 };
 use ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT;
 use parking_lot::{Mutex, MutexGuard};
@@ -178,11 +179,10 @@ impl RawImage {
                 return Err(ImageError::RequirementNotMet {
                     required_for: "`create_info.stencil_usage` is `Some` and `create_info.format` \
                         has both a depth and a stencil aspect",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_2),
-                        device_extensions: &["ext_separate_stencil_usage"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("ext_separate_stencil_usage")]),
+                    ]),
                 });
             }
 
@@ -308,10 +308,9 @@ impl RawImage {
                     required_for: "this device is a portability subset device, \
                         `create_info.samples` is not `SampleCount::Sample1` and \
                         `create_info.dimensions.array_layers()` is greater than `1`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["multisample_array_image"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multisample_array_image",
+                    )])]),
                 });
             }
         }
@@ -338,10 +337,9 @@ impl RawImage {
                 return Err(ImageError::RequirementNotMet {
                     required_for: "`create_info.format.ycbcr_chroma_sampling()` is `Some` and \
                         `create_info.dimensions.array_layers()` is greater than `1`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["ycbcr_image_arrays"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "ycbcr_image_arrays",
+                    )])]),
                 });
             }
 
@@ -436,10 +434,9 @@ impl RawImage {
                     required_for: "`create_info.usage` or `create_info.stencil_usage` contains \
                         `ImageUsage::STORAGE`, and `create_info.samples` is not \
                         `SampleCount::Sample1`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["shader_storage_image_multisample"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "shader_storage_image_multisample",
+                    )])]),
                 });
             }
         }
@@ -545,10 +542,9 @@ impl RawImage {
                 return Err(ImageError::RequirementNotMet {
                     required_for: "this device is a portability subset device, and \
                         `create_info.flags` contains `ImageCreateFlags::ARRAY_2D_COMPATIBLE`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["image_view2_d_on3_d_image"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "image_view2_d_on3_d_image",
+                    )])]),
                 });
             }
         }
@@ -605,11 +601,10 @@ impl RawImage {
             {
                 return Err(ImageError::RequirementNotMet {
                     required_for: "`create_info.external_memory_handle_types` is not empty",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        device_extensions: &["khr_external_memory"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
+                    ]),
                 });
             }
 
@@ -3293,7 +3288,7 @@ mod tests {
             sys::SubresourceRangeIterator, ImageAspect, ImageAspects, ImageCreateFlags,
             ImageDimensions, ImageSubresourceRange, SampleCount,
         },
-        DeviceSize, RequiresOneOf,
+        DeviceSize, Requires, RequiresAllOf, RequiresOneOf,
     };
     use smallvec::SmallVec;
 
@@ -3405,9 +3400,12 @@ mod tests {
 
         match res {
             Err(ImageError::RequirementNotMet {
-                requires_one_of: RequiresOneOf { features, .. },
+                requires_one_of:
+                    RequiresOneOf(
+                        [RequiresAllOf([Requires::Feature("shader_storage_image_multisample")])],
+                    ),
                 ..
-            }) if features.contains(&"shader_storage_image_multisample") => (),
+            }) => (),
             Err(ImageError::SampleCountNotSupported { .. }) => (), // unlikely but possible
             _ => panic!(),
         };

@@ -96,8 +96,8 @@ use crate::{
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    DeviceSize, NonZeroDeviceSize, Packed24_8, RequiresOneOf, RuntimeError, ValidationError,
-    VulkanError, VulkanObject,
+    DeviceSize, NonZeroDeviceSize, Packed24_8, Requires, RequiresAllOf, RequiresOneOf,
+    RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use bytemuck::{Pod, Zeroable};
 use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -141,20 +141,18 @@ impl AccelerationStructure {
     ) -> Result<(), ValidationError> {
         if !device.enabled_extensions().khr_acceleration_structure {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_acceleration_structure"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_acceleration_structure",
+                )])]),
                 ..Default::default()
             });
         }
 
         if !device.enabled_features().acceleration_structure {
             return Err(ValidationError {
-                requires_one_of: RequiresOneOf {
-                    features: &["acceleration_structure"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "acceleration_structure",
+                )])]),
                 vuids: &["VUID-vkCreateAccelerationStructureKHR-accelerationStructure-03611"],
                 ..Default::default()
             });
@@ -414,7 +412,7 @@ impl AccelerationStructureCreateInfo {
         if buffer.offset() % 256 != 0 {
             return Err(ValidationError {
                 context: "buffer".into(),
-                problem: "the offset of the buffer was not a multiple of 256".into(),
+                problem: "the offset of the buffer is not a multiple of 256".into(),
                 vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-offset-03734"],
                 ..Default::default()
             });
@@ -436,15 +434,17 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    DESCRIPTOR_BUFFER_CAPTURE_REPLAY = DESCRIPTOR_BUFFER_CAPTURE_REPLAY_EXT {
-        device_extensions: [ext_descriptor_buffer],
-    },*/
+    DESCRIPTOR_BUFFER_CAPTURE_REPLAY = DESCRIPTOR_BUFFER_CAPTURE_REPLAY_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_descriptor_buffer)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    MOTION = MOTION_NV {
-        device_extensions: [nv_ray_tracing_motion_blur],
-    },*/
+    MOTION = MOTION_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_ray_tracing_motion_blur)]),
+    ]),*/
 }
 
 /// Geometries and other parameters for an acceleration structure build operation.
@@ -538,7 +538,7 @@ impl AccelerationStructureBuildGeometryInfo {
                 if geometries.len() as u64 > max_geometry_count {
                     return Err(ValidationError {
                         context: "geometries".into(),
-                        problem: "the max_geometry_count limit has been exceeded".into(),
+                        problem: "the length exceeds the `max_geometry_count` limit".into(),
                         vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793"],
                         ..Default::default()
                     });
@@ -559,7 +559,7 @@ impl AccelerationStructureBuildGeometryInfo {
                 if geometries.len() as u64 > max_geometry_count {
                     return Err(ValidationError {
                         context: "geometries".into(),
-                        problem: "the max_geometry_count limit has been exceeded".into(),
+                        problem: "the length exceeds the `max_geometry_count` limit".into(),
                         vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793"],
                         ..Default::default()
                     });
@@ -590,8 +590,8 @@ impl AccelerationStructureBuildGeometryInfo {
         ) {
             return Err(ValidationError {
                 context: "flags".into(),
-                problem: "contains both BuildAccelerationStructureFlags::PREFER_FAST_TRACE and \
-                    BuildAccelerationStructureFlags::PREFER_FAST_BUILD"
+                problem: "contains both `BuildAccelerationStructureFlags::PREFER_FAST_TRACE` and \
+                    `BuildAccelerationStructureFlags::PREFER_FAST_BUILD`"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-03796"],
                 ..Default::default()
@@ -805,33 +805,38 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    MOTION = MOTION_NV {
-        device_extensions: [nv_ray_tracing_motion_blur],
-    }, */
+    MOTION = MOTION_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_ray_tracing_motion_blur)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    ALLOW_OPACITY_MICROMAP_UPDATE = ALLOW_OPACITY_MICROMAP_UPDATE_EXT {
-        device_extensions: [ext_opacity_micromap],
-    }, */
+    ALLOW_OPACITY_MICROMAP_UPDATE = ALLOW_OPACITY_MICROMAP_UPDATE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_opacity_micromap)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    ALLOW_DISABLE_OPACITY_MICROMAPS = ALLOW_DISABLE_OPACITY_MICROMAPS_EXT {
-        device_extensions: [ext_opacity_micromap],
-    }, */
+    ALLOW_DISABLE_OPACITY_MICROMAPS = ALLOW_DISABLE_OPACITY_MICROMAPS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_opacity_micromap)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    ALLOW_OPACITY_MICROMAP_DATA_UPDATE = ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT {
-        device_extensions: [ext_opacity_micromap],
-    }, */
+    ALLOW_OPACITY_MICROMAP_DATA_UPDATE = ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_opacity_micromap)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    ALLOW_DISPLACEMENT_MICROMAP_UPDATE = ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV {
-        device_extensions: [nv_displacement_micromap],
-    }, */
+    ALLOW_DISPLACEMENT_MICROMAP_UPDATE = ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_displacement_micromap)]),
+    ]), */
 }
 
 /// What mode an acceleration structure build command should operate in.
@@ -1031,7 +1036,7 @@ impl AccelerationStructureGeometryTrianglesData {
             return Err(ValidationError {
                 context: "vertex_format".into(),
                 problem: "format features do not contain \
-                    FormatFeature::ACCELERATION_STRUCTURE_VERTEX_BUFFER"
+                    `FormatFeature::ACCELERATION_STRUCTURE_VERTEX_BUFFER`"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexFormat-03797"],
                 ..Default::default()
@@ -1048,8 +1053,8 @@ impl AccelerationStructureGeometryTrianglesData {
 
         if vertex_stride % smallest_component_bytes != 0 {
             return Err(ValidationError {
-                problem: "vertex_stride is not a multiple of the byte size of the \
-                    smallest component of vertex_format"
+                problem: "`vertex_stride` is not a multiple of the byte size of the \
+                    smallest component of `vertex_format`"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexStride-03735"],
                 ..Default::default()
@@ -1060,7 +1065,7 @@ impl AccelerationStructureGeometryTrianglesData {
             if !matches!(index_data, IndexBuffer::U16(_) | IndexBuffer::U32(_)) {
                 return Err(ValidationError {
                     context: "index_data".into(),
-                    problem: "is not IndexBuffer::U16 or IndexBuffer::U32".into(),
+                    problem: "is not `IndexBuffer::U16` or `IndexBuffer::U32`".into(),
                     vuids: &[
                         "VUID-VkAccelerationStructureGeometryTrianglesDataKHR-indexType-03798",
                     ],
@@ -1300,15 +1305,17 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    FORCE_OPACITY_MICROMAP_2_STATE = FORCE_OPACITY_MICROMAP_2_STATE_EXT {
-        device_extensions: [ext_opacity_micromap],
-    }, */
+    FORCE_OPACITY_MICROMAP_2_STATE = FORCE_OPACITY_MICROMAP_2_STATE_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_opacity_micromap)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    DISABLE_OPACITY_MICROMAPS = DISABLE_OPACITY_MICROMAPS_EXT {
-        device_extensions: [ext_opacity_micromap],
-    }, */
+    DISABLE_OPACITY_MICROMAPS = DISABLE_OPACITY_MICROMAPS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_opacity_micromap)]),
+    ]), */
 }
 
 impl From<GeometryInstanceFlags> for u8 {
@@ -1407,8 +1414,8 @@ impl CopyAccelerationStructureInfo {
         ) {
             return Err(ValidationError {
                 context: "mode".into(),
-                problem: "is not CopyAccelerationStructureMode::Compact or \
-                    CopyAccelerationStructureMode::Clone"
+                problem: "is not `CopyAccelerationStructureMode::Compact` or \
+                    `CopyAccelerationStructureMode::Clone`"
                     .into(),
                 vuids: &["VUID-VkCopyAccelerationStructureInfoKHR-mode-03410"],
                 ..Default::default()
@@ -1417,7 +1424,7 @@ impl CopyAccelerationStructureInfo {
 
         if src.buffer() == dst.buffer() {
             return Err(ValidationError {
-                problem: "src and dst share the same buffer".into(),
+                problem: "`src` and `dst` share the same buffer".into(),
                 vuids: &["VUID-VkCopyAccelerationStructureInfoKHR-dst-07791"],
                 ..Default::default()
             });
@@ -1487,7 +1494,7 @@ impl CopyAccelerationStructureToMemoryInfo {
         if !matches!(mode, CopyAccelerationStructureMode::Serialize) {
             return Err(ValidationError {
                 context: "mode".into(),
-                problem: "is not CopyAccelerationStructureMode::Serialize".into(),
+                problem: "is not `CopyAccelerationStructureMode::Serialize`".into(),
                 vuids: &["VUID-VkCopyAccelerationStructureToMemoryInfoKHR-mode-03412"],
                 ..Default::default()
             });
@@ -1557,7 +1564,7 @@ impl CopyMemoryToAccelerationStructureInfo {
         if !matches!(mode, CopyAccelerationStructureMode::Deserialize) {
             return Err(ValidationError {
                 context: "mode".into(),
-                problem: "is not CopyAccelerationStructureMode::Deserialize".into(),
+                problem: "is not `CopyAccelerationStructureMode::Deserialize`".into(),
                 vuids: &["VUID-VkCopyMemoryToAccelerationStructureInfoKHR-mode-03413"],
                 ..Default::default()
             });

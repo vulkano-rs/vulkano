@@ -13,8 +13,8 @@
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, ValidationError, Version,
-    VulkanObject,
+    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    ValidationError, Version, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -90,11 +90,10 @@ impl Fence {
             {
                 return Err(FenceError::RequirementNotMet {
                     required_for: "`create_info.export_handle_types` is not empty",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        device_extensions: &["khr_external_fence"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_fence")]),
+                    ]),
                 });
             }
 
@@ -589,10 +588,9 @@ impl Fence {
         if !self.device.enabled_extensions().khr_external_fence_fd {
             return Err(FenceError::RequirementNotMet {
                 required_for: "`Fence::export_fd`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_external_fence_fd"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_fence_fd",
+                )])]),
             });
         }
 
@@ -714,10 +712,9 @@ impl Fence {
         if !self.device.enabled_extensions().khr_external_fence_win32 {
             return Err(FenceError::RequirementNotMet {
                 required_for: "`Fence::export_win32_handle`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_external_fence_win32"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_fence_win32",
+                )])]),
             });
         }
 
@@ -850,10 +847,9 @@ impl Fence {
         if !self.device.enabled_extensions().khr_external_fence_fd {
             return Err(FenceError::RequirementNotMet {
                 required_for: "`Fence::import_fd`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_external_fence_fd"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_fence_fd",
+                )])]),
             });
         }
 
@@ -969,10 +965,9 @@ impl Fence {
         if !self.device.enabled_extensions().khr_external_fence_win32 {
             return Err(FenceError::RequirementNotMet {
                 required_for: "`Fence::import_win32_handle`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_external_fence_win32"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_external_fence_win32",
+                )])]),
             });
         }
 

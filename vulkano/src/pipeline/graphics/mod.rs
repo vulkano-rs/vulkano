@@ -95,7 +95,8 @@ use crate::{
         PipelineShaderStageCreateInfo, ShaderExecution, ShaderInterfaceMismatchError,
         ShaderScalarType, ShaderStage, ShaderStages, SpecializationConstant,
     },
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    Version, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -579,10 +580,9 @@ impl GraphicsPipeline {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for: "`stages` contains a `TessellationControl` or \
                                 `TessellationEvaluation` shader stage",
-                            requires_one_of: RequiresOneOf {
-                                features: &["tessellation_shader"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "tessellation_shader",
+                            )])]),
                         });
                     }
 
@@ -594,10 +594,9 @@ impl GraphicsPipeline {
                     if !device.enabled_features().geometry_shader {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for: "`stages` contains a `Geometry` shader stage",
-                            requires_one_of: RequiresOneOf {
-                                features: &["geometry_shader"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "geometry_shader",
+                            )])]),
                         });
                     }
 
@@ -754,10 +753,9 @@ impl GraphicsPipeline {
                                 required_for: "`vertex_input_state.bindings` has an element \
                                     where `input_rate` is `VertexInputRate::Instance`, where \
                                     `divisor` is not `1`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["vertex_attribute_instance_rate_divisor"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("vertex_attribute_instance_rate_divisor"),
+                                ])]),
                             });
                         }
 
@@ -771,10 +769,11 @@ impl GraphicsPipeline {
                                 required_for: "`vertex_input_state.bindings` has an element \
                                     where `input_rate` is `VertexInputRate::Instance`, where \
                                     `divisor` is `0`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["vertex_attribute_instance_rate_zero_divisor"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature(
+                                        "vertex_attribute_instance_rate_zero_divisor",
+                                    ),
+                                ])]),
                             });
                         }
 
@@ -881,10 +880,9 @@ impl GraphicsPipeline {
                             `vertex_input_state.attributes` has an element where \
                             `offset + format.block_size()` is greater than the `stride` of \
                             `binding`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["vertex_attribute_access_beyond_stride"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "vertex_attribute_access_beyond_stride",
+                        )])]),
                     });
                 }
             }
@@ -911,10 +909,9 @@ impl GraphicsPipeline {
                                     required_for: "this device is a portability subset \
                                             device, and `input_assembly_state.topology` is \
                                             `StateMode::Fixed(PrimitiveTopology::TriangleFan)`",
-                                    requires_one_of: RequiresOneOf {
-                                        features: &["triangle_fans"],
-                                        ..Default::default()
-                                    },
+                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                        Requires::Feature("triangle_fans"),
+                                    ])]),
                                 });
                             }
                         }
@@ -927,10 +924,9 @@ impl GraphicsPipeline {
                                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
                                     required_for: "`input_assembly_state.topology` is \
                                             `StateMode::Fixed(PrimitiveTopology::*WithAdjacency)`",
-                                    requires_one_of: RequiresOneOf {
-                                        features: &["geometry_shader"],
-                                        ..Default::default()
-                                    },
+                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                        Requires::Feature("geometry_shader"),
+                                    ])]),
                                 });
                             }
                         }
@@ -940,10 +936,9 @@ impl GraphicsPipeline {
                                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
                                     required_for: "`input_assembly_state.topology` is \
                                             `StateMode::Fixed(PrimitiveTopology::PatchList)`",
-                                    requires_one_of: RequiresOneOf {
-                                        features: &["tessellation_shader"],
-                                        ..Default::default()
-                                    },
+                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                        Requires::Feature("tessellation_shader"),
+                                    ])]),
                                 });
                             }
 
@@ -964,11 +959,10 @@ impl GraphicsPipeline {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for: "`input_assembly_state.topology` is \
                                     `PartialStateMode::Dynamic`",
-                            requires_one_of: RequiresOneOf {
-                                api_version: Some(Version::V1_3),
-                                features: &["extended_dynamic_state"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[
+                                RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                            ]),
                         });
                     }
                 }
@@ -993,10 +987,9 @@ impl GraphicsPipeline {
                                                 is `StateMode::Fixed(true)` and \
                                                 `input_assembly_state.topology` is \
                                                 `StateMode::Fixed(PrimitiveTopology::*List)`",
-                                        requires_one_of: RequiresOneOf {
-                                            features: &["primitive_topology_list_restart"],
-                                            ..Default::default()
-                                        },
+                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                            Requires::Feature("primitive_topology_list_restart"),
+                                        ])]),
                                     });
                                 }
                             }
@@ -1012,10 +1005,11 @@ impl GraphicsPipeline {
                                                 is `StateMode::Fixed(true)` and \
                                                 `input_assembly_state.topology` is \
                                                 `StateMode::Fixed(PrimitiveTopology::PatchList)`",
-                                        requires_one_of: RequiresOneOf {
-                                            features: &["primitive_topology_patch_list_restart"],
-                                            ..Default::default()
-                                        },
+                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                            Requires::Feature(
+                                                "primitive_topology_patch_list_restart",
+                                            ),
+                                        ])]),
                                     });
                                 }
                             }
@@ -1031,11 +1025,10 @@ impl GraphicsPipeline {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for: "`input_assembly_state.primitive_restart_enable` is \
                                     `StateMode::Dynamic`",
-                            requires_one_of: RequiresOneOf {
-                                api_version: Some(Version::V1_3),
-                                features: &["extended_dynamic_state2"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[
+                                RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                            ]),
                         });
                     }
                 }
@@ -1066,10 +1059,9 @@ impl GraphicsPipeline {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for: "`tessellation_state.patch_control_points` is \
                                 `StateMode::Dynamic`",
-                            requires_one_of: RequiresOneOf {
-                                features: &["extended_dynamic_state2_patch_control_points"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "extended_dynamic_state2_patch_control_points",
+                            )])]),
                         });
                     }
                 }
@@ -1085,11 +1077,10 @@ impl GraphicsPipeline {
                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
                     required_for: "`tessellation_state.domain_origin` is not \
                         `TessellationDomainOrigin::UpperLeft`",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        device_extensions: &["khr_maintenance2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance2")]),
+                    ]),
                 });
             }
         }
@@ -1160,11 +1151,10 @@ impl GraphicsPipeline {
                                 required_for: "`viewport_state` is \
                                     `ViewportState::FixedViewport`, where `scissor_count_dynamic` \
                                     is set",
-                                requires_one_of: RequiresOneOf {
-                                    api_version: Some(Version::V1_3),
-                                    features: &["extended_dynamic_state"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[
+                                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                                ]),
                             });
                         }
 
@@ -1194,11 +1184,10 @@ impl GraphicsPipeline {
                                 required_for: "`viewport_state` is \
                                     `ViewportState::FixedScissor`, where `viewport_count_dynamic` \
                                     is set",
-                                requires_one_of: RequiresOneOf {
-                                    api_version: Some(Version::V1_3),
-                                    features: &["extended_dynamic_state"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[
+                                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                                ]),
                             });
                         }
 
@@ -1234,11 +1223,10 @@ impl GraphicsPipeline {
                                 required_for: "`viewport_state` is \
                                     `ViewportState::Dynamic`, where `viewport_count_dynamic` \
                                     is set",
-                                requires_one_of: RequiresOneOf {
-                                    api_version: Some(Version::V1_3),
-                                    features: &["extended_dynamic_state"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[
+                                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                                ]),
                             });
                         }
 
@@ -1257,11 +1245,10 @@ impl GraphicsPipeline {
                                 required_for: "`viewport_state` is \
                                     `ViewportState::Dynamic`, where `scissor_count_dynamic` \
                                     is set",
-                                requires_one_of: RequiresOneOf {
-                                    api_version: Some(Version::V1_3),
-                                    features: &["extended_dynamic_state"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[
+                                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                                ]),
                             });
                         }
 
@@ -1286,10 +1273,9 @@ impl GraphicsPipeline {
                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
                     required_for: "`viewport_state` has a fixed viewport/scissor count that is \
                         greater than `1`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["multi_viewport"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_viewport",
+                    )])]),
                 });
             }
 
@@ -1327,10 +1313,9 @@ impl GraphicsPipeline {
             if depth_clamp_enable && !device.enabled_features().depth_clamp {
                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
                     required_for: "`rasterization_state.depth_clamp_enable` is set",
-                    requires_one_of: RequiresOneOf {
-                        features: &["depth_clamp"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "depth_clamp",
+                    )])]),
                 });
             }
 
@@ -1343,11 +1328,10 @@ impl GraphicsPipeline {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for: "`rasterization_state.rasterizer_discard_enable` is \
                                     `StateMode::Dynamic`",
-                            requires_one_of: RequiresOneOf {
-                                api_version: Some(Version::V1_3),
-                                features: &["extended_dynamic_state"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[
+                                RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                            ]),
                         });
                     }
                 }
@@ -1362,10 +1346,9 @@ impl GraphicsPipeline {
                                     `rasterization_state.rasterizer_discard_enable` is \
                                     `StateMode::Fixed(false)` and \
                                     `rasterization_state.polygon_mode` is `PolygonMode::Point`",
-                            requires_one_of: RequiresOneOf {
-                                features: &["point_polygons"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "point_polygons",
+                            )])]),
                         });
                     }
                 }
@@ -1377,10 +1360,9 @@ impl GraphicsPipeline {
                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
                     required_for: "`rasterization_state.polygon_mode` is not \
                             `PolygonMode::Fill`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["fill_mode_non_solid"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "fill_mode_non_solid",
+                    )])]),
                 });
             }
 
@@ -1397,11 +1379,10 @@ impl GraphicsPipeline {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for: "`rasterization_state.cull_mode` is \
                                     `StateMode::Dynamic`",
-                            requires_one_of: RequiresOneOf {
-                                api_version: Some(Version::V1_3),
-                                features: &["extended_dynamic_state"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[
+                                RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                            ]),
                         });
                     }
                 }
@@ -1420,11 +1401,10 @@ impl GraphicsPipeline {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for: "`rasterization_state.front_face` is \
                                     `StateMode::Dynamic`",
-                            requires_one_of: RequiresOneOf {
-                                api_version: Some(Version::V1_3),
-                                features: &["extended_dynamic_state"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[
+                                RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                            ]),
                         });
                     }
                 }
@@ -1445,11 +1425,10 @@ impl GraphicsPipeline {
                         required_for: "`rasterization_state.depth_bias` is \
                                 `Some(depth_bias_state)`, where `depth_bias_state.enable_dynamic` \
                                 is set",
-                        requires_one_of: RequiresOneOf {
-                            api_version: Some(Version::V1_3),
-                            features: &["extended_dynamic_state2"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                        ]),
                     });
                 }
 
@@ -1461,10 +1440,9 @@ impl GraphicsPipeline {
                         required_for: "`rasterization_state.depth_bias` is \
                             `Some(depth_bias_state)`, where `depth_bias_state.bias` is \
                             `StateMode::Fixed(bias)`, where `bias.clamp` is not `0.0`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["depth_bias_clamp"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "depth_bias_clamp",
+                        )])]),
                     });
                 }
             }
@@ -1476,10 +1454,9 @@ impl GraphicsPipeline {
                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
                     required_for: "`rasterization_state.line_width` is \
                             `StateMode::Fixed(line_width)`, where `line_width` is not `1.0`",
-                    requires_one_of: RequiresOneOf {
-                        features: &["wide_lines"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "wide_lines",
+                    )])]),
                 });
             }
 
@@ -1495,10 +1472,9 @@ impl GraphicsPipeline {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
                                 required_for: "`rasterization_state.line_rasterization_mode` \
                                         is `LineRasterizationMode::Rectangular`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["rectangular_lines"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("rectangular_lines"),
+                                ])]),
                             });
                         }
                     }
@@ -1508,10 +1484,9 @@ impl GraphicsPipeline {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
                                 required_for: "`rasterization_state.line_rasterization_mode` \
                                         is `LineRasterizationMode::Bresenham`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["bresenham_lines"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("bresenham_lines"),
+                                ])]),
                             });
                         }
                     }
@@ -1521,10 +1496,9 @@ impl GraphicsPipeline {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
                                 required_for: "`rasterization_state.line_rasterization_mode` \
                                         is `LineRasterizationMode::RectangularSmooth`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["smooth_lines"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("smooth_lines"),
+                                ])]),
                             });
                         }
                     }
@@ -1540,10 +1514,9 @@ impl GraphicsPipeline {
                                             `Some` and \
                                             `rasterization_state.line_rasterization_mode` \
                                             is `LineRasterizationMode::Default`",
-                                    requires_one_of: RequiresOneOf {
-                                        features: &["stippled_rectangular_lines"],
-                                        ..Default::default()
-                                    },
+                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                        Requires::Feature("stippled_rectangular_lines"),
+                                    ])]),
                                 });
                             }
 
@@ -1560,10 +1533,9 @@ impl GraphicsPipeline {
                                             `Some` and \
                                             `rasterization_state.line_rasterization_mode` \
                                             is `LineRasterizationMode::Rectangular`",
-                                    requires_one_of: RequiresOneOf {
-                                        features: &["stippled_rectangular_lines"],
-                                        ..Default::default()
-                                    },
+                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                        Requires::Feature("stippled_rectangular_lines"),
+                                    ])]),
                                 });
                             }
                         }
@@ -1575,10 +1547,9 @@ impl GraphicsPipeline {
                                             `Some` and \
                                             `rasterization_state.line_rasterization_mode` \
                                             is `LineRasterizationMode::Bresenham`",
-                                    requires_one_of: RequiresOneOf {
-                                        features: &["stippled_bresenham_lines"],
-                                        ..Default::default()
-                                    },
+                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                        Requires::Feature("stippled_bresenham_lines"),
+                                    ])]),
                                 });
                             }
                         }
@@ -1590,10 +1561,9 @@ impl GraphicsPipeline {
                                             `Some` and \
                                             `rasterization_state.line_rasterization_mode` \
                                             is `LineRasterizationMode::RectangularSmooth`",
-                                    requires_one_of: RequiresOneOf {
-                                        features: &["stippled_smooth_lines"],
-                                        ..Default::default()
-                                    },
+                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                        Requires::Feature("stippled_smooth_lines"),
+                                    ])]),
                                 });
                             }
                         }
@@ -1610,20 +1580,18 @@ impl GraphicsPipeline {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
                         required_for: "`rasterization_state.line_rasterization_mode` is not \
                                 `LineRasterizationMode::Default`",
-                        requires_one_of: RequiresOneOf {
-                            device_extensions: &["ext_line_rasterization"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("ext_line_rasterization"),
+                        ])]),
                     });
                 }
 
                 if line_stipple.is_some() {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
                         required_for: "`rasterization_state.line_stipple` is `Some`",
-                        requires_one_of: RequiresOneOf {
-                            device_extensions: &["ext_line_rasterization"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("ext_line_rasterization"),
+                        ])]),
                     });
                 }
             }
@@ -1652,10 +1620,9 @@ impl GraphicsPipeline {
                 if !device.enabled_features().sample_rate_shading {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
                         required_for: "`multisample_state.sample_shading` is `Some`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["sample_rate_shading"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "sample_rate_shading",
+                        )])]),
                     });
                 }
 
@@ -1668,10 +1635,9 @@ impl GraphicsPipeline {
             if alpha_to_one_enable && !device.enabled_features().alpha_to_one {
                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
                     required_for: "`multisample_state.alpha_to_one_enable` is set",
-                    requires_one_of: RequiresOneOf {
-                        features: &["alpha_to_one"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "alpha_to_one",
+                    )])]),
                 });
             }
 
@@ -1701,11 +1667,10 @@ impl GraphicsPipeline {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
                         required_for: "`depth_stencil_state.depth` is `Some(depth_state)`, where \
                              `depth_state.enable_dynamic` is set",
-                        requires_one_of: RequiresOneOf {
-                            api_version: Some(Version::V1_3),
-                            features: &["extended_dynamic_state"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                        ]),
                     });
                 }
 
@@ -1720,11 +1685,10 @@ impl GraphicsPipeline {
                                 required_for: "`depth_stencil_state.depth` is \
                                     `Some(depth_state)`, where `depth_state.write_enable` is \
                                     `StateMode::Dynamic`",
-                                requires_one_of: RequiresOneOf {
-                                    api_version: Some(Version::V1_3),
-                                    features: &["extended_dynamic_state"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[
+                                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                                ]),
                             });
                         }
                     }
@@ -1744,11 +1708,10 @@ impl GraphicsPipeline {
                                 required_for: "`depth_stencil_state.depth` is \
                                     `Some(depth_state)`, where `depth_state.compare_op` is \
                                         `StateMode::Dynamic`",
-                                requires_one_of: RequiresOneOf {
-                                    api_version: Some(Version::V1_3),
-                                    features: &["extended_dynamic_state"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[
+                                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                                ]),
                             });
                         }
                     }
@@ -1765,10 +1728,9 @@ impl GraphicsPipeline {
                 if !device.enabled_features().depth_bounds {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
                         required_for: "`depth_stencil_state.depth_bounds` is `Some`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["depth_bounds"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "depth_bounds",
+                        )])]),
                     });
                 }
 
@@ -1781,11 +1743,10 @@ impl GraphicsPipeline {
                         required_for: "`depth_stencil_state.depth_bounds` is \
                             `Some(depth_bounds_state)`, where `depth_bounds_state.enable_dynamic` \
                             is set",
-                        requires_one_of: RequiresOneOf {
-                            api_version: Some(Version::V1_3),
-                            features: &["extended_dynamic_state"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                        ]),
                     });
                 }
 
@@ -1799,10 +1760,9 @@ impl GraphicsPipeline {
                             required_for: "`depth_stencil_state.depth_bounds` is \
                                 `Some(depth_bounds_state)`, where `depth_bounds_state.bounds` is \
                                 not between `0.0` and `1.0` inclusive",
-                            requires_one_of: RequiresOneOf {
-                                device_extensions: &["ext_depth_range_unrestricted"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceExtension("ext_depth_range_unrestricted"),
+                            ])]),
                         });
                     }
                 }
@@ -1823,11 +1783,10 @@ impl GraphicsPipeline {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
                         required_for: "`depth_stencil_state.stencil` is `Some(stencil_state)`, \
                             where `stencil_state.enable_dynamic` is set",
-                        requires_one_of: RequiresOneOf {
-                            api_version: Some(Version::V1_3),
-                            features: &["extended_dynamic_state"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                        ]),
                     });
                 }
 
@@ -1863,11 +1822,10 @@ impl GraphicsPipeline {
                                 required_for: "`depth_stencil_state.stencil` is \
                                     `Some(stencil_state)`, where `stencil_state.front.ops` and \
                                     `stencil_state.back.ops` are `StateMode::Dynamic`",
-                                requires_one_of: RequiresOneOf {
-                                    api_version: Some(Version::V1_3),
-                                    features: &["extended_dynamic_state"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[
+                                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                                ]),
                             });
                         }
                     }
@@ -1915,10 +1873,9 @@ impl GraphicsPipeline {
                 if !device.enabled_features().logic_op {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
                         required_for: "`color_blend_state.logic_op` is `Some`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["logic_op"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "logic_op",
+                        )])]),
                     });
                 }
 
@@ -1933,10 +1890,9 @@ impl GraphicsPipeline {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
                                 required_for: "`color_blend_state.logic_op` is \
                                     `Some(StateMode::Dynamic)`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["extended_dynamic_state2_logic_op"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("extended_dynamic_state2_logic_op"),
+                                ])]),
                             });
                         }
                     }
@@ -1955,10 +1911,9 @@ impl GraphicsPipeline {
                     return Err(GraphicsPipelineCreationError::RequirementNotMet {
                         required_for: "`color_blend_state.attachments` has elements where \
                             `blend` and `color_write_mask` do not match the other elements",
-                        requires_one_of: RequiresOneOf {
-                            features: &["independent_blend"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "independent_blend",
+                        )])]),
                     });
                 }
             }
@@ -2022,10 +1977,9 @@ impl GraphicsPipeline {
                                 `blend` is `Some(blend)`, where `blend.color_source`, \
                                 `blend.color_destination`, `blend.alpha_source` or \
                                 `blend.alpha_destination` is `BlendFactor::Src1*`",
-                            requires_one_of: RequiresOneOf {
-                                features: &["dual_src_blend"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "dual_src_blend",
+                            )])]),
                         });
                     }
 
@@ -2048,10 +2002,9 @@ impl GraphicsPipeline {
                                 `blend.color_source` or `blend.color_destination` is \
                                 `BlendFactor::ConstantAlpha` or \
                                 `BlendFactor::OneMinusConstantAlpha`",
-                            requires_one_of: RequiresOneOf {
-                                features: &["constant_alpha_color_blend_factors"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "constant_alpha_color_blend_factors",
+                            )])]),
                         });
                     }
                 }
@@ -2063,10 +2016,9 @@ impl GraphicsPipeline {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
                                 required_for: "`color_blend_state.attachments` has an element \
                                     where `color_write_enable` is `StateMode::Fixed(false)`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["color_write_enable"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("color_write_enable"),
+                                ])]),
                             });
                         }
                     }
@@ -2076,10 +2028,9 @@ impl GraphicsPipeline {
                             return Err(GraphicsPipelineCreationError::RequirementNotMet {
                                 required_for: "`color_blend_state.attachments` has an element \
                                     where `color_write_enable` is `StateMode::Dynamic`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["color_write_enable"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("color_write_enable"),
+                                ])]),
                             });
                         }
                     }
@@ -2104,10 +2055,9 @@ impl GraphicsPipeline {
                                 required_for:
                                     "`tessellation_shaders` are provided and `render_pass` has a \
                                     subpass where `view_mask` is not `0`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["multiview_tessellation_shader"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("multiview_tessellation_shader"),
+                                ])]),
                             });
                         }
 
@@ -2119,10 +2069,9 @@ impl GraphicsPipeline {
                                 required_for:
                                     "`geometry_shader` is provided and `render_pass` has a \
                                     subpass where `view_mask` is not `0`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["multiview_geometry_shader"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("multiview_geometry_shader"),
+                                ])]),
                             });
                         }
                     }
@@ -2141,10 +2090,9 @@ impl GraphicsPipeline {
                         return Err(GraphicsPipelineCreationError::RequirementNotMet {
                             required_for:
                                 "`render_pass` is `PipelineRenderPassType::BeginRendering`",
-                            requires_one_of: RequiresOneOf {
-                                features: &["dynamic_rendering"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "dynamic_rendering",
+                            )])]),
                         });
                     }
 
@@ -2154,10 +2102,9 @@ impl GraphicsPipeline {
                             required_for:
                                 "`render_pass` is `PipelineRenderPassType::BeginRendering` \
                             where `view_mask` is not `0`",
-                            requires_one_of: RequiresOneOf {
-                                features: &["multiview"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "multiview",
+                            )])]),
                         });
                     }
 
@@ -2267,10 +2214,9 @@ impl GraphicsPipeline {
                                 required_for:
                                     "`tessellation_shaders` are provided and `render_pass` has a \
                                     subpass where `view_mask` is not `0`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["multiview_tessellation_shader"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("multiview_tessellation_shader"),
+                                ])]),
                             });
                         }
 
@@ -2282,10 +2228,9 @@ impl GraphicsPipeline {
                                 required_for:
                                     "`geometry_shader` is provided and `render_pass` has a \
                                     subpass where `view_mask` is not `0`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["multiview_geometry_shader"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("multiview_geometry_shader"),
+                                ])]),
                             });
                         }
                     }
@@ -2297,10 +2242,9 @@ impl GraphicsPipeline {
             if !device.enabled_extensions().ext_discard_rectangles {
                 return Err(GraphicsPipelineCreationError::RequirementNotMet {
                     required_for: "`discard_rectangle_state` is `Some`",
-                    requires_one_of: RequiresOneOf {
-                        device_extensions: &["ext_discard_rectangles"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_discard_rectangles",
+                    )])]),
                 });
             }
 
@@ -2473,10 +2417,9 @@ impl GraphicsPipeline {
                                     `depth_stencil_state.stencil` is `Some(stencil_state)`, \
                                     where `stencil_state.front.reference` does not equal \
                                     `stencil_state.back.reference`",
-                            requires_one_of: RequiresOneOf {
-                                features: &["separate_stencil_mask_ref"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "separate_stencil_mask_ref",
+                            )])]),
                         });
                     }
                 }

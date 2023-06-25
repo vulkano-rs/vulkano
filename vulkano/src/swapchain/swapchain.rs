@@ -27,7 +27,8 @@ use crate::{
         semaphore::{Semaphore, SemaphoreError},
         Sharing,
     },
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, RuntimeError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    VulkanObject,
 };
 use parking_lot::Mutex;
 use smallvec::{smallvec, SmallVec};
@@ -299,10 +300,9 @@ impl Swapchain {
         if !device.enabled_extensions().khr_swapchain {
             return Err(SwapchainCreationError::RequirementNotMet {
                 required_for: "`Swapchain::new`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_swapchain"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_swapchain",
+                )])]),
             });
         }
 
@@ -331,10 +331,9 @@ impl Swapchain {
                 return Err(SwapchainCreationError::RequirementNotMet {
                     required_for: "`create_info.full_screen_exclusive` is not \
                         `FullScreenExclusive::Default`",
-                    requires_one_of: RequiresOneOf {
-                        device_extensions: &["ext_full_screen_exclusive"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_full_screen_exclusive",
+                    )])]),
                 });
             }
 
@@ -1577,10 +1576,7 @@ pub fn wait_for_present(
     if !swapchain.device.enabled_features().present_wait {
         return Err(PresentWaitError::RequirementNotMet {
             required_for: "`wait_for_present`",
-            requires_one_of: RequiresOneOf {
-                features: &["present_wait"],
-                ..Default::default()
-            },
+            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("present_wait")])]),
         });
     }
 

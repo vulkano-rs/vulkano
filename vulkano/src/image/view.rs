@@ -22,7 +22,8 @@ use crate::{
     image::{ImageAspects, ImageCreateFlags, ImageTiling, ImageType, SampleCount},
     macros::{impl_id_counter, vulkan_enum},
     sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
-    OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
+    VulkanObject,
 };
 use std::{
     error::Error,
@@ -206,10 +207,9 @@ where
         if view_type == ImageViewType::CubeArray && !device.enabled_features().image_cube_array {
             return Err(ImageViewCreationError::RequirementNotMet {
                 required_for: "`create_info.viewtype` is `ImageViewType::CubeArray`",
-                requires_one_of: RequiresOneOf {
-                    features: &["image_cube_array"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "image_cube_array",
+                )])]),
             });
         }
 
@@ -279,11 +279,10 @@ where
             {
                 return Err(ImageViewCreationError::RequirementNotMet {
                     required_for: "`create_info.usage` is not the default value",
-                    requires_one_of: RequiresOneOf {
-                        api_version: Some(Version::V1_1),
-                        device_extensions: &["khr_maintenance2"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance2")]),
+                    ]),
                 });
             }
 
@@ -383,10 +382,9 @@ where
                     required_for: "this device is a portability subset device, and the format of \
                         the image view does not have the same components and number of bits per \
                         component as the parent image",
-                    requires_one_of: RequiresOneOf {
-                        features: &["image_view_format_reinterpretation"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "image_view_format_reinterpretation",
+                    )])]),
                 });
             }
 
@@ -467,10 +465,9 @@ where
             return Err(ImageViewCreationError::RequirementNotMet {
                 required_for: "this device is a portability subset device, and \
                     `create_info.component_mapping` is not the identity mapping",
-                requires_one_of: RequiresOneOf {
-                    features: &["image_view_format_swizzle"],
-                    ..Default::default()
-                },
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "image_view_format_swizzle",
+                )])]),
             });
         }
 

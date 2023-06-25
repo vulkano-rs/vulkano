@@ -17,7 +17,8 @@ use crate::{
     buffer::BufferContents,
     device::{Device, DeviceOwned},
     macros::{impl_id_counter, vulkan_bitflags},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, RuntimeError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    VulkanObject,
 };
 use std::{
     error::Error,
@@ -632,10 +633,9 @@ impl QueryType {
                 if !device.enabled_extensions().khr_acceleration_structure {
                     return Err(crate::RequirementNotMet {
                         required_for: "QueryType::AccelerationStructureCompactedSize",
-                        requires_one_of: RequiresOneOf {
-                            device_extensions: &["khr_acceleration_structure"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("khr_acceleration_structure"),
+                        ])]),
                     });
                 }
             }
@@ -643,10 +643,9 @@ impl QueryType {
                 if !device.enabled_extensions().khr_acceleration_structure {
                     return Err(crate::RequirementNotMet {
                         required_for: "QueryType::AccelerationStructureSerializationSize",
-                        requires_one_of: RequiresOneOf {
-                            device_extensions: &["khr_acceleration_structure"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("khr_acceleration_structure"),
+                        ])]),
                     });
                 }
             }
@@ -655,10 +654,9 @@ impl QueryType {
                     return Err(crate::RequirementNotMet {
                         required_for:
                             "QueryType::AccelerationStructureSerializationBottomLevelPointers",
-                        requires_one_of: RequiresOneOf {
-                            device_extensions: &["khr_ray_tracing_maintenance1"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("khr_ray_tracing_maintenance1"),
+                        ])]),
                     });
                 }
             }
@@ -666,10 +664,9 @@ impl QueryType {
                 if !device.enabled_extensions().khr_ray_tracing_maintenance1 {
                     return Err(crate::RequirementNotMet {
                         required_for: "QueryType::AccelerationStructureSize",
-                        requires_one_of: RequiresOneOf {
-                            device_extensions: &["khr_ray_tracing_maintenance1"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("khr_ray_tracing_maintenance1"),
+                        ])]),
                     });
                 }
             }
@@ -779,15 +776,17 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    TASK_SHADER_INVOCATIONS = TASK_SHADER_INVOCATIONS_NV {
-        device_extensions: [nv_mesh_shader],
-    },*/
+    TASK_SHADER_INVOCATIONS = TASK_SHADER_INVOCATIONS_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    MESH_SHADER_INVOCATIONS = MESH_SHADER_INVOCATIONS_NV {
-        device_extensions: [nv_mesh_shader],
-    },*/
+    MESH_SHADER_INVOCATIONS = MESH_SHADER_INVOCATIONS_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
+    ]),*/
 }
 
 vulkan_bitflags! {
@@ -814,9 +813,10 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    WITH_STATUS = WITH_STATUS_KHR {
-        device_extensions: [khr_video_queue],
-    },*/
+    WITH_STATUS = WITH_STATUS_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_video_queue)]),
+    ]),*/
 }
 
 #[cfg(test)]

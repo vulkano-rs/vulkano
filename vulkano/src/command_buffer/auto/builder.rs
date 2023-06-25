@@ -50,7 +50,7 @@ use crate::{
         AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier,
         PipelineStageAccessFlags, PipelineStages,
     },
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf,
+    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf,
 };
 use ahash::HashMap;
 use parking_lot::Mutex;
@@ -274,10 +274,9 @@ where
                                 required_for: "`inheritance_info.render_pass` is \
                                     `CommandBufferInheritanceRenderPassType::BeginRendering`, \
                                     where `view_mask` is not `0`",
-                                requires_one_of: RequiresOneOf {
-                                    features: &["multiview"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("multiview"),
+                                ])]),
                             });
                         }
 
@@ -387,10 +386,9 @@ where
                 if !device.enabled_features().inherited_queries {
                     return Err(CommandBufferBeginError::RequirementNotMet {
                         required_for: "`inheritance_info.occlusion_query` is `Some`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["inherited_queries"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "inherited_queries",
+                        )])]),
                     });
                 }
 
@@ -402,10 +400,9 @@ where
                         required_for: "`inheritance_info.occlusion_query` is \
                             `Some(control_flags)`, where `control_flags` contains \
                             `QueryControlFlags::PRECISE`",
-                        requires_one_of: RequiresOneOf {
-                            features: &["occlusion_query_precise"],
-                            ..Default::default()
-                        },
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "occlusion_query_precise",
+                        )])]),
                     });
                 }
             }
@@ -419,10 +416,9 @@ where
             {
                 return Err(CommandBufferBeginError::RequirementNotMet {
                     required_for: "`inheritance_info.query_statistics_flags` is not empty",
-                    requires_one_of: RequiresOneOf {
-                        features: &["pipeline_statistics_query"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "pipeline_statistics_query",
+                    )])]),
                 });
             }
         } else {
@@ -1495,7 +1491,7 @@ impl AutoSyncState {
                                     if !self.device.enabled_features().synchronization2 {
                                         panic!(
                                             "The command requires the `Preinitialized` layout, \
-                                            but this is not allowed in pipeline barriers without
+                                            but this is not allowed in pipeline barriers without \
                                             the `synchronization2` feature enabled"
                                         );
                                     }

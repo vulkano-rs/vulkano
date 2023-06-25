@@ -17,7 +17,8 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     sampler::Sampler,
     shader::{DescriptorBindingRequirements, ShaderStages},
-    RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use ahash::HashMap;
 use std::{
@@ -440,7 +441,7 @@ impl DescriptorSetLayoutCreateInfo {
         {
             return Err(ValidationError {
                 problem: "`flags` contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`, and \
-                    the total number of descriptors in `bindings` exceeds the
+                    the total number of descriptors in `bindings` exceeds the \
                     `max_push_descriptors` limit"
                     .into(),
                 vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-00281"],
@@ -471,10 +472,11 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    UPDATE_AFTER_BIND_POOL = UPDATE_AFTER_BIND_POOL {
-        api_version: V1_2,
-        device_extensions: [ext_descriptor_indexing],
-    }, */
+    UPDATE_AFTER_BIND_POOL = UPDATE_AFTER_BIND_POOL
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
+    ]), */
 
     /// Whether the descriptor set layout should be created for push descriptors.
     ///
@@ -487,27 +489,32 @@ vulkan_bitflags! {
     /// - There must be no bindings with `variable_descriptor_count` enabled.
     /// - The total number of descriptors across all bindings must be less than the
     ///   [`max_push_descriptors`](crate::device::Properties::max_push_descriptors) limit.
-    PUSH_DESCRIPTOR = PUSH_DESCRIPTOR_KHR {
-        device_extensions: [khr_push_descriptor],
-    },
+    PUSH_DESCRIPTOR = PUSH_DESCRIPTOR_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_push_descriptor)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
-    DESCRIPTOR_BUFFER = DESCRIPTOR_BUFFER_EXT {
-        device_extensions: [ext_descriptor_buffer],
-    }, */
+    DESCRIPTOR_BUFFER = DESCRIPTOR_BUFFER_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_descriptor_buffer)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    EMBEDDED_IMMUTABLE_SAMPLERS = EMBEDDED_IMMUTABLE_SAMPLERS_EXT {
-        device_extensions: [ext_descriptor_buffer],
-    }, */
+    EMBEDDED_IMMUTABLE_SAMPLERS = EMBEDDED_IMMUTABLE_SAMPLERS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_descriptor_buffer)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    HOST_ONLY_POOL = HOST_ONLY_POOL_EXT {
-        device_extensions: [ext_mutable_descriptor_type, valve_mutable_descriptor_type],
-    }, */
+    HOST_ONLY_POOL = HOST_ONLY_POOL_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_mutable_descriptor_type)]),
+        RequiresAllOf([DeviceExtension(valve_mutable_descriptor_type)]),
+    ]), */
 }
 
 /// A binding in a descriptor set layout.
@@ -641,11 +648,10 @@ impl DescriptorSetLayoutBinding {
             if !device.enabled_features().inline_uniform_block {
                 return Err(ValidationError {
                     context: "descriptor_type".into(),
-                    problem: "DescriptorType::InlineUniformBlock".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["inline_uniform_block"],
-                        ..Default::default()
-                    },
+                    problem: "`DescriptorType::InlineUniformBlock`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "inline_uniform_block",
+                    )])]),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-04604"],
                 });
             }
@@ -754,10 +760,9 @@ impl DescriptorSetLayoutBinding {
                 return Err(ValidationError {
                     context: "binding_flags".into(),
                     problem: "contains `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`".into(),
-                    requires_one_of: RequiresOneOf {
-                        features: &["descriptor_binding_variable_descriptor_count"],
-                        ..Default::default()
-                    },
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("descriptor_binding_variable_descriptor_count")])
+                    ]),
                     vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014"],
                 });
             }
@@ -806,24 +811,27 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND {
-        api_version: V1_2,
-        device_extensions: [ext_descriptor_indexing],
-    }, */
+    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    UPDATE_UNUSED_WHILE_PENDING = UPDATE_UNUSED_WHILE_PENDING {
-        api_version: V1_2,
-        device_extensions: [ext_descriptor_indexing],
-    }, */
+    UPDATE_UNUSED_WHILE_PENDING = UPDATE_UNUSED_WHILE_PENDING
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    PARTIALLY_BOUND = PARTIALLY_BOUND {
-        api_version: V1_2,
-        device_extensions: [ext_descriptor_indexing],
-    }, */
+    PARTIALLY_BOUND = PARTIALLY_BOUND
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
+    ]), */
 
     /// Whether the binding has a variable number of descriptors.
     ///
@@ -836,10 +844,11 @@ vulkan_bitflags! {
     /// [`DescriptorType::UniformBufferDynamic`] or [`DescriptorType::StorageBufferDynamic`].
     ///
     /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
-    VARIABLE_DESCRIPTOR_COUNT = VARIABLE_DESCRIPTOR_COUNT {
-        api_version: V1_2,
-        device_extensions: [ext_descriptor_indexing],
-    },
+    VARIABLE_DESCRIPTOR_COUNT = VARIABLE_DESCRIPTOR_COUNT
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
+    ]),
 }
 
 vulkan_enum! {
@@ -905,39 +914,53 @@ vulkan_enum! {
     /// - The `first_array_element` value when writing a descriptor set specifies the byte offset
     ///   into the inline buffer.
     /// These values must always be a multiple of 4.
-    InlineUniformBlock = INLINE_UNIFORM_BLOCK {
-        api_version: V1_3,
-        device_extensions: [ext_inline_uniform_block],
-    },
+    InlineUniformBlock = INLINE_UNIFORM_BLOCK
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_inline_uniform_block)]),
+    ]),
+
+    /* TODO: enable
+    // TODO: document
+    InlineUniformBlock = INLINE_UNIFORM_BLOCK
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(ext_inline_uniform_block)]),
+    ]),*/
 
     /// Gives read access to an acceleration structure, for performing ray queries and ray tracing.
-    AccelerationStructure = ACCELERATION_STRUCTURE_KHR {
-        device_extensions: [khr_acceleration_structure],
-    },
+    AccelerationStructure = ACCELERATION_STRUCTURE_KHR
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
-    AccelerationStructureNV = ACCELERATION_STRUCTURE_NV {
-        device_extensions: [nv_ray_tracing],
-    },*/
+    AccelerationStructureNV = ACCELERATION_STRUCTURE_NV
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    SampleWeightImage = SAMPLE_WEIGHT_IMAGE_QCOM {
-        device_extensions: [qcom_image_processing],
-    },*/
+    SampleWeightImage = SAMPLE_WEIGHT_IMAGE_QCOM
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(qcom_image_processing)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    BlockMatchImage = BLOCK_MATCH_IMAGE_QCOM {
-        device_extensions: [qcom_image_processing],
-    },*/
+    BlockMatchImage = BLOCK_MATCH_IMAGE_QCOM
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(qcom_image_processing)]),
+    ]),*/
 
     /* TODO: enable
     // TODO: document
-    Mutable = MUTABLE_VALVE {
-        device_extensions: [valve_mutable_descriptor_type],
-    },*/
+    Mutable = MUTABLE_VALVE
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(valve_mutable_descriptor_type)]),
+    ]),*/
 }
 
 impl DescriptorType {

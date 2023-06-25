@@ -20,7 +20,7 @@ use crate::{
         view::ImageViewType, ImageAspects, ImageLayout, ImageType, ImageUsage, ImageViewAbstract,
     },
     sampler::Sampler,
-    DeviceSize, RequiresOneOf, ValidationError, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{ops::Range, ptr, sync::Arc};
@@ -452,10 +452,9 @@ impl WriteDescriptorSet {
                                             layout_binding.descriptor_type,
                                         )
                                         .into(),
-                                        requires_one_of: RequiresOneOf {
-                                            features: &["image2_d_view_of3_d"],
-                                            ..Default::default()
-                                        },
+                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                            Requires::Feature("image2_d_view_of3_d"),
+                                        ])]),
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06713"],
                                     });
                                 }
@@ -471,10 +470,9 @@ impl WriteDescriptorSet {
                                             layout_binding.descriptor_type,
                                         )
                                         .into(),
-                                        requires_one_of: RequiresOneOf {
-                                            features: &["sampler2_d_view_of3_d"],
-                                            ..Default::default()
-                                        },
+                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                            Requires::Feature("sampler2_d_view_of3_d"),
+                                        ])]),
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06714"],
                                     });
                                 }
@@ -593,10 +591,9 @@ impl WriteDescriptorSet {
                             problem: "this device is a portability subset device, and \
                                 the sampler has depth comparison enabled"
                                 .into(),
-                            requires_one_of: RequiresOneOf {
-                                features: &["mutable_comparison_samplers"],
-                                ..Default::default()
-                            },
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "mutable_comparison_samplers",
+                            )])]),
                             vuids: &["VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450"],
                         });
                     }
@@ -680,10 +677,9 @@ impl WriteDescriptorSet {
                                 problem: "this device is a portability subset device, and \
                                     the sampler has depth comparison enabled"
                                     .into(),
-                                requires_one_of: RequiresOneOf {
-                                    features: &["mutable_comparison_samplers"],
-                                    ..Default::default()
-                                },
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("mutable_comparison_samplers"),
+                                ])]),
                                 vuids: &[
                                     "VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450",
                                 ],

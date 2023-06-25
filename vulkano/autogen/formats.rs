@@ -36,7 +36,7 @@ pub fn write(vk_data: &VkRegistryData) {
 struct FormatMember {
     name: Ident,
     ffi_name: Ident,
-    requires: Vec<RequiresOneOf>,
+    requires_all_of: Vec<RequiresOneOf>,
 
     aspect_color: bool,
     aspect_depth: bool,
@@ -248,60 +248,13 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         },
     );
 
-    let validate_device_items = members.iter().map(|FormatMember { name, requires, .. }| {
-        let requires_items = requires.iter().map(
-            |RequiresOneOf {
-                 api_version,
-                 device_extensions,
-                 instance_extensions,
-             }| {
-                let condition_items = (api_version.iter().map(|(major, minor)| {
-                    let version = format_ident!("V{}_{}", major, minor);
-                    quote! { device.api_version() >= crate::Version::#version }
-                }))
-                .chain(device_extensions.iter().map(|ext| {
-                    quote! { device.enabled_extensions().#ext }
-                }))
-                .chain(instance_extensions.iter().map(|ext| {
-                    quote! { device.instance().enabled_extensions().#ext }
-                }));
-                let required_for = format!("`Format::{}`", name);
-                let requires_one_of_items = (api_version.iter().map(|(major, minor)| {
-                    let version = format_ident!("V{}_{}", major, minor);
-                    quote! { api_version: Some(crate::Version::#version), }
-                }))
-                .chain((!device_extensions.is_empty()).then(|| {
-                    let items = device_extensions.iter().map(|ext| ext.to_string());
-                    quote! { device_extensions: &[#(#items),*], }
-                }))
-                .chain((!instance_extensions.is_empty()).then(|| {
-                    let items = instance_extensions.iter().map(|ext| ext.to_string());
-                    quote! { instance_extensions: &[#(#items),*], }
-                }));
-
-                quote! {
-                    if !(#(#condition_items)||*) {
-                        return Err(crate::RequirementNotMet {
-                            required_for: #required_for,
-                            requires_one_of: crate::RequiresOneOf {
-                                #(#requires_one_of_items)*
-                                ..Default::default()
-                            },
-                        });
-                    }
-                }
-            },
-        );
-
-        quote! {
-            Self::#name => {
-                #(#requires_items)*
-            }
-        }
-    });
-    let validate_physical_device_items =
-        members.iter().map(|FormatMember { name, requires, .. }| {
-            let requires_items = requires.iter().map(
+    let validate_device_items = members.iter().map(
+        |FormatMember {
+             name,
+             requires_all_of,
+             ..
+         }| {
+            let requires_items = requires_all_of.iter().map(
                 |RequiresOneOf {
                      api_version,
                      device_extensions,
@@ -309,36 +262,47 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                  }| {
                     let condition_items = (api_version.iter().map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
-                        quote! { physical_device.api_version() >= crate::Version::#version }
+                        quote! { device_api_version >= crate::Version::#version }
                     }))
-                    .chain(device_extensions.iter().map(|ext| {
-                        quote! { physical_device.supported_extensions().#ext }
+                    .chain(device_extensions.iter().map(|ext_name| {
+                        let ident = format_ident!("{}", ext_name);
+                        quote! { device_extensions.#ident }
                     }))
-                    .chain(instance_extensions.iter().map(|ext| {
-                        quote! { physical_device.instance().enabled_extensions().#ext }
+                    .chain(instance_extensions.iter().map(|ext_name| {
+                        let ident = format_ident!("{}", ext_name);
+                        quote! { instance_extensions.#ident }
                     }));
                     let required_for = format!("`Format::{}`", name);
                     let requires_one_of_items = (api_version.iter().map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
-                        quote! { api_version: Some(crate::Version::#version), }
+                        quote! {
+                            crate::RequiresAllOf(&[
+                                crate::Requires::APIVersion(crate::Version::#version),
+                            ]),
+                        }
                     }))
-                    .chain((!device_extensions.is_empty()).then(|| {
-                        let items = device_extensions.iter().map(|ext| ext.to_string());
-                        quote! { device_extensions: &[#(#items),*], }
+                    .chain(device_extensions.iter().map(|ext_name| {
+                        quote! {
+                            crate::RequiresAllOf(&[
+                                crate::Requires::DeviceExtension(#ext_name),
+                            ]),
+                        }
                     }))
-                    .chain((!instance_extensions.is_empty()).then(|| {
-                        let items = instance_extensions.iter().map(|ext| ext.to_string());
-                        quote! { instance_extensions: &[#(#items),*], }
+                    .chain(instance_extensions.iter().map(|ext_name| {
+                        quote! {
+                            crate::RequiresAllOf(&[
+                                crate::Requires::InstanceExtension(#ext_name),
+                            ]),
+                        }
                     }));
 
                     quote! {
                         if !(#(#condition_items)||*) {
                             return Err(crate::RequirementNotMet {
                                 required_for: #required_for,
-                                requires_one_of: crate::RequiresOneOf {
+                                requires_one_of: crate::RequiresOneOf(&[
                                     #(#requires_one_of_items)*
-                                    ..Default::default()
-                                },
+                                ]),
                             });
                         }
                     }
@@ -350,7 +314,8 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                     #(#requires_items)*
                 }
             }
-        });
+        },
+    );
 
     quote! {
         /// An enumeration of all the possible formats.
@@ -502,11 +467,12 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 self,
                 #[allow(unused_variables)] device: &crate::device::Device,
             ) -> Result<(), crate::RequirementNotMet> {
-                match self {
-                    #(#validate_device_items)*
-                }
-
-                Ok(())
+                self.validate_device_raw(
+                    device.api_version(),
+                    device.enabled_features(),
+                    device.enabled_extensions(),
+                    device.instance().enabled_extensions(),
+                )
             }
 
             #[allow(dead_code)]
@@ -514,8 +480,24 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 self,
                 #[allow(unused_variables)] physical_device: &crate::device::physical::PhysicalDevice,
             ) -> Result<(), crate::RequirementNotMet> {
+                self.validate_device_raw(
+                    physical_device.api_version(),
+                    physical_device.supported_features(),
+                    physical_device.supported_extensions(),
+                    physical_device.instance().enabled_extensions(),
+                )
+            }
+
+            #[allow(dead_code)]
+            pub(crate) fn validate_device_raw(
+                self,
+                #[allow(unused_variables)] device_api_version: crate::Version,
+                #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
+                #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
+            ) -> Result<(), crate::RequirementNotMet> {
                 match self {
-                    #(#validate_physical_device_items)*
+                    #(#validate_device_items)*
                 }
 
                 Ok(())
@@ -611,7 +593,7 @@ fn formats_members(
             let mut member = FormatMember {
                 name,
                 ffi_name,
-                requires: Vec::new(),
+                requires_all_of: Vec::new(),
 
                 aspect_color: false,
                 aspect_depth: false,
@@ -821,10 +803,10 @@ fn formats_members(
                                     if let Some(version) = feature.name.strip_prefix("VK_VERSION_")
                                     {
                                         let (major, minor) = version.split_once('_').unwrap();
-                                        member.requires.push(RequiresOneOf {
+                                        member.requires_all_of.push(RequiresOneOf {
                                             api_version: Some((
-                                                major.to_string(),
-                                                minor.to_string(),
+                                                major.parse().unwrap(),
+                                                minor.parse().unwrap(),
                                             )),
                                             ..Default::default()
                                         });
@@ -859,22 +841,22 @@ fn formats_members(
                                     let extension_name =
                                         extension.name.strip_prefix("VK_").unwrap().to_snake_case();
 
-                                    if member.requires.is_empty() {
-                                        member.requires.push(Default::default());
+                                    if member.requires_all_of.is_empty() {
+                                        member.requires_all_of.push(Default::default());
                                     };
 
-                                    let requires = member.requires.first_mut().unwrap();
+                                    let requires_one_of = member.requires_all_of.first_mut().unwrap();
 
                                     match extension.ext_type.as_deref() {
                                         Some("device") => {
-                                            requires
+                                            requires_one_of
                                                 .device_extensions
-                                                .push(format_ident!("{}", extension_name));
+                                                .push(extension_name);
                                         }
                                         Some("instance") => {
-                                            requires
+                                            requires_one_of
                                                 .instance_extensions
-                                                .push(format_ident!("{}", extension_name));
+                                                .push(extension_name);
                                         }
                                         _ => (),
                                     }

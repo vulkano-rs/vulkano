@@ -236,12 +236,14 @@ macro_rules! vulkan_bitflags {
         $(
             $(#[doc = $flag_doc:literal])*
             $flag_name:ident = $flag_name_ffi:ident
-            $({
-                $(api_version: $api_version:ident,)?
-                $(features: [$($feature:ident),+ $(,)?],)?
-                $(device_extensions: [$($device_extension:ident),+ $(,)?],)?
-                $(instance_extensions: [$($instance_extension:ident),+ $(,)?],)?
-            })?
+            $(RequiresOneOf([
+                $(RequiresAllOf([
+                    $(APIVersion($api_version:ident) $(,)?)?
+                    $($(Feature($feature:ident)),+ $(,)?)?
+                    $($(DeviceExtension($device_extension:ident)),+ $(,)?)?
+                    $($(InstanceExtension($instance_extension:ident)),+ $(,)?)?
+                ])),+ $(,)?
+            ]))?
             ,
         )*
     } => {
@@ -362,28 +364,39 @@ macro_rules! vulkan_bitflags {
                 $(
                     $(
                         if self.intersects(Self::$flag_name) && ![
-                            $(
-                                device_api_version >= crate::Version::$api_version,
-                            )?
-                            $($(
-                                device_features.$feature,
-                            )+)?
-                            $($(
-                                device_extensions.$device_extension,
-                            )+)?
-                            $($(
-                                instance_extensions.$instance_extension,
-                            )+)?
+                            $([
+                                $(
+                                    device_api_version >= crate::Version::$api_version,
+                                )?
+                                $($(
+                                    device_features.$feature,
+                                )+)?
+                                $($(
+                                    device_extensions.$device_extension,
+                                )+)?
+                                $($(
+                                    instance_extensions.$instance_extension,
+                                )+)?
+                            ].into_iter().all(|x| x)),*
                         ].into_iter().any(|x| x) {
                             return Err(crate::RequirementNotMet {
                                 required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
-                                requires_one_of: crate::RequiresOneOf {
-                                    $(api_version: Some(crate::Version::$api_version),)?
-                                    $(features: &[$(stringify!($feature)),+],)?
-                                    $(device_extensions: &[$(stringify!($device_extension)),+],)?
-                                    $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
-                                    ..Default::default()
-                                },
+                                requires_one_of: crate::RequiresOneOf(&[
+                                    $(crate::RequiresAllOf(&[
+                                        $(
+                                            crate::Requires::APIVersion(crate::Version::$api_version),
+                                        )?
+                                        $($(
+                                            crate::Requires::Feature(stringify!($feature)),
+                                        )+)?
+                                        $($(
+                                            crate::Requires::DeviceExtension(stringify!($device_extension)),
+                                        )+)?
+                                        $($(
+                                            crate::Requires::InstanceExtension(stringify!($instance_extension)),
+                                        )+)?
+                                    ])),*
+                                ]),
                             });
                         }
                     )?
@@ -413,20 +426,27 @@ macro_rules! vulkan_bitflags {
                 $(
                     $(
                         if self.intersects(Self::$flag_name) && ![
-                            $(
-                                instance_api_version >= crate::Version::$api_version,
-                            )?
-                            $($(
-                                instance_extensions.$instance_extension,
-                            )+)?
+                            $([
+                                $(
+                                    instance_api_version >= crate::Version::$api_version,
+                                )?
+                                $($(
+                                    instance_extensions.$instance_extension,
+                                )+)?
+                            ].into_iter().all(|x| x)),*
                         ].into_iter().any(|x| x) {
                             return Err(crate::RequirementNotMet {
                                 required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
-                                requires_one_of: crate::RequiresOneOf {
-                                    $(api_version: Some(crate::Version::$api_version),)?
-                                    $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
-                                    ..Default::default()
-                                },
+                                requires_one_of: crate::RequiresOneOf(&[
+                                    $(crate::RequiresAllOf(&[
+                                        $(
+                                            crate::Requires::APIVersion(crate::Version::$api_version),
+                                        )?
+                                        $($(
+                                            crate::Requires::InstanceExtension(stringify!($instance_extension)),
+                                        )+)?
+                                    ])),*
+                                ]),
                             });
                         }
                     )?
@@ -610,12 +630,14 @@ macro_rules! vulkan_enum {
         $(
             $(#[doc = $flag_doc:literal])*
             $flag_name:ident = $flag_name_ffi:ident
-            $({
-                $(api_version: $api_version:ident,)?
-                $(features: [$($feature:ident),+ $(,)?],)?
-                $(device_extensions: [$($device_extension:ident),+ $(,)?],)?
-                $(instance_extensions: [$($instance_extension:ident),+ $(,)?],)?
-            })?
+            $(RequiresOneOf([
+                $(RequiresAllOf([
+                    $(APIVersion($api_version:ident) $(,)?)?
+                    $($(Feature($feature:ident)),+ $(,)?)?
+                    $($(DeviceExtension($device_extension:ident)),+ $(,)?)?
+                    $($(InstanceExtension($instance_extension:ident)),+ $(,)?)?
+                ])),+ $(,)?
+            ]))?
             ,
         )+
     } => {
@@ -639,8 +661,8 @@ macro_rules! vulkan_enum {
             ) -> Result<(), crate::RequirementNotMet> {
                 self.validate_device_raw(
                     device.api_version(),
-                    device.enabled_extensions(),
                     device.enabled_features(),
+                    device.enabled_extensions(),
                     device.instance().enabled_extensions(),
                 )
             }
@@ -653,8 +675,8 @@ macro_rules! vulkan_enum {
             ) -> Result<(), crate::RequirementNotMet> {
                 self.validate_device_raw(
                     physical_device.api_version(),
-                    physical_device.supported_extensions(),
                     physical_device.supported_features(),
+                    physical_device.supported_extensions(),
                     physical_device.instance().enabled_extensions(),
                 )
             }
@@ -663,8 +685,8 @@ macro_rules! vulkan_enum {
             pub(crate) fn validate_device_raw(
                 self,
                 #[allow(unused_variables)] device_api_version: crate::Version,
-                #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), crate::RequirementNotMet> {
                 match self {
@@ -672,28 +694,39 @@ macro_rules! vulkan_enum {
                         $(
                             Self::$flag_name => {
                                 if ![
-                                    $(
-                                        device_api_version >= crate::Version::$api_version,
-                                    )?
-                                    $($(
-                                        device_features.$feature,
-                                    )+)?
-                                    $($(
-                                        device_extensions.$device_extension,
-                                    )+)?
-                                    $($(
-                                        instance_extensions.$instance_extension,
-                                    )+)?
+                                    $([
+                                        $(
+                                            device_api_version >= crate::Version::$api_version,
+                                        )?
+                                        $($(
+                                            device_features.$feature,
+                                        )+)?
+                                        $($(
+                                            device_extensions.$device_extension,
+                                        )+)?
+                                        $($(
+                                            instance_extensions.$instance_extension,
+                                        )+)?
+                                    ].into_iter().all(|x| x)),*
                                  ].into_iter().any(|x| x) {
                                     return Err(crate::RequirementNotMet {
                                         required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
-                                        requires_one_of: crate::RequiresOneOf {
-                                            $(api_version: Some(crate::Version::$api_version),)?
-                                            $(features: &[$(stringify!($feature)),+],)?
-                                            $(device_extensions: &[$(stringify!($device_extension)),+],)?
-                                            $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
-                                            ..Default::default()
-                                        },
+                                        requires_one_of: crate::RequiresOneOf(&[
+                                            $(crate::RequiresAllOf(&[
+                                                $(
+                                                    crate::Requires::APIVersion(crate::Version::$api_version),
+                                                )?
+                                                $($(
+                                                    crate::Requires::Feature(stringify!($feature)),
+                                                )+)?
+                                                $($(
+                                                    crate::Requires::DeviceExtension(stringify!($device_extension)),
+                                                )+)?
+                                                $($(
+                                                    crate::Requires::InstanceExtension(stringify!($instance_extension)),
+                                                )+)?
+                                            ])),*
+                                        ]),
                                     });
                                 }
                             },
@@ -728,20 +761,27 @@ macro_rules! vulkan_enum {
                         $(
                             Self::$flag_name => {
                                 if ![
-                                    $(
-                                        instance_api_version >= crate::Version::$api_version,
-                                    )?
-                                    $($(
-                                        instance_extensions.$instance_extension,
-                                    )+)?
+                                    $([
+                                        $(
+                                            instance_api_version >= crate::Version::$api_version,
+                                        )?
+                                        $($(
+                                            instance_extensions.$instance_extension,
+                                        )+)?
+                                    ].into_iter().all(|x| x)),*
                                  ].into_iter().any(|x| x) {
                                     return Err(crate::RequirementNotMet {
                                         required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
-                                        requires_one_of: crate::RequiresOneOf {
-                                            $(api_version: Some(crate::Version::$api_version),)?
-                                            $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
-                                            ..Default::default()
-                                        },
+                                        requires_one_of: crate::RequiresOneOf(&[
+                                            $(crate::RequiresAllOf(&[
+                                                $(
+                                                    crate::Requires::APIVersion(crate::Version::$api_version),
+                                                )?
+                                                $($(
+                                                    crate::Requires::InstanceExtension(stringify!($instance_extension)),
+                                                )+)?
+                                            ])),*
+                                        ]),
                                     });
                                 }
                             },
@@ -800,12 +840,14 @@ macro_rules! vulkan_bitflags_enum {
         $(
             $(#[doc = $flag_doc:literal])*
             $flag_name_bitflags:ident, $flag_name_enum:ident = $flag_name_ffi:ident
-            $({
-                $(api_version: $api_version:ident,)?
-                $(features: [$($feature:ident),+ $(,)?],)?
-                $(device_extensions: [$($device_extension:ident),+ $(,)?],)?
-                $(instance_extensions: [$($instance_extension:ident),+ $(,)?],)?
-            })?
+            $(RequiresOneOf([
+                $(RequiresAllOf([
+                    $(APIVersion($api_version:ident) $(,)?)?
+                    $($(Feature($feature:ident)),+ $(,)?)?
+                    $($(DeviceExtension($device_extension:ident)),+ $(,)?)?
+                    $($(InstanceExtension($instance_extension:ident)),+ $(,)?)?
+                ])),+ $(,)?
+            ]))?
             ,
         )*
     } => {
@@ -828,12 +870,14 @@ macro_rules! vulkan_bitflags_enum {
             $(
                 $(#[doc = $flag_doc])*
                 $flag_name_bitflags = $flag_name_ffi
-                $({
-                    $(api_version: $api_version,)?
-                    $(features: [$($feature),+],)?
-                    $(device_extensions: [$($device_extension),+],)?
-                    $(instance_extensions: [$($instance_extension),+],)?
-                })?
+                $(RequiresOneOf([
+                    $(RequiresAllOf([
+                        $(APIVersion($api_version) ,)?
+                        $($(Feature($feature)),+ ,)?
+                        $($(DeviceExtension($device_extension)),+ ,)?
+                        $($(InstanceExtension($instance_extension)),+ ,)?
+                    ])),+ ,
+                ]))?
                 ,
             )*
         }
@@ -849,12 +893,14 @@ macro_rules! vulkan_bitflags_enum {
             $(
                 $(#[doc = $flag_doc])*
                 $flag_name_enum = $flag_name_ffi
-                $({
-                    $(api_version: $api_version,)?
-                    $(features: [$($feature),+],)?
-                    $(device_extensions: [$($device_extension),+],)?
-                    $(instance_extensions: [$($instance_extension),+],)?
-                })?
+                $(RequiresOneOf([
+                    $(RequiresAllOf([
+                        $(APIVersion($api_version) ,)?
+                        $($(Feature($feature)),+ ,)?
+                        $($(DeviceExtension($device_extension)),+ ,)?
+                        $($(InstanceExtension($instance_extension)),+ ,)?
+                    ])),+ ,
+                ]))?
                 ,
             )*
         }
