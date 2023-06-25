@@ -71,6 +71,7 @@ Changes to `DescriptorPool`:
 - Added `flags` to `RenderPassCreateInfo`, `AttachmentDescription` and `SubpassDescription`.
 - Support for the `khr_device_group_creation` extension.
 - Added support for `InlineUniformBlock` descriptors.
+- When creating an instance or device, you only need to specify the extensions and features you actually care about. Any extensions and features that are required by the extensions that you specified are now automatically enabled too.
 
 ### Bugs fixed
 
