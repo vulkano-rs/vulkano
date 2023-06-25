@@ -88,10 +88,9 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout,
+        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    shader::PipelineShaderStageCreateInfo,
     sync::GpuFuture,
     VulkanLibrary,
 };
@@ -315,8 +314,8 @@ fn main() {
             .definition(&vs.info().input_interface)
             .unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::entry_point(vs),
-            PipelineShaderStageCreateInfo::entry_point(fs),
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
         ];
         let layout = PipelineLayout::new(
             device.clone(),
@@ -348,9 +347,9 @@ fn main() {
     };
 
     let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [1024.0, 1024.0],
-        depth_range: 0.0..1.0,
+        offset: [0.0, 0.0],
+        extent: [1024.0, 1024.0],
+        depth_range: 0.0..=1.0,
     };
 
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device, Default::default());

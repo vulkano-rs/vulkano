@@ -10,7 +10,9 @@
 //! Generates multiple fragments per framebuffer pixel when rasterizing. This can be used for
 //! anti-aliasing.
 
-use crate::image::SampleCount;
+use crate::{
+    device::Device, image::SampleCount, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
+};
 
 // TODO: handle some weird behaviors with non-floating-point targets
 
@@ -68,6 +70,61 @@ impl MultisampleState {
             alpha_to_coverage_enable: false,
             alpha_to_one_enable: false,
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            rasterization_samples,
+            sample_shading,
+            sample_mask: _,
+            alpha_to_coverage_enable: _,
+            alpha_to_one_enable,
+        } = self;
+
+        rasterization_samples
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "rasterization_samples".into(),
+                vuids: &[
+                    "VUID-VkPipelineMultisampleStateCreateInfo-rasterizationSamples-parameter",
+                ],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if let Some(min_sample_shading) = sample_shading {
+            if !device.enabled_features().sample_rate_shading {
+                return Err(ValidationError {
+                    context: "min_sample_shading".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "sample_rate_shading",
+                    )])]),
+                    vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-sampleShadingEnable-00784"],
+                });
+            }
+
+            if !(0.0..=1.0).contains(&min_sample_shading) {
+                return Err(ValidationError {
+                    context: "min_sample_shading".into(),
+                    problem: "is not between 0.0 and 1.0 inclusive".into(),
+                    vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-minSampleShading-00786"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if alpha_to_one_enable && !device.enabled_features().alpha_to_one {
+            return Err(ValidationError {
+                context: "alpha_to_one_enable".into(),
+                problem: "is `true`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "alpha_to_one",
+                )])]),
+                vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-alphaToOneEnable-00785"],
+            });
+        }
+
+        Ok(())
     }
 }
 

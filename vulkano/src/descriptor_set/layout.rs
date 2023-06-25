@@ -21,15 +21,7 @@ use crate::{
     VulkanObject,
 };
 use ahash::HashMap;
-use std::{
-    collections::BTreeMap,
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ptr,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
 #[derive(Debug)]
@@ -578,7 +570,7 @@ impl DescriptorSetLayoutBinding {
     pub fn ensure_compatible_with_shader(
         &self,
         binding_requirements: &DescriptorBindingRequirements,
-    ) -> Result<(), DescriptorRequirementsNotMet> {
+    ) -> Result<(), ValidationError> {
         let &DescriptorBindingRequirements {
             ref descriptor_types,
             descriptor_count,
@@ -591,25 +583,31 @@ impl DescriptorSetLayoutBinding {
         } = binding_requirements;
 
         if !descriptor_types.contains(&self.descriptor_type) {
-            return Err(DescriptorRequirementsNotMet::DescriptorType {
-                required: descriptor_types.clone(),
-                obtained: self.descriptor_type,
+            return Err(ValidationError {
+                problem: "the descriptor type is not one of the types allowed by the \
+                    descriptor binding requirements"
+                    .into(),
+                ..Default::default()
             });
         }
 
         if let Some(required) = descriptor_count {
             if self.descriptor_count < required {
-                return Err(DescriptorRequirementsNotMet::DescriptorCount {
-                    required,
-                    obtained: self.descriptor_count,
+                return Err(ValidationError {
+                    problem: "the descriptor count is less than the count required by the \
+                        descriptor binding requirements"
+                        .into(),
+                    ..Default::default()
                 });
             }
         }
 
         if !self.stages.contains(stages) {
-            return Err(DescriptorRequirementsNotMet::ShaderStages {
-                required: stages,
-                obtained: self.stages,
+            return Err(ValidationError {
+                problem: "the stages are not a superset of the stages required by the \
+                    descriptor binding requirements"
+                    .into(),
+                ..Default::default()
             });
         }
 
@@ -999,48 +997,6 @@ pub struct DescriptorSetLayoutSupport {
     ///
     /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
     pub max_variable_descriptor_count: u32,
-}
-
-/// Error when checking whether the requirements for a binding have been met.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DescriptorRequirementsNotMet {
-    /// The binding's `descriptor_type` is not one of those required.
-    DescriptorType {
-        required: Vec<DescriptorType>,
-        obtained: DescriptorType,
-    },
-
-    /// The binding's `descriptor_count` is less than what is required.
-    DescriptorCount { required: u32, obtained: u32 },
-
-    /// The binding's `stages` does not contain the stages that are required.
-    ShaderStages {
-        required: ShaderStages,
-        obtained: ShaderStages,
-    },
-}
-
-impl Error for DescriptorRequirementsNotMet {}
-
-impl Display for DescriptorRequirementsNotMet {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::DescriptorType { required, obtained } => write!(
-                f,
-                "the descriptor's type ({:?}) is not one of those required ({:?})",
-                obtained, required,
-            ),
-            Self::DescriptorCount { required, obtained } => write!(
-                f,
-                "the descriptor count ({}) is less than what is required ({})",
-                obtained, required,
-            ),
-            Self::ShaderStages { .. } => write!(
-                f,
-                "the descriptor's shader stages do not contain the stages that are required",
-            ),
-        }
-    }
 }
 
 #[cfg(test)]

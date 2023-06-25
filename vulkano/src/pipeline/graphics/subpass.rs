@@ -9,9 +9,11 @@
 
 use crate::{
     command_buffer::{CommandBufferInheritanceRenderingInfo, RenderingInfo},
-    format::Format,
+    device::Device,
+    format::{Format, FormatFeatures},
     image::ImageAspects,
     render_pass::Subpass,
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 
 /// Selects the type of subpass that a graphics pipeline is created for.
@@ -147,5 +149,151 @@ impl PipelineRenderingCreateInfo {
             stencil_attachment_format: info.stencil_attachment_format,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            view_mask,
+            ref color_attachment_formats,
+            depth_attachment_format,
+            stencil_attachment_format,
+            _ne: _,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        if view_mask != 0 && !device.enabled_features().multiview {
+            return Err(ValidationError {
+                context: "view_mask".into(),
+                problem: "is not zero".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-multiview-06577"],
+            });
+        }
+
+        let view_count = u32::BITS - view_mask.leading_zeros();
+
+        if view_count > properties.max_multiview_view_count.unwrap_or(0) {
+            return Err(ValidationError {
+                context: "view_mask".into(),
+                problem: "the number of views exceeds the \
+                    `max_multiview_view_count` limit"
+                    .into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06578"],
+            });
+        }
+
+        for (attachment_index, format) in color_attachment_formats
+            .iter()
+            .enumerate()
+            .flat_map(|(i, f)| f.map(|f| (i, f)))
+        {
+            let attachment_index = attachment_index as u32;
+
+            format
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "format".into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06580"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if !unsafe { device.physical_device().format_properties_unchecked(format) }
+                .potential_format_features()
+                .intersects(FormatFeatures::COLOR_ATTACHMENT)
+            {
+                return Err(ValidationError {
+                    context: format!("color_attachment_formats[{}]", attachment_index).into(),
+                    problem: "format features do not contain \
+                        `FormatFeature::COLOR_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06582"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if let Some(format) = depth_attachment_format {
+            format
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "format".into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06583"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if !unsafe { device.physical_device().format_properties_unchecked(format) }
+                .potential_format_features()
+                .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
+            {
+                return Err(ValidationError {
+                    context: "depth_attachment_format".into(),
+                    problem: "format features do not contain \
+                        `FormatFeature::DEPTH_STENCIL_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06585"],
+                    ..Default::default()
+                });
+            }
+
+            if !format.aspects().intersects(ImageAspects::DEPTH) {
+                return Err(ValidationError {
+                    context: "depth_attachment_format".into(),
+                    problem: "does not have a depth aspect".into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06587"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if let Some(format) = stencil_attachment_format {
+            format
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "format".into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06584"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if !unsafe { device.physical_device().format_properties_unchecked(format) }
+                .potential_format_features()
+                .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
+            {
+                return Err(ValidationError {
+                    context: "render_pass.stencil_attachment_format".into(),
+                    problem: "format features do not contain \
+                        `FormatFeature::DEPTH_STENCIL_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06586"],
+                    ..Default::default()
+                });
+            }
+
+            if !format.aspects().intersects(ImageAspects::STENCIL) {
+                return Err(ValidationError {
+                    context: "render_pass.stencil_attachment_format".into(),
+                    problem: "does not have a stencil aspect".into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06588"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if let (Some(depth_format), Some(stencil_format)) =
+            (depth_attachment_format, stencil_attachment_format)
+        {
+            if depth_format != stencil_format {
+                return Err(ValidationError {
+                    problem: "`depth_attachment_format` and `stencil_attachment_format` are both \
+                        `Some`, but are not equal"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06589"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        Ok(())
     }
 }

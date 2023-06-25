@@ -34,8 +34,8 @@ use vulkano::{
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
-    shader::PipelineShaderStageCreateInfo,
     sync::{self, GpuFuture},
     VulkanLibrary,
 };
@@ -192,7 +192,7 @@ fn main() {
             ]
             .into_iter()
             .collect(),
-            ..PipelineShaderStageCreateInfo::entry_point(cs)
+            ..PipelineShaderStageCreateInfo::new(cs)
         };
         let layout = PipelineLayout::new(
             device.clone(),

@@ -33,10 +33,10 @@ use vulkano::{
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
     sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
-    shader::PipelineShaderStageCreateInfo,
 };
 
 /// Vertex for textured quads.
@@ -129,8 +129,8 @@ impl PixelsDrawPipeline {
                 .definition(&vs.info().input_interface)
                 .unwrap();
             let stages = [
-                PipelineShaderStageCreateInfo::entry_point(vs),
-                PipelineShaderStageCreateInfo::entry_point(fs),
+                PipelineShaderStageCreateInfo::new(vs),
+                PipelineShaderStageCreateInfo::new(fs),
             ];
             let layout = PipelineLayout::new(
                 device.clone(),
@@ -219,9 +219,9 @@ impl PixelsDrawPipeline {
             .set_viewport(
                 0,
                 [Viewport {
-                    origin: [0.0, 0.0],
-                    dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
-                    depth_range: 0.0..1.0,
+                    offset: [0.0, 0.0],
+                    extent: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+                    depth_range: 0.0..=1.0,
                 }]
                 .into_iter()
                 .collect(),

@@ -43,9 +43,10 @@ use vulkano::{
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::{EntryPoint, PipelineShaderStageCreateInfo},
+    shader::EntryPoint,
     swapchain::{
         acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
         SwapchainPresentInfo,
@@ -468,8 +469,8 @@ fn window_size_dependent_setup(
             .definition(&vs.info().input_interface)
             .unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::entry_point(vs),
-            PipelineShaderStageCreateInfo::entry_point(fs),
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
         ];
         let layout = PipelineLayout::new(
             device.clone(),
@@ -488,9 +489,9 @@ fn window_size_dependent_setup(
                 input_assembly_state: Some(InputAssemblyState::default()),
                 viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([
                     Viewport {
-                        origin: [0.0, 0.0],
-                        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                        depth_range: 0.0..1.0,
+                        offset: [0.0, 0.0],
+                        extent: [dimensions[0] as f32, dimensions[1] as f32],
+                        depth_range: 0.0..=1.0,
                     },
                 ])),
                 rasterization_state: Some(RasterizationState::default()),

@@ -12,8 +12,10 @@
 //! The discard rectangle test is similar to, but separate from the scissor test.
 
 use crate::{
+    device::Device,
     macros::vulkan_enum,
     pipeline::{graphics::viewport::Scissor, PartialStateMode},
+    ValidationError,
 };
 
 /// The state in a graphics pipeline describing how the discard rectangle test should behave.
@@ -39,6 +41,39 @@ impl DiscardRectangleState {
             mode: DiscardRectangleMode::Exclusive,
             rectangles: PartialStateMode::Fixed(Vec::new()),
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            mode,
+            ref rectangles,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        mode.validate_device(device).map_err(|err| ValidationError {
+            context: "mode".into(),
+            vuids: &["VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleMode-parameter"],
+            ..ValidationError::from_requirement(err)
+        })?;
+
+        let discard_rectangle_count = match rectangles {
+            PartialStateMode::Dynamic(count) => *count,
+            PartialStateMode::Fixed(rectangles) => rectangles.len() as u32,
+        };
+
+        if discard_rectangle_count > properties.max_discard_rectangles.unwrap() {
+            return Err(ValidationError {
+                context: "rectangles".into(),
+                problem: "the length exceeds the `max_discard_rectangles` limit".into(),
+                vuids: &[
+                    "VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleCount-00582",
+                ],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
     }
 }
 

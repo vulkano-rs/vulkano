@@ -22,14 +22,21 @@
 //! will take precedence if it is activated, otherwise the blending operation is applied.
 
 use crate::{
+    device::Device,
     macros::{vulkan_bitflags, vulkan_enum},
     pipeline::StateMode,
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
 #[derive(Clone, Debug)]
 pub struct ColorBlendState {
+    /// Additional properties of the color blend state.
+    ///
+    /// The default value is empty.
+    pub flags: ColorBlendStateFlags,
+
     /// Sets the logical operation to perform between the incoming fragment color and the existing
     /// fragment in the framebuffer attachment.
     ///
@@ -58,6 +65,7 @@ impl ColorBlendState {
     #[inline]
     pub fn new(num: u32) -> Self {
         Self {
+            flags: ColorBlendStateFlags::empty(),
             logic_op: None,
             attachments: (0..num)
                 .map(|_| ColorBlendAttachmentState {
@@ -133,6 +141,93 @@ impl ColorBlendState {
         self.blend_constants = StateMode::Dynamic;
         self
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            flags,
+            logic_op,
+            ref attachments,
+            blend_constants: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkPipelineColorBlendStateCreateInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if let Some(logic_op) = logic_op {
+            if !device.enabled_features().logic_op {
+                return Err(ValidationError {
+                    context: "logic_op".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "logic_op",
+                    )])]),
+                    vuids: &["VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00606"],
+                });
+            }
+
+            match logic_op {
+                StateMode::Fixed(logic_op) => {
+                    logic_op
+                        .validate_device(device)
+                        .map_err(|err| ValidationError {
+                            context: "logic_op".into(),
+                            vuids: &[
+                                "VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00607",
+                            ],
+                            ..ValidationError::from_requirement(err)
+                        })?
+                }
+                StateMode::Dynamic => {
+                    if !device.enabled_features().extended_dynamic_state2_logic_op {
+                        return Err(ValidationError {
+                            context: "logic_op".into(),
+                            problem: "is dynamic".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "extended_dynamic_state2_logic_op",
+                            )])]),
+                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04869"],
+                        });
+                    }
+                }
+            }
+        }
+
+        if device.enabled_features().independent_blend {
+            for (index, state) in attachments.iter().enumerate() {
+                state
+                    .validate(device)
+                    .map_err(|err| err.add_context(format!("attachments[{}]", index)))?;
+            }
+        } else if let Some(first) = attachments.first() {
+            first
+                .validate(device)
+                .map_err(|err| err.add_context("attachments[0]"))?;
+
+            for (index, state) in attachments.iter().enumerate().skip(1) {
+                if state != first {
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`attachments[{}]` does not equal `attachments[0]`",
+                            index
+                        )
+                        .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "independent_blend",
+                        )])]),
+                        vuids: &["VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605"],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for ColorBlendState {
@@ -141,6 +236,21 @@ impl Default for ColorBlendState {
     fn default() -> Self {
         Self::new(1)
     }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags specifying additional properties of the color blend state.
+    ColorBlendStateFlags = PipelineColorBlendStateCreateFlags(u32);
+
+    /* TODO: enable
+    // TODO: document
+    RASTERIZATION_ORDER_ATTACHMENT_ACCESS = RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_rasterization_order_attachment_access)]),
+        RequiresAllOf([DeviceExtension(arm_rasterization_order_attachment_access)]),
+    ]), */
 }
 
 vulkan_enum! {
@@ -213,7 +323,7 @@ impl Default for LogicOp {
 
 /// Describes how a framebuffer color attachment is handled in the pipeline during the color
 /// blend stage.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ColorBlendAttachmentState {
     /// The blend parameters for the attachment.
     ///
@@ -233,28 +343,73 @@ pub struct ColorBlendAttachmentState {
     pub color_write_enable: StateMode<bool>,
 }
 
+impl ColorBlendAttachmentState {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            ref blend,
+            color_write_mask: _,
+            color_write_enable,
+        } = self;
+
+        if let Some(blend) = blend {
+            blend
+                .validate(device)
+                .map_err(|err| err.add_context("blend"))?;
+        }
+
+        match color_write_enable {
+            StateMode::Fixed(enable) => {
+                if !enable && !device.enabled_features().color_write_enable {
+                    return Err(ValidationError {
+                        context: "color_write_enable".into(),
+                        problem: "is `false`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "color_write_enable",
+                        )])]),
+                        vuids: &["VUID-VkPipelineColorWriteCreateInfoEXT-pAttachments-04801"],
+                    });
+                }
+            }
+            StateMode::Dynamic => {
+                if !device.enabled_features().color_write_enable {
+                    return Err(ValidationError {
+                        context: "color_write_enable".into(),
+                        problem: "is dynamic".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "color_write_enable",
+                        )])]),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04800"],
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Describes how the blending system should behave for an attachment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AttachmentBlend {
-    /// The operation to apply between the color components of the source and destination pixels,
-    /// to produce the final pixel value.
-    pub color_op: BlendOp,
-
     /// The operation to apply to the source color component before applying `color_op`.
-    pub color_source: BlendFactor,
+    pub src_color_blend_factor: BlendFactor,
 
     /// The operation to apply to the destination color component before applying `color_op`.
-    pub color_destination: BlendFactor,
+    pub dst_color_blend_factor: BlendFactor,
+
+    /// The operation to apply between the color components of the source and destination pixels,
+    /// to produce the final pixel value.
+    pub color_blend_op: BlendOp,
+
+    /// The operation to apply to the source alpha component before applying `alpha_op`.
+    pub src_alpha_blend_factor: BlendFactor,
+
+    /// The operation to apply to the destination alpha component before applying `alpha_op`.
+    pub dst_alpha_blend_factor: BlendFactor,
 
     /// The operation to apply between the alpha component of the source and destination pixels,
     /// to produce the final pixel value.
-    pub alpha_op: BlendOp,
-
-    /// The operation to apply to the source alpha component before applying `alpha_op`.
-    pub alpha_source: BlendFactor,
-
-    /// The operation to apply to the destination alpha component before applying `alpha_op`.
-    pub alpha_destination: BlendFactor,
+    pub alpha_blend_op: BlendOp,
 }
 
 impl AttachmentBlend {
@@ -263,12 +418,12 @@ impl AttachmentBlend {
     #[inline]
     pub fn ignore_source() -> Self {
         Self {
-            color_op: BlendOp::Add,
-            color_source: BlendFactor::Zero,
-            color_destination: BlendFactor::DstColor,
-            alpha_op: BlendOp::Add,
-            alpha_source: BlendFactor::Zero,
-            alpha_destination: BlendFactor::DstColor,
+            src_color_blend_factor: BlendFactor::Zero,
+            dst_color_blend_factor: BlendFactor::DstColor,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::Zero,
+            dst_alpha_blend_factor: BlendFactor::DstColor,
+            alpha_blend_op: BlendOp::Add,
         }
     }
 
@@ -277,12 +432,12 @@ impl AttachmentBlend {
     #[inline]
     pub fn alpha() -> Self {
         Self {
-            color_op: BlendOp::Add,
-            color_source: BlendFactor::SrcAlpha,
-            color_destination: BlendFactor::OneMinusSrcAlpha,
-            alpha_op: BlendOp::Add,
-            alpha_source: BlendFactor::SrcAlpha,
-            alpha_destination: BlendFactor::OneMinusSrcAlpha,
+            src_color_blend_factor: BlendFactor::SrcAlpha,
+            dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::SrcAlpha,
+            dst_alpha_blend_factor: BlendFactor::OneMinusSrcAlpha,
+            alpha_blend_op: BlendOp::Add,
         }
     }
 
@@ -291,13 +446,180 @@ impl AttachmentBlend {
     #[inline]
     pub fn additive() -> Self {
         Self {
-            color_op: BlendOp::Add,
-            color_source: BlendFactor::One,
-            color_destination: BlendFactor::One,
-            alpha_op: BlendOp::Max,
-            alpha_source: BlendFactor::One,
-            alpha_destination: BlendFactor::One,
+            src_color_blend_factor: BlendFactor::One,
+            dst_color_blend_factor: BlendFactor::One,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::One,
+            dst_alpha_blend_factor: BlendFactor::One,
+            alpha_blend_op: BlendOp::Max,
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            src_color_blend_factor,
+            dst_color_blend_factor,
+            color_blend_op,
+            src_alpha_blend_factor,
+            dst_alpha_blend_factor,
+            alpha_blend_op,
+        } = self;
+
+        src_color_blend_factor
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_color_blend_factor".into(),
+                vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcColorBlendFactor-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_color_blend_factor
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_color_blend_factor".into(),
+                vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstColorBlendFactor-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        color_blend_op
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "color_blend_op".into(),
+                vuids: &["VUID-VkPipelineColorBlendAttachmentState-colorBlendOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        src_alpha_blend_factor
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_alpha_blend_factor".into(),
+                vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcAlphaBlendFactor-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_alpha_blend_factor
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_alpha_blend_factor".into(),
+                vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstAlphaBlendFactor-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        alpha_blend_op
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "alpha_blend_op".into(),
+                vuids: &["VUID-VkPipelineColorBlendAttachmentState-alphaBlendOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !device.enabled_features().dual_src_blend {
+            if matches!(
+                src_color_blend_factor,
+                BlendFactor::Src1Color
+                    | BlendFactor::OneMinusSrc1Color
+                    | BlendFactor::Src1Alpha
+                    | BlendFactor::OneMinusSrc1Alpha
+            ) {
+                return Err(ValidationError {
+                    context: "src_color_blend_factor".into(),
+                    problem: "is `BlendFactor::Src1*`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "dual_src_blend",
+                    )])]),
+                    vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcColorBlendFactor-00608"],
+                });
+            }
+
+            if matches!(
+                dst_color_blend_factor,
+                BlendFactor::Src1Color
+                    | BlendFactor::OneMinusSrc1Color
+                    | BlendFactor::Src1Alpha
+                    | BlendFactor::OneMinusSrc1Alpha
+            ) {
+                return Err(ValidationError {
+                    context: "dst_color_blend_factor".into(),
+                    problem: "is `BlendFactor::Src1*`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "dual_src_blend",
+                    )])]),
+                    vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstColorBlendFactor-00609"],
+                });
+            }
+
+            if matches!(
+                src_alpha_blend_factor,
+                BlendFactor::Src1Color
+                    | BlendFactor::OneMinusSrc1Color
+                    | BlendFactor::Src1Alpha
+                    | BlendFactor::OneMinusSrc1Alpha
+            ) {
+                return Err(ValidationError {
+                    context: "src_alpha_blend_factor".into(),
+                    problem: "is `BlendFactor::Src1*`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "dual_src_blend",
+                    )])]),
+                    vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcAlphaBlendFactor-00610"],
+                });
+            }
+
+            if matches!(
+                dst_alpha_blend_factor,
+                BlendFactor::Src1Color
+                    | BlendFactor::OneMinusSrc1Color
+                    | BlendFactor::Src1Alpha
+                    | BlendFactor::OneMinusSrc1Alpha
+            ) {
+                return Err(ValidationError {
+                    context: "dst_alpha_blend_factor".into(),
+                    problem: "is `BlendFactor::Src1*`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "dual_src_blend",
+                    )])]),
+                    vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstAlphaBlendFactor-00611"],
+                });
+            }
+        }
+
+        if device.enabled_extensions().khr_portability_subset
+            && !device.enabled_features().constant_alpha_color_blend_factors
+        {
+            if matches!(
+                src_color_blend_factor,
+                BlendFactor::ConstantAlpha | BlendFactor::OneMinusConstantAlpha
+            ) {
+                return Err(ValidationError {
+                    problem: "this device is a portability subset device, and \
+                        `src_color_blend_factor` is `BlendFactor::ConstantAlpha` or \
+                        `BlendFactor::OneMinusConstantAlpha`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "constant_alpha_color_blend_factors",
+                    )])]),
+                    vuids: &["VUID-VkPipelineColorBlendAttachmentState-constantAlphaColorBlendFactors-04454"],
+                    ..Default::default()
+                });
+            }
+
+            if matches!(
+                dst_color_blend_factor,
+                BlendFactor::ConstantAlpha | BlendFactor::OneMinusConstantAlpha
+            ) {
+                return Err(ValidationError {
+                    problem: "this device is a portability subset device, and \
+                        `dst_color_blend_factor` is `BlendFactor::ConstantAlpha` or \
+                        `BlendFactor::OneMinusConstantAlpha`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "constant_alpha_color_blend_factors",
+                    )])]),
+                    vuids: &["VUID-VkPipelineColorBlendAttachmentState-constantAlphaColorBlendFactors-04455"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -306,12 +628,12 @@ impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
     fn from(val: AttachmentBlend) -> Self {
         ash::vk::PipelineColorBlendAttachmentState {
             blend_enable: ash::vk::TRUE,
-            src_color_blend_factor: val.color_source.into(),
-            dst_color_blend_factor: val.color_destination.into(),
-            color_blend_op: val.color_op.into(),
-            src_alpha_blend_factor: val.alpha_source.into(),
-            dst_alpha_blend_factor: val.alpha_destination.into(),
-            alpha_blend_op: val.alpha_op.into(),
+            src_color_blend_factor: val.src_color_blend_factor.into(),
+            dst_color_blend_factor: val.dst_color_blend_factor.into(),
+            color_blend_op: val.color_blend_op.into(),
+            src_alpha_blend_factor: val.src_alpha_blend_factor.into(),
+            dst_alpha_blend_factor: val.dst_alpha_blend_factor.into(),
+            alpha_blend_op: val.alpha_blend_op.into(),
             color_write_mask: ash::vk::ColorComponentFlags::empty(),
         }
     }
