@@ -24,8 +24,8 @@ use crate::{
     image::sys::ImageCreateInfo,
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationCreationError, AllocationType,
-            MemoryAllocatePreference, MemoryAllocator, MemoryUsage,
+            AllocationCreateInfo, AllocationType, MemoryAllocatePreference, MemoryAllocator,
+            MemoryAllocatorError, MemoryUsage,
         },
         is_aligned, DedicatedAllocation,
     },
@@ -402,7 +402,7 @@ impl Hash for ImmutableImageInitialization {
 #[derive(Clone, Debug)]
 pub enum ImmutableImageCreationError {
     ImageCreationError(ImageError),
-    AllocError(AllocationCreationError),
+    AllocError(MemoryAllocatorError),
     CommandBufferBeginError(CommandBufferBeginError),
 
     /// The size of the provided source data is less than the required size for an image with the
@@ -449,8 +449,8 @@ impl From<ImageError> for ImmutableImageCreationError {
     }
 }
 
-impl From<AllocationCreationError> for ImmutableImageCreationError {
-    fn from(err: AllocationCreationError) -> Self {
+impl From<MemoryAllocatorError> for ImmutableImageCreationError {
+    fn from(err: MemoryAllocatorError) -> Self {
         Self::AllocError(err)
     }
 }

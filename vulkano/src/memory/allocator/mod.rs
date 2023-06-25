@@ -224,7 +224,7 @@ pub use self::{
     layout::DeviceLayout,
     suballocator::{
         AllocationType, BuddyAllocator, BumpAllocator, FreeListAllocator, MemoryAlloc,
-        PoolAllocator, SuballocationCreateInfo, SuballocationCreationError, Suballocator,
+        PoolAllocator, SuballocationCreateInfo, Suballocator, SuballocatorError,
     },
 };
 use super::{
@@ -234,7 +234,7 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
@@ -264,7 +264,7 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
         &self,
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, AllocationCreationError>;
+    ) -> Result<MemoryAlloc, MemoryAllocatorError>;
 
     /// Allocates memory from a specific memory type without checking the parameters.
     ///
@@ -287,7 +287,7 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
         never_allocate: bool,
-    ) -> Result<MemoryAlloc, AllocationCreationError>;
+    ) -> Result<MemoryAlloc, MemoryAllocatorError>;
 
     /// Allocates memory according to requirements.
     ///
@@ -336,7 +336,7 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
         allocation_type: AllocationType,
         create_info: AllocationCreateInfo,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) -> Result<MemoryAlloc, AllocationCreationError>;
+    ) -> Result<MemoryAlloc, MemoryAllocatorError>;
 
     /// Allocates memory according to requirements without checking the parameters.
     ///
@@ -353,7 +353,7 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
         allocation_type: AllocationType,
         create_info: AllocationCreateInfo,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) -> Result<MemoryAlloc, AllocationCreationError>;
+    ) -> Result<MemoryAlloc, MemoryAllocatorError>;
 
     /// Creates a root allocation/dedicated allocation without checking the parameters.
     ///
@@ -379,7 +379,7 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
         allocation_size: DeviceSize,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
-    ) -> Result<MemoryAlloc, AllocationCreationError>;
+    ) -> Result<MemoryAlloc, MemoryAllocatorError>;
 }
 
 /// Describes what memory property flags are required, preferred and not preferred when picking a
@@ -523,7 +523,7 @@ pub enum MemoryAllocatePreference {
 /// [allocation]: MemoryAlloc
 /// [memory allocator]: MemoryAllocator
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AllocationCreationError {
+pub enum MemoryAllocatorError {
     RuntimeError(RuntimeError),
 
     /// There is not enough memory in the pool.
@@ -551,7 +551,7 @@ pub enum AllocationCreationError {
     SuballocatorBlockSizeExceeded,
 }
 
-impl Error for AllocationCreationError {
+impl Error for MemoryAllocatorError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::RuntimeError(err) => Some(err),
@@ -560,7 +560,7 @@ impl Error for AllocationCreationError {
     }
 }
 
-impl Display for AllocationCreationError {
+impl Display for MemoryAllocatorError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
@@ -582,9 +582,9 @@ impl Display for AllocationCreationError {
     }
 }
 
-impl From<RuntimeError> for AllocationCreationError {
+impl From<RuntimeError> for MemoryAllocatorError {
     fn from(err: RuntimeError) -> Self {
-        AllocationCreationError::RuntimeError(err)
+        MemoryAllocatorError::RuntimeError(err)
     }
 }
 
@@ -694,7 +694,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
     pub fn new(
         device: Arc<Device>,
         create_info: GenericMemoryAllocatorCreateInfo<'_, '_>,
-    ) -> Result<Self, GenericMemoryAllocatorCreationError> {
+    ) -> Result<Self, ValidationError> {
         Self::validate_new(&device, &create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) })
@@ -703,7 +703,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
     fn validate_new(
         device: &Device,
         create_info: &GenericMemoryAllocatorCreateInfo<'_, '_>,
-    ) -> Result<(), GenericMemoryAllocatorCreationError> {
+    ) -> Result<(), ValidationError> {
         let &GenericMemoryAllocatorCreateInfo {
             block_sizes,
             allocation_type: _,
@@ -726,12 +726,14 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             if !(device.api_version() >= Version::V1_1
                 && device.enabled_extensions().khr_external_memory)
             {
-                return Err(GenericMemoryAllocatorCreationError::RequirementNotMet {
-                    required_for: "`create_info.export_handle_types` is not empty",
+                return Err(ValidationError {
+                    context: "create_info.export_handle_types".into(),
+                    problem: "is not empty".into(),
                     requires_one_of: RequiresOneOf(&[
                         RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
                         RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
                     ]),
+                    ..Default::default()
                 });
             }
 
@@ -746,9 +748,13 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 memory types if not empty",
             );
 
-            for export_handle_types in export_handle_types {
-                // VUID-VkExportMemoryAllocateInfo-handleTypes-parameter
-                export_handle_types.validate_device(device)?;
+            for (index, export_handle_types) in export_handle_types.iter().enumerate() {
+                export_handle_types
+                    .validate_device(device)
+                    .map_err(|err| ValidationError {
+                        context: format!("export_handle_types[{}]", index).into(),
+                        ..ValidationError::from_requirement(err)
+                    })?;
             }
         }
 
@@ -971,13 +977,13 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// [`DEVICE_COHERENT`]: MemoryPropertyFlags::DEVICE_COHERENT
     /// [`device_coherent_memory`]: crate::device::Features::device_coherent_memory
     /// [`TooManyObjects`]: RuntimeError::TooManyObjects
-    /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
-    /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
+    /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
+    /// [`SuballocatorBlockSizeExceeded`]: MemoryAllocatorError::SuballocatorBlockSizeExceeded
     fn allocate_from_type(
         &self,
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         self.validate_allocate_from_type(memory_type_index);
 
         if self.pools[memory_type_index as usize]
@@ -1007,7 +1013,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
         never_allocate: bool,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         let SuballocationCreateInfo {
             layout,
             allocation_type: _,
@@ -1019,7 +1025,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         let block_size = self.block_sizes[pool.memory_type.heap_index as usize];
 
         if size > block_size {
-            return Err(AllocationCreationError::BlockSizeExceeded);
+            return Err(MemoryAllocatorError::BlockSizeExceeded);
         }
 
         let mut blocks = if S::IS_BLOCKING {
@@ -1036,8 +1042,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             for block in &blocks[idx..] {
                 match block.allocate(create_info.clone()) {
                     Ok(allocation) => return Ok(allocation),
-                    Err(SuballocationCreationError::BlockSizeExceeded) => {
-                        return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
+                    Err(SuballocatorError::BlockSizeExceeded) => {
+                        return Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded);
                     }
                     Err(_) => {}
                 }
@@ -1061,8 +1067,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     Ok(allocation) => return Ok(allocation),
                     // This can happen when using the `PoolAllocator<BLOCK_SIZE>` if the allocation
                     // size is greater than `BLOCK_SIZE`.
-                    Err(SuballocationCreationError::BlockSizeExceeded) => {
-                        return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
+                    Err(SuballocatorError::BlockSizeExceeded) => {
+                        return Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded);
                     }
                     Err(_) => {}
                 }
@@ -1078,8 +1084,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     // This can happen if this is the first block that was inserted and when using
                     // the `PoolAllocator<BLOCK_SIZE>` if the allocation size is greater than
                     // `BLOCK_SIZE`.
-                    Err(SuballocationCreationError::BlockSizeExceeded) => {
-                        return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
+                    Err(SuballocatorError::BlockSizeExceeded) => {
+                        return Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded);
                     }
                     Err(_) => {}
                 }
@@ -1101,7 +1107,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         }
 
         if never_allocate {
-            return Err(AllocationCreationError::OutOfPoolMemory);
+            return Err(MemoryAllocatorError::OutOfPoolMemory);
         }
 
         // The pool doesn't have enough real estate, so we need a new block.
@@ -1144,16 +1150,16 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             Ok(allocation) => Ok(allocation),
             // This can happen if the block ended up smaller than advertised because there wasn't
             // enough memory.
-            Err(SuballocationCreationError::OutOfRegionMemory) => Err(
-                AllocationCreationError::RuntimeError(RuntimeError::OutOfDeviceMemory),
-            ),
+            Err(SuballocatorError::OutOfRegionMemory) => Err(MemoryAllocatorError::RuntimeError(
+                RuntimeError::OutOfDeviceMemory,
+            )),
             // This can not happen as the block is fresher than Febreze and we're still holding an
             // exclusive lock.
-            Err(SuballocationCreationError::FragmentedRegion) => unreachable!(),
+            Err(SuballocatorError::FragmentedRegion) => unreachable!(),
             // This can happen if this is the first block that was inserted and when using the
             // `PoolAllocator<BLOCK_SIZE>` if the allocation size is greater than `BLOCK_SIZE`.
-            Err(SuballocationCreationError::BlockSizeExceeded) => {
-                Err(AllocationCreationError::SuballocatorBlockSizeExceeded)
+            Err(SuballocatorError::BlockSizeExceeded) => {
+                Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded)
             }
         }
     }
@@ -1189,17 +1195,17 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///   created.
     ///
     /// [`TooManyObjects`]: RuntimeError::TooManyObjects
-    /// [`OutOfPoolMemory`]: AllocationCreationError::OutOfPoolMemory
-    /// [`DedicatedAllocationRequired`]: AllocationCreationError::DedicatedAllocationRequired
-    /// [`BlockSizeExceeded`]: AllocationCreationError::BlockSizeExceeded
-    /// [`SuballocatorBlockSizeExceeded`]: AllocationCreationError::SuballocatorBlockSizeExceeded
+    /// [`OutOfPoolMemory`]: MemoryAllocatorError::OutOfPoolMemory
+    /// [`DedicatedAllocationRequired`]: MemoryAllocatorError::DedicatedAllocationRequired
+    /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
+    /// [`SuballocatorBlockSizeExceeded`]: MemoryAllocatorError::SuballocatorBlockSizeExceeded
     fn allocate(
         &self,
         requirements: MemoryRequirements,
         allocation_type: AllocationType,
         create_info: AllocationCreateInfo,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         self.validate_allocate(requirements, dedicated_allocation);
 
         unsafe {
@@ -1218,7 +1224,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         allocation_type: AllocationType,
         create_info: AllocationCreateInfo,
         mut dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         let MemoryRequirements {
             layout,
             mut memory_type_bits,
@@ -1321,7 +1327,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                 }
                 MemoryAllocatePreference::NeverAllocate => {
                     if requires_dedicated_allocation {
-                        return Err(AllocationCreationError::DedicatedAllocationRequired);
+                        return Err(MemoryAllocatorError::DedicatedAllocationRequired);
                     }
 
                     self.allocate_from_type_unchecked(memory_type_index, create_info.clone(), true)
@@ -1337,8 +1343,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             match res {
                 Ok(allocation) => return Ok(allocation),
                 // This is not recoverable.
-                Err(AllocationCreationError::SuballocatorBlockSizeExceeded) => {
-                    return Err(AllocationCreationError::SuballocatorBlockSizeExceeded);
+                Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded) => {
+                    return Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded);
                 }
                 // Try a different memory type.
                 Err(err) => {
@@ -1357,7 +1363,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         allocation_size: DeviceSize,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         let allocate_info = MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
@@ -1390,7 +1396,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for Arc<GenericMemoryAllocator<S>> 
         &self,
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         (**self).allocate_from_type(memory_type_index, create_info)
     }
 
@@ -1399,7 +1405,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for Arc<GenericMemoryAllocator<S>> 
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
         never_allocate: bool,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         (**self).allocate_from_type_unchecked(memory_type_index, create_info, never_allocate)
     }
 
@@ -1409,7 +1415,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for Arc<GenericMemoryAllocator<S>> 
         allocation_type: AllocationType,
         create_info: AllocationCreateInfo,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         (**self).allocate(
             requirements,
             allocation_type,
@@ -1424,7 +1430,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for Arc<GenericMemoryAllocator<S>> 
         allocation_type: AllocationType,
         create_info: AllocationCreateInfo,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         (**self).allocate_unchecked(
             requirements,
             allocation_type,
@@ -1439,7 +1445,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for Arc<GenericMemoryAllocator<S>> 
         allocation_size: DeviceSize,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
-    ) -> Result<MemoryAlloc, AllocationCreationError> {
+    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
         (**self).allocate_dedicated_unchecked(
             memory_type_index,
             allocation_size,
@@ -1563,41 +1569,6 @@ impl Default for GenericMemoryAllocatorCreateInfo<'_, '_> {
             export_handle_types: &[],
             device_address: true,
             _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-/// Error that can be returned when creating a [`GenericMemoryAllocator`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum GenericMemoryAllocatorCreationError {
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-}
-
-impl Error for GenericMemoryAllocatorCreationError {}
-
-impl Display for GenericMemoryAllocatorCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-        }
-    }
-}
-
-impl From<RequirementNotMet> for GenericMemoryAllocatorCreationError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
         }
     }
 }

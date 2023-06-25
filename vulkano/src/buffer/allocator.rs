@@ -17,7 +17,7 @@ use crate::{
     device::{Device, DeviceOwned},
     memory::{
         allocator::{
-            align_up, AllocationCreateInfo, AllocationCreationError, DeviceLayout, MemoryAllocator,
+            align_up, AllocationCreateInfo, DeviceLayout, MemoryAllocator, MemoryAllocatorError,
             MemoryUsage, StandardMemoryAllocator,
         },
         DeviceAlignment,
@@ -188,7 +188,7 @@ where
     /// If `size` is greater than the current arena size, then a new arena will be allocated with
     /// the new size, and all subsequently allocated arenas will also share the new size. Otherwise
     /// this has no effect.
-    pub fn reserve(&self, size: DeviceSize) -> Result<(), AllocationCreationError> {
+    pub fn reserve(&self, size: DeviceSize) -> Result<(), MemoryAllocatorError> {
         if size > self.arena_size() {
             let state = unsafe { &mut *self.state.get() };
             state.arena_size = size;
@@ -200,7 +200,7 @@ where
     }
 
     /// Allocates a subbuffer for sized data.
-    pub fn allocate_sized<T>(&self) -> Result<Subbuffer<T>, AllocationCreationError>
+    pub fn allocate_sized<T>(&self) -> Result<Subbuffer<T>, MemoryAllocatorError>
     where
         T: BufferContents,
     {
@@ -216,10 +216,7 @@ where
     /// # Panics
     ///
     /// - Panics if `len` is zero.
-    pub fn allocate_slice<T>(
-        &self,
-        len: DeviceSize,
-    ) -> Result<Subbuffer<[T]>, AllocationCreationError>
+    pub fn allocate_slice<T>(&self, len: DeviceSize) -> Result<Subbuffer<[T]>, MemoryAllocatorError>
     where
         T: BufferContents,
     {
@@ -231,10 +228,7 @@ where
     /// # Panics
     ///
     /// - Panics if `len` is zero.
-    pub fn allocate_unsized<T>(
-        &self,
-        len: DeviceSize,
-    ) -> Result<Subbuffer<T>, AllocationCreationError>
+    pub fn allocate_unsized<T>(&self, len: DeviceSize) -> Result<Subbuffer<T>, MemoryAllocatorError>
     where
         T: BufferContents + ?Sized,
     {
@@ -251,10 +245,7 @@ where
     /// # Panics
     ///
     /// - Panics if `layout.alignment()` exceeds `64`.
-    pub fn allocate(
-        &self,
-        layout: DeviceLayout,
-    ) -> Result<Subbuffer<[u8]>, AllocationCreationError> {
+    pub fn allocate(&self, layout: DeviceLayout) -> Result<Subbuffer<[u8]>, MemoryAllocatorError> {
         assert!(layout.alignment().as_devicesize() <= 64);
 
         unsafe { &mut *self.state.get() }.allocate(layout)
@@ -291,10 +282,7 @@ impl<A> SubbufferAllocatorState<A>
 where
     A: MemoryAllocator,
 {
-    fn allocate(
-        &mut self,
-        layout: DeviceLayout,
-    ) -> Result<Subbuffer<[u8]>, AllocationCreationError> {
+    fn allocate(&mut self, layout: DeviceLayout) -> Result<Subbuffer<[u8]>, MemoryAllocatorError> {
         let size = layout.size();
         let alignment = cmp::max(layout.alignment(), self.buffer_alignment);
 
@@ -335,7 +323,7 @@ where
         }
     }
 
-    fn next_arena(&mut self) -> Result<Arc<Arena>, AllocationCreationError> {
+    fn next_arena(&mut self) -> Result<Arc<Arena>, MemoryAllocatorError> {
         if self.reserve.is_none() {
             self.reserve = Some(Arc::new(ArrayQueue::new(MAX_ARENAS)));
         }
@@ -353,7 +341,7 @@ where
             })
     }
 
-    fn create_arena(&self) -> Result<Arc<Buffer>, AllocationCreationError> {
+    fn create_arena(&self) -> Result<Arc<Buffer>, MemoryAllocatorError> {
         Buffer::new(
             &self.memory_allocator,
             BufferCreateInfo {

@@ -91,12 +91,8 @@
 //! get memory from that pool. By default if you don't specify any pool when creating a buffer or
 //! an image, an instance of `StandardMemoryPool` that is shared by the `Device` object is used.
 
-pub use self::alignment::DeviceAlignment;
 use self::allocator::DeviceLayout;
-pub use self::device_memory::{
-    DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-    MappedDeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo, MemoryImportInfo, MemoryMapError,
-};
+pub use self::{alignment::*, device_memory::*};
 use crate::{
     buffer::{sys::RawBuffer, Subbuffer},
     image::{sys::RawImage, ImageAccess, ImageAspects},

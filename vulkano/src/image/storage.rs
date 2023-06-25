@@ -22,11 +22,10 @@ use crate::{
             AllocationCreateInfo, AllocationType, MemoryAllocatePreference, MemoryAllocator,
             MemoryUsage,
         },
-        is_aligned, DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes,
+        is_aligned, DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
     },
     sync::Sharing,
-    DeviceSize,
+    DeviceSize, VulkanError,
 };
 use smallvec::SmallVec;
 
@@ -422,7 +421,7 @@ impl StorageImage {
     /// Exports posix file descriptor for the allocated memory.
     /// Requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
     #[inline]
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
+    pub fn export_posix_fd(&self) -> Result<File, VulkanError> {
         let allocation = match self.inner.memory() {
             ImageMemory::Normal(a) => &a[0],
             _ => unreachable!(),

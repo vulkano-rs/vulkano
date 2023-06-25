@@ -115,8 +115,8 @@ use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationCreationError, AllocationType, DeviceLayout,
-            MemoryAlloc, MemoryAllocator,
+            AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAlloc, MemoryAllocator,
+            MemoryAllocatorError,
         },
         is_aligned, DedicatedAllocation, DeviceAlignment, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, ExternalMemoryProperties, MemoryRequirements,
@@ -782,7 +782,7 @@ pub enum BufferError {
     RuntimeError(RuntimeError),
 
     /// Allocating memory failed.
-    AllocError(AllocationCreationError),
+    AllocError(MemoryAllocatorError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -997,8 +997,8 @@ impl From<RuntimeError> for BufferError {
     }
 }
 
-impl From<AllocationCreationError> for BufferError {
-    fn from(err: AllocationCreationError) -> Self {
+impl From<MemoryAllocatorError> for BufferError {
+    fn from(err: MemoryAllocatorError) -> Self {
         Self::AllocError(err)
     }
 }
