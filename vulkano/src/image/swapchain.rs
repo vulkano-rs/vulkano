@@ -15,7 +15,6 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     swapchain::Swapchain,
-    OomError,
 };
 use std::{
     hash::{Hash, Hasher},
@@ -45,10 +44,10 @@ impl SwapchainImage {
         handle: ash::vk::Image,
         swapchain: Arc<Swapchain>,
         image_index: u32,
-    ) -> Result<Arc<SwapchainImage>, OomError> {
-        Ok(Arc::new(SwapchainImage {
+    ) -> Arc<SwapchainImage> {
+        Arc::new(SwapchainImage {
             inner: Arc::new(Image::from_swapchain(handle, swapchain, image_index)),
-        }))
+        })
     }
 
     /// Returns the swapchain this image belongs to.

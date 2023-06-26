@@ -14,7 +14,7 @@
     `Surface::from_window` instead"
 )]
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
-#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::missing_safety_doc, clippy::result_large_err)]
 #![warn(rust_2018_idioms, rust_2021_compatibility)]
 
 #[cfg(feature = "raw-window-handle")]

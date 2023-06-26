@@ -597,6 +597,10 @@ pub enum FlushError {
     /// for the same swapchain.
     PresentIdLessThanOrEqual,
 
+    /// A new present mode was provided, but this mode was not one of the valid present modes
+    /// that the swapchain was created with.
+    PresentModeNotValid,
+
     /// Access to a resource has been denied.
     ResourceAccessError {
         error: AccessError,
@@ -615,9 +619,9 @@ pub enum FlushError {
 impl Error for FlushError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            FlushError::AccessError(err) => Some(err),
-            FlushError::OomError(err) => Some(err),
-            FlushError::ResourceAccessError { error, .. } => Some(error),
+            Self::AccessError(err) => Some(err),
+            Self::OomError(err) => Some(err),
+            Self::ResourceAccessError { error, .. } => Some(error),
             _ => None,
         }
     }
@@ -629,27 +633,31 @@ impl Display for FlushError {
             f,
             "{}",
             match self {
-                FlushError::AccessError(_) => "access to a resource has been denied",
-                FlushError::OomError(_) => "not enough memory",
-                FlushError::DeviceLost => "the connection to the device has been lost",
-                FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
-                FlushError::OutOfDate => "the swapchain needs to be recreated",
-                FlushError::FullScreenExclusiveModeLost => {
+                Self::AccessError(_) => "access to a resource has been denied",
+                Self::OomError(_) => "not enough memory",
+                Self::DeviceLost => "the connection to the device has been lost",
+                Self::SurfaceLost => "the surface of this swapchain is no longer valid",
+                Self::OutOfDate => "the swapchain needs to be recreated",
+                Self::FullScreenExclusiveModeLost => {
                     "the swapchain no longer has full screen exclusivity"
                 }
-                FlushError::Timeout => {
+                Self::Timeout => {
                     "the flush operation needed to block, but the timeout has elapsed"
                 }
-                FlushError::PresentIdLessThanOrEqual => {
+                Self::PresentIdLessThanOrEqual => {
                     "present id is less than or equal to previous"
                 }
-                FlushError::ResourceAccessError { .. } => "access to a resource has been denied",
-                FlushError::OneTimeSubmitAlreadySubmitted => {
+                Self::PresentModeNotValid => {
+                    "a new present mode was provided, but this mode was not one of the valid \
+                    present modes that the swapchain was created with"
+                }
+                Self::ResourceAccessError { .. } => "access to a resource has been denied",
+                Self::OneTimeSubmitAlreadySubmitted => {
                     "the command buffer or one of the secondary command buffers it executes was \
                     created with the \"one time submit\" flag, but has already been submitted in \
                     the past"
                 }
-                FlushError::ExclusiveAlreadyInUse => {
+                Self::ExclusiveAlreadyInUse => {
                     "the command buffer or one of the secondary command buffers it executes is \
                     already in use was not created with the \"concurrent\" flag"
                 }
@@ -660,7 +668,7 @@ impl Display for FlushError {
 
 impl From<AccessError> for FlushError {
     fn from(err: AccessError) -> FlushError {
-        FlushError::AccessError(err)
+        Self::AccessError(err)
     }
 }
 
@@ -682,9 +690,9 @@ impl From<RuntimeError> for FlushError {
 impl From<FenceError> for FlushError {
     fn from(err: FenceError) -> FlushError {
         match err {
-            FenceError::OomError(err) => FlushError::OomError(err),
-            FenceError::Timeout => FlushError::Timeout,
-            FenceError::DeviceLost => FlushError::DeviceLost,
+            FenceError::OomError(err) => Self::OomError(err),
+            FenceError::Timeout => Self::Timeout,
+            FenceError::DeviceLost => Self::DeviceLost,
             _ => unreachable!(),
         }
     }

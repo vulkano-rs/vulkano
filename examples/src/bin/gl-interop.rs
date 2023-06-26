@@ -50,10 +50,7 @@ mod linux {
         },
         render_pass::{Framebuffer, RenderPass, Subpass},
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
-        swapchain::{
-            AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
-            SwapchainPresentInfo,
-        },
+        swapchain::{AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
         sync::{
             now,
             semaphore::{
@@ -287,20 +284,21 @@ mod linux {
                         })
                         .unwrap();
 
+                    let image_extent: [u32; 2] = window.inner_size().into();
+
+                    if image_extent.contains(&0) {
+                        return;
+                    }
+
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
 
                     if recreate_swapchain {
-                        let (new_swapchain, new_images) =
-                            match swapchain.recreate(SwapchainCreateInfo {
-                                image_extent: window.inner_size().into(),
+                        let (new_swapchain, new_images) = swapchain
+                            .recreate(SwapchainCreateInfo {
+                                image_extent,
                                 ..swapchain.create_info()
-                            }) {
-                                Ok(r) => r,
-                                Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => {
-                                    return
-                                }
-                                Err(e) => panic!("failed to recreate swapchain: {e}"),
-                            };
+                            })
+                            .expect("failed to recreate swapchain");
 
                         swapchain = new_swapchain;
                         framebuffers = window_size_dependent_setup(

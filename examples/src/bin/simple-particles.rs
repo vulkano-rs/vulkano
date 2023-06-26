@@ -524,8 +524,9 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::RedrawEventsCleared => {
-                let dimensions = window.inner_size();
-                if dimensions.width == 0 || dimensions.height == 0 {
+                let image_extent: [u32; 2] = window.inner_size().into();
+
+                if image_extent.contains(&0) {
                     return;
                 }
 

@@ -85,7 +85,7 @@ use vulkano::{
     sampler::{Sampler, SamplerCreateInfo},
     swapchain::{
         acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainCreationError, SwapchainPresentInfo,
+        SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -545,21 +545,19 @@ fn main() {
                 channel.send(()).unwrap();
             }
             Event::RedrawEventsCleared => {
-                let dimensions = window.inner_size();
-                if dimensions.width == 0 || dimensions.height == 0 {
+                let image_extent: [u32; 2] = window.inner_size().into();
+
+                if image_extent.contains(&0) {
                     return;
                 }
 
                 if recreate_swapchain {
-                    let (new_swapchain, new_images) =
-                        match swapchain.recreate(SwapchainCreateInfo {
-                            image_extent: dimensions.into(),
+                    let (new_swapchain, new_images) = swapchain
+                        .recreate(SwapchainCreateInfo {
+                            image_extent,
                             ..swapchain.create_info()
-                        }) {
-                            Ok(r) => r,
-                            Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                            Err(e) => panic!("failed to recreate swapchain: {e}"),
-                        };
+                        })
+                        .expect("failed to recreate swapchain");
 
                     swapchain = new_swapchain;
                     framebuffers = window_size_dependent_setup(

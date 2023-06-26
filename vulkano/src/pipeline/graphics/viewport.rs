@@ -521,13 +521,13 @@ impl From<&Viewport> for ash::vk::Viewport {
     }
 }
 
-/// State of a single scissor box.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+/// A two-dimensional subregion.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Scissor {
-    /// Coordinates in pixels of the top-left hand corner of the box.
+    /// Coordinates of the top-left hand corner of the box.
     pub offset: [u32; 2],
 
-    /// Dimensions in pixels of the box.
+    /// Dimensions of the box.
     pub extent: [u32; 2],
 }
 
@@ -562,6 +562,16 @@ impl From<&Scissor> for ash::vk::Rect2D {
                 width: val.extent[0],
                 height: val.extent[1],
             },
+        }
+    }
+}
+
+impl From<ash::vk::Rect2D> for Scissor {
+    #[inline]
+    fn from(val: ash::vk::Rect2D) -> Self {
+        Scissor {
+            offset: [val.offset.x as u32, val.offset.y as u32],
+            extent: [val.extent.width, val.extent.height],
         }
     }
 }

@@ -18,8 +18,7 @@ use vulkano::{
     },
     memory::allocator::StandardMemoryAllocator,
     swapchain::{
-        self, AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
-        SwapchainPresentInfo,
+        self, AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
 };
@@ -337,17 +336,21 @@ impl VulkanoWindowRenderer {
 
     /// Recreates swapchain images and image views which follow the window size.
     fn recreate_swapchain_and_views(&mut self) {
-        let dimensions: [u32; 2] = self.window().inner_size().into();
-        let (new_swapchain, new_images) = match self.swapchain.recreate(SwapchainCreateInfo {
-            image_extent: dimensions,
-            // Use present mode from current state
-            present_mode: self.present_mode,
-            ..self.swapchain.create_info()
-        }) {
-            Ok(r) => r,
-            Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-            Err(e) => panic!("failed to recreate swapchain: {e}"),
-        };
+        let image_extent: [u32; 2] = self.window().inner_size().into();
+
+        if image_extent.contains(&0) {
+            return;
+        }
+
+        let (new_swapchain, new_images) = self
+            .swapchain
+            .recreate(SwapchainCreateInfo {
+                image_extent,
+                // Use present mode from current state
+                present_mode: self.present_mode,
+                ..self.swapchain.create_info()
+            })
+            .expect("failed to recreate swapchain");
 
         self.swapchain = new_swapchain;
         let new_images = new_images

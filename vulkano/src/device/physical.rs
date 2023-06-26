@@ -1387,10 +1387,30 @@ impl PhysicalDevice {
             .map_err(|err| err.add_context("surface_info"))?;
 
         let &SurfaceInfo {
+            present_mode,
             full_screen_exclusive,
             win32_monitor,
             _ne: _,
         } = surface_info;
+
+        if let Some(present_mode) = present_mode {
+            let mut present_modes = unsafe {
+                self.surface_present_modes_unchecked(surface)
+                    .map_err(|_err| ValidationError {
+                        context: "PhysicalDevice::surface_present_modes".into(),
+                        problem: "returned an error".into(),
+                        ..Default::default()
+                    })?
+            };
+
+            if !present_modes.any(|mode| mode == present_mode) {
+                return Err(ValidationError {
+                    problem: "`surface_info.present_mode` is not supported for `surface`".into(),
+                    vuids: &["VUID-VkSurfacePresentModeEXT-presentMode-07780"],
+                    ..Default::default()
+                });
+            }
+        }
 
         match (
             surface.api() == SurfaceApi::Win32
@@ -1433,6 +1453,7 @@ impl PhysicalDevice {
         /* Input */
 
         let SurfaceInfo {
+            present_mode,
             full_screen_exclusive,
             win32_monitor,
             _ne: _,
@@ -1442,10 +1463,21 @@ impl PhysicalDevice {
             surface: surface.handle(),
             ..Default::default()
         };
+        let mut present_mode_vk = None;
         let mut full_screen_exclusive_info_vk = None;
         let mut full_screen_exclusive_win32_info_vk = None;
 
-        if self.supported_extensions().ext_full_screen_exclusive && win32_monitor.is_some() {
+        if let Some(present_mode) = present_mode {
+            let next = present_mode_vk.insert(ash::vk::SurfacePresentModeEXT {
+                present_mode: present_mode.into(),
+                ..Default::default()
+            });
+
+            next.p_next = info_vk.p_next as *mut _;
+            info_vk.p_next = next as *const _ as *const _;
+        }
+
+        if full_screen_exclusive != FullScreenExclusive::Default {
             let next =
                 full_screen_exclusive_info_vk.insert(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
                     full_screen_exclusive: full_screen_exclusive.into(),
@@ -1472,7 +1504,11 @@ impl PhysicalDevice {
 
         let mut capabilities_vk = ash::vk::SurfaceCapabilities2KHR::default();
         let mut capabilities_full_screen_exclusive_vk = None;
-        let mut protected_capabilities_vk = None;
+        let mut capabilities_present_modes_vk =
+            [ash::vk::PresentModeKHR::default(); PresentMode::COUNT];
+        let mut capabilities_present_mode_compatibility_vk = None;
+        let mut capabilities_present_scaling_vk = None;
+        let mut capabilities_protected_vk = None;
 
         if full_screen_exclusive_info_vk.is_some() {
             let next = capabilities_full_screen_exclusive_vk
@@ -1482,12 +1518,35 @@ impl PhysicalDevice {
             capabilities_vk.p_next = next as *mut _ as *mut _;
         }
 
+        if present_mode.is_some() {
+            {
+                let next = capabilities_present_mode_compatibility_vk.insert(
+                    ash::vk::SurfacePresentModeCompatibilityEXT {
+                        present_mode_count: capabilities_present_modes_vk.len() as u32,
+                        p_present_modes: capabilities_present_modes_vk.as_mut_ptr(),
+                        ..Default::default()
+                    },
+                );
+
+                next.p_next = capabilities_vk.p_next as *mut _;
+                capabilities_vk.p_next = next as *mut _ as *mut _;
+            }
+
+            {
+                let next = capabilities_present_scaling_vk
+                    .insert(ash::vk::SurfacePresentScalingCapabilitiesEXT::default());
+
+                next.p_next = capabilities_vk.p_next as *mut _;
+                capabilities_vk.p_next = next as *mut _ as *mut _;
+            }
+        }
+
         if self
             .instance
             .enabled_extensions()
             .khr_surface_protected_capabilities
         {
-            let next = protected_capabilities_vk
+            let next = capabilities_protected_vk
                 .insert(ash::vk::SurfaceProtectedCapabilitiesKHR::default());
 
             next.p_next = capabilities_vk.p_next as *mut _;
@@ -1521,22 +1580,19 @@ impl PhysicalDevice {
 
         Ok(SurfaceCapabilities {
             min_image_count: capabilities_vk.surface_capabilities.min_image_count,
-            max_image_count: if capabilities_vk.surface_capabilities.max_image_count == 0 {
-                None
-            } else {
-                Some(capabilities_vk.surface_capabilities.max_image_count)
-            },
-            current_extent: if capabilities_vk.surface_capabilities.current_extent.width
-                == 0xffffffff
-                && capabilities_vk.surface_capabilities.current_extent.height == 0xffffffff
-            {
-                None
-            } else {
-                Some([
-                    capabilities_vk.surface_capabilities.current_extent.width,
-                    capabilities_vk.surface_capabilities.current_extent.height,
-                ])
-            },
+            max_image_count: (capabilities_vk.surface_capabilities.max_image_count != 0)
+                .then_some(capabilities_vk.surface_capabilities.max_image_count),
+            current_extent: (!matches!(
+                capabilities_vk.surface_capabilities.current_extent,
+                ash::vk::Extent2D {
+                    width: u32::MAX,
+                    height: u32::MAX
+                }
+            ))
+            .then_some([
+                capabilities_vk.surface_capabilities.current_extent.width,
+                capabilities_vk.surface_capabilities.current_extent.height,
+            ]),
             min_image_extent: [
                 capabilities_vk.surface_capabilities.min_image_extent.width,
                 capabilities_vk.surface_capabilities.min_image_extent.height,
@@ -1561,14 +1617,75 @@ impl PhysicalDevice {
                 .surface_capabilities
                 .supported_composite_alpha
                 .into(),
-            supported_usage_flags: {
-                let usage =
-                    ImageUsage::from(capabilities_vk.surface_capabilities.supported_usage_flags);
-                debug_assert!(usage.intersects(ImageUsage::COLOR_ATTACHMENT)); // specs say that this must be true
-                usage
-            },
+            supported_usage_flags: ImageUsage::from(
+                capabilities_vk.surface_capabilities.supported_usage_flags,
+            ),
 
-            supports_protected: protected_capabilities_vk
+            compatible_present_modes: capabilities_present_mode_compatibility_vk.map_or_else(
+                Default::default,
+                |capabilities_present_mode_compatibility_vk| {
+                    capabilities_present_modes_vk
+                        [..capabilities_present_mode_compatibility_vk.present_mode_count as usize]
+                        .iter()
+                        .copied()
+                        .map(PresentMode::try_from)
+                        .filter_map(Result::ok)
+                        .collect()
+                },
+            ),
+
+            supported_present_scaling: capabilities_present_scaling_vk
+                .as_ref()
+                .map_or_else(Default::default, |c| c.supported_present_scaling.into()),
+            supported_present_gravity: capabilities_present_scaling_vk.as_ref().map_or_else(
+                Default::default,
+                |c| {
+                    [
+                        c.supported_present_gravity_x.into(),
+                        c.supported_present_gravity_y.into(),
+                    ]
+                },
+            ),
+            min_scaled_image_extent: capabilities_present_scaling_vk.as_ref().map_or(
+                Some([
+                    capabilities_vk.surface_capabilities.min_image_extent.width,
+                    capabilities_vk.surface_capabilities.min_image_extent.height,
+                ]),
+                |c| {
+                    (!matches!(
+                        c.min_scaled_image_extent,
+                        ash::vk::Extent2D {
+                            width: u32::MAX,
+                            height: u32::MAX,
+                        }
+                    ))
+                    .then_some([
+                        c.min_scaled_image_extent.width,
+                        c.min_scaled_image_extent.height,
+                    ])
+                },
+            ),
+            max_scaled_image_extent: capabilities_present_scaling_vk.as_ref().map_or(
+                Some([
+                    capabilities_vk.surface_capabilities.max_image_extent.width,
+                    capabilities_vk.surface_capabilities.max_image_extent.height,
+                ]),
+                |c| {
+                    (!matches!(
+                        c.max_scaled_image_extent,
+                        ash::vk::Extent2D {
+                            width: u32::MAX,
+                            height: u32::MAX,
+                        }
+                    ))
+                    .then_some([
+                        c.max_scaled_image_extent.width,
+                        c.max_scaled_image_extent.height,
+                    ])
+                },
+            ),
+
+            supports_protected: capabilities_protected_vk
                 .map_or(false, |c| c.supports_protected != 0),
 
             full_screen_exclusive_supported: capabilities_full_screen_exclusive_vk
@@ -1630,11 +1747,35 @@ impl PhysicalDevice {
             });
         }
 
+        surface_info
+            .validate(self)
+            .map_err(|err| err.add_context("surface_info"))?;
+
         let &SurfaceInfo {
+            present_mode,
             full_screen_exclusive,
             win32_monitor,
             _ne: _,
         } = surface_info;
+
+        if let Some(present_mode) = present_mode {
+            let mut present_modes = unsafe {
+                self.surface_present_modes_unchecked(surface)
+                    .map_err(|_err| ValidationError {
+                        context: "PhysicalDevice::surface_present_modes".into(),
+                        problem: "returned an error".into(),
+                        ..Default::default()
+                    })?
+            };
+
+            if !present_modes.any(|mode| mode == present_mode) {
+                return Err(ValidationError {
+                    problem: "`surface_info.present_mode` is not supported for `surface`".into(),
+                    vuids: &["VUID-VkSurfacePresentModeEXT-presentMode-07780"],
+                    ..Default::default()
+                });
+            }
+        }
 
         if !self
             .instance
@@ -1706,46 +1847,52 @@ impl PhysicalDevice {
             (self.handle, surface_info),
             |(_, surface_info)| {
                 let &SurfaceInfo {
+                    present_mode,
                     full_screen_exclusive,
                     win32_monitor,
                     _ne: _,
                 } = surface_info;
 
-                let mut surface_full_screen_exclusive_info = (full_screen_exclusive
-                    != FullScreenExclusive::Default)
-                    .then(|| ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                        full_screen_exclusive: full_screen_exclusive.into(),
-                        ..Default::default()
-                    });
-
-                let mut surface_full_screen_exclusive_win32_info =
-                    win32_monitor.map(|win32_monitor| {
-                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                            hmonitor: win32_monitor.0,
-                            ..Default::default()
-                        }
-                    });
-
-                let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
+                let mut info_vk = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
                     surface: surface.handle(),
                     ..Default::default()
                 };
+                let mut present_mode_vk = None;
+                let mut full_screen_exclusive_info_vk = None;
+                let mut full_screen_exclusive_win32_info_vk = None;
 
-                if let Some(surface_full_screen_exclusive_info) =
-                    surface_full_screen_exclusive_info.as_mut()
-                {
-                    surface_full_screen_exclusive_info.p_next = surface_info2.p_next as *mut _;
-                    surface_info2.p_next =
-                        surface_full_screen_exclusive_info as *const _ as *const _;
+                if let Some(present_mode) = present_mode {
+                    let next = present_mode_vk.insert(ash::vk::SurfacePresentModeEXT {
+                        present_mode: present_mode.into(),
+                        ..Default::default()
+                    });
+
+                    next.p_next = info_vk.p_next as *mut _;
+                    info_vk.p_next = next as *const _ as *const _;
                 }
 
-                if let Some(surface_full_screen_exclusive_win32_info) =
-                    surface_full_screen_exclusive_win32_info.as_mut()
-                {
-                    surface_full_screen_exclusive_win32_info.p_next =
-                        surface_info2.p_next as *mut _;
-                    surface_info2.p_next =
-                        surface_full_screen_exclusive_win32_info as *const _ as *const _;
+                if full_screen_exclusive != FullScreenExclusive::Default {
+                    let next = full_screen_exclusive_info_vk.insert(
+                        ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                            full_screen_exclusive: full_screen_exclusive.into(),
+                            ..Default::default()
+                        },
+                    );
+
+                    next.p_next = info_vk.p_next as *mut _;
+                    info_vk.p_next = next as *const _ as *const _;
+                }
+
+                if let Some(win32_monitor) = win32_monitor {
+                    let next = full_screen_exclusive_win32_info_vk.insert(
+                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                            hmonitor: win32_monitor.0,
+                            ..Default::default()
+                        },
+                    );
+
+                    next.p_next = info_vk.p_next as *mut _;
+                    info_vk.p_next = next as *const _ as *const _;
                 }
 
                 let fns = self.instance.fns();
@@ -1755,40 +1902,40 @@ impl PhysicalDevice {
                     .enabled_extensions()
                     .khr_get_surface_capabilities2
                 {
-                    let surface_format2s = loop {
+                    let surface_format2s_vk = loop {
                         let mut count = 0;
                         (fns.khr_get_surface_capabilities2
                             .get_physical_device_surface_formats2_khr)(
                             self.handle(),
-                            &surface_info2,
+                            &info_vk,
                             &mut count,
                             ptr::null_mut(),
                         )
                         .result()
                         .map_err(RuntimeError::from)?;
 
-                        let mut surface_format2s =
+                        let mut surface_format2s_vk =
                             vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
                         let result = (fns
                             .khr_get_surface_capabilities2
                             .get_physical_device_surface_formats2_khr)(
                             self.handle(),
-                            &surface_info2,
+                            &info_vk,
                             &mut count,
-                            surface_format2s.as_mut_ptr(),
+                            surface_format2s_vk.as_mut_ptr(),
                         );
 
                         match result {
                             ash::vk::Result::SUCCESS => {
-                                surface_format2s.set_len(count as usize);
-                                break surface_format2s;
+                                surface_format2s_vk.set_len(count as usize);
+                                break surface_format2s_vk;
                             }
                             ash::vk::Result::INCOMPLETE => (),
                             err => return Err(RuntimeError::from(err)),
                         }
                     };
 
-                    Ok(surface_format2s
+                    Ok(surface_format2s_vk
                         .into_iter()
                         .filter_map(|surface_format2| {
                             (surface_format2.surface_format.format.try_into().ok())
