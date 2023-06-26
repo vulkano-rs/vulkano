@@ -169,7 +169,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_robustness2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_robustness2.html)
 - [`VK_EXT_surface_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_surface_maintenance1.html)
 - [`VK_EXT_swapchain_colorspace`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_swapchain_colorspace.html)
-- [`VK_EXT_swapchain_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_swapchain_maintenance1.html)
 - [`VK_EXT_validation_features`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_validation_features.html)
 - [`VK_EXT_vertex_attribute_divisor`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_vertex_attribute_divisor.html)
 - [`VK_EXT_ycbcr_image_arrays`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_ycbcr_image_arrays.html)
@@ -213,6 +212,9 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `VkDrmFormatModifierPropertiesListEXT` / `VkDrmFormatModifierPropertiesList2EXT`
 	- `VkImageDrmFormatModifierListCreateInfoEXT`
 	- `VkPhysicalDeviceImageDrmFormatModifierInfoEXT`
+- [`VK_EXT_swapchain_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_swapchain_maintenance1.html)
+	- `vkReleaseSwapchainImagesEXT` / `VkReleaseSwapchainImagesInfoEXT`
+	- `VkSwapchainPresentFenceInfoEXT`
 
 ### Unsupported
 
