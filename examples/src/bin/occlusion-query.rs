@@ -382,15 +382,15 @@ fn main() {
             recreate_swapchain = true;
         }
         Event::RedrawEventsCleared => {
+            let image_extent: [u32; 2] = window.inner_size().into();
+
+            if image_extent.contains(&0) {
+                return;
+            }
+
             previous_frame_end.as_mut().unwrap().cleanup_finished();
 
             if recreate_swapchain {
-                let image_extent: [u32; 2] = window.inner_size().into();
-
-                if image_extent.contains(&0) {
-                    return;
-                }
-
                 let (new_swapchain, new_images) = swapchain
                     .recreate(SwapchainCreateInfo {
                         image_extent,

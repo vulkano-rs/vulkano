@@ -545,13 +545,13 @@ fn main() {
                 channel.send(()).unwrap();
             }
             Event::RedrawEventsCleared => {
+                let image_extent: [u32; 2] = window.inner_size().into();
+
+                if image_extent.contains(&0) {
+                    return;
+                }
+
                 if recreate_swapchain {
-                    let image_extent: [u32; 2] = window.inner_size().into();
-
-                    if image_extent.contains(&0) {
-                        return;
-                    }
-
                     let (new_swapchain, new_images) = swapchain
                         .recreate(SwapchainCreateInfo {
                             image_extent,
