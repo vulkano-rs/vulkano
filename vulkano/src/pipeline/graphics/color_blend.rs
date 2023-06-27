@@ -56,6 +56,8 @@ pub struct ColorBlendState {
 
     /// The constant color to use for some of the `BlendFactor` variants.
     pub blend_constants: StateMode<[f32; 4]>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl ColorBlendState {
@@ -75,6 +77,7 @@ impl ColorBlendState {
                 })
                 .collect(),
             blend_constants: StateMode::Fixed([0.0, 0.0, 0.0, 0.0]),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -148,6 +151,7 @@ impl ColorBlendState {
             logic_op,
             ref attachments,
             blend_constants: _,
+            _ne: _,
         } = self;
 
         flags

@@ -57,6 +57,8 @@ pub struct MultisampleState {
     /// If set to `true`, the [`alpha_to_one`](crate::device::Features::alpha_to_one)
     /// feature must be enabled on the device.
     pub alpha_to_one_enable: bool,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl MultisampleState {
@@ -69,6 +71,7 @@ impl MultisampleState {
             sample_mask: [0xFFFFFFFF; 2],
             alpha_to_coverage_enable: false,
             alpha_to_one_enable: false,
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -79,6 +82,7 @@ impl MultisampleState {
             sample_mask: _,
             alpha_to_coverage_enable: _,
             alpha_to_one_enable,
+            _ne: _,
         } = self;
 
         rasterization_samples
