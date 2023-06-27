@@ -379,10 +379,6 @@ impl RawBuffer {
         }
     }
 
-    pub(crate) fn id(&self) -> NonZeroU64 {
-        self.id
-    }
-
     /// Binds device memory to this buffer.
     pub fn bind_memory(
         self,

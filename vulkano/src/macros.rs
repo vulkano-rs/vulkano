@@ -973,9 +973,13 @@ macro_rules! impl_id_counter {
                 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
                 NonZeroU64::new(COUNTER.fetch_add(1, Ordering::Relaxed)).unwrap_or_else(|| {
-                    println!("an ID counter has overflown ...somehow");
+                    eprintln!("an ID counter has overflown ...somehow");
                     std::process::abort();
                 })
+            }
+
+            pub(crate) fn id(&self) -> std::num::NonZeroU64 {
+                self.id
             }
         }
 

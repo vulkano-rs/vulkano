@@ -1349,10 +1349,6 @@ impl RawImage {
         }
     }
 
-    pub(crate) fn id(&self) -> NonZeroU64 {
-        self.id
-    }
-
     /// Binds device memory to this image.
     ///
     /// - If `self.flags().disjoint` is not set, then `allocations` must contain exactly one

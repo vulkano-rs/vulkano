@@ -221,10 +221,6 @@ impl DescriptorSetLayout {
         })
     }
 
-    pub(crate) fn id(&self) -> NonZeroU64 {
-        self.id
-    }
-
     /// Returns the flags that the descriptor set layout was created with.
     #[inline]
     pub fn flags(&self) -> DescriptorSetLayoutCreateFlags {

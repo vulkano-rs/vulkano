@@ -127,6 +127,7 @@ use parking_lot::Mutex;
 use smallvec::{smallvec, SmallVec};
 use std::{
     ffi::CString,
+    fmt::{Debug, Error as FmtError, Formatter},
     fs::File,
     mem::MaybeUninit,
     num::NonZeroU64,
@@ -147,7 +148,6 @@ include!(concat!(env!("OUT_DIR"), "/device_extensions.rs"));
 include!(concat!(env!("OUT_DIR"), "/features.rs"));
 
 /// Represents a Vulkan context.
-#[derive(Debug)]
 pub struct Device {
     handle: ash::vk::Device,
     physical_device: Arc<PhysicalDevice>, // NOTE: `physical_devices` always contains this
@@ -1096,6 +1096,56 @@ impl Device {
             .map_err(RuntimeError::from)?;
 
         Ok(())
+    }
+}
+
+impl Debug for Device {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        let Self {
+            handle,
+            physical_device,
+            id,
+            enabled_extensions,
+            enabled_features,
+            physical_devices,
+            api_version,
+            fns,
+            active_queue_family_indices,
+            allocation_count,
+            fence_pool: _,
+            semaphore_pool: _,
+            event_pool: _,
+        } = self;
+
+        struct DebugPhysicalDevice(NonZeroU64);
+
+        impl Debug for DebugPhysicalDevice {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+                write!(f, "<physical device #{}>", self.0)
+            }
+        }
+
+        // A physical device prints pages of poetry when debug-printed. We don't want to spam the
+        // user's console/logs with all that multiple times for each logical device. The user can
+        // still debug-print the physical device(s) manually if they need to.
+        let physical_device = DebugPhysicalDevice(physical_device.id());
+        let physical_devices = physical_devices
+            .iter()
+            .map(|p| DebugPhysicalDevice(p.id()))
+            .collect::<SmallVec<[_; 2]>>();
+
+        f.debug_struct("Device")
+            .field("handle", handle)
+            .field("physical_device", &physical_device)
+            .field("id", id)
+            .field("enabled_extensions", enabled_extensions)
+            .field("enabled_features", enabled_features)
+            .field("physical_devices", &physical_devices)
+            .field("api_version", api_version)
+            .field("fns", fns)
+            .field("active_queue_family_indices", active_queue_family_indices)
+            .field("allocation_count", allocation_count)
+            .finish_non_exhaustive()
     }
 }
 
