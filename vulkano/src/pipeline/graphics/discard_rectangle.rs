@@ -31,6 +31,8 @@ pub struct DiscardRectangleState {
     /// [`ext_discard_rectangles`](crate::device::DeviceExtensions::ext_discard_rectangles)
     /// extension must be enabled on the device.
     pub rectangles: PartialStateMode<Vec<Scissor>, u32>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl DiscardRectangleState {
@@ -40,6 +42,7 @@ impl DiscardRectangleState {
         Self {
             mode: DiscardRectangleMode::Exclusive,
             rectangles: PartialStateMode::Fixed(Vec::new()),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -47,6 +50,7 @@ impl DiscardRectangleState {
         let &Self {
             mode,
             ref rectangles,
+            _ne: _,
         } = self;
 
         let properties = device.physical_device().properties();

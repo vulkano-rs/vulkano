@@ -120,7 +120,7 @@ mod impl_vertex;
 mod vertex;
 
 /// The state in a graphics pipeline describing how the vertex input stage should behave.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct VertexInputState {
     /// A description of the vertex buffers that the vertex input stage will read from.
     pub bindings: HashMap<u32, VertexInputBindingDescription>,
@@ -128,6 +128,8 @@ pub struct VertexInputState {
     /// Describes, for each shader input location, the mapping between elements in a vertex buffer
     /// and the components of that location in the shader.
     pub attributes: HashMap<u32, VertexInputAttributeDescription>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl VertexInputState {
@@ -137,6 +139,7 @@ impl VertexInputState {
         VertexInputState {
             bindings: Default::default(),
             attributes: Default::default(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -180,6 +183,7 @@ impl VertexInputState {
         let Self {
             bindings,
             attributes,
+            _ne: _,
         } = self;
 
         let properties = device.physical_device().properties();
@@ -296,6 +300,17 @@ impl VertexInputState {
         }
 
         Ok(())
+    }
+}
+
+impl Default for VertexInputState {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            bindings: HashMap::default(),
+            attributes: HashMap::default(),
+            _ne: crate::NonExhaustive(()),
+        }
     }
 }
 

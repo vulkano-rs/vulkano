@@ -40,6 +40,8 @@ pub struct InputAssemblyState {
     /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature must
     /// be enabled on the device.
     pub primitive_restart_enable: StateMode<bool>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl InputAssemblyState {
@@ -50,6 +52,7 @@ impl InputAssemblyState {
         Self {
             topology: PartialStateMode::Fixed(PrimitiveTopology::TriangleList),
             primitive_restart_enable: StateMode::Fixed(false),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -85,6 +88,7 @@ impl InputAssemblyState {
         let &Self {
             topology,
             primitive_restart_enable,
+            _ne: _,
         } = self;
 
         match topology {

@@ -53,6 +53,8 @@ pub struct DepthStencilState {
     /// If set to `None`, the stencil test is disabled, all fragments will pass and no stencil
     /// writes are performed.
     pub stencil: Option<StencilState>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl DepthStencilState {
@@ -64,6 +66,7 @@ impl DepthStencilState {
             depth: Default::default(),
             depth_bounds: Default::default(),
             stencil: Default::default(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -80,6 +83,7 @@ impl DepthStencilState {
             }),
             depth_bounds: Default::default(),
             stencil: Default::default(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -89,6 +93,7 @@ impl DepthStencilState {
             ref depth,
             ref depth_bounds,
             ref stencil,
+            _ne: _,
         } = self;
 
         flags
