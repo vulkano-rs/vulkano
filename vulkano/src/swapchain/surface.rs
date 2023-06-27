@@ -1350,6 +1350,7 @@ impl Debug for Surface {
             id,
             api,
             object,
+
             surface_formats: _,
             surface_present_modes: _,
             surface_support: _,

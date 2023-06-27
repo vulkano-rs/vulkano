@@ -1105,12 +1105,15 @@ impl Debug for Device {
             handle,
             physical_device,
             id,
+
             enabled_extensions,
             enabled_features,
             physical_devices,
+
             api_version,
             fns,
             active_queue_family_indices,
+
             allocation_count,
             fence_pool: _,
             semaphore_pool: _,

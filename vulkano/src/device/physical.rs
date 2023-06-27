@@ -2504,6 +2504,7 @@ impl Debug for PhysicalDevice {
             handle,
             instance,
             id,
+
             api_version,
             supported_extensions,
             supported_features,
@@ -2511,6 +2512,7 @@ impl Debug for PhysicalDevice {
             extension_properties,
             memory_properties,
             queue_family_properties,
+
             external_buffer_properties: _,
             external_fence_properties: _,
             external_semaphore_properties: _,
