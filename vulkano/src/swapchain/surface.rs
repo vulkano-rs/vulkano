@@ -1368,17 +1368,21 @@ impl Debug for Surface {
         let Self {
             handle,
             instance,
+            id,
             api,
-            object: _,
-            ..
+            object,
+            surface_formats: _,
+            surface_present_modes: _,
+            surface_support: _,
         } = self;
 
         f.debug_struct("Surface")
             .field("handle", handle)
             .field("instance", instance)
+            .field("id", id)
             .field("api", api)
-            .field("window", &())
-            .finish()
+            .field("object", object)
+            .finish_non_exhaustive()
     }
 }
 
