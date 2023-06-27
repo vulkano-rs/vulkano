@@ -18,11 +18,11 @@ Changes to pipeline construction:
 - `GraphicsPipelineCreateInfo` now requires you to provide `input_assembly_state`, `rasterization_state`, `multisample_state` and `color_blend_state` instead of them having default values. You can still call `default()` to generate default values for each of them.
 - Instead of an entry point and specialization constants, pipeline construction now takes a `PipelineShaderStageCreateInfo` structure. `GraphicsPipelineCreateInfo` has a `stages` member that takes all shader stages at once, instead of separate members for each shader type. `EntryPoint` now owns instead of borrows a reference to the `ShaderModule`, so this is easier.
 - Specialization constants are now provided with a `HashMap` containing `SpecializationConstant` enum values. The `SpecializationConstants` trait is removed, and `vulkano_shaders` no longer generates structs for specialization constants.
-- Added a `domain_origin` field to `TessellationState`.
 - `ViewportState` is now a standard struct with two fields, `viewports` and `scissors`.
 - The `origin` and `dimensions` fields of `Viewport` and `Scissors` are renamed to `offset` and `extent` to match Vulkan.
 - `Viewport::depth_range` is now an inclusive range.
 - All fields of `AttachmentBlend` are renamed to match Vulkan.
+- Added a `_ne` field to all pipeline state create info structs, as they should have had all along.
 
 Changes to images:
 - Removed the `ImageInner` type. The `inner` method of the `ImageAccess` trait now returns a reference to the inner image directly.
@@ -85,6 +85,7 @@ Changes to `Swapchain`:
 - Added support for `InlineUniformBlock` descriptors.
 - When creating an instance or device, you only need to specify the extensions and features you actually care about. Any extensions and features that are required by the extensions that you specified are now automatically enabled too.
 - Support for the `ext_surface_maintenance1` and most of the `ext_swapchain_maintenance1` extension.
+- Added a `domain_origin` field to `TessellationState`.
 
 ### Bugs fixed
 
