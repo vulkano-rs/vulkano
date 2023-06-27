@@ -15,8 +15,7 @@
 
 use self::host::SlotId;
 use super::{
-    align_down, align_up, array_vec::ArrayVec, AllocationCreationError, DeviceAlignment,
-    DeviceLayout,
+    align_down, align_up, array_vec::ArrayVec, DeviceAlignment, DeviceLayout, MemoryAllocatorError,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -97,7 +96,7 @@ impl MemoryAlloc {
     ///
     /// The memory is mapped automatically if it's host-visible.
     #[inline]
-    pub fn new(device_memory: DeviceMemory) -> Result<Self, AllocationCreationError> {
+    pub fn new(device_memory: DeviceMemory) -> Result<Self, MemoryAllocatorError> {
         // Sanity check: this would lead to UB when suballocating.
         assert!(device_memory.allocation_size() <= DeviceLayout::MAX_SIZE);
 
@@ -686,7 +685,7 @@ pub unsafe trait Suballocator: DeviceOwned {
     fn allocate(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationCreationError>;
+    ) -> Result<MemoryAlloc, SuballocatorError>;
 
     /// Returns a reference to the underlying [region].
     ///
@@ -783,7 +782,7 @@ impl From<ImageTiling> for AllocationType {
 ///
 /// [suballocator]: Suballocator
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SuballocationCreationError {
+pub enum SuballocatorError {
     /// There is no more space available in the region.
     OutOfRegionMemory,
 
@@ -801,9 +800,9 @@ pub enum SuballocationCreationError {
     BlockSizeExceeded,
 }
 
-impl Error for SuballocationCreationError {}
+impl Error for SuballocatorError {}
 
-impl Display for SuballocationCreationError {
+impl Display for SuballocatorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -1061,14 +1060,14 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocationCreationError::OutOfRegionMemory
-    /// [`FragmentedRegion`]: SuballocationCreationError::FragmentedRegion
+    /// [`OutOfRegionMemory`]: SuballocatorError::OutOfRegionMemory
+    /// [`FragmentedRegion`]: SuballocatorError::FragmentedRegion
     /// [external fragmentation]: super#external-fragmentation
     #[inline]
     fn allocate(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationCreationError> {
+    ) -> Result<MemoryAlloc, SuballocatorError> {
         fn has_granularity_conflict(prev_ty: SuballocationType, ty: AllocationType) -> bool {
             if prev_ty == SuballocationType::Free {
                 false
@@ -1170,16 +1169,14 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                     }
 
                     // There is not enough space due to alignment requirements.
-                    Err(SuballocationCreationError::OutOfRegionMemory)
+                    Err(SuballocatorError::OutOfRegionMemory)
                 }
                 // There would be enough space if the region wasn't so fragmented. :(
-                Some(_) if self.free_size() >= size => {
-                    Err(SuballocationCreationError::FragmentedRegion)
-                }
+                Some(_) if self.free_size() >= size => Err(SuballocatorError::FragmentedRegion),
                 // There is not enough space.
-                Some(_) => Err(SuballocationCreationError::OutOfRegionMemory),
+                Some(_) => Err(SuballocatorError::OutOfRegionMemory),
                 // There is no space at all.
-                None => Err(SuballocationCreationError::OutOfRegionMemory),
+                None => Err(SuballocatorError::OutOfRegionMemory),
             }
         }
     }
@@ -1674,14 +1671,14 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocationCreationError::OutOfRegionMemory
-    /// [`FragmentedRegion`]: SuballocationCreationError::FragmentedRegion
+    /// [`OutOfRegionMemory`]: SuballocatorError::OutOfRegionMemory
+    /// [`FragmentedRegion`]: SuballocatorError::FragmentedRegion
     /// [external fragmentation]: super#external-fragmentation
     #[inline]
     fn allocate(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationCreationError> {
+    ) -> Result<MemoryAlloc, SuballocatorError> {
         /// Returns the largest power of two smaller or equal to the input, or zero if the input is
         /// zero.
         fn prev_power_of_two(val: DeviceSize) -> DeviceSize {
@@ -1788,9 +1785,9 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
 
         if prev_power_of_two(self.free_size()) >= layout.size() {
             // A node large enough could be formed if the region wasn't so fragmented.
-            Err(SuballocationCreationError::FragmentedRegion)
+            Err(SuballocatorError::FragmentedRegion)
         } else {
-            Err(SuballocationCreationError::OutOfRegionMemory)
+            Err(SuballocatorError::OutOfRegionMemory)
         }
     }
 
@@ -2033,16 +2030,16 @@ unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLO
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocationCreationError::OutOfRegionMemory
+    /// [`OutOfRegionMemory`]: SuballocatorError::OutOfRegionMemory
     /// [free-list]: Suballocator#free-lists
     /// [internal fragmentation]: super#internal-fragmentation
     /// [type-level documentation]: PoolAllocator
-    /// [`BlockSizeExceeded`]: SuballocationCreationError::BlockSizeExceeded
+    /// [`BlockSizeExceeded`]: SuballocatorError::BlockSizeExceeded
     #[inline]
     fn allocate(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationCreationError> {
+    ) -> Result<MemoryAlloc, SuballocatorError> {
         // SAFETY: `PoolAllocator<BLOCK_SIZE>` and `PoolAllocatorInner` have the same layout.
         //
         // This is not quite optimal, because we are always cloning the `Arc` even if allocation
@@ -2127,7 +2124,7 @@ impl PoolAllocatorInner {
     fn allocate(
         self: Arc<Self>,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationCreationError> {
+    ) -> Result<MemoryAlloc, SuballocatorError> {
         let SuballocationCreateInfo {
             layout,
             allocation_type: _,
@@ -2139,7 +2136,7 @@ impl PoolAllocatorInner {
         let index = self
             .free_list
             .pop()
-            .ok_or(SuballocationCreationError::OutOfRegionMemory)?;
+            .ok_or(SuballocatorError::OutOfRegionMemory)?;
 
         // Indices in the free-list are confined to the range [0, region.size / block_size], so
         // this can't overflow.
@@ -2152,10 +2149,10 @@ impl PoolAllocatorInner {
             let _ = self.free_list.push(index);
 
             return if size > self.block_size {
-                Err(SuballocationCreationError::BlockSizeExceeded)
+                Err(SuballocatorError::BlockSizeExceeded)
             } else {
                 // There is not enough space due to alignment requirements.
-                Err(SuballocationCreationError::OutOfRegionMemory)
+                Err(SuballocatorError::OutOfRegionMemory)
             };
         }
 
@@ -2348,12 +2345,12 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
     ///
     /// [region]: Suballocator#regions
     /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocationCreationError::OutOfRegionMemory
+    /// [`OutOfRegionMemory`]: SuballocatorError::OutOfRegionMemory
     #[inline]
     fn allocate(
         &self,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationCreationError> {
+    ) -> Result<MemoryAlloc, SuballocatorError> {
         const SPIN_LIMIT: u32 = 6;
 
         // NOTE(Marc): The following code is a minimal version `Backoff` taken from
@@ -2422,7 +2419,7 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
             let free_start = relative_offset + size;
 
             if free_start > self.region.size {
-                return Err(SuballocationCreationError::OutOfRegionMemory);
+                return Err(SuballocatorError::OutOfRegionMemory);
             }
 
             // This can't discard any bits because we checked that `region.size` does not exceed

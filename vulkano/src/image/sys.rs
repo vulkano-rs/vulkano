@@ -29,7 +29,7 @@ use crate::{
     },
     macros::impl_id_counter,
     memory::{
-        allocator::{AllocationCreationError, AllocationType, DeviceLayout, MemoryAlloc},
+        allocator::{AllocationType, DeviceLayout, MemoryAlloc, MemoryAllocatorError},
         is_aligned, DedicatedTo, DeviceAlignment, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPropertyFlags, MemoryRequirements,
     },
@@ -2790,7 +2790,7 @@ pub enum ImageError {
     RuntimeError(RuntimeError),
 
     /// Allocating memory failed.
-    AllocError(AllocationCreationError),
+    AllocError(MemoryAllocatorError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -3264,8 +3264,8 @@ impl From<RuntimeError> for ImageError {
     }
 }
 
-impl From<AllocationCreationError> for ImageError {
-    fn from(err: AllocationCreationError) -> Self {
+impl From<MemoryAllocatorError> for ImageError {
+    fn from(err: MemoryAllocatorError) -> Self {
         Self::AllocError(err)
     }
 }
