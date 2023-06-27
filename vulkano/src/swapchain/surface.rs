@@ -1342,27 +1342,6 @@ impl Surface {
     }
 }
 
-impl Drop for Surface {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.instance.fns();
-            (fns.khr_surface.destroy_surface_khr)(self.instance.handle(), self.handle, ptr::null());
-        }
-    }
-}
-
-unsafe impl VulkanObject for Surface {
-    type Handle = ash::vk::SurfaceKHR;
-
-    #[inline]
-    fn handle(&self) -> Self::Handle {
-        self.handle
-    }
-}
-
-impl_id_counter!(Surface);
-
 impl Debug for Surface {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
@@ -1385,6 +1364,27 @@ impl Debug for Surface {
             .finish_non_exhaustive()
     }
 }
+
+impl Drop for Surface {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.instance.fns();
+            (fns.khr_surface.destroy_surface_khr)(self.instance.handle(), self.handle, ptr::null());
+        }
+    }
+}
+
+unsafe impl VulkanObject for Surface {
+    type Handle = ash::vk::SurfaceKHR;
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        self.handle
+    }
+}
+
+impl_id_counter!(Surface);
 
 /// Get sublayer from iOS main view (ui_view). The sublayer is created as `CAMetalLayer`.
 #[cfg(target_os = "ios")]
