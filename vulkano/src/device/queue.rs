@@ -26,8 +26,8 @@ use crate::{
         future::{AccessCheckError, FlushError, GpuFuture},
         semaphore::SemaphoreState,
     },
-    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
-    VulkanObject,
+    DebugWrapper, OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
+    Version, VulkanObject,
 };
 use ahash::HashMap;
 use parking_lot::{Mutex, MutexGuard};
@@ -46,7 +46,7 @@ use std::{
 #[derive(Debug)]
 pub struct Queue {
     handle: ash::vk::Queue,
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
 
     flags: QueueCreateFlags,
     queue_family_index: u32,
@@ -88,7 +88,7 @@ impl Queue {
     ) -> Arc<Self> {
         Arc::new(Queue {
             handle,
-            device,
+            device: DebugWrapper(device),
             flags,
             queue_family_index,
             id,

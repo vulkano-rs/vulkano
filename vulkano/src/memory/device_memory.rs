@@ -12,8 +12,8 @@ use crate::{
     device::{Device, DeviceOwned},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     memory::{is_aligned, MemoryPropertyFlags},
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
-    VulkanError, VulkanObject,
+    DebugWrapper, DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    ValidationError, Version, VulkanError, VulkanObject,
 };
 use std::{
     ffi::c_void,
@@ -51,7 +51,7 @@ use std::{
 #[derive(Debug)]
 pub struct DeviceMemory {
     handle: ash::vk::DeviceMemory,
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     allocation_size: DeviceSize,
@@ -282,7 +282,7 @@ impl DeviceMemory {
 
         Ok(DeviceMemory {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
             allocation_size,
             memory_type_index,
@@ -316,7 +316,7 @@ impl DeviceMemory {
 
         DeviceMemory {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
             allocation_size,
             memory_type_index,

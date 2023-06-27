@@ -72,7 +72,7 @@ use crate::{
     device::{Device, DeviceOwned, Properties},
     macros::{impl_id_counter, vulkan_bitflags},
     shader::{DescriptorBindingRequirements, ShaderStage, ShaderStages},
-    RuntimeError, ValidationError, VulkanError, VulkanObject,
+    DebugWrapper, RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -92,7 +92,7 @@ use std::{
 #[derive(Debug)]
 pub struct PipelineLayout {
     handle: ash::vk::PipelineLayout,
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: PipelineLayoutCreateFlags,
@@ -240,7 +240,7 @@ impl PipelineLayout {
 
         Arc::new(PipelineLayout {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
             flags,
             set_layouts,

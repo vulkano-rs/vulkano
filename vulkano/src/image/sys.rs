@@ -36,8 +36,8 @@ use crate::{
     range_map::RangeMap,
     swapchain::Swapchain,
     sync::{future::AccessError, CurrentAccess, Sharing},
-    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
-    VulkanObject,
+    DebugWrapper, DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf,
+    RuntimeError, Version, VulkanObject,
 };
 use ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT;
 use parking_lot::{Mutex, MutexGuard};
@@ -62,7 +62,7 @@ use std::{
 #[derive(Debug)]
 pub struct RawImage {
     handle: ash::vk::Image,
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: ImageCreateFlags,
@@ -1056,7 +1056,7 @@ impl RawImage {
 
         RawImage {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
             flags,
             dimensions,

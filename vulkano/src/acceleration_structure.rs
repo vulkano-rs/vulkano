@@ -96,8 +96,8 @@ use crate::{
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    DeviceSize, NonZeroDeviceSize, Packed24_8, Requires, RequiresAllOf, RequiresOneOf,
-    RuntimeError, ValidationError, VulkanError, VulkanObject,
+    DebugWrapper, DeviceSize, NonZeroDeviceSize, Packed24_8, Requires, RequiresAllOf,
+    RequiresOneOf, RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use bytemuck::{Pod, Zeroable};
 use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -105,7 +105,7 @@ use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::
 /// An opaque data structure that is used to accelerate spatial queries on geometry data.
 #[derive(Debug)]
 pub struct AccelerationStructure {
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     handle: ash::vk::AccelerationStructureKHR,
     id: NonZeroU64,
 
@@ -225,7 +225,7 @@ impl AccelerationStructure {
         } = create_info;
 
         Arc::new(Self {
-            device,
+            device: DebugWrapper(device),
             handle,
             id: Self::next_id(),
 

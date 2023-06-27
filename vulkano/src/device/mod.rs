@@ -119,8 +119,8 @@ use crate::{
     instance::Instance,
     macros::{impl_id_counter, vulkan_bitflags},
     memory::ExternalMemoryHandleType,
-    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
-    VulkanError, VulkanObject,
+    DebugWrapper, OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
+    Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::Mutex;
@@ -150,7 +150,8 @@ include!(concat!(env!("OUT_DIR"), "/features.rs"));
 /// Represents a Vulkan context.
 pub struct Device {
     handle: ash::vk::Device,
-    physical_device: Arc<PhysicalDevice>, // NOTE: `physical_devices` always contains this
+    // NOTE: `physical_devices` always contains this.
+    physical_device: DebugWrapper<Arc<PhysicalDevice>>,
     id: NonZeroU64,
 
     enabled_extensions: DeviceExtensions,
@@ -467,7 +468,7 @@ impl Device {
 
         let device = Arc::new(Device {
             handle,
-            physical_device,
+            physical_device: DebugWrapper(physical_device),
             id: Self::next_id(),
 
             enabled_extensions,
@@ -1120,26 +1121,17 @@ impl Debug for Device {
             event_pool: _,
         } = self;
 
-        struct DebugPhysicalDevice(NonZeroU64);
-
-        impl Debug for DebugPhysicalDevice {
-            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-                write!(f, "<physical device #{}>", self.0)
-            }
-        }
-
         // A physical device prints pages of poetry when debug-printed. We don't want to spam the
         // user's console/logs with all that multiple times for each logical device. The user can
         // still debug-print the physical device(s) manually if they need to.
-        let physical_device = DebugPhysicalDevice(physical_device.id());
         let physical_devices = physical_devices
             .iter()
-            .map(|p| DebugPhysicalDevice(p.id()))
+            .map(DebugWrapper)
             .collect::<SmallVec<[_; 2]>>();
 
         f.debug_struct("Device")
             .field("handle", handle)
-            .field("physical_device", &physical_device)
+            .field("physical_device", physical_device)
             .field("id", id)
             .field("enabled_extensions", enabled_extensions)
             .field("enabled_features", enabled_features)

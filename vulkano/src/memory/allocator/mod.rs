@@ -234,7 +234,8 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    DebugWrapper, DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    ValidationError, Version,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
@@ -649,7 +650,7 @@ impl StandardMemoryAllocator {
 /// [the `MemoryAllocator` implementation]: Self#impl-MemoryAllocator-for-GenericMemoryAllocator<S>
 #[derive(Debug)]
 pub struct GenericMemoryAllocator<S: Suballocator> {
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     // Each memory type has a pool of `DeviceMemory` blocks.
     pools: ArrayVec<Pool<S>, MAX_MEMORY_TYPES>,
     // Each memory heap has its own block size.
@@ -851,7 +852,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         let max_allocations = max_memory_allocation_count / 4 * 3;
 
         GenericMemoryAllocator {
-            device,
+            device: DebugWrapper(device),
             pools,
             block_sizes,
             allocation_type,
@@ -899,7 +900,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             match dedicated_allocation {
                 DedicatedAllocation::Buffer(buffer) => {
                     // VUID-VkMemoryDedicatedAllocateInfo-commonparent
-                    assert_eq!(&self.device, buffer.device());
+                    assert_eq!(&*self.device, buffer.device());
 
                     let required_size = buffer.memory_requirements().layout.size();
 
@@ -908,7 +909,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                 }
                 DedicatedAllocation::Image(image) => {
                     // VUID-VkMemoryDedicatedAllocateInfo-commonparent
-                    assert_eq!(&self.device, image.device());
+                    assert_eq!(&*self.device, image.device());
 
                     let required_size = image.memory_requirements()[0].layout.size();
 

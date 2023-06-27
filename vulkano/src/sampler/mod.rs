@@ -54,8 +54,8 @@ use crate::{
     macros::{impl_id_counter, vulkan_enum},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
-    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
-    ValidationError, VulkanObject,
+    DebugWrapper, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf,
+    RuntimeError, ValidationError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -99,7 +99,7 @@ use std::{
 #[derive(Debug)]
 pub struct Sampler {
     handle: ash::vk::Sampler,
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     address_mode: [SamplerAddressMode; 3],
@@ -440,7 +440,7 @@ impl Sampler {
 
         Ok(Arc::new(Sampler {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
             address_mode,
             anisotropy,
@@ -490,7 +490,7 @@ impl Sampler {
 
         Arc::new(Sampler {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
             address_mode,
             anisotropy,

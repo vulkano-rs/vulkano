@@ -92,8 +92,8 @@ use crate::{
         DescriptorBindingRequirements, FragmentShaderExecution, FragmentTestsStages,
         ShaderExecution, ShaderScalarType, ShaderStage, ShaderStages,
     },
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
-    VulkanObject,
+    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
+    VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -122,7 +122,7 @@ pub mod viewport;
 #[derive(Debug)]
 pub struct GraphicsPipeline {
     handle: ash::vk::Pipeline,
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     // TODO: replace () with an object that describes the shaders in some way.
@@ -1563,7 +1563,7 @@ impl GraphicsPipeline {
 
         Arc::new(Self {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
 
             shaders,

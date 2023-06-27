@@ -95,8 +95,8 @@ use crate::{
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     macros::{impl_id_counter, vulkan_enum},
     sampler::{ComponentMapping, ComponentSwizzle, Filter},
-    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
-    VulkanObject,
+    DebugWrapper, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf,
+    RuntimeError, Version, VulkanObject,
 };
 use std::{
     error::Error,
@@ -111,7 +111,7 @@ use std::{
 #[derive(Debug)]
 pub struct SamplerYcbcrConversion {
     handle: ash::vk::SamplerYcbcrConversion,
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     format: Option<Format>,
@@ -357,7 +357,7 @@ impl SamplerYcbcrConversion {
 
         Ok(Arc::new(SamplerYcbcrConversion {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
             format: Some(format),
             ycbcr_model,
@@ -395,7 +395,7 @@ impl SamplerYcbcrConversion {
 
         Arc::new(SamplerYcbcrConversion {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
             format,
             ycbcr_model,

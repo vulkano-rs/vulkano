@@ -268,6 +268,35 @@ where
     }
 }
 
+/// A wrapper that displays only the contained object's type and handle when debug-formatted. This
+/// is useful because we have a lot of dependency chains, and the same dependencies would otherwise
+/// be debug-formatted along with the dependents over and over leading to royal levels of spam.
+#[repr(transparent)]
+#[derive(PartialEq, Eq)]
+struct DebugWrapper<T>(T)
+where
+    T: Debug + VulkanObject;
+
+impl<T> Debug for DebugWrapper<T>
+where
+    T: Debug + VulkanObject,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "0x{:x}", self.0.handle().as_raw())
+    }
+}
+
+impl<T> Deref for DebugWrapper<T>
+where
+    T: Debug + VulkanObject,
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 /// An error that can happen when calling a safe (validated) function that makes a call to the
 /// Vulkan API.
 #[derive(Clone)]

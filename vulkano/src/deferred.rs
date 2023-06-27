@@ -18,7 +18,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, VulkanObject,
+    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -34,7 +34,7 @@ use std::{
 /// prematurely, the current thread will block to wait for the operation to finish.
 #[derive(Debug)]
 pub struct DeferredOperation {
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     handle: ash::vk::DeferredOperationKHR,
 }
 
@@ -91,7 +91,10 @@ impl DeferredOperation {
         device: Arc<Device>,
         handle: ash::vk::DeferredOperationKHR,
     ) -> Arc<Self> {
-        Arc::new(Self { device, handle })
+        Arc::new(Self {
+            device: DebugWrapper(device),
+            handle,
+        })
     }
 
     /// Executes a portion of the operation on the current thread.

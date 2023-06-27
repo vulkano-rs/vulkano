@@ -23,7 +23,8 @@ use crate::{
         MemoryPropertyFlags, MemoryRequirements,
     },
     sync::Sharing,
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    DebugWrapper, DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
+    VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -36,7 +37,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct RawBuffer {
     handle: ash::vk::Buffer,
-    device: Arc<Device>,
+    device: DebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: BufferCreateFlags,
@@ -301,7 +302,7 @@ impl RawBuffer {
 
         RawBuffer {
             handle,
-            device,
+            device: DebugWrapper(device),
             id: Self::next_id(),
             flags,
             size,

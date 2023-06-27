@@ -28,8 +28,8 @@ use crate::{
         fence::{ExternalFenceInfo, ExternalFenceProperties},
         semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
     },
-    ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
-    Version, VulkanError, VulkanObject,
+    DebugWrapper, ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    ValidationError, Version, VulkanError, VulkanObject,
 };
 use bytemuck::cast_slice;
 use std::{
@@ -63,7 +63,7 @@ use std::{
 /// ```
 pub struct PhysicalDevice {
     handle: ash::vk::PhysicalDevice,
-    instance: Arc<Instance>,
+    instance: DebugWrapper<Arc<Instance>>,
     id: NonZeroU64,
 
     // Data queried at `PhysicalDevice` creation.
@@ -130,7 +130,7 @@ impl PhysicalDevice {
 
         Ok(Arc::new(PhysicalDevice {
             handle,
-            instance,
+            instance: DebugWrapper(instance),
             id: Self::next_id(),
             api_version,
             supported_extensions,

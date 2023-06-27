@@ -16,8 +16,8 @@ use crate::{
     instance::{Instance, InstanceExtensions},
     macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
     swapchain::display::{DisplayMode, DisplayPlane},
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
-    VulkanObject,
+    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
+    VulkanError, VulkanObject,
 };
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
@@ -39,7 +39,7 @@ use std::{
 /// Creating a `Surface` is platform-specific.
 pub struct Surface {
     handle: ash::vk::SurfaceKHR,
-    instance: Arc<Instance>,
+    instance: DebugWrapper<Arc<Instance>>,
     id: NonZeroU64,
     api: SurfaceApi,
     object: Option<Arc<dyn Any + Send + Sync>>,
@@ -150,7 +150,7 @@ impl Surface {
     ) -> Self {
         Surface {
             handle,
-            instance,
+            instance: DebugWrapper(instance),
             id: Self::next_id(),
             api,
             object,
