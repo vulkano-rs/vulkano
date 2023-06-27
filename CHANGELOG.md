@@ -33,9 +33,11 @@ Changes to buffers:
 - The `buffer_with_range(_array)` constructor of `WriteDescriptorSet` now takes `DescriptorBufferInfo` structs.
 - Index buffers are now specified using the `IndexBuffer` enum instead of the `Index` trait.
 
-Changes to error reporting:
+Changes to errors:
 - `VulkanError` is renamed to `RuntimeError`.
 - Added new types `ValidationError` and `VulkanError` (enum of `ValidationError` + `RuntimeError`) to return errors from any function. Some existing functions have been converted to use these types, others will follow later.
+- `AllocationCreationError` is renamed to `MemoryAllocatorError`.
+- `SuballocationCreationError` is renamed to `SuballocatorError`.
 
 Changes to command buffers:
 - `SyncCommandBuffer(Builder)` is merged into `*AutoCommandBuffer(Builder)`. The commands that formerly belonged to `SyncCommandBufferBuilder` are now available as `_unchecked` versions on `AutoCommandBufferBuilder`.
