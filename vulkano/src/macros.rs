@@ -978,6 +978,7 @@ macro_rules! impl_id_counter {
                 })
             }
 
+            #[allow(dead_code)]
             pub(crate) fn id(&self) -> std::num::NonZeroU64 {
                 self.id
             }
