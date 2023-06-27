@@ -933,7 +933,7 @@ impl Debug for Instance {
         let Self {
             handle,
             fns,
-            id: _,
+            id,
 
             flags,
             api_version,
@@ -950,6 +950,7 @@ impl Debug for Instance {
         f.debug_struct("Instance")
             .field("handle", handle)
             .field("fns", fns)
+            .field("id", id)
             .field("flags", flags)
             .field("api_version", api_version)
             .field("enabled_extensions", enabled_extensions)
