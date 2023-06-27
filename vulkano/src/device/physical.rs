@@ -61,7 +61,6 @@ use std::{
 ///     println!("Name: {}", dev.properties().device_name);
 /// }
 /// ```
-#[derive(Debug)]
 pub struct PhysicalDevice {
     handle: ash::vk::PhysicalDevice,
     instance: Arc<Instance>,
@@ -2496,6 +2495,42 @@ impl PhysicalDevice {
             display as *mut _,
             visual_id,
         ) != 0
+    }
+}
+
+impl Debug for PhysicalDevice {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        let Self {
+            handle,
+            instance,
+            id,
+            api_version,
+            supported_extensions,
+            supported_features,
+            properties,
+            extension_properties,
+            memory_properties,
+            queue_family_properties,
+            external_buffer_properties: _,
+            external_fence_properties: _,
+            external_semaphore_properties: _,
+            format_properties: _,
+            image_format_properties: _,
+            sparse_image_format_properties: _,
+        } = self;
+
+        f.debug_struct("PhysicalDevice")
+            .field("handle", handle)
+            .field("instance", instance)
+            .field("id", id)
+            .field("api_version", api_version)
+            .field("supported_extensions", supported_extensions)
+            .field("supported_features", supported_features)
+            .field("properties", properties)
+            .field("extension_properties", extension_properties)
+            .field("memory_properties", memory_properties)
+            .field("queue_family_properties", queue_family_properties)
+            .finish_non_exhaustive()
     }
 }
 
