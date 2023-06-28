@@ -304,26 +304,6 @@ impl Device {
             })
             .collect();
 
-        // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be
-        // ignored by the driver. For backwards compatibility, the spec recommends passing the
-        // exact instance layers to the device as well. There's no need to support separate
-        // requests at device creation time for legacy drivers: the spec claims that "[at] the
-        // time of deprecation there were no known device-only layers."
-        //
-        // Because there's no way to query the list of layers enabled for an instance, we need
-        // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
-        // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-        let enabled_layers_vk: Vec<CString> = physical_device
-            .instance()
-            .enabled_layers()
-            .iter()
-            .map(|name| CString::new(name.clone()).unwrap())
-            .collect();
-        let enabled_layers_ptrs_vk = enabled_layers_vk
-            .iter()
-            .map(|layer| layer.as_ptr())
-            .collect::<SmallVec<[_; 2]>>();
-
         let enabled_extensions_strings_vk = Vec::<CString>::from(enabled_extensions);
         let enabled_extensions_ptrs_vk = enabled_extensions_strings_vk
             .iter()
@@ -349,8 +329,6 @@ impl Device {
             flags: ash::vk::DeviceCreateFlags::empty(),
             queue_create_info_count: queue_create_infos_vk.len() as u32,
             p_queue_create_infos: queue_create_infos_vk.as_ptr(),
-            enabled_layer_count: enabled_layers_ptrs_vk.len() as u32,
-            pp_enabled_layer_names: enabled_layers_ptrs_vk.as_ptr(),
             enabled_extension_count: enabled_extensions_ptrs_vk.len() as u32,
             pp_enabled_extension_names: enabled_extensions_ptrs_vk.as_ptr(),
             p_enabled_features: ptr::null(),

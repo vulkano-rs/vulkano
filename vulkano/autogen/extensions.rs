@@ -9,9 +9,11 @@
 
 use super::{write_file, IndexMap, VkRegistryData};
 use heck::ToSnakeCase;
+use once_cell::sync::Lazy;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
-use std::{cmp::Ordering, fmt::Write as _};
+use regex::Regex;
+use std::{cmp::min, fmt::Write as _, ops::BitOrAssign};
 use vk_parse::Extension;
 
 // This is not included in vk.xml, so it's added here manually
@@ -54,44 +56,24 @@ pub struct RequiresOneOf {
     pub instance_extensions: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct RequiresAllOf(pub Vec<Requires>);
+impl BitOrAssign<&Self> for RequiresOneOf {
+    fn bitor_assign(&mut self, rhs: &Self) {
+        self.api_version = match (self.api_version, rhs.api_version) {
+            (None, None) => None,
+            (None, Some(x)) | (Some(x), None) => Some(x),
+            (Some(lhs), Some(rhs)) => Some(min(lhs, rhs)),
+        };
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Requires {
-    APIVersion(u32, u32),
-    DeviceExtension(String),
-    InstanceExtension(String),
-}
-
-impl PartialOrd for Requires {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Requires {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (
-                Requires::APIVersion(self_major, self_minor),
-                Requires::APIVersion(other_major, other_minor),
-            ) => self_major
-                .cmp(other_major)
-                .then_with(|| self_minor.cmp(other_minor))
-                .reverse(),
-            (Requires::DeviceExtension(self_ext), Requires::DeviceExtension(other_ext)) => {
-                self_ext.cmp(other_ext)
+        for rhs_ext in &rhs.device_extensions {
+            if !self.device_extensions.contains(rhs_ext) {
+                self.device_extensions.push(rhs_ext.to_owned());
             }
-            (Requires::InstanceExtension(self_ext), Requires::InstanceExtension(other_ext)) => {
-                self_ext.cmp(other_ext)
+        }
+
+        for rhs_ext in &rhs.instance_extensions {
+            if !self.instance_extensions.contains(rhs_ext) {
+                self.instance_extensions.push(rhs_ext.to_owned());
             }
-            (Requires::APIVersion(_, _), Requires::DeviceExtension(_))
-            | (Requires::APIVersion(_, _), Requires::InstanceExtension(_))
-            | (Requires::DeviceExtension(_), Requires::InstanceExtension(_)) => Ordering::Less,
-            (Requires::DeviceExtension(_), Requires::APIVersion(_, _))
-            | (Requires::InstanceExtension(_), Requires::APIVersion(_, _))
-            | (Requires::InstanceExtension(_), Requires::DeviceExtension(_)) => Ordering::Greater,
         }
     }
 }
@@ -100,6 +82,13 @@ impl Ord for Requires {
 enum ExtensionStatus {
     PromotedTo(Requires),
     DeprecatedBy(Option<Requires>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Requires {
+    APIVersion(u32, u32),
+    DeviceExtension(String),
+    InstanceExtension(String),
 }
 
 fn write_device_extensions(vk_data: &VkRegistryData) {
@@ -749,66 +738,49 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
     extensions
         .values()
         .filter(|ext| ext.ext_type.as_ref().unwrap() == ty)
-        .map(|ext| {
-            let raw = ext.name.to_owned();
+        .map(|extension| {
+            let raw = extension.name.to_owned();
             let name = raw.strip_prefix("VK_").unwrap().to_snake_case();
 
-            let requires_all_of = {
-                let mut requires_all_of = Vec::new();
+            let requires_all_of = extension.depends.as_ref().map_or_else(Vec::new, |depends| {
+                let depends_panic = |err| -> ! {
+                    panic!(
+                        "couldn't parse `depends=` attribute for extension `{}`: {}",
+                        extension.name, err
+                    )
+                };
 
-                if let Some(core) = ext.requires_core.as_ref() {
-                    let (major, minor) = core.split_once('.').unwrap();
-                    requires_all_of.push(RequiresOneOf {
-                        api_version: Some((major.parse().unwrap(), minor.parse().unwrap())),
-                        ..Default::default()
-                    });
-                }
-
-                if let Some(req) = ext.requires.as_ref() {
-                    requires_all_of.extend(req.split(',').map(|mut vk_name| {
-                        let mut requires_one_of = RequiresOneOf::default();
-
-                        loop {
-                            if let Some(version) = vk_name.strip_prefix("VK_VERSION_") {
-                                let (major, minor) = version.split_once('_').unwrap();
-                                requires_one_of.api_version =
-                                    Some((major.parse().unwrap(), minor.parse().unwrap()));
-                                break;
-                            } else {
-                                let ext_name = vk_name.strip_prefix("VK_").unwrap().to_snake_case();
-                                let extension = extensions[vk_name];
-
-                                match extension.ext_type.as_deref() {
-                                    Some("device") => &mut requires_one_of.device_extensions,
-                                    Some("instance") => &mut requires_one_of.instance_extensions,
-                                    _ => unreachable!(),
-                                }
-                                .push(ext_name);
-
-                                if let Some(promotedto) = extension.promotedto.as_ref() {
-                                    vk_name = promotedto.as_str();
-                                } else {
-                                    break;
-                                }
+                match parse_depends(depends).unwrap_or_else(|err| depends_panic(err)) {
+                    expr @ DependsExpression::Name(_) => {
+                        from_one_of(vec![expr], extensions).unwrap_or_else(|err| depends_panic(err))
+                    }
+                    DependsExpression::OneOf(one_of) => {
+                        from_one_of(one_of, extensions).unwrap_or_else(|err| depends_panic(err))
+                    }
+                    DependsExpression::AllOf(all_of) => all_of
+                        .into_iter()
+                        .flat_map(|expr| match expr {
+                            expr @ DependsExpression::Name(_) => {
+                                from_one_of(vec![expr], extensions)
+                                    .unwrap_or_else(|err| depends_panic(err))
                             }
-                        }
-
-                        requires_one_of.device_extensions.reverse();
-                        requires_one_of.instance_extensions.reverse();
-                        requires_one_of
-                    }));
+                            DependsExpression::AllOf(_) => {
+                                depends_panic("AllOf inside another AllOf".into())
+                            }
+                            DependsExpression::OneOf(one_of) => from_one_of(one_of, extensions)
+                                .unwrap_or_else(|err| depends_panic(err)),
+                        })
+                        .collect(),
                 }
+            });
 
-                requires_all_of
-            };
-
-            let conflicts_extensions = conflicts_extensions(&ext.name);
+            let conflicts_extensions = conflicts_extensions(&extension.name);
 
             let mut member = ExtensionsMember {
                 name: format_ident!("{}", name),
                 doc: String::new(),
                 raw,
-                required_if_supported: required_if_supported(ext.name.as_str()),
+                required_if_supported: required_if_supported(extension.name.as_str()),
                 requires_all_of,
                 conflicts_device_extensions: conflicts_extensions
                     .iter()
@@ -817,7 +789,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
                         format_ident!("{}", vk_name.strip_prefix("VK_").unwrap().to_snake_case())
                     })
                     .collect(),
-                status: ext
+                status: extension
                     .promotedto
                     .as_deref()
                     .and_then(|pr| {
@@ -841,7 +813,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
                         }
                     })
                     .or_else(|| {
-                        ext.deprecatedby.as_deref().and_then(|depr| {
+                        extension.deprecatedby.as_deref().and_then(|depr| {
                             if depr.is_empty() {
                                 Some(ExtensionStatus::DeprecatedBy(None))
                             } else if let Some(version) = depr.strip_prefix("VK_VERSION_") {
@@ -869,6 +841,196 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
             member
         })
         .collect()
+}
+
+fn from_one_of(
+    one_of: Vec<DependsExpression>,
+    extensions: &IndexMap<&str, &Extension>,
+) -> Result<Vec<RequiresOneOf>, String> {
+    let mut requires_all_of = vec![RequiresOneOf::default()];
+
+    for expr in one_of {
+        match expr {
+            DependsExpression::Name(vk_name) => {
+                let new = dependency_chain(vk_name, extensions);
+
+                for requires_one_of in &mut requires_all_of {
+                    *requires_one_of |= &new;
+                }
+            }
+            DependsExpression::OneOf(_) => return Err("OneOf inside another OneOf".into()),
+            DependsExpression::AllOf(all_of) => {
+                let mut new_requires_all_of = Vec::new();
+
+                for expr in all_of {
+                    match expr {
+                        DependsExpression::Name(vk_name) => {
+                            let new = dependency_chain(vk_name, extensions);
+                            let mut requires_all_of = requires_all_of.clone();
+
+                            for requires_one_of in &mut requires_all_of {
+                                *requires_one_of |= &new;
+                            }
+
+                            new_requires_all_of.extend(requires_all_of);
+                        }
+                        _ => return Err("More than three levels of nesting".into()),
+                    }
+                }
+
+                requires_all_of = new_requires_all_of;
+            }
+        }
+    }
+
+    Ok(requires_all_of)
+}
+
+fn dependency_chain<'a>(
+    mut vk_name: &'a str,
+    extensions: &IndexMap<&str, &'a Extension>,
+) -> RequiresOneOf {
+    let mut requires_one_of = RequiresOneOf::default();
+
+    loop {
+        if let Some(version) = vk_name.strip_prefix("VK_VERSION_") {
+            let (major, minor) = version.split_once('_').unwrap();
+            requires_one_of.api_version = Some((major.parse().unwrap(), minor.parse().unwrap()));
+            break;
+        } else {
+            let ext_name = vk_name.strip_prefix("VK_").unwrap().to_snake_case();
+            let extension = extensions[vk_name];
+
+            match extension.ext_type.as_deref() {
+                Some("device") => &mut requires_one_of.device_extensions,
+                Some("instance") => &mut requires_one_of.instance_extensions,
+                _ => unreachable!(),
+            }
+            .push(ext_name);
+
+            if let Some(promotedto) = extension.promotedto.as_ref() {
+                vk_name = promotedto.as_str();
+            } else {
+                break;
+            }
+        }
+    }
+
+    requires_one_of.device_extensions.reverse();
+    requires_one_of.instance_extensions.reverse();
+    requires_one_of
+}
+
+#[derive(Debug)]
+enum DependsExpression<'a> {
+    Name(&'a str),
+    OneOf(Vec<Self>),
+    AllOf(Vec<Self>),
+}
+
+fn parse_depends(mut depends: &str) -> Result<DependsExpression<'_>, String> {
+    #[derive(Debug, PartialEq)]
+    enum Token<'a> {
+        Name(&'a str),
+        Plus,
+        Comma,
+        POpen,
+        PClose,
+    }
+
+    static NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9_]+").unwrap());
+
+    let mut next_token = move || {
+        if let Some(m) = NAME.find(depends) {
+            depends = &depends[m.len()..];
+            Ok(Some(Token::Name(m.as_str())))
+        } else {
+            depends
+                .chars()
+                .next()
+                .map(|c| {
+                    let token = match c {
+                        '+' => Token::Plus,
+                        ',' => Token::Comma,
+                        '(' => Token::POpen,
+                        ')' => Token::PClose,
+                        _ => return Err(format!("unexpected character: {}", c)),
+                    };
+                    depends = &depends[1..];
+                    Ok(token)
+                })
+                .transpose()
+        }
+    };
+
+    fn parse_expression<'a>(
+        next_token: &mut impl FnMut() -> Result<Option<Token<'a>>, String>,
+        expect_pclose: bool,
+    ) -> Result<DependsExpression<'a>, String> {
+        let first = match next_token()? {
+            Some(Token::Name(name)) => DependsExpression::Name(name),
+            Some(Token::POpen) => parse_expression(next_token, true)?,
+            Some(token) => return Err(format!("unexpected token: {:?}", token)),
+            None => return Err("unexpected end of string".into()),
+        };
+
+        match next_token()? {
+            Some(separator @ (Token::Plus | Token::Comma)) => {
+                let mut subexpr = vec![first];
+
+                loop {
+                    match next_token()? {
+                        Some(Token::Name(name)) => subexpr.push(DependsExpression::Name(name)),
+                        Some(Token::POpen) => subexpr.push(parse_expression(next_token, true)?),
+                        Some(token) => return Err(format!("unexpected token: {:?}", token)),
+                        None => return Err("unexpected end of string".into()),
+                    }
+
+                    match next_token()? {
+                        Some(Token::PClose) => {
+                            if expect_pclose {
+                                break;
+                            } else {
+                                return Err(format!("unexpected token: {:?}", Token::PClose));
+                            }
+                        }
+                        Some(token) if token == separator => (),
+                        Some(token) => return Err(format!("unexpected token: {:?}", token)),
+                        None => {
+                            if expect_pclose {
+                                return Err("unexpected end of string".into());
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                Ok(match separator {
+                    Token::Plus => DependsExpression::AllOf(subexpr),
+                    Token::Comma => DependsExpression::OneOf(subexpr),
+                    _ => unreachable!(),
+                })
+            }
+            Some(Token::PClose) => {
+                if expect_pclose {
+                    Ok(first)
+                } else {
+                    Err(format!("unexpected token: {:?}", Token::PClose))
+                }
+            }
+            Some(token) => Err(format!("unexpected token: {:?}", token)),
+            None => {
+                if expect_pclose {
+                    Err("unexpected end of string".into())
+                } else {
+                    Ok(first)
+                }
+            }
+        }
+    }
+
+    parse_expression(&mut next_token, false)
 }
 
 fn make_doc(ext: &mut ExtensionsMember) {
