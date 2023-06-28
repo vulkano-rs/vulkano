@@ -647,6 +647,10 @@ impl Display for RuntimeError {
                 "a surface has changed in such a way that it is no longer compatible with the \
                 swapchain, and further presentation requests using the swapchain will fail"
             }
+            RuntimeError::InvalidVideoStdParameters => {
+                "the provided Video Std parameters do not adhere to the requirements of the used \
+                video compression standard"
+            }
             RuntimeError::ValidationFailed => "validation failed",
             RuntimeError::FullScreenExclusiveModeLost => {
                 "an operation on a swapchain created with application controlled full-screen \

@@ -239,7 +239,12 @@ impl<'r> VkRegistryData<'r> {
             .filter_map(|child| {
                 if let RegistryChild::Extensions(ext) = child {
                     return Some(ext.children.iter().filter(|ext| {
-                        if ext.supported.as_deref() == Some("vulkan") && ext.obsoletedby.is_none() {
+                        if ext
+                            .supported
+                            .as_deref()
+                            .map_or(false, |s| s.split(',').any(|s| s == "vulkan"))
+                            && ext.obsoletedby.is_none()
+                        {
                             return true;
                         }
                         false
@@ -271,7 +276,9 @@ impl<'r> VkRegistryData<'r> {
             .iter()
             .filter_map(|child| {
                 if let RegistryChild::Feature(feat) = child {
-                    return Some((feat.name.as_str(), feat));
+                    if feat.api.split(',').any(|s| s == "vulkan") {
+                        return Some((feat.name.as_str(), feat));
+                    }
                 }
 
                 None
