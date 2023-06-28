@@ -11,7 +11,7 @@ use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
 use crate::{
     buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
-    image::{sys::Image, ImageLayout},
+    image::{Image, ImageLayout},
     swapchain::Swapchain,
     DeviceSize, VulkanObject,
 };

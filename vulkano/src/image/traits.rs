@@ -8,7 +8,7 @@
 // according to those terms.
 
 use super::{
-    sys::Image, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers,
+    Image, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers,
     ImageSubresourceRange, ImageUsage, SampleCount,
 };
 use crate::{

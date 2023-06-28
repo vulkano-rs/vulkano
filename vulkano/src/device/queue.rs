@@ -14,7 +14,7 @@ use crate::{
         CommandBufferResourcesUsage, CommandBufferState, CommandBufferUsage, SemaphoreSubmitInfo,
         SubmitInfo,
     },
-    image::{sys::ImageState, ImageAccess},
+    image::{ImageAccess, ImageState},
     instance::debug::DebugUtilsLabel,
     macros::vulkan_bitflags,
     memory::{

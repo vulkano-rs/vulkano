@@ -14,7 +14,7 @@ use super::{
 use crate::{
     buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
-    image::{sys::Image, ImageLayout},
+    image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
         future::{

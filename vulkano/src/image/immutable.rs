@@ -8,10 +8,8 @@
 // according to those terms.
 
 use super::{
-    sys::{Image, RawImage},
-    traits::ImageContent,
-    ImageAccess, ImageCreateFlags, ImageDimensions, ImageError, ImageLayout,
-    ImageSubresourceLayers, ImageUsage, MipmapsCount,
+    sys::RawImage, traits::ImageContent, Image, ImageAccess, ImageCreateFlags, ImageDimensions,
+    ImageError, ImageLayout, ImageSubresourceLayers, ImageUsage, MipmapsCount,
 };
 use crate::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferError, BufferUsage, Subbuffer},

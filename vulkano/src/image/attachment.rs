@@ -8,9 +8,8 @@
 // according to those terms.
 
 use super::{
-    sys::{Image, ImageMemory, RawImage},
-    traits::ImageContent,
-    ImageAccess, ImageAspects, ImageError, ImageLayout, ImageUsage, SampleCount,
+    sys::RawImage, traits::ImageContent, Image, ImageAccess, ImageAspects, ImageError, ImageLayout,
+    ImageMemory, ImageUsage, SampleCount,
 };
 use crate::{
     device::{Device, DeviceOwned},

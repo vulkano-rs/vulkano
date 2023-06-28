@@ -12,7 +12,7 @@ use crate::{
     buffer::Buffer,
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
     device::{Device, DeviceOwned, Queue, QueueFlags},
-    image::{sys::Image, ImageLayout},
+    image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
         fence::Fence,

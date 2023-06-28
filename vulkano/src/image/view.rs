@@ -14,7 +14,7 @@
 //! to be used in a shader descriptor or as a framebuffer attachment.
 
 use super::{
-    sys::Image, ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage,
+    Image, ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage,
 };
 use crate::{
     device::{Device, DeviceOwned},

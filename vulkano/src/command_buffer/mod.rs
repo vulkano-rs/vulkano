@@ -134,7 +134,7 @@ pub use self::{
 use crate::{
     buffer::{Buffer, Subbuffer},
     format::Format,
-    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange, SampleCount},
+    image::{Image, ImageAccess, ImageLayout, ImageSubresourceRange, SampleCount},
     macros::vulkan_enum,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     range_map::RangeMap,

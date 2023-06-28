@@ -28,8 +28,7 @@ use crate::{
     device::{Device, DeviceOwned, QueueFamilyProperties},
     format::FormatFeatures,
     image::{
-        sys::Image, ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange,
-        ImageViewAbstract,
+        Image, ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange, ImageViewAbstract,
     },
     pipeline::{
         graphics::{

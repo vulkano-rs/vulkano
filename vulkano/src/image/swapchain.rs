@@ -7,11 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{
-    sys::{Image, ImageMemory},
-    traits::ImageContent,
-    ImageAccess, ImageLayout,
-};
+use super::{traits::ImageContent, Image, ImageAccess, ImageLayout, ImageMemory};
 use crate::{
     device::{Device, DeviceOwned},
     swapchain::Swapchain,

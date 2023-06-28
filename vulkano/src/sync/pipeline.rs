@@ -11,7 +11,7 @@ use crate::{
     buffer::Buffer,
     descriptor_set::layout::DescriptorType,
     device::{Device, QueueFlags},
-    image::{sys::Image, ImageAspects, ImageLayout, ImageSubresourceRange},
+    image::{Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
     shader::ShaderStages,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
