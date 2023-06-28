@@ -9,6 +9,9 @@
 
 ### Public dependency updates
 
+- [ash](https://crates.io/crates/ash) 0.37.3 (Vulkan 1.3.251)
+- [libloading](https://crates.io/crates/libloading) 0.8
+
 ### Breaking changes
 
 Changes to pipeline construction:
