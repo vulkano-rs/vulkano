@@ -66,7 +66,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc
 /// A simple sampler for most usages:
 ///
 /// ```
-/// use vulkano::sampler::{Sampler, SamplerCreateInfo};
+/// use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear_no_mipmap());
@@ -75,7 +75,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc
 /// More detailed sampler creation:
 ///
 /// ```
-/// use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
+/// use vulkano::image::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo {

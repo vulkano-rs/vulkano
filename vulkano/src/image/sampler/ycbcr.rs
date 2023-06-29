@@ -29,13 +29,19 @@
 //! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
 //! # let descriptor_set_allocator: vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator = return;
 //! # let mut command_buffer_builder: vulkano::command_buffer::AutoCommandBufferBuilder<vulkano::command_buffer::PrimaryAutoCommandBuffer> = return;
-//! use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-//! use vulkano::descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType};
+//! use vulkano::descriptor_set::{
+//!     layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType},
+//!     PersistentDescriptorSet, WriteDescriptorSet,
+//! };
 //! use vulkano::format::Format;
-//! use vulkano::image::{ImmutableImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount};
-//! use vulkano::image::view::{ImageView, ImageViewCreateInfo};
-//! use vulkano::sampler::{Sampler, SamplerCreateInfo};
-//! use vulkano::sampler::ycbcr::{SamplerYcbcrConversion, SamplerYcbcrConversionCreateInfo, SamplerYcbcrModelConversion};
+//! use vulkano::image::{
+//!     sampler::{
+//!         ycbcr::{SamplerYcbcrConversion, SamplerYcbcrConversionCreateInfo, SamplerYcbcrModelConversion},
+//!         Sampler, SamplerCreateInfo,
+//!     },
+//!     view::{ImageView, ImageViewCreateInfo},
+//!     ImmutableImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount,
+//! };
 //! use vulkano::shader::ShaderStage;
 //!
 //! let conversion = SamplerYcbcrConversion::new(device.clone(), SamplerYcbcrConversionCreateInfo {
