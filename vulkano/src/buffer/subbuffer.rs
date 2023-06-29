@@ -9,7 +9,7 @@
 
 //! A subpart of a buffer.
 
-use super::{allocator::Arena, Buffer, BufferError, BufferMemory};
+use super::{allocator::Arena, Buffer, BufferMemory};
 use crate::{
     device::{Device, DeviceOwned},
     macros::try_opt,
@@ -18,15 +18,14 @@ use crate::{
         allocator::{align_down, align_up, DeviceLayout},
         is_aligned, DeviceAlignment,
     },
-    DeviceSize, NonZeroDeviceSize,
+    sync::HostAccessError,
+    DeviceSize, NonZeroDeviceSize, ValidationError,
 };
 use bytemuck::AnyBitPattern;
 use std::{
     alloc::Layout,
     cmp,
-    error::Error,
     ffi::c_void,
-    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::{self, align_of, size_of},
@@ -135,13 +134,23 @@ impl<T: ?Sized> Subbuffer<T> {
     }
 
     /// Returns the device address for this subbuffer.
-    pub fn device_address(&self) -> Result<NonZeroDeviceSize, BufferError> {
+    pub fn device_address(&self) -> Result<NonZeroDeviceSize, ValidationError> {
         self.buffer().device_address().map(|ptr| {
             // SAFETY: The original address came from the Vulkan implementation, and allocation
             // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
             // in range.
             unsafe { NonZeroDeviceSize::new_unchecked(ptr.get() + self.offset) }
         })
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn device_address_unchecked(&self) -> NonZeroDeviceSize {
+        // SAFETY: The original address came from the Vulkan implementation, and allocation
+        // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
+        // in range.
+        NonZeroDeviceSize::new_unchecked(
+            self.buffer().device_address_unchecked().get() + self.offset,
+        )
     }
 
     /// Casts the subbuffer to a slice of raw bytes.
@@ -292,7 +301,7 @@ where
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`write`]: Self::write
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
-    pub fn read(&self) -> Result<BufferReadGuard<'_, T>, BufferError> {
+    pub fn read(&self) -> Result<BufferReadGuard<'_, T>, HostAccessError> {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::read` doesn't support sparse binding yet"),
@@ -313,7 +322,9 @@ where
         };
 
         let mut state = self.buffer().state();
-        state.check_cpu_read(range.clone())?;
+        state
+            .check_cpu_read(range.clone())
+            .map_err(HostAccessError::AccessConflict)?;
         unsafe { state.cpu_read_lock(range.clone()) };
 
         if allocation.atom_size().is_some() {
@@ -322,10 +333,19 @@ where
             // lock, so there will be no new data and this call will do nothing.
             // TODO: probably still more efficient to call it only if we're the first to acquire a
             // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            unsafe { allocation.invalidate_range(range.clone()) }?;
+            unsafe {
+                allocation
+                    .invalidate_range(range.clone())
+                    .map_err(HostAccessError::Invalidate)?
+            };
         }
 
-        let mapped_ptr = self.mapped_ptr().ok_or(BufferError::MemoryNotHostVisible)?;
+        let mapped_ptr =
+            self.mapped_ptr()
+                .ok_or(HostAccessError::ValidationError(ValidationError {
+                    problem: "the memory of this subbuffer is not host-visible".into(),
+                    ..Default::default()
+                }))?;
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
         let data = unsafe { &*T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
 
@@ -361,7 +381,7 @@ where
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`read`]: Self::read
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
-    pub fn write(&self) -> Result<BufferWriteGuard<'_, T>, BufferError> {
+    pub fn write(&self) -> Result<BufferWriteGuard<'_, T>, HostAccessError> {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::write` doesn't support sparse binding yet"),
@@ -382,14 +402,25 @@ where
         };
 
         let mut state = self.buffer().state();
-        state.check_cpu_write(range.clone())?;
+        state
+            .check_cpu_write(range.clone())
+            .map_err(HostAccessError::AccessConflict)?;
         unsafe { state.cpu_write_lock(range.clone()) };
 
         if allocation.atom_size().is_some() {
-            unsafe { allocation.invalidate_range(range.clone()) }?;
+            unsafe {
+                allocation
+                    .invalidate_range(range.clone())
+                    .map_err(HostAccessError::Invalidate)?
+            };
         }
 
-        let mapped_ptr = self.mapped_ptr().ok_or(BufferError::MemoryNotHostVisible)?;
+        let mapped_ptr =
+            self.mapped_ptr()
+                .ok_or(HostAccessError::ValidationError(ValidationError {
+                    problem: "the memory of this subbuffer is not host-visible".into(),
+                    ..Default::default()
+                }))?;
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
         let data = unsafe { &mut *T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
 
@@ -649,58 +680,6 @@ impl<T: ?Sized> Deref for BufferWriteGuard<'_, T> {
 impl<T: ?Sized> DerefMut for BufferWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.data
-    }
-}
-
-/// Error when attempting to CPU-read a buffer.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ReadLockError {
-    /// The buffer is already locked for write mode by the CPU.
-    CpuWriteLocked,
-    /// The buffer is already locked for write mode by the GPU.
-    GpuWriteLocked,
-}
-
-impl Error for ReadLockError {}
-
-impl Display for ReadLockError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                ReadLockError::CpuWriteLocked => {
-                    "the buffer is already locked for write mode by the CPU"
-                }
-                ReadLockError::GpuWriteLocked => {
-                    "the buffer is already locked for write mode by the GPU"
-                }
-            }
-        )
-    }
-}
-
-/// Error when attempting to CPU-write a buffer.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WriteLockError {
-    /// The buffer is already locked by the CPU.
-    CpuLocked,
-    /// The buffer is already locked by the GPU.
-    GpuLocked,
-}
-
-impl Error for WriteLockError {}
-
-impl Display for WriteLockError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                WriteLockError::CpuLocked => "the buffer is already locked by the CPU",
-                WriteLockError::GpuLocked => "the buffer is already locked by the GPU",
-            }
-        )
     }
 }
 

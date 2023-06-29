@@ -101,14 +101,11 @@
 //! [the `view` module]: self::view
 //! [the `shader` module documentation]: crate::shader
 
+use self::sys::RawBuffer;
 pub use self::{
     subbuffer::{BufferContents, BufferContentsLayout, Subbuffer},
     sys::BufferCreateInfo,
     usage::BufferUsage,
-};
-use self::{
-    subbuffer::{ReadLockError, WriteLockError},
-    sys::RawBuffer,
 };
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},
@@ -118,21 +115,20 @@ use crate::{
             AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAlloc, MemoryAllocator,
             MemoryAllocatorError,
         },
-        is_aligned, DedicatedAllocation, DeviceAlignment, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes, ExternalMemoryProperties, MemoryRequirements,
+        is_aligned, DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        ExternalMemoryProperties, MemoryRequirements,
     },
     range_map::RangeMap,
-    sync::{future::AccessError, CurrentAccess, Sharing},
-    DeviceSize, NonZeroDeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf,
-    RuntimeError, ValidationError, Version, VulkanObject,
+    sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
+    DeviceSize, NonZeroDeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    ValidationError, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
+    fmt::{Display, Formatter},
     hash::{Hash, Hasher},
-    mem::size_of_val,
     ops::Range,
     sync::Arc,
 };
@@ -273,13 +269,18 @@ impl Buffer {
         buffer_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         data: T,
-    ) -> Result<Subbuffer<T>, BufferError>
+    ) -> Result<Subbuffer<T>, BufferAllocateError>
     where
         T: BufferContents,
     {
         let buffer = Buffer::new_sized(allocator, buffer_info, allocation_info)?;
 
-        *buffer.write()? = data;
+        {
+            let mut write_guard = buffer
+                .write()
+                .expect("the buffer is somehow in use before we returned it to the user");
+            *write_guard = data;
+        }
 
         Ok(buffer)
     }
@@ -301,7 +302,7 @@ impl Buffer {
         buffer_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         iter: I,
-    ) -> Result<Subbuffer<[T]>, BufferError>
+    ) -> Result<Subbuffer<[T]>, BufferAllocateError>
     where
         T: BufferContents,
         I: IntoIterator<Item = T>,
@@ -315,8 +316,14 @@ impl Buffer {
             iter.len().try_into().unwrap(),
         )?;
 
-        for (o, i) in buffer.write()?.iter_mut().zip(iter) {
-            *o = i;
+        {
+            let mut write_guard = buffer
+                .write()
+                .expect("the buffer is somehow in use before we returned it to the user");
+
+            for (o, i) in write_guard.iter_mut().zip(iter) {
+                *o = i;
+            }
         }
 
         Ok(buffer)
@@ -332,7 +339,7 @@ impl Buffer {
         allocator: &(impl MemoryAllocator + ?Sized),
         buffer_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
-    ) -> Result<Subbuffer<T>, BufferError>
+    ) -> Result<Subbuffer<T>, BufferAllocateError>
     where
         T: BufferContents,
     {
@@ -359,7 +366,7 @@ impl Buffer {
         buffer_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
-    ) -> Result<Subbuffer<[T]>, BufferError>
+    ) -> Result<Subbuffer<[T]>, BufferAllocateError>
     where
         T: BufferContents,
     {
@@ -378,7 +385,7 @@ impl Buffer {
         buffer_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
-    ) -> Result<Subbuffer<T>, BufferError>
+    ) -> Result<Subbuffer<T>, BufferAllocateError>
     where
         T: BufferContents + ?Sized,
     {
@@ -405,7 +412,7 @@ impl Buffer {
         mut buffer_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         layout: DeviceLayout,
-    ) -> Result<Arc<Self>, BufferError> {
+    ) -> Result<Arc<Self>, BufferAllocateError> {
         assert!(layout.alignment().as_devicesize() <= 64);
         // TODO: Enable once sparse binding materializes
         // assert!(!allocate_info.flags.contains(BufferCreateFlags::SPARSE_BINDING));
@@ -418,18 +425,21 @@ impl Buffer {
 
         buffer_info.size = layout.size();
 
-        let raw_buffer = RawBuffer::new(allocator.device().clone(), buffer_info)?;
+        let raw_buffer = RawBuffer::new(allocator.device().clone(), buffer_info)
+            .map_err(BufferAllocateError::CreateBuffer)?;
         let mut requirements = *raw_buffer.memory_requirements();
         requirements.layout = requirements.layout.align_to(layout.alignment()).unwrap();
 
         let mut allocation = unsafe {
-            allocator.allocate_unchecked(
-                requirements,
-                AllocationType::Linear,
-                allocation_info,
-                Some(DedicatedAllocation::Buffer(&raw_buffer)),
-            )
-        }?;
+            allocator
+                .allocate_unchecked(
+                    requirements,
+                    AllocationType::Linear,
+                    allocation_info,
+                    Some(DedicatedAllocation::Buffer(&raw_buffer)),
+                )
+                .map_err(BufferAllocateError::AllocateMemory)?
+        };
         debug_assert!(is_aligned(
             allocation.offset(),
             requirements.layout.alignment(),
@@ -442,7 +452,7 @@ impl Buffer {
 
         unsafe { raw_buffer.bind_memory_unchecked(allocation) }
             .map(Arc::new)
-            .map_err(|(err, _, _)| err.into())
+            .map_err(|(err, _, _)| BufferAllocateError::BindMemory(err))
     }
 
     fn from_raw(inner: RawBuffer, memory: BufferMemory) -> Self {
@@ -499,39 +509,59 @@ impl Buffer {
 
     /// Returns the device address for this buffer.
     // TODO: Caching?
-    pub fn device_address(&self) -> Result<NonZeroDeviceSize, BufferError> {
+    pub fn device_address(&self) -> Result<NonZeroDeviceSize, ValidationError> {
+        self.validate_device_address()?;
+
+        unsafe { Ok(self.device_address_unchecked()) }
+    }
+
+    fn validate_device_address(&self) -> Result<(), ValidationError> {
         let device = self.device();
 
-        // VUID-vkGetBufferDeviceAddress-bufferDeviceAddress-03324
         if !device.enabled_features().buffer_device_address {
-            return Err(BufferError::RequirementNotMet {
-                required_for: "`Buffer::device_address`",
+            return Err(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "buffer_device_address",
                 )])]),
+                vuids: &["VUID-vkGetBufferDeviceAddress-bufferDeviceAddress-03324"],
+                ..Default::default()
             });
         }
 
-        // VUID-VkBufferDeviceAddressInfo-buffer-02601
         if !self.usage().intersects(BufferUsage::SHADER_DEVICE_ADDRESS) {
-            return Err(BufferError::BufferMissingUsage);
+            return Err(ValidationError {
+                context: "self.usage()".into(),
+                problem: "does not contain `BufferUsage::SHADER_DEVICE_ADDRESS`".into(),
+                vuids: &["VUID-VkBufferDeviceAddressInfo-buffer-02601"],
+                ..Default::default()
+            });
         }
 
-        let info = ash::vk::BufferDeviceAddressInfo {
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn device_address_unchecked(&self) -> NonZeroDeviceSize {
+        let device = self.device();
+
+        let info_vk = ash::vk::BufferDeviceAddressInfo {
             buffer: self.handle(),
             ..Default::default()
         };
-        let fns = device.fns();
-        let f = if device.api_version() >= Version::V1_2 {
-            fns.v1_2.get_buffer_device_address
-        } else if device.enabled_extensions().khr_buffer_device_address {
-            fns.khr_buffer_device_address.get_buffer_device_address_khr
-        } else {
-            fns.ext_buffer_device_address.get_buffer_device_address_ext
-        };
-        let ptr = unsafe { f(device.handle(), &info) };
 
-        Ok(NonZeroDeviceSize::new(ptr).unwrap())
+        let ptr = {
+            let fns = device.fns();
+            let f = if device.api_version() >= Version::V1_2 {
+                fns.v1_2.get_buffer_device_address
+            } else if device.enabled_extensions().khr_buffer_device_address {
+                fns.khr_buffer_device_address.get_buffer_device_address_khr
+            } else {
+                fns.ext_buffer_device_address.get_buffer_device_address_ext
+            };
+            f(device.handle(), &info_vk)
+        };
+
+        NonZeroDeviceSize::new(ptr).unwrap()
     }
 
     pub(crate) fn state(&self) -> MutexGuard<'_, BufferState> {
@@ -570,6 +600,34 @@ impl Hash for Buffer {
     }
 }
 
+/// Error that can happen when allocating a new buffer.
+#[derive(Clone, Debug)]
+pub enum BufferAllocateError {
+    CreateBuffer(VulkanError),
+    AllocateMemory(MemoryAllocatorError),
+    BindMemory(RuntimeError),
+}
+
+impl Error for BufferAllocateError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::CreateBuffer(err) => Some(err),
+            Self::AllocateMemory(err) => Some(err),
+            Self::BindMemory(err) => Some(err),
+        }
+    }
+}
+
+impl Display for BufferAllocateError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CreateBuffer(_) => write!(f, "creating the buffer failed"),
+            Self::AllocateMemory(_) => write!(f, "allocating memory for the buffer failed"),
+            Self::BindMemory(_) => write!(f, "binding memory to the buffer failed"),
+        }
+    }
+}
+
 /// The current state of a buffer.
 #[derive(Debug)]
 pub(crate) struct BufferState {
@@ -593,11 +651,11 @@ impl BufferState {
         }
     }
 
-    pub(crate) fn check_cpu_read(&self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
+    pub(crate) fn check_cpu_read(&self, range: Range<DeviceSize>) -> Result<(), AccessConflict> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
-                CurrentAccess::CpuExclusive { .. } => return Err(ReadLockError::CpuWriteLocked),
-                CurrentAccess::GpuExclusive { .. } => return Err(ReadLockError::GpuWriteLocked),
+                CurrentAccess::CpuExclusive { .. } => return Err(AccessConflict::HostWrite),
+                CurrentAccess::GpuExclusive { .. } => return Err(AccessConflict::DeviceWrite),
                 CurrentAccess::Shared { .. } => (),
             }
         }
@@ -631,19 +689,19 @@ impl BufferState {
         }
     }
 
-    pub(crate) fn check_cpu_write(&self, range: Range<DeviceSize>) -> Result<(), WriteLockError> {
+    pub(crate) fn check_cpu_write(&self, range: Range<DeviceSize>) -> Result<(), AccessConflict> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
-                CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
-                CurrentAccess::GpuExclusive { .. } => return Err(WriteLockError::GpuLocked),
+                CurrentAccess::CpuExclusive => return Err(AccessConflict::HostWrite),
+                CurrentAccess::GpuExclusive { .. } => return Err(AccessConflict::DeviceWrite),
                 CurrentAccess::Shared {
                     cpu_reads: 0,
                     gpu_reads: 0,
                 } => (),
                 CurrentAccess::Shared { cpu_reads, .. } if *cpu_reads > 0 => {
-                    return Err(WriteLockError::CpuLocked)
+                    return Err(AccessConflict::HostRead)
                 }
-                CurrentAccess::Shared { .. } => return Err(WriteLockError::GpuLocked),
+                CurrentAccess::Shared { .. } => return Err(AccessConflict::DeviceRead),
             }
         }
 
@@ -776,264 +834,10 @@ struct BufferRangeState {
     current_access: CurrentAccess,
 }
 
-/// Error that can happen in buffer functions.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BufferError {
-    RuntimeError(RuntimeError),
-
-    /// Allocating memory failed.
-    AllocError(MemoryAllocatorError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// The buffer is missing the `SHADER_DEVICE_ADDRESS` usage.
-    BufferMissingUsage,
-
-    /// The memory was created dedicated to a resource, but not to this buffer.
-    DedicatedAllocationMismatch,
-
-    /// A dedicated allocation is required for this buffer, but one was not provided.
-    DedicatedAllocationRequired,
-
-    /// The host is already using this buffer in a way that is incompatible with the
-    /// requested access.
-    InUseByHost,
-
-    /// The device is already using this buffer in a way that is incompatible with the
-    /// requested access.
-    InUseByDevice,
-
-    /// The specified size exceeded the value of the `max_buffer_size` limit.
-    MaxBufferSizeExceeded {
-        size: DeviceSize,
-        max: DeviceSize,
-    },
-
-    /// The offset of the allocation does not have the required alignment.
-    MemoryAllocationNotAligned {
-        allocation_offset: DeviceSize,
-        required_alignment: DeviceAlignment,
-    },
-
-    /// The size of the allocation is smaller than what is required.
-    MemoryAllocationTooSmall {
-        allocation_size: DeviceSize,
-        required_size: DeviceSize,
-    },
-
-    /// The buffer was created with the `SHADER_DEVICE_ADDRESS` usage, but the memory does not
-    /// support this usage.
-    MemoryBufferDeviceAddressNotSupported,
-
-    /// The memory was created with export handle types, but none of these handle types were
-    /// enabled on the buffer.
-    MemoryExternalHandleTypesDisjoint {
-        buffer_handle_types: ExternalMemoryHandleTypes,
-        memory_export_handle_types: ExternalMemoryHandleTypes,
-    },
-
-    /// The memory was created with an import, but the import's handle type was not enabled on
-    /// the buffer.
-    MemoryImportedHandleTypeNotEnabled {
-        buffer_handle_types: ExternalMemoryHandleTypes,
-        memory_imported_handle_type: ExternalMemoryHandleType,
-    },
-
-    /// The memory backing this buffer is not visible to the host.
-    MemoryNotHostVisible,
-
-    /// The protection of buffer and memory are not equal.
-    MemoryProtectedMismatch {
-        buffer_protected: bool,
-        memory_protected: bool,
-    },
-
-    /// The provided memory type is not one of the allowed memory types that can be bound to this
-    /// buffer.
-    MemoryTypeNotAllowed {
-        provided_memory_type_index: u32,
-        allowed_memory_type_bits: u32,
-    },
-
-    /// The sharing mode was set to `Concurrent`, but one of the specified queue family indices was
-    /// out of range.
-    SharingQueueFamilyIndexOutOfRange {
-        queue_family_index: u32,
-        queue_family_count: u32,
-    },
-}
-
-impl Error for BufferError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::RuntimeError(err) => Some(err),
-            Self::AllocError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for BufferError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
-            Self::AllocError(_) => write!(f, "allocating memory failed"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::BufferMissingUsage => {
-                write!(f, "the buffer is missing the `SHADER_DEVICE_ADDRESS` usage")
-            }
-            Self::DedicatedAllocationMismatch => write!(
-                f,
-                "the memory was created dedicated to a resource, but not to this buffer",
-            ),
-            Self::DedicatedAllocationRequired => write!(
-                f,
-                "a dedicated allocation is required for this buffer, but one was not provided"
-            ),
-            Self::InUseByHost => write!(
-                f,
-                "the host is already using this buffer in a way that is incompatible with the \
-                requested access",
-            ),
-            Self::InUseByDevice => write!(
-                f,
-                "the device is already using this buffer in a way that is incompatible with the \
-                requested access"
-            ),
-            Self::MaxBufferSizeExceeded { .. } => write!(
-                f,
-                "the specified size exceeded the value of the `max_buffer_size` limit",
-            ),
-            Self::MemoryAllocationNotAligned {
-                allocation_offset,
-                required_alignment,
-            } => write!(
-                f,
-                "the offset of the allocation ({}) does not have the required alignment ({:?})",
-                allocation_offset, required_alignment,
-            ),
-            Self::MemoryAllocationTooSmall {
-                allocation_size,
-                required_size,
-            } => write!(
-                f,
-                "the size of the allocation ({}) is smaller than what is required ({})",
-                allocation_size, required_size,
-            ),
-            Self::MemoryBufferDeviceAddressNotSupported => write!(
-                f,
-                "the buffer was created with the `SHADER_DEVICE_ADDRESS` usage, but the memory \
-                does not support this usage",
-            ),
-            Self::MemoryExternalHandleTypesDisjoint { .. } => write!(
-                f,
-                "the memory was created with export handle types, but none of these handle types \
-                were enabled on the buffer",
-            ),
-            Self::MemoryImportedHandleTypeNotEnabled { .. } => write!(
-                f,
-                "the memory was created with an import, but the import's handle type was not \
-                enabled on the buffer",
-            ),
-            Self::MemoryNotHostVisible => write!(
-                f,
-                "the memory backing this buffer is not visible to the host",
-            ),
-            Self::MemoryProtectedMismatch {
-                buffer_protected,
-                memory_protected,
-            } => write!(
-                f,
-                "the protection of buffer ({}) and memory ({}) are not equal",
-                buffer_protected, memory_protected,
-            ),
-            Self::MemoryTypeNotAllowed {
-                provided_memory_type_index,
-                allowed_memory_type_bits,
-            } => write!(
-                f,
-                "the provided memory type ({}) is not one of the allowed memory types (",
-                provided_memory_type_index,
-            )
-            .and_then(|_| {
-                let mut first = true;
-
-                for i in (0..size_of_val(allowed_memory_type_bits))
-                    .filter(|i| allowed_memory_type_bits & (1 << i) != 0)
-                {
-                    if first {
-                        write!(f, "{}", i)?;
-                        first = false;
-                    } else {
-                        write!(f, ", {}", i)?;
-                    }
-                }
-
-                Ok(())
-            })
-            .and_then(|_| write!(f, ") that can be bound to this buffer")),
-            Self::SharingQueueFamilyIndexOutOfRange { .. } => write!(
-                f,
-                "the sharing mode was set to `Concurrent`, but one of the specified queue family \
-                indices was out of range",
-            ),
-        }
-    }
-}
-
-impl From<RuntimeError> for BufferError {
-    fn from(err: RuntimeError) -> Self {
-        Self::RuntimeError(err)
-    }
-}
-
-impl From<MemoryAllocatorError> for BufferError {
-    fn from(err: MemoryAllocatorError) -> Self {
-        Self::AllocError(err)
-    }
-}
-
-impl From<RequirementNotMet> for BufferError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
-impl From<ReadLockError> for BufferError {
-    fn from(err: ReadLockError) -> Self {
-        match err {
-            ReadLockError::CpuWriteLocked => Self::InUseByHost,
-            ReadLockError::GpuWriteLocked => Self::InUseByDevice,
-        }
-    }
-}
-
-impl From<WriteLockError> for BufferError {
-    fn from(err: WriteLockError) -> Self {
-        match err {
-            WriteLockError::CpuLocked => Self::InUseByHost,
-            WriteLockError::GpuLocked => Self::InUseByDevice,
-        }
-    }
-}
-
 vulkan_bitflags! {
     #[non_exhaustive]
 
-    /// Flags to be set when creating a buffer.
+    /// Flags specifying additional properties of a buffer.
     BufferCreateFlags = BufferCreateFlags(u32);
 
     /* TODO: enable

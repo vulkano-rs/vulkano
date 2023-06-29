@@ -25,8 +25,12 @@ pub use self::{
         MemoryBarrier, PipelineStage, PipelineStages, QueueFamilyOwnershipTransfer,
     },
 };
-use crate::device::Queue;
-use std::sync::Arc;
+use crate::{device::Queue, RuntimeError, ValidationError};
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
 pub mod event;
 pub mod fence;
@@ -93,4 +97,75 @@ pub(crate) enum CurrentAccess {
 
     /// The resource is not currently being accessed, or is being accessed for reading only.
     Shared { cpu_reads: usize, gpu_reads: usize },
+}
+
+/// Error when attempting to read or write a resource from the host (CPU).
+#[derive(Clone, Debug)]
+pub enum HostAccessError {
+    AccessConflict(AccessConflict),
+    Invalidate(RuntimeError),
+    ValidationError(ValidationError),
+}
+
+impl Error for HostAccessError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::AccessConflict(err) => Some(err),
+            Self::Invalidate(err) => Some(err),
+            Self::ValidationError(err) => Some(err),
+        }
+    }
+}
+
+impl Display for HostAccessError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Self::AccessConflict(_) => {
+                write!(f, "the resource is already in use in a conflicting way")
+            }
+            HostAccessError::Invalidate(_) => write!(f, "invalidating the device memory failed"),
+            HostAccessError::ValidationError(_) => write!(f, "validation error"),
+        }
+    }
+}
+
+/// Conflict when attempting to access a resource.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AccessConflict {
+    /// The resource is already locked for reading by the host (CPU).
+    HostRead,
+
+    /// The resource is already locked for writing by the host (CPU).
+    HostWrite,
+
+    /// The resource is already locked for reading by the device (GPU).
+    DeviceRead,
+
+    /// The resource is already locked for writing by the device (GPU).
+    DeviceWrite,
+}
+
+impl Error for AccessConflict {}
+
+impl Display for AccessConflict {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            AccessConflict::HostRead => write!(
+                f,
+                "the resource is already locked for reading by the host (CPU)"
+            ),
+            AccessConflict::HostWrite => write!(
+                f,
+                "the resource is already locked for writing by the host (CPU)"
+            ),
+            AccessConflict::DeviceRead => write!(
+                f,
+                "the resource is already locked for reading by the device (GPU)"
+            ),
+            AccessConflict::DeviceWrite => write!(
+                f,
+                "the resource is already locked for writing by the device (GPU)"
+            ),
+        }
+    }
 }

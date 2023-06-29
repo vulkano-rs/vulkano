@@ -1855,6 +1855,7 @@ impl SwapchainCreateInfo {
                 for (index, &queue_family_index) in queue_family_indices.iter().enumerate() {
                     if queue_family_indices[..index].contains(&queue_family_index) {
                         return Err(ValidationError {
+                            context: "queue_family_indices".into(),
                             problem: format!(
                                 "the queue family index in the list at index {} is contained in \
                                 the list more than once",
