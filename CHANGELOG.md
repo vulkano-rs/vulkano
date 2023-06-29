@@ -96,6 +96,7 @@ Changes to `Swapchain`:
 - Fixed UB in `ShaderModule::from_bytes[_with_data]`, where an unaligned reference could have been created.
 - Fixed a bug when using `GenericMemoryAllocator` configured not to use dedicated allocation, where a dedicated allocation wasn't created even when required.
 - Fixed UB in `{AutoCommandBufferBuilder, UnsafeCommandBufferBuilder}::push_constants` where a reference to uninitialized bytes could have been created.
+- `Device::set_debug_utils_object_name` no longer exhibits use-after-free UB.
 
 # Version 0.33.0 (2023-04-01)
 
