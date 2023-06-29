@@ -1042,7 +1042,9 @@ impl Device {
         let info = ash::vk::DebugUtilsObjectNameInfoEXT {
             object_type: T::Handle::TYPE,
             object_handle: object.handle().as_raw(),
-            p_object_name: object_name_vk.map_or(ptr::null(), |object_name| object_name.as_ptr()),
+            p_object_name: object_name_vk
+                .as_ref()
+                .map_or(ptr::null(), |object_name| object_name.as_ptr()),
             ..Default::default()
         };
 
