@@ -75,6 +75,7 @@ mod aspect;
 pub mod attachment; // TODO: make private
 pub mod immutable; // TODO: make private
 mod layout;
+pub mod sampler;
 mod storage;
 pub mod swapchain; // TODO: make private
 pub mod sys;

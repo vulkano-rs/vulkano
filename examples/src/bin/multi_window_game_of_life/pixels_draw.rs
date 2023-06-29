@@ -19,7 +19,10 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    image::ImageViewAbstract,
+    image::{
+        sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
+        ImageViewAbstract,
+    },
     memory::allocator::{AllocationCreateInfo, MemoryUsage},
     pipeline::{
         graphics::{
@@ -36,7 +39,6 @@ use vulkano::{
         PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
-    sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
 };
 
 /// Vertex for textured quads.

@@ -193,7 +193,6 @@ pub mod pipeline;
 pub mod query;
 mod range_map;
 pub mod range_set;
-pub mod sampler;
 pub mod shader;
 pub mod swapchain;
 pub mod sync;

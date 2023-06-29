@@ -95,8 +95,7 @@ use crate::{
         DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType,
     },
     device::DeviceOwned,
-    image::ImageLayout,
-    sampler::Sampler,
+    image::{sampler::Sampler, ImageLayout},
     ValidationError, VulkanObject,
 };
 use ahash::HashMap;
