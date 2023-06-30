@@ -24,7 +24,8 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
     image::{
-        view::ImageViewType, ImageAccess, ImageAspects, ImageLayout, ImageViewAbstract, SampleCount,
+        sampler::Sampler, view::ImageViewType, ImageAccess, ImageAspects, ImageLayout,
+        ImageViewAbstract, SampleCount,
     },
     pipeline::{
         graphics::{
@@ -34,7 +35,6 @@ use crate::{
         },
         DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineLayout,
     },
-    sampler::Sampler,
     shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage, ShaderStages},
     sync::{PipelineStageAccess, PipelineStageAccessFlags},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,

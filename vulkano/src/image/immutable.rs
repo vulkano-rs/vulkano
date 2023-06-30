@@ -21,7 +21,7 @@ use crate::{
     },
     device::{Device, DeviceOwned},
     format::Format,
-    image::sys::ImageCreateInfo,
+    image::{sampler::Filter, sys::ImageCreateInfo},
     memory::{
         allocator::{
             AllocationCreateInfo, AllocationType, MemoryAllocatePreference, MemoryAllocator,
@@ -29,7 +29,6 @@ use crate::{
         },
         is_aligned, DedicatedAllocation,
     },
-    sampler::Filter,
     sync::Sharing,
     DeviceSize, RuntimeError,
 };

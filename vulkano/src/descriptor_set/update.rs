@@ -17,9 +17,9 @@ use crate::{
     descriptor_set::layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags},
     device::DeviceOwned,
     image::{
-        view::ImageViewType, ImageAspects, ImageLayout, ImageType, ImageUsage, ImageViewAbstract,
+        sampler::Sampler, view::ImageViewType, ImageAspects, ImageLayout, ImageType, ImageUsage,
+        ImageViewAbstract,
     },
-    sampler::Sampler,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
