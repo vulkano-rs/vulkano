@@ -869,30 +869,35 @@ impl Display for SuballocatorError {
 ///
 /// ```
 /// use vulkano::format::Format;
-/// use vulkano::image::{ImageDimensions, ImmutableImage};
-/// use vulkano::memory::allocator::StandardMemoryAllocator;
+/// use vulkano::image::{Image, ImageCreateInfo, ImageDimensions, ImageUsage};
+/// use vulkano::memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator};
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 ///
 /// let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 ///
 /// # fn read_textures() -> Vec<Vec<u8>> { Vec::new() }
-/// # let mut command_buffer_builder: vulkano::command_buffer::AutoCommandBufferBuilder<vulkano::command_buffer::PrimaryAutoCommandBuffer<vulkano::command_buffer::allocator::StandardCommandBufferAllocator>> = return;
 /// // Allocate some resources.
 /// let textures_data: Vec<Vec<u8>> = read_textures();
 /// let textures = textures_data.into_iter().map(|data| {
-///     ImmutableImage::from_iter(
+///     let image = Image::new(
 ///         &memory_allocator,
-///         data,
-///         ImageDimensions::Dim2d {
-///             width: 1024,
-///             height: 1024,
-///             array_layers: 1,
+///         ImageCreateInfo {
+///             dimensions: ImageDimensions::Dim2d {
+///                 width: 1024,
+///                 height: 1024,
+///                 array_layers: 1,
+///             },
+///             format: Some(Format::R8G8B8A8_UNORM),
+///             usage: ImageUsage::SAMPLED,
+///             ..Default::default()
 ///         },
-///         1.into(),
-///         Format::R8G8B8A8_UNORM,
-///         &mut command_buffer_builder,
+///         AllocationCreateInfo::default(),
 ///     )
-///     .unwrap()
+///     .unwrap();
+///
+///     // ...upload data...
+///
+///     image
 /// });
 /// ```
 ///

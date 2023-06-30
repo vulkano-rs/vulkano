@@ -29,12 +29,11 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 /// ```
 /// # use std::sync::Arc;
 /// # use vulkano::render_pass::RenderPass;
-/// # use vulkano::image::AttachmentImage;
 /// # use vulkano::image::view::ImageView;
 /// use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo};
 ///
 /// # let render_pass: Arc<RenderPass> = return;
-/// # let view: Arc<ImageView<AttachmentImage>> = return;
+/// # let view: Arc<ImageView> = return;
 /// // let render_pass: Arc<_> = ...;
 /// let framebuffer = Framebuffer::new(
 ///     render_pass.clone(),
@@ -42,7 +41,8 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 ///         attachments: vec![view],
 ///         ..Default::default()
 ///     },
-/// ).unwrap();
+/// )
+/// .unwrap();
 /// ```
 #[derive(Debug)]
 pub struct Framebuffer {
@@ -658,7 +658,7 @@ vulkan_bitflags! {
 mod tests {
     use crate::{
         format::Format,
-        image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions},
+        image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageUsage},
         memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
         render_pass::{
             Framebuffer, FramebufferCreateInfo, RenderPass, RenderPassCreateInfo,
@@ -698,6 +698,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -728,7 +729,7 @@ mod tests {
         )
         .unwrap();
 
-        if Framebuffer::new(
+        assert!(Framebuffer::new(
             render_pass.clone(),
             FramebufferCreateInfo {
                 extent: [0xffffffff, 0xffffffff],
@@ -736,12 +737,9 @@ mod tests {
                 ..Default::default()
             },
         )
-        .is_ok()
-        {
-            panic!()
-        }
+        .is_err());
 
-        if Framebuffer::new(
+        assert!(Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 extent: [1, 1],
@@ -749,10 +747,7 @@ mod tests {
                 ..Default::default()
             },
         )
-        .is_ok()
-        {
-            panic!()
-        }
+        .is_err());
     }
 
     #[test]
@@ -787,6 +782,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8_UNORM),
+                    usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -795,17 +791,14 @@ mod tests {
         )
         .unwrap();
 
-        if Framebuffer::new(
+        assert!(Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 attachments: vec![view],
                 ..Default::default()
             },
         )
-        .is_ok()
-        {
-            panic!()
-        }
+        .is_err());
     }
 
     // TODO: check samples mismatch
@@ -842,6 +835,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -894,6 +888,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -902,7 +897,7 @@ mod tests {
         )
         .unwrap();
 
-        if Framebuffer::new(
+        assert!(Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 attachments: vec![view],
@@ -911,10 +906,7 @@ mod tests {
                 ..Default::default()
             },
         )
-        .is_ok()
-        {
-            panic!()
-        }
+        .is_err());
     }
 
     #[test]
@@ -955,6 +947,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -972,6 +965,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -1033,6 +1027,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -1041,17 +1036,14 @@ mod tests {
         )
         .unwrap();
 
-        if Framebuffer::new(
+        assert!(Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 attachments: vec![view],
                 ..Default::default()
             },
         )
-        .is_ok()
-        {
-            panic!()
-        }
+        .is_err());
     }
 
     #[test]
@@ -1086,6 +1078,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -1103,6 +1096,7 @@ mod tests {
                         array_layers: 1,
                     },
                     format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -1111,17 +1105,14 @@ mod tests {
         )
         .unwrap();
 
-        if Framebuffer::new(
+        assert!(Framebuffer::new(
             render_pass,
             FramebufferCreateInfo {
                 attachments: vec![a, b],
                 ..Default::default()
             },
         )
-        .is_ok()
-        {
-            panic!()
-        }
+        .is_err());
     }
 
     #[test]
@@ -1160,8 +1151,6 @@ mod tests {
         )
         .unwrap();
 
-        if Framebuffer::new(render_pass, FramebufferCreateInfo::default()).is_ok() {
-            panic!()
-        }
+        assert!(Framebuffer::new(render_pass, FramebufferCreateInfo::default()).is_err());
     }
 }

@@ -282,7 +282,7 @@
 //!
 //! // let (swapchain, images) = Swapchain::new(...);
 //! # let mut swapchain: ::std::sync::Arc<::vulkano::swapchain::Swapchain> = return;
-//! # let mut images: Vec<::std::sync::Arc<::vulkano::image::SwapchainImage>> = return;
+//! # let mut images: Vec<::std::sync::Arc<::vulkano::image::Image>> = return;
 //! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
 //! let mut recreate_swapchain = false;
 //!

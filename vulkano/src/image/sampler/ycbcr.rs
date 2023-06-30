@@ -23,27 +23,34 @@
 //! # Examples
 //!
 //! ```
+//! use vulkano::{
+//!     descriptor_set::{
+//!         layout::{
+//!             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+//!             DescriptorType,
+//!         },
+//!         PersistentDescriptorSet, WriteDescriptorSet,
+//!     },
+//!     format::Format,
+//!     image::{
+//!         sampler::{
+//!             ycbcr::{
+//!                 SamplerYcbcrConversion, SamplerYcbcrConversionCreateInfo,
+//!                 SamplerYcbcrModelConversion,
+//!             },
+//!             Sampler, SamplerCreateInfo,
+//!         },
+//!         view::{ImageView, ImageViewCreateInfo},
+//!         Image, ImageCreateFlags, ImageCreateInfo, ImageDimensions, ImageUsage,
+//!     },
+//!     memory::allocator::AllocationCreateInfo,
+//!     shader::ShaderStage,
+//! };
+//!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
-//! # let image_data: Vec<u8> = return;
-//! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 //! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
 //! # let descriptor_set_allocator: vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator = return;
-//! # let mut command_buffer_builder: vulkano::command_buffer::AutoCommandBufferBuilder<vulkano::command_buffer::PrimaryAutoCommandBuffer> = return;
-//! use vulkano::descriptor_set::{
-//!     layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType},
-//!     PersistentDescriptorSet, WriteDescriptorSet,
-//! };
-//! use vulkano::format::Format;
-//! use vulkano::image::{
-//!     sampler::{
-//!         ycbcr::{SamplerYcbcrConversion, SamplerYcbcrConversionCreateInfo, SamplerYcbcrModelConversion},
-//!         Sampler, SamplerCreateInfo,
-//!     },
-//!     view::{ImageView, ImageViewCreateInfo},
-//!     ImmutableImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount,
-//! };
-//! use vulkano::shader::ShaderStage;
-//!
+//! #
 //! let conversion = SamplerYcbcrConversion::new(device.clone(), SamplerYcbcrConversionCreateInfo {
 //!     format: Some(Format::G8_B8_R8_3PLANE_420_UNORM),
 //!     ycbcr_model: SamplerYcbcrModelConversion::YcbcrIdentity,
@@ -71,16 +78,24 @@
 //!         .into(),
 //!         ..Default::default()
 //!     },
-//! ).unwrap();
+//! )
+//! .unwrap();
 //!
-//! let image = ImmutableImage::from_iter(
+//! let image = Image::new(
 //!     &memory_allocator,
-//!     image_data,
-//!     ImageDimensions::Dim2d { width: 1920, height: 1080, array_layers: 1 },
-//!     MipmapsCount::One,
-//!     Format::G8_B8_R8_3PLANE_420_UNORM,
-//!     &mut command_buffer_builder,
-//! ).unwrap();
+//!     ImageCreateInfo {
+//!         dimensions: ImageDimensions::Dim2d {
+//!             width: 1920,
+//!             height: 1080,
+//!             array_layers: 1,
+//!         },
+//!         format: Some(Format::G8_B8_R8_3PLANE_420_UNORM),
+//!         usage: ImageUsage::SAMPLED,
+//!         ..Default::default()
+//!     },
+//!     AllocationCreateInfo::default(),
+//! )
+//! .unwrap();
 //!
 //! let create_info = ImageViewCreateInfo {
 //!     sampler_ycbcr_conversion: Some(conversion.clone()),
@@ -93,7 +108,8 @@
 //!     descriptor_set_layout.clone(),
 //!     [WriteDescriptorSet::image_view(0, image_view)],
 //!     [],
-//! ).unwrap();
+//! )
+//! .unwrap();
 //! ```
 
 use crate::{
