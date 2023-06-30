@@ -50,7 +50,10 @@ use self::ycbcr::SamplerYcbcrConversion;
 use crate::{
     device::{Device, DeviceOwned},
     format::FormatFeatures,
-    image::{view::ImageViewType, ImageAspects, ImageViewAbstract},
+    image::{
+        view::{ImageView, ImageViewType},
+        ImageAspects,
+    },
     macros::{impl_id_counter, vulkan_enum},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
@@ -277,10 +280,7 @@ impl Sampler {
     }
 
     /// Checks whether this sampler is compatible with `image_view`.
-    pub fn check_can_sample(
-        &self,
-        image_view: &(impl ImageViewAbstract + ?Sized),
-    ) -> Result<(), ValidationError> {
+    pub fn check_can_sample(&self, image_view: &ImageView) -> Result<(), ValidationError> {
         /*
             NOTE: Most of these checks come from the Instruction/Sampler/Image View Validation
             section, and are not strictly VUIDs.

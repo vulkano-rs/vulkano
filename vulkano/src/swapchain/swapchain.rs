@@ -15,9 +15,7 @@ use crate::{
     buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
     format::Format,
-    image::{
-        Image, ImageFormatInfo, ImageLayout, ImageTiling, ImageType, ImageUsage, SwapchainImage,
-    },
+    image::{Image, ImageFormatInfo, ImageLayout, ImageTiling, ImageType, ImageUsage},
     macros::{impl_id_counter, vulkan_enum},
     swapchain::{PresentInfo, SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
     sync::{
@@ -106,7 +104,7 @@ impl Swapchain {
         device: Arc<Device>,
         surface: Arc<Surface>,
         mut create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), SwapchainCreationError> {
         Self::validate(&device, &surface, &mut create_info)?;
 
         // Checking that the surface doesn't already have a swapchain.
@@ -168,7 +166,7 @@ impl Swapchain {
             .into_iter()
             .enumerate()
             .map(|(image_index, handle)| unsafe {
-                SwapchainImage::from_handle(handle, swapchain.clone(), image_index as u32)
+                Image::from_handle(handle, swapchain.clone(), image_index as u32)
             })
             .collect::<Result<_, _>>()?;
 
@@ -185,7 +183,7 @@ impl Swapchain {
     pub fn recreate(
         self: &Arc<Self>,
         mut create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), SwapchainCreationError> {
         Self::validate(&self.device, &self.surface, &mut create_info)?;
 
         {
@@ -267,7 +265,7 @@ impl Swapchain {
             .into_iter()
             .enumerate()
             .map(|(image_index, handle)| unsafe {
-                SwapchainImage::from_handle(handle, swapchain.clone(), image_index as u32)
+                Image::from_handle(handle, swapchain.clone(), image_index as u32)
             })
             .collect::<Result<_, _>>()?;
 

@@ -10,7 +10,10 @@
 use super::RenderPass;
 use crate::{
     device::{Device, DeviceOwned},
-    image::{view::ImageViewType, ImageAspects, ImageType, ImageUsage, ImageViewAbstract},
+    image::{
+        view::{ImageView, ImageViewType},
+        ImageAspects, ImageType, ImageUsage,
+    },
     macros::{impl_id_counter, vulkan_bitflags},
     RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
@@ -48,7 +51,7 @@ pub struct Framebuffer {
     id: NonZeroU64,
 
     flags: FramebufferCreateFlags,
-    attachments: Vec<Arc<dyn ImageViewAbstract>>,
+    attachments: Vec<Arc<ImageView>>,
     extent: [u32; 2],
     layers: u32,
 }
@@ -340,7 +343,7 @@ impl Framebuffer {
 
     /// Returns the attachments of the framebuffer.
     #[inline]
-    pub fn attachments(&self) -> &[Arc<dyn ImageViewAbstract>] {
+    pub fn attachments(&self) -> &[Arc<ImageView>] {
         &self.attachments
     }
 
@@ -417,7 +420,7 @@ pub struct FramebufferCreateInfo {
     /// image must have at least `views_used` array layers.
     ///
     /// The default value is empty.
-    pub attachments: Vec<Arc<dyn ImageViewAbstract>>,
+    pub attachments: Vec<Arc<ImageView>>,
 
     /// The extent (width and height) of the framebuffer.
     ///
@@ -655,8 +658,8 @@ vulkan_bitflags! {
 mod tests {
     use crate::{
         format::Format,
-        image::{attachment::AttachmentImage, view::ImageView},
-        memory::allocator::StandardMemoryAllocator,
+        image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions},
+        memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
         render_pass::{
             Framebuffer, FramebufferCreateInfo, RenderPass, RenderPassCreateInfo,
             SubpassDescription,
@@ -686,7 +689,20 @@ mod tests {
 
         let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(&memory_allocator, [1024, 768], Format::R8G8B8A8_UNORM).unwrap(),
+            Image::new(
+                &memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 1024,
+                        height: 768,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let _ = Framebuffer::new(
@@ -762,7 +778,20 @@ mod tests {
 
         let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(&memory_allocator, [1024, 768], Format::R8_UNORM).unwrap(),
+            Image::new(
+                &memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 1024,
+                        height: 768,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8_UNORM),
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -804,7 +833,20 @@ mod tests {
 
         let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(&memory_allocator, [600, 600], Format::R8G8B8A8_UNORM).unwrap(),
+            Image::new(
+                &memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 600,
+                        height: 600,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -843,7 +885,20 @@ mod tests {
 
         let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(&memory_allocator, [512, 700], Format::R8G8B8A8_UNORM).unwrap(),
+            Image::new(
+                &memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 512,
+                        height: 700,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -891,11 +946,37 @@ mod tests {
 
         let memory_allocator = StandardMemoryAllocator::new_default(device);
         let a = ImageView::new_default(
-            AttachmentImage::new(&memory_allocator, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            Image::new(
+                &memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 256,
+                        height: 512,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let b = ImageView::new_default(
-            AttachmentImage::new(&memory_allocator, [512, 128], Format::R8G8B8A8_UNORM).unwrap(),
+            Image::new(
+                &memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 512,
+                        height: 128,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -943,7 +1024,20 @@ mod tests {
 
         let memory_allocator = StandardMemoryAllocator::new_default(device);
         let view = ImageView::new_default(
-            AttachmentImage::new(&memory_allocator, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            Image::new(
+                &memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 256,
+                        height: 512,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -983,11 +1077,37 @@ mod tests {
 
         let memory_allocator = StandardMemoryAllocator::new_default(device);
         let a = ImageView::new_default(
-            AttachmentImage::new(&memory_allocator, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            Image::new(
+                &memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 256,
+                        height: 512,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let b = ImageView::new_default(
-            AttachmentImage::new(&memory_allocator, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            Image::new(
+                &memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 256,
+                        height: 512,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
 

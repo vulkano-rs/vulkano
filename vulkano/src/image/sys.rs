@@ -1615,7 +1615,11 @@ impl RawImage {
             return Err((RuntimeError::from(err), self, allocations.into_iter()));
         }
 
-        Ok(Image::from_raw(self, ImageMemory::Normal(allocations)))
+        Ok(Image::from_raw(
+            self,
+            ImageMemory::Normal(allocations),
+            ImageLayout::General,
+        ))
     }
 
     /// Returns the memory requirements for this image.

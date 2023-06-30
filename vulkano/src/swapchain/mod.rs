@@ -332,7 +332,7 @@ mod surface;
 use crate::{
     device::{Device, DeviceOwned},
     format::Format,
-    image::{sys::Image, ImageFormatInfo, ImageTiling, ImageType, ImageUsage, SwapchainImage},
+    image::{Image, ImageFormatInfo, ImageTiling, ImageType, ImageUsage},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     sync::Sharing,
     OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
@@ -418,7 +418,7 @@ impl Swapchain {
         device: Arc<Device>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), VulkanError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         Self::validate_new_inner(&device, &surface, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, surface, create_info)?) }
@@ -430,7 +430,7 @@ impl Swapchain {
         device: Arc<Device>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), RuntimeError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), RuntimeError> {
         let (handle, image_handles) =
             Self::new_inner_unchecked(&device, &surface, &create_info, None)?;
 
@@ -453,7 +453,7 @@ impl Swapchain {
     pub fn recreate(
         self: &Arc<Self>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), VulkanError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         Self::validate_new_inner(&self.device, &self.surface, &create_info)?;
 
         {
@@ -487,7 +487,7 @@ impl Swapchain {
     pub unsafe fn recreate_unchecked(
         self: &Arc<Self>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), RuntimeError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), RuntimeError> {
         // According to the documentation of VkSwapchainCreateInfoKHR:
         //
         // > Upon calling vkCreateSwapchainKHR with a oldSwapchain that is not VK_NULL_HANDLE,
@@ -1158,7 +1158,7 @@ impl Swapchain {
         image_handles: impl IntoIterator<Item = ash::vk::Image>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> (Arc<Swapchain>, Vec<Arc<SwapchainImage>>) {
+    ) -> (Arc<Swapchain>, Vec<Arc<Image>>) {
         let SwapchainCreateInfo {
             flags,
             min_image_count,
@@ -1221,7 +1221,11 @@ impl Swapchain {
             .iter()
             .enumerate()
             .map(|(image_index, entry)| unsafe {
-                SwapchainImage::from_handle(entry.handle, swapchain.clone(), image_index as u32)
+                Arc::new(Image::from_swapchain(
+                    entry.handle,
+                    swapchain.clone(),
+                    image_index as u32,
+                ))
             })
             .collect();
 

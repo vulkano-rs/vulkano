@@ -46,21 +46,14 @@
 //! To be written.
 //!
 
-#[cfg(target_os = "linux")]
-pub use self::storage::SubresourceData;
 pub use self::sys::ImageCreateInfo;
 use self::sys::RawImage;
 pub use self::{
     aspect::{ImageAspect, ImageAspects},
-    attachment::AttachmentImage,
-    immutable::ImmutableImage,
     layout::ImageLayout,
-    storage::StorageImage,
-    swapchain::SwapchainImage,
     sys::ImageError,
-    traits::ImageAccess,
     usage::ImageUsage,
-    view::{ImageViewAbstract, ImageViewType},
+    view::ImageViewType,
 };
 use crate::{
     buffer::subbuffer::{ReadLockError, WriteLockError},
@@ -68,7 +61,8 @@ use crate::{
     format::{Format, FormatFeatures},
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{
-        allocator::MemoryAlloc, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        allocator::{AllocationCreateInfo, MemoryAlloc, MemoryAllocator},
+        is_aligned, DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
         ExternalMemoryProperties, MemoryRequirements,
     },
     range_map::RangeMap,
@@ -83,18 +77,16 @@ use std::{
     hash::{Hash, Hasher},
     iter::{FusedIterator, Peekable},
     ops::Range,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 mod aspect;
-pub mod attachment; // TODO: make private
-pub mod immutable; // TODO: make private
 mod layout;
 pub mod sampler;
-mod storage;
-pub mod swapchain; // TODO: make private
 pub mod sys;
-pub mod traits;
 mod usage;
 pub mod view;
 
@@ -110,7 +102,10 @@ pub struct Image {
     aspect_size: DeviceSize,
     mip_level_size: DeviceSize,
     range_size: DeviceSize,
+
     state: Mutex<ImageState>,
+    layout: ImageLayout,
+    is_layout_initialized: AtomicBool,
 }
 
 /// The type of backing memory that an image can have.
@@ -134,7 +129,41 @@ pub enum ImageMemory {
 }
 
 impl Image {
-    fn from_raw(inner: RawImage, memory: ImageMemory) -> Self {
+    /// Creates a new uninitialized `Image`.
+    pub fn new(
+        allocator: &(impl MemoryAllocator + ?Sized),
+        image_info: ImageCreateInfo,
+        allocation_info: AllocationCreateInfo,
+    ) -> Result<Arc<Self>, ImageError> {
+        // TODO: adjust the code below to make this safe
+        assert!(!image_info.flags.intersects(ImageCreateFlags::DISJOINT));
+
+        let allocation_type = image_info.tiling.into();
+        let raw_image = RawImage::new(allocator.device().clone(), image_info)?;
+        let requirements = raw_image.memory_requirements()[0];
+
+        let allocation = unsafe {
+            allocator.allocate_unchecked(
+                requirements,
+                allocation_type,
+                allocation_info,
+                Some(DedicatedAllocation::Image(&raw_image)),
+            )
+        }?;
+
+        debug_assert!(is_aligned(
+            allocation.offset(),
+            requirements.layout.alignment(),
+        ));
+        debug_assert!(allocation.size() == requirements.layout.size());
+
+        let image =
+            unsafe { raw_image.bind_memory_unchecked([allocation]) }.map_err(|(err, _, _)| err)?;
+
+        Ok(Arc::new(image))
+    }
+
+    fn from_raw(inner: RawImage, memory: ImageMemory, layout: ImageLayout) -> Self {
         let aspects = inner.format().unwrap().aspects();
         let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.into_iter().collect();
         let mip_level_size = inner.dimensions().array_layers() as DeviceSize;
@@ -150,7 +179,10 @@ impl Image {
             aspect_size,
             mip_level_size,
             range_size,
+
             state,
+            is_layout_initialized: AtomicBool::new(false),
+            layout,
         }
     }
 
@@ -188,6 +220,7 @@ impl Image {
                 swapchain,
                 image_index,
             },
+            ImageLayout::PresentSrc,
         )
     }
 
@@ -428,6 +461,40 @@ impl Image {
 
     pub(crate) fn state(&self) -> MutexGuard<'_, ImageState> {
         self.state.lock()
+    }
+
+    pub(crate) fn initial_layout_requirement(&self) -> ImageLayout {
+        self.layout
+    }
+
+    pub(crate) fn final_layout_requirement(&self) -> ImageLayout {
+        self.layout
+    }
+
+    pub(crate) unsafe fn layout_initialized(&self) {
+        match &self.memory {
+            ImageMemory::Normal(..) | ImageMemory::Sparse(..) => {
+                self.is_layout_initialized.store(true, Ordering::Release);
+            }
+            ImageMemory::Swapchain {
+                swapchain,
+                image_index,
+            } => {
+                swapchain.image_layout_initialized(*image_index);
+            }
+        }
+    }
+
+    pub(crate) fn is_layout_initialized(&self) -> bool {
+        match &self.memory {
+            ImageMemory::Normal(..) | ImageMemory::Sparse(..) => {
+                self.is_layout_initialized.load(Ordering::Acquire)
+            }
+            ImageMemory::Swapchain {
+                swapchain,
+                image_index,
+            } => swapchain.is_image_layout_initialized(*image_index),
+        }
     }
 }
 
@@ -1081,33 +1148,6 @@ impl TryFrom<u32> for SampleCount {
             64 => Ok(Self::Sample64),
             _ => Err(()),
         }
-    }
-}
-
-/// Specifies how many mipmaps must be allocated.
-///
-/// Note that at least one mipmap must be allocated, to store the main level of the image.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum MipmapsCount {
-    /// Allocates the number of mipmaps required to store all the mipmaps of the image where each
-    /// mipmap is half the dimensions of the previous level. Guaranteed to be always supported.
-    ///
-    /// Note that this is not necessarily the maximum number of mipmaps, as the Vulkan
-    /// implementation may report that it supports a greater value.
-    Log2,
-
-    /// Allocate one mipmap (ie. just the main level). Always supported.
-    One,
-
-    /// Allocate the given number of mipmaps. May result in an error if the value is out of range
-    /// of what the implementation supports.
-    Specific(u32),
-}
-
-impl From<u32> for MipmapsCount {
-    #[inline]
-    fn from(num: u32) -> MipmapsCount {
-        MipmapsCount::Specific(num)
     }
 }
 
@@ -1994,14 +2034,7 @@ pub struct SparseImageMemoryRequirements {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        command_buffer::{
-            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        },
-        format::Format,
-        image::{ImageAccess, ImageDimensions, ImmutableImage, MipmapsCount},
-        memory::allocator::StandardMemoryAllocator,
-    };
+    use super::*;
 
     #[test]
     fn max_mip_levels() {
@@ -2101,57 +2134,5 @@ mod tests {
             })
         );
         assert_eq!(dims.mip_level_dimensions(9), None);
-    }
-
-    #[test]
-    fn mipmap_working_immutable_image() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let cb_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
-        let mut cbb = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
-            queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
-
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
-        let dimensions = ImageDimensions::Dim2d {
-            width: 512,
-            height: 512,
-            array_layers: 1,
-        };
-        {
-            let mut vec = Vec::new();
-
-            vec.resize(512 * 512, 0u8);
-
-            let image = ImmutableImage::from_iter(
-                &memory_allocator,
-                vec.into_iter(),
-                dimensions,
-                MipmapsCount::One,
-                Format::R8_UNORM,
-                &mut cbb,
-            )
-            .unwrap();
-            assert_eq!(image.mip_levels(), 1);
-        }
-        {
-            let mut vec = Vec::new();
-
-            vec.resize(512 * 512, 0u8);
-
-            let image = ImmutableImage::from_iter(
-                &memory_allocator,
-                vec.into_iter(),
-                dimensions,
-                MipmapsCount::Log2,
-                Format::R8_UNORM,
-                &mut cbb,
-            )
-            .unwrap();
-            assert_eq!(image.mip_levels(), 10);
-        }
     }
 }

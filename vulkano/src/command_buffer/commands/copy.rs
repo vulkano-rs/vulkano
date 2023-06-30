@@ -16,8 +16,8 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures, NumericType},
     image::{
-        sampler::Filter, ImageAccess, ImageAspects, ImageDimensions, ImageLayout,
-        ImageSubresourceLayers, ImageType, ImageUsage, SampleCount, SampleCounts,
+        sampler::Filter, Image, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers,
+        ImageType, ImageUsage, SampleCount, SampleCounts,
     },
     sync::PipelineStageAccessFlags,
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanObject,
@@ -300,10 +300,8 @@ where
 
         let copy_2d_3d_supported =
             device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1;
-        let src_image_inner = src_image.inner();
-        let dst_image_inner = dst_image.inner();
-        let mut src_image_aspects = src_image.format().aspects();
-        let mut dst_image_aspects = dst_image.format().aspects();
+        let mut src_image_aspects = src_image.format().unwrap().aspects();
+        let mut dst_image_aspects = dst_image.format().unwrap().aspects();
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-VkCopyImageInfo2-srcImage-01995
@@ -343,8 +341,8 @@ where
             // VUID-VkCopyImageInfo2-srcImage-01548
             if src_image.format() != dst_image.format() {
                 return Err(CopyError::FormatsMismatch {
-                    src_format: src_image.format(),
-                    dst_format: dst_image.format(),
+                    src_format: src_image.format().unwrap(),
+                    dst_format: dst_image.format().unwrap(),
                 });
             }
         }
@@ -392,11 +390,11 @@ where
 
                 Some((
                     granularity(
-                        src_image.format().block_extent(),
+                        src_image.format().unwrap().block_extent(),
                         src_image_aspects.intersects(ImageAspects::PLANE_0),
                     ),
                     granularity(
-                        dst_image.format().block_extent(),
+                        dst_image.format().unwrap().block_extent(),
                         dst_image_aspects.intersects(ImageAspects::PLANE_0),
                     ),
                 ))
@@ -417,7 +415,7 @@ where
 
         let mut src_image_aspects_used = ImageAspects::empty();
         let mut dst_image_aspects_used = ImageAspects::empty();
-        let is_same_image = src_image_inner == dst_image_inner;
+        let is_same_image = src_image == dst_image;
         let mut overlap_subresource_indices = None;
         let mut overlap_extent_indices = None;
 
@@ -432,7 +430,7 @@ where
             } = region;
 
             let check_subresource = |resource: CopyErrorResource,
-                                     image: &dyn ImageAccess,
+                                     image: &Image,
                                      image_aspects: ImageAspects,
                                      subresource: &ImageSubresourceLayers|
              -> Result<_, CopyError> {
@@ -496,23 +494,25 @@ where
 
                         if subresource.aspects.intersects(ImageAspects::PLANE_0) {
                             (
-                                image.format().planes()[0],
+                                image.format().unwrap().planes()[0],
                                 image.dimensions().width_height_depth(),
                             )
                         } else if subresource.aspects.intersects(ImageAspects::PLANE_1) {
                             (
-                                image.format().planes()[1],
+                                image.format().unwrap().planes()[1],
                                 image
                                     .format()
+                                    .unwrap()
                                     .ycbcr_chroma_sampling()
                                     .unwrap()
                                     .subsampled_extent(image.dimensions().width_height_depth()),
                             )
                         } else {
                             (
-                                image.format().planes()[2],
+                                image.format().unwrap().planes()[2],
                                 image
                                     .format()
+                                    .unwrap()
                                     .ycbcr_chroma_sampling()
                                     .unwrap()
                                     .subsampled_extent(image.dimensions().width_height_depth()),
@@ -520,7 +520,7 @@ where
                         }
                     } else {
                         (
-                            image.format(),
+                            image.format().unwrap(),
                             image
                                 .dimensions()
                                 .mip_level_dimensions(subresource.mip_level)
@@ -1041,7 +1041,7 @@ where
         assert_eq!(device, src_buffer.device());
         assert_eq!(device, dst_image.device());
 
-        let mut image_aspects = dst_image.format().aspects();
+        let mut image_aspects = dst_image.format().unwrap().aspects();
 
         // VUID-VkCopyBufferToImageInfo2-commandBuffer-04477
         if !queue_family_properties
@@ -1125,7 +1125,7 @@ where
                 };
 
                 Some(granularity(
-                    dst_image.format().block_extent(),
+                    dst_image.format().unwrap().block_extent(),
                     image_aspects.intersects(ImageAspects::PLANE_0),
                 ))
             }
@@ -1199,23 +1199,25 @@ where
                 if image_aspects.intersects(ImageAspects::PLANE_0) {
                     if image_subresource.aspects.intersects(ImageAspects::PLANE_0) {
                         (
-                            dst_image.format().planes()[0],
+                            dst_image.format().unwrap().planes()[0],
                             dst_image.dimensions().width_height_depth(),
                         )
                     } else if image_subresource.aspects.intersects(ImageAspects::PLANE_1) {
                         (
-                            dst_image.format().planes()[1],
+                            dst_image.format().unwrap().planes()[1],
                             dst_image
                                 .format()
+                                .unwrap()
                                 .ycbcr_chroma_sampling()
                                 .unwrap()
                                 .subsampled_extent(dst_image.dimensions().width_height_depth()),
                         )
                     } else {
                         (
-                            dst_image.format().planes()[2],
+                            dst_image.format().unwrap().planes()[2],
                             dst_image
                                 .format()
+                                .unwrap()
                                 .ycbcr_chroma_sampling()
                                 .unwrap()
                                 .subsampled_extent(dst_image.dimensions().width_height_depth()),
@@ -1223,7 +1225,7 @@ where
                     }
                 } else {
                     (
-                        dst_image.format(),
+                        dst_image.format().unwrap(),
                         dst_image
                             .dimensions()
                             .mip_level_dimensions(image_subresource.mip_level)
@@ -1467,7 +1469,8 @@ where
                             Resource::Buffer {
                                 buffer: src_buffer.clone(),
                                 range: buffer_offset
-                                    ..buffer_offset + region.buffer_copy_size(dst_image.format()),
+                                    ..buffer_offset
+                                        + region.buffer_copy_size(dst_image.format().unwrap()),
                                 memory_access: PipelineStageAccessFlags::Copy_TransferRead,
                             },
                         ),
@@ -1542,7 +1545,7 @@ where
         assert_eq!(device, dst_buffer.device());
         assert_eq!(device, src_image.device());
 
-        let mut image_aspects = src_image.format().aspects();
+        let mut image_aspects = src_image.format().unwrap().aspects();
 
         // VUID-VkCopyImageToBufferInfo2-srcImage-00186
         if !src_image.usage().intersects(ImageUsage::TRANSFER_SRC) {
@@ -1617,7 +1620,7 @@ where
                 };
 
                 Some(granularity(
-                    src_image.format().block_extent(),
+                    src_image.format().unwrap().block_extent(),
                     image_aspects.intersects(ImageAspects::PLANE_0),
                 ))
             }
@@ -1689,23 +1692,25 @@ where
                 if image_aspects.intersects(ImageAspects::PLANE_0) {
                     if image_subresource.aspects.intersects(ImageAspects::PLANE_0) {
                         (
-                            src_image.format().planes()[0],
+                            src_image.format().unwrap().planes()[0],
                             src_image.dimensions().width_height_depth(),
                         )
                     } else if image_subresource.aspects.intersects(ImageAspects::PLANE_1) {
                         (
-                            src_image.format().planes()[1],
+                            src_image.format().unwrap().planes()[1],
                             src_image
                                 .format()
+                                .unwrap()
                                 .ycbcr_chroma_sampling()
                                 .unwrap()
                                 .subsampled_extent(src_image.dimensions().width_height_depth()),
                         )
                     } else {
                         (
-                            src_image.format().planes()[2],
+                            src_image.format().unwrap().planes()[2],
                             src_image
                                 .format()
+                                .unwrap()
                                 .ycbcr_chroma_sampling()
                                 .unwrap()
                                 .subsampled_extent(src_image.dimensions().width_height_depth()),
@@ -1713,7 +1718,7 @@ where
                     }
                 } else {
                     (
-                        src_image.format(),
+                        src_image.format().unwrap(),
                         src_image
                             .dimensions()
                             .mip_level_dimensions(image_subresource.mip_level)
@@ -1967,7 +1972,8 @@ where
                             Resource::Buffer {
                                 buffer: dst_buffer.clone(),
                                 range: buffer_offset
-                                    ..buffer_offset + region.buffer_copy_size(src_image.format()),
+                                    ..buffer_offset
+                                        + region.buffer_copy_size(src_image.format().unwrap()),
                                 memory_access: PipelineStageAccessFlags::Copy_TransferWrite,
                             },
                         ),
@@ -2059,15 +2065,12 @@ where
         // VUID-VkBlitImageInfo2-filter-parameter
         filter.validate_device(device)?;
 
-        let src_image_inner = src_image.inner();
-        let dst_image_inner = dst_image.inner();
-
         // VUID-VkBlitImageInfo2-commonparent
         assert_eq!(device, src_image.device());
         assert_eq!(device, dst_image.device());
 
-        let src_image_aspects = src_image.format().aspects();
-        let dst_image_aspects = dst_image.format().aspects();
+        let src_image_aspects = src_image.format().unwrap().aspects();
+        let dst_image_aspects = dst_image.format().unwrap().aspects();
         let src_image_type = src_image.dimensions().image_type();
         let dst_image_type = dst_image.dimensions().image_type();
 
@@ -2110,18 +2113,28 @@ where
         }
 
         // VUID-VkBlitImageInfo2-srcImage-06421
-        if src_image.format().ycbcr_chroma_sampling().is_some() {
+        if src_image
+            .format()
+            .unwrap()
+            .ycbcr_chroma_sampling()
+            .is_some()
+        {
             return Err(CopyError::FormatNotSupported {
                 resource: CopyErrorResource::Source,
-                format: src_image.format(),
+                format: src_image.format().unwrap(),
             });
         }
 
         // VUID-VkBlitImageInfo2-dstImage-06422
-        if dst_image.format().ycbcr_chroma_sampling().is_some() {
+        if dst_image
+            .format()
+            .unwrap()
+            .ycbcr_chroma_sampling()
+            .is_some()
+        {
             return Err(CopyError::FormatNotSupported {
                 resource: CopyErrorResource::Destination,
-                format: src_image.format(),
+                format: src_image.format().unwrap(),
             });
         }
 
@@ -2131,8 +2144,8 @@ where
             // VUID-VkBlitImageInfo2-srcImage-00231
             if src_image.format() != dst_image.format() {
                 return Err(CopyError::FormatsMismatch {
-                    src_format: src_image.format(),
-                    dst_format: dst_image.format(),
+                    src_format: src_image.format().unwrap(),
+                    dst_format: dst_image.format().unwrap(),
                 });
             }
         } else {
@@ -2140,8 +2153,8 @@ where
             // VUID-VkBlitImageInfo2-srcImage-00230
             if !matches!(
                 (
-                    src_image.format().type_color().unwrap(),
-                    dst_image.format().type_color().unwrap()
+                    src_image.format().unwrap().type_color().unwrap(),
+                    dst_image.format().unwrap().type_color().unwrap(),
                 ),
                 (
                     NumericType::SFLOAT
@@ -2162,8 +2175,8 @@ where
                     | (NumericType::UINT, NumericType::UINT)
             ) {
                 return Err(CopyError::FormatsNotCompatible {
-                    src_format: src_image.format(),
-                    dst_format: dst_image.format(),
+                    src_format: src_image.format().unwrap(),
+                    dst_format: dst_image.format().unwrap(),
                 });
             }
         }
@@ -2240,7 +2253,7 @@ where
             }
         }
 
-        let is_same_image = src_image_inner == dst_image_inner;
+        let is_same_image = src_image == dst_image;
         let mut overlap_subresource_indices = None;
         let mut overlap_extent_indices = None;
 
@@ -2254,7 +2267,7 @@ where
             } = region;
 
             let check_subresource = |resource: CopyErrorResource,
-                                     image: &dyn ImageAccess,
+                                     image: &Image,
                                      image_aspects: ImageAspects,
                                      subresource: &ImageSubresourceLayers|
              -> Result<_, CopyError> {
@@ -2670,8 +2683,8 @@ where
         // VUID-VkResolveImageInfo2-srcImage-01386
         if src_image.format() != dst_image.format() {
             return Err(CopyError::FormatsMismatch {
-                src_format: src_image.format(),
-                dst_format: dst_image.format(),
+                src_format: src_image.format().unwrap(),
+                dst_format: dst_image.format().unwrap(),
             });
         }
 
@@ -2700,8 +2713,16 @@ where
         // Should be guaranteed by the requirement that formats match, and that the destination
         // image format features support color attachments.
         debug_assert!(
-            src_image.format().aspects().intersects(ImageAspects::COLOR)
-                && dst_image.format().aspects().intersects(ImageAspects::COLOR)
+            src_image
+                .format()
+                .unwrap()
+                .aspects()
+                .intersects(ImageAspects::COLOR)
+                && dst_image
+                    .format()
+                    .unwrap()
+                    .aspects()
+                    .intersects(ImageAspects::COLOR)
         );
 
         for (region_index, region) in regions.iter().enumerate() {
@@ -2715,7 +2736,7 @@ where
             } = region;
 
             let check_subresource = |resource: CopyErrorResource,
-                                     image: &dyn ImageAccess,
+                                     image: &Image,
                                      subresource: &ImageSubresourceLayers|
              -> Result<_, CopyError> {
                 // VUID-VkResolveImageInfo2-srcSubresource-01709
@@ -3014,9 +3035,6 @@ where
             return self;
         }
 
-        let src_image_inner = src_image.inner();
-        let dst_image_inner = dst_image.inner();
-
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3
@@ -3058,9 +3076,9 @@ where
                 .collect();
 
             let copy_image_info = ash::vk::CopyImageInfo2 {
-                src_image: src_image_inner.handle(),
+                src_image: src_image.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_image: dst_image_inner.handle(),
+                dst_image: dst_image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -3109,9 +3127,9 @@ where
 
             (fns.v1_0.cmd_copy_image)(
                 self.handle(),
-                src_image_inner.handle(),
+                src_image.handle(),
                 src_image_layout.into(),
-                dst_image_inner.handle(),
+                dst_image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -3141,8 +3159,6 @@ where
         if regions.is_empty() {
             return self;
         }
-
-        let dst_image_inner = dst_image.inner();
 
         let fns = self.device().fns();
 
@@ -3184,7 +3200,7 @@ where
 
             let copy_buffer_to_image_info = ash::vk::CopyBufferToImageInfo2 {
                 src_buffer: src_buffer.buffer().handle(),
-                dst_image: dst_image_inner.handle(),
+                dst_image: dst_image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -3235,7 +3251,7 @@ where
             (fns.v1_0.cmd_copy_buffer_to_image)(
                 self.handle(),
                 src_buffer.buffer().handle(),
-                dst_image_inner.handle(),
+                dst_image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -3265,8 +3281,6 @@ where
         if regions.is_empty() {
             return self;
         }
-
-        let src_image_inner = src_image.inner();
 
         let fns = self.device().fns();
 
@@ -3307,7 +3321,7 @@ where
                 .collect();
 
             let copy_image_to_buffer_info = ash::vk::CopyImageToBufferInfo2 {
-                src_image: src_image_inner.handle(),
+                src_image: src_image.handle(),
                 src_image_layout: src_image_layout.into(),
                 dst_buffer: dst_buffer.buffer().handle(),
                 region_count: regions.len() as u32,
@@ -3358,7 +3372,7 @@ where
 
             (fns.v1_0.cmd_copy_image_to_buffer)(
                 self.handle(),
-                src_image_inner.handle(),
+                src_image.handle(),
                 src_image_layout.into(),
                 dst_buffer.buffer().handle(),
                 regions.len() as u32,
@@ -3388,9 +3402,6 @@ where
         if regions.is_empty() {
             return self;
         }
-
-        let src_image_inner = src_image.inner();
-        let dst_image_inner = dst_image.inner();
 
         let fns = self.device().fns();
 
@@ -3441,9 +3452,9 @@ where
                 .collect();
 
             let blit_image_info = ash::vk::BlitImageInfo2 {
-                src_image: src_image_inner.handle(),
+                src_image: src_image.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_image: dst_image_inner.handle(),
+                dst_image: dst_image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -3501,9 +3512,9 @@ where
 
             (fns.v1_0.cmd_blit_image)(
                 self.handle(),
-                src_image_inner.handle(),
+                src_image.handle(),
                 src_image_layout.into(),
-                dst_image_inner.handle(),
+                dst_image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -3532,9 +3543,6 @@ where
         if regions.is_empty() {
             return self;
         }
-
-        let src_image_inner = src_image.inner();
-        let dst_image_inner = dst_image.inner();
 
         let fns = self.device().fns();
 
@@ -3577,9 +3585,9 @@ where
                 .collect();
 
             let resolve_image_info = ash::vk::ResolveImageInfo2 {
-                src_image: src_image_inner.handle(),
+                src_image: src_image.handle(),
                 src_image_layout: src_image_layout.into(),
-                dst_image: dst_image_inner.handle(),
+                dst_image: dst_image.handle(),
                 dst_image_layout: dst_image_layout.into(),
                 region_count: regions.len() as u32,
                 p_regions: regions.as_ptr(),
@@ -3628,9 +3636,9 @@ where
 
             (fns.v1_0.cmd_resolve_image)(
                 self.handle(),
-                src_image_inner.handle(),
+                src_image.handle(),
                 src_image_layout.into(),
-                dst_image_inner.handle(),
+                dst_image.handle(),
                 dst_image_layout.into(),
                 regions.len() as u32,
                 regions.as_ptr(),
@@ -3791,7 +3799,7 @@ pub struct CopyImageInfo {
     /// The image to copy from.
     ///
     /// There is no default value.
-    pub src_image: Arc<dyn ImageAccess>,
+    pub src_image: Arc<Image>,
 
     /// The layout used for `src_image` during the copy operation.
     ///
@@ -3805,7 +3813,7 @@ pub struct CopyImageInfo {
     /// The image to copy to.
     ///
     /// There is no default value.
-    pub dst_image: Arc<dyn ImageAccess>,
+    pub dst_image: Arc<Image>,
 
     /// The layout used for `dst_image` during the copy operation.
     ///
@@ -3829,7 +3837,7 @@ pub struct CopyImageInfo {
 impl CopyImageInfo {
     /// Returns a `CopyImageInfo` with the specified `src_image` and `dst_image`.
     #[inline]
-    pub fn images(src_image: Arc<dyn ImageAccess>, dst_image: Arc<dyn ImageAccess>) -> Self {
+    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
         let min_array_layers = src_image
             .dimensions()
             .array_layers()
@@ -3931,7 +3939,7 @@ pub struct CopyBufferToImageInfo {
     /// The image to copy to.
     ///
     /// There is no default value.
-    pub dst_image: Arc<dyn ImageAccess>,
+    pub dst_image: Arc<Image>,
 
     /// The layout used for `dst_image` during the copy operation.
     ///
@@ -3955,10 +3963,7 @@ impl CopyBufferToImageInfo {
     /// Returns a `CopyBufferToImageInfo` with the specified `src_buffer` and
     /// `dst_image`.
     #[inline]
-    pub fn buffer_image(
-        src_buffer: Subbuffer<impl ?Sized>,
-        dst_image: Arc<dyn ImageAccess>,
-    ) -> Self {
+    pub fn buffer_image(src_buffer: Subbuffer<impl ?Sized>, dst_image: Arc<Image>) -> Self {
         let region = BufferImageCopy {
             image_subresource: dst_image.subresource_layers(),
             image_extent: dst_image.dimensions().width_height_depth(),
@@ -3981,7 +3986,7 @@ pub struct CopyImageToBufferInfo {
     /// The image to copy from.
     ///
     /// There is no default value.
-    pub src_image: Arc<dyn ImageAccess>,
+    pub src_image: Arc<Image>,
 
     /// The layout used for `src_image` during the copy operation.
     ///
@@ -4010,10 +4015,7 @@ impl CopyImageToBufferInfo {
     /// Returns a `CopyImageToBufferInfo` with the specified `src_image` and
     /// `dst_buffer`.
     #[inline]
-    pub fn image_buffer(
-        src_image: Arc<dyn ImageAccess>,
-        dst_buffer: Subbuffer<impl ?Sized>,
-    ) -> Self {
+    pub fn image_buffer(src_image: Arc<Image>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
         let region = BufferImageCopy {
             image_subresource: src_image.subresource_layers(),
             image_extent: src_image.dimensions().width_height_depth(),
@@ -4159,7 +4161,7 @@ pub struct BlitImageInfo {
     /// The image to blit from.
     ///
     /// There is no default value.
-    pub src_image: Arc<dyn ImageAccess>,
+    pub src_image: Arc<Image>,
 
     /// The layout used for `src_image` during the blit operation.
     ///
@@ -4173,7 +4175,7 @@ pub struct BlitImageInfo {
     /// The image to blit to.
     ///
     /// There is no default value.
-    pub dst_image: Arc<dyn ImageAccess>,
+    pub dst_image: Arc<Image>,
 
     /// The layout used for `dst_image` during the blit operation.
     ///
@@ -4203,7 +4205,7 @@ pub struct BlitImageInfo {
 impl BlitImageInfo {
     /// Returns a `BlitImageInfo` with the specified `src_image` and `dst_image`.
     #[inline]
-    pub fn images(src_image: Arc<dyn ImageAccess>, dst_image: Arc<dyn ImageAccess>) -> Self {
+    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
         let min_array_layers = src_image
             .dimensions()
             .array_layers()
@@ -4293,7 +4295,7 @@ pub struct ResolveImageInfo {
     /// The multisampled image to resolve from.
     ///
     /// There is no default value.
-    pub src_image: Arc<dyn ImageAccess>,
+    pub src_image: Arc<Image>,
 
     /// The layout used for `src_image` during the resolve operation.
     ///
@@ -4307,7 +4309,7 @@ pub struct ResolveImageInfo {
     /// The non-multisampled image to resolve into.
     ///
     /// There is no default value.
-    pub dst_image: Arc<dyn ImageAccess>,
+    pub dst_image: Arc<Image>,
 
     /// The layout used for `dst_image` during the resolve operation.
     ///
@@ -4331,7 +4333,7 @@ pub struct ResolveImageInfo {
 impl ResolveImageInfo {
     /// Returns a `ResolveImageInfo` with the specified `src_image` and `dst_image`.
     #[inline]
-    pub fn images(src_image: Arc<dyn ImageAccess>, dst_image: Arc<dyn ImageAccess>) -> Self {
+    pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
         let min_array_layers = src_image
             .dimensions()
             .array_layers()

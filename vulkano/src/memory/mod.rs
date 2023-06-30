@@ -95,7 +95,7 @@ use self::allocator::DeviceLayout;
 pub use self::{alignment::*, device_memory::*};
 use crate::{
     buffer::{sys::RawBuffer, Subbuffer},
-    image::{sys::RawImage, ImageAccess, ImageAspects},
+    image::{sys::RawImage, Image, ImageAspects},
     macros::vulkan_bitflags,
     sync::semaphore::Semaphore,
     DeviceSize,
@@ -424,7 +424,7 @@ pub struct BindSparseInfo {
     /// of images that do not have the `sparse_residency` flag set.
     ///
     /// The default value is empty.
-    pub image_opaque_binds: Vec<(Arc<dyn ImageAccess>, Vec<SparseImageOpaqueMemoryBind>)>,
+    pub image_opaque_binds: Vec<(Arc<Image>, Vec<SparseImageOpaqueMemoryBind>)>,
 
     /// The bind operations to perform for images with a known memory layout.
     ///
@@ -434,7 +434,7 @@ pub struct BindSparseInfo {
     /// aspect.
     ///
     /// The default value is empty.
-    pub image_binds: Vec<(Arc<dyn ImageAccess>, Vec<SparseImageMemoryBind>)>,
+    pub image_binds: Vec<(Arc<Image>, Vec<SparseImageMemoryBind>)>,
 
     /// The semaphores to signal after the execution of this batch of sparse bind operations
     /// has completed.

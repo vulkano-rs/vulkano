@@ -13,9 +13,7 @@
 //! an image and describes how the GPU should interpret the data. It is needed when an image is
 //! to be used in a shader descriptor or as a framebuffer attachment.
 
-use super::{
-    Image, ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage,
-};
+use super::{Image, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage};
 use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures},
@@ -30,7 +28,7 @@ use crate::{
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    hash::{Hash, Hasher},
+    hash::Hash,
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -39,30 +37,24 @@ use std::{
 
 /// A wrapper around an image that makes it available to shaders or framebuffers.
 #[derive(Debug)]
-pub struct ImageView<I>
-where
-    I: ImageAccess + ?Sized,
-{
+pub struct ImageView {
     handle: ash::vk::ImageView,
-    image: Arc<I>,
+    image: Arc<Image>,
     id: NonZeroU64,
 
-    component_mapping: ComponentMapping,
+    view_type: ImageViewType,
     format: Option<Format>,
-    format_features: FormatFeatures,
-    sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
+    component_mapping: ComponentMapping,
     subresource_range: ImageSubresourceRange,
     usage: ImageUsage,
-    view_type: ImageViewType,
+    sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
 
+    format_features: FormatFeatures,
     filter_cubic: bool,
     filter_cubic_minmax: bool,
 }
 
-impl<I> ImageView<I>
-where
-    I: ImageAccess + ?Sized,
-{
+impl ImageView {
     /// Creates a new `ImageView`.
     ///
     /// # Panics
@@ -74,9 +66,9 @@ where
     /// - Panics if `create_info.aspects` contains more more than one aspect, unless `depth` and
     ///   `stencil` are the only aspects selected.
     pub fn new(
-        image: Arc<I>,
+        image: Arc<Image>,
         create_info: ImageViewCreateInfo,
-    ) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
+    ) -> Result<Arc<ImageView>, ImageViewCreationError> {
         let format_features = Self::validate_new(&image, &create_info)?;
 
         unsafe {
@@ -89,7 +81,7 @@ where
     }
 
     fn validate_new(
-        image: &I,
+        image: &Image,
         create_info: &ImageViewCreateInfo,
     ) -> Result<FormatFeatures, ImageViewCreationError> {
         let &ImageViewCreateInfo {
@@ -102,8 +94,7 @@ where
             _ne: _,
         } = create_info;
 
-        let image_inner = image.inner();
-        let device = image_inner.device();
+        let device = image.device();
         let format = format.unwrap();
 
         let level_count = subresource_range.mip_levels.end - subresource_range.mip_levels.start;
@@ -118,7 +109,7 @@ where
         // VUID-VkImageSubresourceRange-layerCount-01721
         assert!(layer_count != 0);
 
-        let default_usage = Self::get_default_usage(subresource_range.aspects, image_inner);
+        let default_usage = Self::get_default_usage(subresource_range.aspects, image);
 
         let has_non_default_usage = if usage.is_empty() {
             usage = default_usage;
@@ -168,10 +159,10 @@ where
         });
 
         // Get format features
-        let format_features = unsafe { Self::get_format_features(format, image_inner) };
+        let format_features = unsafe { Self::get_format_features(format, image) };
 
         // No VUID apparently, but this seems like something we want to check?
-        if !image_inner
+        if !image
             .format()
             .unwrap()
             .aspects()
@@ -179,7 +170,7 @@ where
         {
             return Err(ImageViewCreationError::ImageAspectsNotCompatible {
                 aspects: subresource_range.aspects,
-                image_aspects: image_inner.format().unwrap().aspects(),
+                image_aspects: image.format().unwrap().aspects(),
             });
         }
 
@@ -198,9 +189,7 @@ where
 
         // VUID-VkImageViewCreateInfo-image-01003
         if (view_type == ImageViewType::Cube || view_type == ImageViewType::CubeArray)
-            && !image_inner
-                .flags()
-                .intersects(ImageCreateFlags::CUBE_COMPATIBLE)
+            && !image.flags().intersects(ImageCreateFlags::CUBE_COMPATIBLE)
         {
             return Err(ImageViewCreationError::ImageNotCubeCompatible);
         }
@@ -216,10 +205,10 @@ where
         }
 
         // VUID-VkImageViewCreateInfo-subresourceRange-01718
-        if subresource_range.mip_levels.end > image_inner.mip_levels() {
+        if subresource_range.mip_levels.end > image.mip_levels() {
             return Err(ImageViewCreationError::MipLevelsOutOfRange {
                 range_end: subresource_range.mip_levels.end,
-                max: image_inner.mip_levels(),
+                max: image.mip_levels(),
             });
         }
 
@@ -227,7 +216,7 @@ where
             && (view_type == ImageViewType::Dim2d || view_type == ImageViewType::Dim2dArray)
         {
             // VUID-VkImageViewCreateInfo-image-01005
-            if !image_inner
+            if !image
                 .flags()
                 .intersects(ImageCreateFlags::ARRAY_2D_COMPATIBLE)
             {
@@ -244,7 +233,7 @@ where
             // We're using the depth dimension as array layers, but because of mip scaling, the
             // depth, and therefore number of layers available, shrinks as the mip level gets
             // higher.
-            let max = image_inner
+            let max = image
                 .dimensions()
                 .mip_level_dimensions(subresource_range.mip_levels.start)
                 .unwrap()
@@ -258,16 +247,16 @@ where
         } else {
             // VUID-VkImageViewCreateInfo-image-01482
             // VUID-VkImageViewCreateInfo-subresourceRange-01483
-            if subresource_range.array_layers.end > image_inner.dimensions().array_layers() {
+            if subresource_range.array_layers.end > image.dimensions().array_layers() {
                 return Err(ImageViewCreationError::ArrayLayersOutOfRange {
                     range_end: subresource_range.array_layers.end,
-                    max: image_inner.dimensions().array_layers(),
+                    max: image.dimensions().array_layers(),
                 });
             }
         }
 
         // VUID-VkImageViewCreateInfo-image-04972
-        if image_inner.samples() != SampleCount::Sample1
+        if image.samples() != SampleCount::Sample1
             && !(view_type == ImageViewType::Dim2d || view_type == ImageViewType::Dim2dArray)
         {
             return Err(ImageViewCreationError::MultisamplingNot2d);
@@ -306,7 +295,7 @@ where
         }
 
         // VUID-VkImageViewCreateInfo-image-04441
-        if !image_inner.usage().intersects(
+        if !image.usage().intersects(
             ImageUsage::SAMPLED
                 | ImageUsage::STORAGE
                 | ImageUsage::COLOR_ATTACHMENT
@@ -362,12 +351,10 @@ where
 
         /* Check flags requirements */
 
-        if Some(format) != image_inner.format() {
+        if Some(format) != image.format() {
             // VUID-VkImageViewCreateInfo-image-01762
-            if !image_inner
-                .flags()
-                .intersects(ImageCreateFlags::MUTABLE_FORMAT)
-                || !image_inner.format().unwrap().planes().is_empty()
+            if !image.flags().intersects(ImageCreateFlags::MUTABLE_FORMAT)
+                || !image.format().unwrap().planes().is_empty()
                     && subresource_range.aspects.intersects(ImageAspects::COLOR)
             {
                 return Err(ImageViewCreationError::FormatNotCompatible);
@@ -378,7 +365,7 @@ where
             // See https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2361
             if device.enabled_extensions().khr_portability_subset
                 && !device.enabled_features().image_view_format_reinterpretation
-                && format.components() != image_inner.format().unwrap().components()
+                && format.components() != image.format().unwrap().components()
             {
                 return Err(ImageViewCreationError::RequirementNotMet {
                     required_for: "this device is a portability subset device, and the format of \
@@ -390,13 +377,13 @@ where
                 });
             }
 
-            if image_inner
+            if image
                 .flags()
                 .intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE)
             {
                 // VUID-VkImageViewCreateInfo-image-01583
-                if !(format.compatibility() == image_inner.format().unwrap().compatibility()
-                    || format.block_size() == image_inner.format().unwrap().block_size())
+                if !(format.compatibility() == image.format().unwrap().compatibility()
+                    || format.block_size() == image.format().unwrap().block_size())
                 {
                     return Err(ImageViewCreationError::FormatNotCompatible);
                 }
@@ -417,9 +404,9 @@ where
                     }
                 }
             } else {
-                if image_inner.format().unwrap().planes().is_empty() {
+                if image.format().unwrap().planes().is_empty() {
                     // VUID-VkImageViewCreateInfo-image-01761
-                    if format.compatibility() != image_inner.format().unwrap().compatibility() {
+                    if format.compatibility() != image.format().unwrap().compatibility() {
                         return Err(ImageViewCreationError::FormatNotCompatible);
                     }
                 } else {
@@ -432,7 +419,7 @@ where
                     } else {
                         unreachable!()
                     };
-                    let plane_format = image_inner.format().unwrap().planes()[plane];
+                    let plane_format = image.format().unwrap().planes()[plane];
 
                     // VUID-VkImageViewCreateInfo-image-01586
                     if format.compatibility() != plane_format.compatibility() {
@@ -477,16 +464,14 @@ where
         // VUID-VkImageViewCreateInfo-format-04715
         match format.ycbcr_chroma_sampling() {
             Some(ChromaSampling::Mode422) => {
-                if image_inner.dimensions().width() % 2 != 0 {
+                if image.dimensions().width() % 2 != 0 {
                     return Err(
                         ImageViewCreationError::FormatChromaSubsamplingInvalidImageDimensions,
                     );
                 }
             }
             Some(ChromaSampling::Mode420) => {
-                if image_inner.dimensions().width() % 2 != 0
-                    || image_inner.dimensions().height() % 2 != 0
-                {
+                if image.dimensions().width() % 2 != 0 || image.dimensions().height() % 2 != 0 {
                     return Err(
                         ImageViewCreationError::FormatChromaSubsamplingInvalidImageDimensions,
                     );
@@ -522,15 +507,16 @@ where
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
-        image: Arc<I>,
+        image: Arc<Image>,
         create_info: ImageViewCreateInfo,
     ) -> Result<Arc<Self>, RuntimeError> {
-        let format_features = Self::get_format_features(create_info.format.unwrap(), image.inner());
+        let format_features = Self::get_format_features(create_info.format.unwrap(), &image);
+
         Self::new_unchecked_with_format_features(image, create_info, format_features)
     }
 
     unsafe fn new_unchecked_with_format_features(
-        image: Arc<I>,
+        image: Arc<Image>,
         create_info: ImageViewCreateInfo,
         format_features: FormatFeatures,
     ) -> Result<Arc<Self>, RuntimeError> {
@@ -544,10 +530,9 @@ where
             _ne: _,
         } = &create_info;
 
-        let image_inner = image.inner();
-        let device = image_inner.device();
+        let device = image.device();
 
-        let default_usage = Self::get_default_usage(subresource_range.aspects, image_inner);
+        let default_usage = Self::get_default_usage(subresource_range.aspects, &image);
 
         let has_non_default_usage = if usage.is_empty() {
             usage = default_usage;
@@ -558,7 +543,7 @@ where
 
         let mut info_vk = ash::vk::ImageViewCreateInfo {
             flags: ash::vk::ImageViewCreateFlags::empty(),
-            image: image_inner.handle(),
+            image: image.handle(),
             view_type: view_type.into(),
             format: format.unwrap().into(),
             components: component_mapping.into(),
@@ -608,8 +593,9 @@ where
 
     /// Creates a default `ImageView`. Equivalent to
     /// `ImageView::new(image, ImageViewCreateInfo::from_image(image))`.
-    pub fn new_default(image: Arc<I>) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
+    pub fn new_default(image: Arc<Image>) -> Result<Arc<ImageView>, ImageViewCreationError> {
         let create_info = ImageViewCreateInfo::from_image(&image);
+
         Self::new(image, create_info)
     }
 
@@ -620,16 +606,17 @@ where
     /// - `handle` must be a valid Vulkan object handle created from `image`.
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
-        image: Arc<I>,
+        image: Arc<Image>,
         handle: ash::vk::ImageView,
         create_info: ImageViewCreateInfo,
     ) -> Result<Arc<Self>, RuntimeError> {
-        let format_features = Self::get_format_features(create_info.format.unwrap(), image.inner());
+        let format_features = Self::get_format_features(create_info.format.unwrap(), &image);
+
         Self::from_handle_with_format_features(image, handle, create_info, format_features)
     }
 
     unsafe fn from_handle_with_format_features(
-        image: Arc<I>,
+        image: Arc<Image>,
         handle: ash::vk::ImageView,
         create_info: ImageViewCreateInfo,
         format_features: FormatFeatures,
@@ -644,11 +631,10 @@ where
             _ne: _,
         } = create_info;
 
-        let image_inner = image.inner();
-        let device = image_inner.device();
+        let device = image.device();
 
         if usage.is_empty() {
-            usage = Self::get_default_usage(subresource_range.aspects, image_inner);
+            usage = Self::get_default_usage(subresource_range.aspects, &image);
         }
 
         let mut filter_cubic = false;
@@ -665,11 +651,11 @@ where
                 device
                     .physical_device()
                     .image_format_properties_unchecked(ImageFormatInfo {
-                        flags: image_inner.flags(),
-                        format: image_inner.format(),
+                        flags: image.flags(),
+                        format: image.format(),
                         image_type: image.dimensions().image_type(),
-                        tiling: image_inner.tiling(),
-                        usage: image_inner.usage(),
+                        tiling: image.tiling(),
+                        usage: image.usage(),
                         image_view_type: Some(view_type),
                         ..Default::default()
                     })?;
@@ -686,11 +672,11 @@ where
             id: Self::next_id(),
             view_type,
             format,
-            format_features,
             component_mapping,
             subresource_range,
             usage,
             sampler_ycbcr_conversion,
+            format_features,
             filter_cubic,
             filter_cubic_minmax,
         }))
@@ -757,15 +743,100 @@ where
     }
 
     /// Returns the wrapped image that this image view was created from.
-    pub fn image(&self) -> &Arc<I> {
+    #[inline]
+    pub fn image(&self) -> &Arc<Image> {
         &self.image
+    }
+
+    /// Returns the [`ImageViewType`] of this image view.
+    #[inline]
+    pub fn view_type(&self) -> ImageViewType {
+        self.view_type
+    }
+
+    /// Returns the format of this view. This can be different from the parent's format.
+    #[inline]
+    pub fn format(&self) -> Option<Format> {
+        self.format
+    }
+
+    /// Returns the component mapping of this view.
+    #[inline]
+    pub fn component_mapping(&self) -> ComponentMapping {
+        self.component_mapping
+    }
+
+    /// Returns the subresource range of the wrapped image that this view exposes.
+    #[inline]
+    pub fn subresource_range(&self) -> &ImageSubresourceRange {
+        &self.subresource_range
+    }
+
+    /// Returns the usage of the image view.
+    #[inline]
+    pub fn usage(&self) -> ImageUsage {
+        self.usage
+    }
+
+    /// Returns the sampler YCbCr conversion that this image view was created with, if any.
+    #[inline]
+    pub fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
+        self.sampler_ycbcr_conversion.as_ref()
+    }
+
+    /// Returns the dimensions of this view.
+    #[inline]
+    pub fn dimensions(&self) -> ImageDimensions {
+        let array_layers =
+            self.subresource_range.array_layers.end - self.subresource_range.array_layers.start;
+
+        match self.image().dimensions() {
+            ImageDimensions::Dim1d { width, .. } => ImageDimensions::Dim1d {
+                width,
+                array_layers,
+            },
+            ImageDimensions::Dim2d { width, height, .. } => ImageDimensions::Dim2d {
+                width,
+                height,
+                array_layers,
+            },
+            ImageDimensions::Dim3d {
+                width,
+                height,
+                depth,
+            } => ImageDimensions::Dim3d {
+                width,
+                height,
+                depth,
+            },
+        }
+    }
+
+    /// Returns the features supported by the image view's format.
+    #[inline]
+    pub fn format_features(&self) -> FormatFeatures {
+        self.format_features
+    }
+
+    /// Returns whether the image view supports sampling with a
+    /// [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
+    #[inline]
+    pub fn filter_cubic(&self) -> bool {
+        self.filter_cubic
+    }
+
+    /// Returns whether the image view supports sampling with a
+    /// [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
+    /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
+    /// [`Max`](crate::sampler::SamplerReductionMode::Max) `reduction_mode`.
+    #[inline]
+    pub fn filter_cubic_minmax(&self) -> bool {
+        self.filter_cubic_minmax
     }
 }
 
-impl<I> Drop for ImageView<I>
-where
-    I: ImageAccess + ?Sized,
-{
+impl Drop for ImageView {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
             let device = self.device();
@@ -775,27 +846,23 @@ where
     }
 }
 
-unsafe impl<I> VulkanObject for ImageView<I>
-where
-    I: ImageAccess + ?Sized,
-{
+unsafe impl VulkanObject for ImageView {
     type Handle = ash::vk::ImageView;
 
+    #[inline]
     fn handle(&self) -> Self::Handle {
         self.handle
     }
 }
 
-unsafe impl<I> DeviceOwned for ImageView<I>
-where
-    I: ImageAccess + ?Sized,
-{
+unsafe impl DeviceOwned for ImageView {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.image.inner().device()
+        self.image.device()
     }
 }
 
-impl_id_counter!(ImageView<I: ImageAccess + ?Sized>);
+impl_id_counter!(ImageView);
 
 /// Parameters to create a new `ImageView`.
 #[derive(Debug)]
@@ -890,7 +957,8 @@ impl ImageViewCreateInfo {
     /// Returns an `ImageViewCreateInfo` with the `view_type` determined from the image type and
     /// array layers, and `subresource_range` determined from the image format and covering the
     /// whole image.
-    pub fn from_image(image: &(impl ImageAccess + ?Sized)) -> Self {
+    #[inline]
+    pub fn from_image(image: &Image) -> Self {
         Self {
             view_type: match image.dimensions() {
                 ImageDimensions::Dim1d {
@@ -903,7 +971,7 @@ impl ImageViewCreateInfo {
                 ImageDimensions::Dim2d { .. } => ImageViewType::Dim2dArray,
                 ImageDimensions::Dim3d { .. } => ImageViewType::Dim3d,
             },
-            format: Some(image.format()),
+            format: image.format(),
             subresource_range: image.subresource_range(),
             ..Default::default()
         }
@@ -1211,185 +1279,4 @@ vulkan_enum! {
 
     // TODO: document
     CubeArray = CUBE_ARRAY,
-}
-
-/// Trait for types that represent the GPU can access an image view.
-pub unsafe trait ImageViewAbstract:
-    VulkanObject<Handle = ash::vk::ImageView> + DeviceOwned + Debug + Send + Sync
-{
-    /// Returns the wrapped image that this image view was created from.
-    fn image(&self) -> Arc<dyn ImageAccess>;
-
-    /// Returns the component mapping of this view.
-    fn component_mapping(&self) -> ComponentMapping;
-
-    /// Returns the dimensions of this view.
-    #[inline]
-    fn dimensions(&self) -> ImageDimensions {
-        let subresource_range = self.subresource_range();
-        let array_layers =
-            subresource_range.array_layers.end - subresource_range.array_layers.start;
-
-        match self.image().dimensions() {
-            ImageDimensions::Dim1d { width, .. } => ImageDimensions::Dim1d {
-                width,
-                array_layers,
-            },
-            ImageDimensions::Dim2d { width, height, .. } => ImageDimensions::Dim2d {
-                width,
-                height,
-                array_layers,
-            },
-            ImageDimensions::Dim3d {
-                width,
-                height,
-                depth,
-            } => ImageDimensions::Dim3d {
-                width,
-                height,
-                depth,
-            },
-        }
-    }
-
-    /// Returns whether the image view supports sampling with a
-    /// [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
-    fn filter_cubic(&self) -> bool;
-
-    /// Returns whether the image view supports sampling with a
-    /// [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
-    /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
-    /// [`Max`](crate::sampler::SamplerReductionMode::Max) `reduction_mode`.
-    fn filter_cubic_minmax(&self) -> bool;
-
-    /// Returns the format of this view. This can be different from the parent's format.
-    fn format(&self) -> Option<Format>;
-
-    /// Returns the features supported by the image view's format.
-    fn format_features(&self) -> FormatFeatures;
-
-    /// Returns the sampler YCbCr conversion that this image view was created with, if any.
-    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>>;
-
-    /// Returns the subresource range of the wrapped image that this view exposes.
-    fn subresource_range(&self) -> &ImageSubresourceRange;
-
-    /// Returns the usage of the image view.
-    fn usage(&self) -> ImageUsage;
-
-    /// Returns the [`ImageViewType`] of this image view.
-    fn view_type(&self) -> ImageViewType;
-}
-
-unsafe impl<I> ImageViewAbstract for ImageView<I>
-where
-    I: ImageAccess + Debug + 'static,
-{
-    fn image(&self) -> Arc<dyn ImageAccess> {
-        self.image.clone()
-    }
-
-    fn component_mapping(&self) -> ComponentMapping {
-        self.component_mapping
-    }
-
-    fn filter_cubic(&self) -> bool {
-        self.filter_cubic
-    }
-
-    fn filter_cubic_minmax(&self) -> bool {
-        self.filter_cubic_minmax
-    }
-
-    fn format(&self) -> Option<Format> {
-        self.format
-    }
-
-    fn format_features(&self) -> FormatFeatures {
-        self.format_features
-    }
-
-    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
-        self.sampler_ycbcr_conversion.as_ref()
-    }
-
-    fn subresource_range(&self) -> &ImageSubresourceRange {
-        &self.subresource_range
-    }
-
-    fn usage(&self) -> ImageUsage {
-        self.usage
-    }
-
-    fn view_type(&self) -> ImageViewType {
-        self.view_type
-    }
-}
-
-unsafe impl ImageViewAbstract for ImageView<dyn ImageAccess> {
-    #[inline]
-    fn image(&self) -> Arc<dyn ImageAccess> {
-        self.image.clone()
-    }
-
-    #[inline]
-    fn component_mapping(&self) -> ComponentMapping {
-        self.component_mapping
-    }
-
-    #[inline]
-    fn filter_cubic(&self) -> bool {
-        self.filter_cubic
-    }
-
-    #[inline]
-    fn filter_cubic_minmax(&self) -> bool {
-        self.filter_cubic_minmax
-    }
-
-    #[inline]
-    fn format(&self) -> Option<Format> {
-        self.format
-    }
-
-    #[inline]
-    fn format_features(&self) -> FormatFeatures {
-        self.format_features
-    }
-
-    #[inline]
-    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
-        self.sampler_ycbcr_conversion.as_ref()
-    }
-
-    #[inline]
-    fn subresource_range(&self) -> &ImageSubresourceRange {
-        &self.subresource_range
-    }
-
-    #[inline]
-    fn usage(&self) -> ImageUsage {
-        self.usage
-    }
-
-    #[inline]
-    fn view_type(&self) -> ImageViewType {
-        self.view_type
-    }
-}
-
-impl PartialEq for dyn ImageViewAbstract {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle() == other.handle() && self.device() == other.device()
-    }
-}
-
-impl Eq for dyn ImageViewAbstract {}
-
-impl Hash for dyn ImageViewAbstract {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle().hash(state);
-        self.device().hash(state);
-    }
 }
