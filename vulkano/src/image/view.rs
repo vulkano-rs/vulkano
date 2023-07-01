@@ -9,9 +9,13 @@
 
 //! Image views.
 //!
-//! This module contains types related to image views. An image view wraps around
-//! an image and describes how the GPU should interpret the data. It is needed when an image is
-//! to be used in a shader descriptor or as a framebuffer attachment.
+//! This module contains types related to image views. An image view wraps around an image and
+//! describes how the GPU should interpret the data. It is needed when an image is to be used in a
+//! shader descriptor or as a framebuffer attachment.
+//!
+//! See also [the parent module-level documentation] for more information about images.
+//!
+//! [the parent module-level documentation]: super
 
 use super::{Image, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage};
 use crate::{
@@ -36,6 +40,10 @@ use std::{
 };
 
 /// A wrapper around an image that makes it available to shaders or framebuffers.
+///
+/// See also [the parent module-level documentation] for more information about images.
+///
+/// [the parent module-level documentation]: super
 #[derive(Debug)]
 pub struct ImageView {
     handle: ash::vk::ImageView,

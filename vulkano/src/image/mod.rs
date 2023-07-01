@@ -20,6 +20,8 @@
 //!
 //! # Properties of an image
 //!
+//! TODO
+//!
 //! # Images and image views
 //!
 //! There is a distinction between *images* and *image views*. As its name suggests, an image
@@ -30,21 +32,34 @@
 //!
 //! # High-level wrappers
 //!
-//! In the vulkano library, an image is any object that implements the [`ImageAccess`] trait. You
-//! can create a view by wrapping them in an [`ImageView`](crate::image::view::ImageView).
+//! In the vulkano library, images that have memory bound to them are represented by [`Image`]. You
+//! can [create an `Image` directly] by providing a memory allocator and all the info for the image
+//! and allocation you want to create. This should satisify most use cases. The more low-level use
+//! cases such as importing memory for the image are described below.
 //!
-//! Since the `ImageAccess` trait is low-level, you are encouraged to not implement it yourself but
-//! instead use one of the provided implementations that are specialized depending on the way you
-//! are going to use the image:
-//!
-//! - An `AttachmentImage` can be used when you want to draw to an image.
-//! - An `ImmutableImage` stores data which never need be changed after the initial upload,
-//!   like a texture.
+//! You can create an [`ImageView`] from any `Image`.
 //!
 //! # Low-level information
 //!
-//! To be written.
+//! [`RawImage`] is the low-level wrapper around a `VkImage`, which has no memory bound to it. You
+//! can [create a `RawImage`] similarly to `Image` except that you don't provide any info about the
+//! allocation. That way, you can [bind memory to it] however you wish, including:
 //!
+//! - Binding [`DeviceMemory`] you [allocated yourself], for instance with specific export handle
+//!   types.
+//! - Binding [imported] `DeviceMemory`.
+//!
+//! You can [create a `MemoryAlloc` from `DeviceMemory`] if you want to bind its own block of
+//! memory to an image.
+//!
+//! [`ImageView`]: crate::image::view::ImageView
+//! [create an `Image` directly]: Image::new
+//! [create a `RawImage`]: RawImage::new
+//! [bind memory to it]: RawImage::bind_memory
+//! [`DeviceMemory`]: crate::memory::DeviceMemory
+//! [allocated yourself]: crate::memory::DeviceMemory::allocate
+//! [imported]: crate::memory::DeviceMemory::import
+//! [create a `MemoryAlloc` from `DeviceMemory`]: MemoryAlloc::new
 
 pub use self::sys::ImageCreateInfo;
 pub use self::{
@@ -92,6 +107,10 @@ pub mod view;
 /// A multi-dimensioned storage for texel data.
 ///
 /// Unlike [`RawImage`], an `Image` has memory backing it, and can be used normally.
+///
+/// See also [the module-level documentation] for more information about images.
+///
+/// [the module-level documentation]: self
 #[derive(Debug)]
 pub struct Image {
     inner: RawImage,

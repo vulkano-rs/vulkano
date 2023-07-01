@@ -12,6 +12,10 @@
 //! This module contains low-level wrappers around the Vulkan image types. All
 //! other image types of this library, and all custom image types
 //! that you create must wrap around the types in this module.
+//!
+//! See also [the parent module-level documentation] for more information about images.
+//!
+//! [the parent module-level documentation]: super
 
 use super::{
     Image, ImageAspect, ImageAspects, ImageCreateFlags, ImageDimensions, ImageLayout, ImageMemory,
@@ -52,6 +56,10 @@ use std::{
 /// This is the basic image type, a direct translation of a `VkImage` object, but it is mostly
 /// useless in this form. After creating a raw image, you must call `bind_memory` to make a
 /// complete image object.
+///
+/// See also [the parent module-level documentation] for more information about images.
+///
+/// [the parent module-level documentation]: super
 #[derive(Debug)]
 pub struct RawImage {
     handle: ash::vk::Image,
