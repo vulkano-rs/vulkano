@@ -47,14 +47,13 @@
 //!
 
 pub use self::sys::ImageCreateInfo;
-use self::sys::RawImage;
 pub use self::{
     aspect::{ImageAspect, ImageAspects},
     layout::ImageLayout,
     sys::ImageError,
     usage::ImageUsage,
-    view::ImageViewType,
 };
+use self::{sys::RawImage, view::ImageViewType};
 use crate::{
     buffer::subbuffer::{ReadLockError, WriteLockError},
     device::{physical::PhysicalDevice, Device, DeviceOwned},
