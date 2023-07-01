@@ -27,7 +27,7 @@ use vulkano::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
         QueueFlags,
     },
-    image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
+    image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
@@ -165,7 +165,6 @@ fn main() {
             device.clone(),
             surface.clone(),
             SwapchainCreateInfo {
-                // Some drivers report `min_image_count=1` but fullscreen mode requires at least 2.
                 min_image_count: surface_caps.min_image_count.max(2),
                 image_format,
                 image_extent: window.inner_size().into(),
@@ -286,6 +285,7 @@ fn main() {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
         GraphicsPipeline::new(
             device.clone(),
             None,
@@ -374,7 +374,6 @@ fn main() {
                     device.clone(),
                     surface,
                     SwapchainCreateInfo {
-                        // Some drivers report `min_image_count=1` but fullscreen mode requires at least 2.
                         min_image_count: surface_caps.min_image_count.max(2),
                         image_format,
                         image_extent: window.inner_size().into(),
@@ -509,7 +508,7 @@ fn main() {
 }
 
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage>],
+    images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {

@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::{io::Cursor, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
+        CopyBufferToImageInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -25,7 +25,7 @@ use vulkano::{
     image::{
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
         view::ImageView,
-        ImageAccess, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
+        Image, ImageCreateInfo, ImageDimensions, ImageUsage,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -49,7 +49,7 @@ use vulkano::{
         SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
+    DeviceSize, VulkanLibrary,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -143,7 +143,6 @@ fn main() {
             device.clone(),
             surface,
             SwapchainCreateInfo {
-                // Some drivers report `min_image_count=1` but fullscreen mode requires at least 2.
                 min_image_count: surface_capabilities.min_image_count.max(2),
                 image_format,
                 image_extent: window.inner_size().into(),
@@ -224,9 +223,8 @@ fn main() {
     .unwrap();
 
     let texture = {
-        let png_bytes = include_bytes!("image_img.png").to_vec();
-        let cursor = Cursor::new(png_bytes);
-        let decoder = png::Decoder::new(cursor);
+        let png_bytes = include_bytes!("image_img.png").as_slice();
+        let decoder = png::Decoder::new(png_bytes);
         let mut reader = decoder.read_info().unwrap();
         let info = reader.info();
         let dimensions = ImageDimensions::Dim2d {
@@ -234,19 +232,44 @@ fn main() {
             height: info.height,
             array_layers: 1,
         };
-        let mut image_data = Vec::new();
-        image_data.resize((info.width * info.height * 4) as usize, 0);
-        reader.next_frame(&mut image_data).unwrap();
 
-        let image = ImmutableImage::from_iter(
+        let upload_buffer = Buffer::new_slice(
             &memory_allocator,
-            image_data,
-            dimensions,
-            MipmapsCount::One,
-            Format::R8G8B8A8_SRGB,
-            &mut uploads,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+            (info.width * info.height * 4) as DeviceSize,
         )
         .unwrap();
+
+        reader
+            .next_frame(&mut upload_buffer.write().unwrap())
+            .unwrap();
+
+        let image = Image::new(
+            &memory_allocator,
+            ImageCreateInfo {
+                dimensions,
+                format: Some(Format::R8G8B8A8_SRGB),
+                usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+        )
+        .unwrap();
+
+        uploads
+            .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+                upload_buffer,
+                image.clone(),
+            ))
+            .unwrap();
+
         ImageView::new_default(image).unwrap()
     };
 
@@ -285,6 +308,7 @@ fn main() {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
         GraphicsPipeline::new(
             device.clone(),
             None,
@@ -447,7 +471,7 @@ fn main() {
 
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage>],
+    images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {

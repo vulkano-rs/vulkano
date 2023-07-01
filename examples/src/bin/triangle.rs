@@ -27,7 +27,7 @@ use vulkano::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
         QueueFlags,
     },
-    image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
+    image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
@@ -221,7 +221,9 @@ fn main() {
             device.clone(),
             surface,
             SwapchainCreateInfo {
-                // Some drivers report `min_image_count=1` but fullscreen mode requires at least 2.
+                // Some drivers report an `min_image_count` of 1, but fullscreen mode requires at
+                // least 2. Therefore we must ensure the count is at least 2, otherwise the program
+                // would crash when entering fullscreen mode on those drivers.
                 min_image_count: surface_capabilities.min_image_count.max(2),
 
                 image_format,
@@ -681,7 +683,7 @@ fn main() {
 
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage>],
+    images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {

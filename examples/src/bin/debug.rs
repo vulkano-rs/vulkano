@@ -9,14 +9,9 @@
 
 use std::sync::Arc;
 use vulkano::{
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
-    format::Format,
-    image::{ImageDimensions, ImmutableImage, MipmapsCount},
     instance::{
         debug::{
             DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
@@ -24,7 +19,6 @@ use vulkano::{
         },
         Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
     },
-    memory::allocator::StandardMemoryAllocator,
     VulkanLibrary,
 };
 
@@ -151,7 +145,7 @@ fn main() {
         })
         .expect("no device available");
 
-    let (device, mut queues) = Device::new(
+    let (_device, mut _queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
@@ -163,35 +157,6 @@ fn main() {
         },
     )
     .expect("failed to create device");
-    let queue = queues.next().unwrap();
-
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
-    let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
-        queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
-    )
-    .unwrap();
-
-    // Create an image in order to generate some additional logging:
-    let pixel_format = Format::R8G8B8A8_UINT;
-    let dimensions = ImageDimensions::Dim2d {
-        width: 4096,
-        height: 4096,
-        array_layers: 1,
-    };
-    static DATA: [[u8; 4]; 4096 * 4096] = [[0; 4]; 4096 * 4096];
-    let memory_allocator = StandardMemoryAllocator::new_default(device);
-    let _ = ImmutableImage::from_iter(
-        &memory_allocator,
-        DATA.iter().copied(),
-        dimensions,
-        MipmapsCount::One,
-        pixel_format,
-        &mut command_buffer_builder,
-    )
-    .unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window -
     // have fun debugging!)

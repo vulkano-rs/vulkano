@@ -25,8 +25,8 @@ use vulkano::{
     },
     format::Format,
     image::{
-        view::ImageView, ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout,
-        ImageSubresourceLayers, ImageUsage, SampleCount, StorageImage,
+        view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageLayout,
+        ImageSubresourceLayers, ImageUsage, SampleCount,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -136,17 +136,19 @@ fn main() {
 
     let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
-    let image = StorageImage::with_usage(
+    let image = Image::new(
         &memory_allocator,
-        ImageDimensions::Dim2d {
-            width: 512,
-            height: 512,
-            array_layers: 2,
+        ImageCreateInfo {
+            dimensions: ImageDimensions::Dim2d {
+                width: 512,
+                height: 512,
+                array_layers: 2,
+            },
+            format: Some(Format::B8G8R8A8_SRGB),
+            usage: ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
+            ..Default::default()
         },
-        Format::B8G8R8A8_SRGB,
-        ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
-        ImageCreateFlags::empty(),
-        Some(queue.queue_family_index()),
+        AllocationCreateInfo::default(),
     )
     .unwrap();
 
@@ -222,7 +224,7 @@ fn main() {
 
     let render_pass_description = RenderPassCreateInfo {
         attachments: vec![AttachmentDescription {
-            format: Some(image.format()),
+            format: image.format(),
             samples: SampleCount::Sample1,
             load_op: AttachmentLoadOp::Clear,
             store_op: AttachmentStoreOp::Store,
@@ -282,6 +284,7 @@ fn main() {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass, 0).unwrap();
+
         GraphicsPipeline::new(
             device.clone(),
             None,
