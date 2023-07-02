@@ -136,11 +136,12 @@ use crate::{
     device::{Device, DeviceOwned},
     format::{Format, NumericType},
     image::view::ImageViewType,
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags_enum},
     pipeline::{graphics::input_assembly::PrimitiveTopology, layout::PushConstantRange},
     shader::spirv::{Capability, Spirv, SpirvError},
     sync::PipelineStages,
-    DebugWrapper, OomError, RuntimeError, Version, VulkanObject,
+    OomError, RuntimeError, Version, VulkanObject,
 };
 use ahash::{HashMap, HashSet};
 use std::{
@@ -168,7 +169,7 @@ include!(concat!(env!("OUT_DIR"), "/spirv_reqs.rs"));
 #[derive(Debug)]
 pub struct ShaderModule {
     handle: ash::vk::ShaderModule,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
     entry_point_map: HashMap<String, HashMap<ExecutionModel, usize>>,
     entry_point_infos: Vec<EntryPointInfo>,
@@ -296,7 +297,7 @@ impl ShaderModule {
 
         Ok(Arc::new(ShaderModule {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             entry_point_map,
             entry_point_infos,

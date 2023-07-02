@@ -17,7 +17,7 @@ use crate::{
         ImageAspects, ImageFormatInfo, ImageFormatProperties, ImageUsage, SparseImageFormatInfo,
         SparseImageFormatProperties,
     },
-    instance::Instance,
+    instance::{Instance, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     memory::{ExternalMemoryHandleType, MemoryProperties},
     swapchain::{
@@ -2542,6 +2542,13 @@ unsafe impl VulkanObject for PhysicalDevice {
     #[inline]
     fn handle(&self) -> Self::Handle {
         self.handle
+    }
+}
+
+unsafe impl InstanceOwned for PhysicalDevice {
+    #[inline]
+    fn instance(&self) -> &Arc<Instance> {
+        &self.instance
     }
 }
 

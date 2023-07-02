@@ -234,8 +234,8 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    DebugWrapper, DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
-    ValidationError, Version,
+    instance::InstanceOwnedDebugWrapper,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
@@ -650,7 +650,7 @@ impl StandardMemoryAllocator {
 /// [the `MemoryAllocator` implementation]: Self#impl-MemoryAllocator-for-GenericMemoryAllocator<S>
 #[derive(Debug)]
 pub struct GenericMemoryAllocator<S: Suballocator> {
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     // Each memory type has a pool of `DeviceMemory` blocks.
     pools: ArrayVec<Pool<S>, MAX_MEMORY_TYPES>,
     // Each memory heap has its own block size.
@@ -852,7 +852,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         let max_allocations = max_memory_allocation_count / 4 * 3;
 
         GenericMemoryAllocator {
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             pools,
             block_sizes,
             allocation_type,

@@ -9,7 +9,7 @@
 
 use super::RenderPass;
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     image::{view::ImageViewType, ImageAspects, ImageType, ImageUsage, ImageViewAbstract},
     macros::{impl_id_counter, vulkan_bitflags},
     RuntimeError, ValidationError, VulkanError, VulkanObject,
@@ -44,7 +44,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct Framebuffer {
     handle: ash::vk::Framebuffer,
-    render_pass: Arc<RenderPass>,
+    render_pass: DeviceOwnedDebugWrapper<Arc<RenderPass>>,
     id: NonZeroU64,
 
     flags: FramebufferCreateFlags,
@@ -316,7 +316,7 @@ impl Framebuffer {
 
         Arc::new(Framebuffer {
             handle,
-            render_pass,
+            render_pass: DeviceOwnedDebugWrapper(render_pass),
             id: Self::next_id(),
 
             flags,

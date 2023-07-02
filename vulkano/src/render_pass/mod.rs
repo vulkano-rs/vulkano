@@ -30,11 +30,12 @@ use crate::{
     device::{Device, DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
     image::{ImageAspects, ImageLayout, SampleCount},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     shader::ShaderInterface,
     sync::{AccessFlags, DependencyFlags, MemoryBarrier, PipelineStages},
-    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
-    VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use ahash::HashMap;
 use std::{
@@ -109,7 +110,7 @@ mod framebuffer;
 #[derive(Debug)]
 pub struct RenderPass {
     handle: ash::vk::RenderPass,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: RenderPassCreateFlags,
@@ -262,7 +263,7 @@ impl RenderPass {
 
         Arc::new(RenderPass {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
 
             flags,

@@ -333,10 +333,11 @@ use crate::{
     device::{Device, DeviceOwned},
     format::Format,
     image::{sys::Image, ImageFormatInfo, ImageTiling, ImageType, ImageUsage, SwapchainImage},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     sync::Sharing,
-    DebugWrapper, OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
-    VulkanError, VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
+    VulkanObject,
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
@@ -356,8 +357,8 @@ use std::{
 #[derive(Debug)]
 pub struct Swapchain {
     handle: ash::vk::SwapchainKHR,
-    device: DebugWrapper<Arc<Device>>,
-    surface: DebugWrapper<Arc<Surface>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
+    surface: InstanceOwnedDebugWrapper<Arc<Surface>>,
     id: NonZeroU64,
 
     flags: SwapchainCreateFlags,
@@ -1183,8 +1184,8 @@ impl Swapchain {
 
         let swapchain = Arc::new(Swapchain {
             handle,
-            device: DebugWrapper(device),
-            surface: DebugWrapper(surface),
+            device: InstanceOwnedDebugWrapper(device),
+            surface: InstanceOwnedDebugWrapper(surface),
             id: Self::next_id(),
 
             flags,

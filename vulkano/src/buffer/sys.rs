@@ -16,6 +16,7 @@
 use super::{Buffer, BufferCreateFlags, BufferError, BufferMemory, BufferUsage};
 use crate::{
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
         allocator::{AllocationType, DeviceLayout, MemoryAlloc},
@@ -23,8 +24,7 @@ use crate::{
         MemoryPropertyFlags, MemoryRequirements,
     },
     sync::Sharing,
-    DebugWrapper, DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
-    VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -37,7 +37,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct RawBuffer {
     handle: ash::vk::Buffer,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: BufferCreateFlags,
@@ -302,7 +302,7 @@ impl RawBuffer {
 
         RawBuffer {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             flags,
             size,

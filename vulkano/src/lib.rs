@@ -271,10 +271,7 @@ where
 /// is useful because we have a lot of dependency chains, and the same dependencies would otherwise
 /// be debug-formatted along with the dependents over and over leading to royal levels of spam.
 #[repr(transparent)]
-#[derive(PartialEq, Eq)]
-struct DebugWrapper<T>(T)
-where
-    T: Debug + VulkanObject;
+struct DebugWrapper<T>(T);
 
 impl<T> Debug for DebugWrapper<T>
 where
@@ -285,10 +282,7 @@ where
     }
 }
 
-impl<T> Deref for DebugWrapper<T>
-where
-    T: Debug + VulkanObject,
-{
+impl<T> Deref for DebugWrapper<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {

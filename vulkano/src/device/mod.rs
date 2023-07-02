@@ -116,11 +116,11 @@ use crate::{
     descriptor_set::layout::{
         DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutSupport,
     },
-    instance::Instance,
+    instance::{Instance, InstanceOwned, InstanceOwnedDebugWrapper},
     macros::{impl_id_counter, vulkan_bitflags},
     memory::ExternalMemoryHandleType,
-    DebugWrapper, OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
-    Version, VulkanError, VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::Mutex;
@@ -132,7 +132,7 @@ use std::{
     mem::MaybeUninit,
     num::NonZeroU64,
     ops::Deref,
-    ptr,
+    ptr, slice,
     sync::{
         atomic::{AtomicU32, Ordering},
         Arc,
@@ -151,12 +151,12 @@ include!(concat!(env!("OUT_DIR"), "/features.rs"));
 pub struct Device {
     handle: ash::vk::Device,
     // NOTE: `physical_devices` always contains this.
-    physical_device: DebugWrapper<Arc<PhysicalDevice>>,
+    physical_device: InstanceOwnedDebugWrapper<Arc<PhysicalDevice>>,
     id: NonZeroU64,
 
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
-    physical_devices: SmallVec<[Arc<PhysicalDevice>; 2]>,
+    physical_devices: SmallVec<[InstanceOwnedDebugWrapper<Arc<PhysicalDevice>>; 2]>,
 
     // The highest version that is supported for this device.
     // This is the minimum of Instance::max_api_version and PhysicalDevice::api_version.
@@ -446,12 +446,15 @@ impl Device {
 
         let device = Arc::new(Device {
             handle,
-            physical_device: DebugWrapper(physical_device),
+            physical_device: InstanceOwnedDebugWrapper(physical_device),
             id: Self::next_id(),
 
             enabled_extensions,
             enabled_features,
-            physical_devices,
+            physical_devices: physical_devices
+                .into_iter()
+                .map(InstanceOwnedDebugWrapper)
+                .collect(),
 
             api_version,
             fns,
@@ -509,7 +512,7 @@ impl Device {
     /// [`physical_device`]: Self::physical_device
     #[inline]
     pub fn physical_devices(&self) -> &[Arc<PhysicalDevice>] {
-        &self.physical_devices
+        InstanceOwnedDebugWrapper::cast_slice_inner(&self.physical_devices)
     }
 
     /// Returns the instance used to create this device.
@@ -1101,21 +1104,13 @@ impl Debug for Device {
             event_pool: _,
         } = self;
 
-        // A physical device prints pages of poetry when debug-printed. We don't want to spam the
-        // user's console/logs with all that multiple times for each logical device. The user can
-        // still debug-print the physical device(s) manually if they need to.
-        let physical_devices = physical_devices
-            .iter()
-            .map(DebugWrapper)
-            .collect::<SmallVec<[_; 2]>>();
-
         f.debug_struct("Device")
             .field("handle", handle)
             .field("physical_device", physical_device)
             .field("id", id)
             .field("enabled_extensions", enabled_extensions)
             .field("enabled_features", enabled_features)
-            .field("physical_devices", &physical_devices)
+            .field("physical_devices", physical_devices)
             .field("api_version", api_version)
             .field("fns", fns)
             .field("active_queue_family_indices", active_queue_family_indices)
@@ -1150,6 +1145,13 @@ unsafe impl VulkanObject for Device {
     #[inline]
     fn handle(&self) -> Self::Handle {
         self.handle
+    }
+}
+
+unsafe impl InstanceOwned for Device {
+    #[inline]
+    fn instance(&self) -> &Arc<Instance> {
+        self.physical_device().instance()
     }
 }
 
@@ -1655,7 +1657,7 @@ vulkan_bitflags! {
 ///
 /// - `device()` must return the correct device.
 pub unsafe trait DeviceOwned {
-    /// Returns the device that owns `Self`.
+    /// Returns the device that owns `self`.
     fn device(&self) -> &Arc<Device>;
 }
 
@@ -1666,6 +1668,42 @@ where
 {
     fn device(&self) -> &Arc<Device> {
         (**self).device()
+    }
+}
+
+/// Same as [`DebugWrapper`], but also prints the device handle for disambiguation.
+///
+/// [`DebugWrapper`]: crate:: DebugWrapper
+#[derive(Clone, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub(crate) struct DeviceOwnedDebugWrapper<T>(pub(crate) T);
+
+impl<T> DeviceOwnedDebugWrapper<T> {
+    pub fn cast_slice_inner(slice: &[Self]) -> &[T] {
+        // SAFETY: `DeviceOwnedDebugWrapper<T>` and `T` have the same layout.
+        unsafe { slice::from_raw_parts(slice as *const _ as *const _, slice.len()) }
+    }
+}
+
+impl<T> Debug for DeviceOwnedDebugWrapper<T>
+where
+    T: VulkanObject + DeviceOwned,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(
+            f,
+            "0x{:x} (device: 0x{:x})",
+            self.0.handle().as_raw(),
+            self.0.device().handle().as_raw(),
+        )
+    }
+}
+
+impl<T> Deref for DeviceOwnedDebugWrapper<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

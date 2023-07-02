@@ -94,7 +94,7 @@ use crate::{
     descriptor_set::layout::{
         DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType,
     },
-    device::DeviceOwned,
+    device::{DeviceOwned, DeviceOwnedDebugWrapper},
     image::{sampler::Sampler, ImageLayout},
     ValidationError, VulkanObject,
 };
@@ -157,7 +157,7 @@ impl Hash for dyn DescriptorSet {
 }
 
 pub(crate) struct DescriptorSetInner {
-    layout: Arc<DescriptorSetLayout>,
+    layout: DeviceOwnedDebugWrapper<Arc<DescriptorSetLayout>>,
     variable_descriptor_count: u32,
     resources: DescriptorSetResources,
 }
@@ -294,7 +294,7 @@ impl DescriptorSetInner {
         }
 
         Ok(DescriptorSetInner {
-            layout,
+            layout: DeviceOwnedDebugWrapper(layout),
             variable_descriptor_count,
             resources,
         })

@@ -11,7 +11,7 @@
 
 use super::{allocator::Arena, Buffer, BufferError, BufferMemory};
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     macros::try_opt,
     memory::{
         self,
@@ -74,7 +74,7 @@ pub struct Subbuffer<T: ?Sized> {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum SubbufferParent {
     Arena(Arc<Arena>),
-    Buffer(Arc<Buffer>),
+    Buffer(DeviceOwnedDebugWrapper<Arc<Buffer>>),
 }
 
 impl<T: ?Sized> Subbuffer<T> {
@@ -499,7 +499,7 @@ impl Subbuffer<[u8]> {
         Subbuffer {
             offset: 0,
             size: buffer.size(),
-            parent: SubbufferParent::Buffer(buffer),
+            parent: SubbufferParent::Buffer(DeviceOwnedDebugWrapper(buffer)),
             marker: PhantomData,
         }
     }

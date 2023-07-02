@@ -14,10 +14,11 @@
 use crate::{
     device::{Device, DeviceOwned},
     image::{sampler::Sampler, ImageLayout},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     shader::{DescriptorBindingRequirements, ShaderStages},
-    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
-    VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use ahash::HashMap;
 use std::{collections::BTreeMap, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -26,7 +27,7 @@ use std::{collections::BTreeMap, mem::MaybeUninit, num::NonZeroU64, ptr, sync::A
 #[derive(Debug)]
 pub struct DescriptorSetLayout {
     handle: ash::vk::DescriptorSetLayout,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: DescriptorSetLayoutCreateFlags,
@@ -212,7 +213,7 @@ impl DescriptorSetLayout {
 
         Arc::new(DescriptorSetLayout {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             flags,
             bindings,

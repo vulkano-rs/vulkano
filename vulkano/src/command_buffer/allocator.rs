@@ -22,7 +22,8 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    DebugWrapper, OomError,
+    instance::InstanceOwnedDebugWrapper,
+    OomError,
 };
 use crossbeam_queue::ArrayQueue;
 use smallvec::{IntoIter, SmallVec};
@@ -128,7 +129,7 @@ pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync + 'static {
 /// buffers can. When a command buffer is dropped, it is returned back to the pool for reuse.
 #[derive(Debug)]
 pub struct StandardCommandBufferAllocator {
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     // Each queue family index points directly to its entry.
     pools: ThreadLocal<SmallVec<[UnsafeCell<Option<Entry>>; 8]>>,
     create_info: StandardCommandBufferAllocatorCreateInfo,
@@ -139,7 +140,7 @@ impl StandardCommandBufferAllocator {
     #[inline]
     pub fn new(device: Arc<Device>, create_info: StandardCommandBufferAllocatorCreateInfo) -> Self {
         StandardCommandBufferAllocator {
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             pools: ThreadLocal::new(),
             create_info,
         }

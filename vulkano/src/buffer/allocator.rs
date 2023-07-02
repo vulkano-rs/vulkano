@@ -14,7 +14,7 @@ use super::{
     Subbuffer,
 };
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     memory::{
         allocator::{
             align_up, AllocationCreateInfo, DeviceLayout, MemoryAllocator, MemoryAllocatorError,
@@ -335,7 +335,7 @@ where
             .unwrap_or_else(|| self.create_arena())
             .map(|buffer| {
                 Arc::new(Arena {
-                    buffer: ManuallyDrop::new(buffer),
+                    buffer: ManuallyDrop::new(DeviceOwnedDebugWrapper(buffer)),
                     reserve: reserve.clone(),
                 })
             })
@@ -365,7 +365,7 @@ where
 
 #[derive(Debug)]
 pub(super) struct Arena {
-    buffer: ManuallyDrop<Arc<Buffer>>,
+    buffer: ManuallyDrop<DeviceOwnedDebugWrapper<Arc<Buffer>>>,
     // Where we return the arena in our `Drop` impl.
     reserve: Arc<ArrayQueue<Arc<Buffer>>>,
 }
@@ -378,7 +378,7 @@ impl Arena {
 
 impl Drop for Arena {
     fn drop(&mut self) {
-        let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) };
+        let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) }.0;
         let _ = self.reserve.push(buffer);
     }
 }

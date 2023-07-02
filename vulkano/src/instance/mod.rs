@@ -94,6 +94,7 @@ use crate::{
     VulkanLibrary, VulkanObject,
 };
 pub use crate::{fns::InstanceFunctions, version::Version};
+use ash::vk::Handle;
 use parking_lot::RwLock;
 use smallvec::SmallVec;
 use std::{
@@ -102,8 +103,9 @@ use std::{
     fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
+    ops::Deref,
     panic::{RefUnwindSafe, UnwindSafe},
-    ptr,
+    ptr, slice,
     sync::Arc,
 };
 
@@ -939,7 +941,7 @@ impl Debug for Instance {
             api_version,
             enabled_extensions,
             enabled_layers,
-            library: function_pointers,
+            library,
             max_api_version,
             _user_callbacks: _,
 
@@ -955,7 +957,7 @@ impl Debug for Instance {
             .field("api_version", api_version)
             .field("enabled_extensions", enabled_extensions)
             .field("enabled_layers", enabled_layers)
-            .field("function_pointers", function_pointers)
+            .field("library", library)
             .field("max_api_version", max_api_version)
             .finish_non_exhaustive()
     }
@@ -1208,6 +1210,62 @@ vulkan_bitflags! {
     /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
     /// [`khr_portability_enumeration`]: crate::instance::InstanceExtensions::khr_portability_enumeration
     ENUMERATE_PORTABILITY = ENUMERATE_PORTABILITY_KHR,
+}
+
+/// Implemented on objects that belong to a Vulkan instance.
+///
+/// # Safety
+///
+/// - `instance()` must return the correct instance.
+pub unsafe trait InstanceOwned {
+    /// Returns the instance that owns `self`.
+    fn instance(&self) -> &Arc<Instance>;
+}
+
+unsafe impl<T> InstanceOwned for T
+where
+    T: Deref,
+    T::Target: InstanceOwned,
+{
+    fn instance(&self) -> &Arc<Instance> {
+        (**self).instance()
+    }
+}
+
+/// Same as [`DebugWrapper`], but also prints the instance handle for disambiguation.
+///
+/// [`DebugWrapper`]: crate:: DebugWrapper
+#[derive(PartialEq, Eq)]
+#[repr(transparent)]
+pub(crate) struct InstanceOwnedDebugWrapper<T>(pub(crate) T);
+
+impl<T> InstanceOwnedDebugWrapper<T> {
+    pub fn cast_slice_inner(slice: &[Self]) -> &[T] {
+        // SAFETY: `InstanceOwnedDebugWrapper<T>` and `T` have the same layout.
+        unsafe { slice::from_raw_parts(slice as *const _ as *const _, slice.len()) }
+    }
+}
+
+impl<T> Debug for InstanceOwnedDebugWrapper<T>
+where
+    T: VulkanObject + InstanceOwned,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(
+            f,
+            "0x{:x} (instance: 0x{:x})",
+            self.handle().as_raw(),
+            self.instance().handle().as_raw(),
+        )
+    }
+}
+
+impl<T> Deref for InstanceOwnedDebugWrapper<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[cfg(test)]

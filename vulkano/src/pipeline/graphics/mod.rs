@@ -73,9 +73,10 @@ use super::{
     PipelineLayout, PipelineShaderStageCreateInfo, StateMode,
 };
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     format::{FormatFeatures, NumericType},
     image::{ImageAspect, ImageAspects},
+    instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     pipeline::{
         graphics::{
@@ -92,8 +93,8 @@ use crate::{
         DescriptorBindingRequirements, FragmentShaderExecution, FragmentTestsStages,
         ShaderExecution, ShaderScalarType, ShaderStage, ShaderStages,
     },
-    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
-    VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
+    VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -122,7 +123,7 @@ pub mod viewport;
 #[derive(Debug)]
 pub struct GraphicsPipeline {
     handle: ash::vk::Pipeline,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     // TODO: replace () with an object that describes the shaders in some way.
@@ -139,7 +140,7 @@ pub struct GraphicsPipeline {
     multisample_state: Option<MultisampleState>,
     depth_stencil_state: Option<DepthStencilState>,
     color_blend_state: Option<ColorBlendState>,
-    layout: Arc<PipelineLayout>,
+    layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,
     subpass: PipelineSubpassType,
     dynamic_state: HashMap<DynamicState, bool>,
 
@@ -1578,7 +1579,7 @@ impl GraphicsPipeline {
 
         Arc::new(Self {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
 
             shaders,
@@ -1594,7 +1595,7 @@ impl GraphicsPipeline {
             multisample_state,
             depth_stencil_state,
             color_blend_state,
-            layout,
+            layout: DeviceOwnedDebugWrapper(layout),
             subpass: render_pass.unwrap(),
             dynamic_state,
 

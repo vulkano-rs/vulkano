@@ -13,9 +13,10 @@ use crate::{
         sys::UnsafeDescriptorSet,
     },
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
-    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
-    VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -28,7 +29,7 @@ use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, pt
 #[derive(Debug)]
 pub struct DescriptorPool {
     handle: ash::vk::DescriptorPool,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: DescriptorPoolCreateFlags,
@@ -146,7 +147,7 @@ impl DescriptorPool {
 
         DescriptorPool {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
 
             flags,

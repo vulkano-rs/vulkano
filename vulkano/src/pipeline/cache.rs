@@ -23,8 +23,9 @@
 
 use crate::{
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
-    DebugWrapper, RuntimeError, ValidationError, VulkanError, VulkanObject,
+    RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -34,7 +35,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 /// See [the documentation of the module](crate::pipeline::cache) for more info.
 #[derive(Debug)]
 pub struct PipelineCache {
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     handle: ash::vk::PipelineCache,
     id: NonZeroU64,
 
@@ -165,7 +166,7 @@ impl PipelineCache {
         } = create_info;
 
         Arc::new(PipelineCache {
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             handle,
             id: Self::next_id(),
 

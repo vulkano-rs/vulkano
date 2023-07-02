@@ -12,9 +12,10 @@
 
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
-    DebugWrapper, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf,
-    RuntimeError, ValidationError, Version, VulkanObject,
+    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    ValidationError, Version, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -59,7 +60,7 @@ use std::{
 #[derive(Debug)]
 pub struct Fence {
     handle: ash::vk::Fence,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
     must_put_in_pool: bool,
 
@@ -179,7 +180,7 @@ impl Fence {
 
         Ok(Fence {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             must_put_in_pool: false,
             export_handle_types,
@@ -211,7 +212,7 @@ impl Fence {
 
                 Fence {
                     handle,
-                    device: DebugWrapper(device),
+                    device: InstanceOwnedDebugWrapper(device),
                     id: Self::next_id(),
                     must_put_in_pool: true,
                     export_handle_types: ExternalFenceHandleTypes::empty(),
@@ -249,7 +250,7 @@ impl Fence {
 
         Fence {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             must_put_in_pool: false,
             export_handle_types,

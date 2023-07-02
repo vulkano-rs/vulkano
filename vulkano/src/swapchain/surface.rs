@@ -13,7 +13,7 @@ use crate::{
     device::physical::PhysicalDevice,
     format::Format,
     image::ImageUsage,
-    instance::{Instance, InstanceExtensions},
+    instance::{Instance, InstanceExtensions, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
     swapchain::display::{DisplayMode, DisplayPlane},
     DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
@@ -1382,6 +1382,13 @@ unsafe impl VulkanObject for Surface {
     #[inline]
     fn handle(&self) -> Self::Handle {
         self.handle
+    }
+}
+
+unsafe impl InstanceOwned for Surface {
+    #[inline]
+    fn instance(&self) -> &Arc<Instance> {
+        &self.instance
     }
 }
 

@@ -24,11 +24,12 @@
 
 use super::{PipelineCreateFlags, PipelineShaderStageCreateInfo};
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
+    instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
     shader::{DescriptorBindingRequirements, ShaderExecution, ShaderStage},
-    DebugWrapper, RuntimeError, ValidationError, VulkanError, VulkanObject,
+    RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use std::{ffi::CString, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -44,9 +45,9 @@ use std::{ffi::CString, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync
 #[derive(Debug)]
 pub struct ComputePipeline {
     handle: ash::vk::Pipeline,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
-    layout: Arc<PipelineLayout>,
+    layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
 }
@@ -211,9 +212,9 @@ impl ComputePipeline {
 
         Arc::new(ComputePipeline {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
-            layout,
+            layout: DeviceOwnedDebugWrapper(layout),
             descriptor_binding_requirements,
             num_used_descriptor_sets,
         })

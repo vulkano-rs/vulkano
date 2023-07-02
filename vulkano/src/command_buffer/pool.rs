@@ -18,9 +18,9 @@
 use crate::{
     command_buffer::CommandBufferLevel,
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
-    DebugWrapper, OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
-    VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -44,7 +44,7 @@ use std::{
 #[derive(Debug)]
 pub struct CommandPool {
     handle: ash::vk::CommandPool,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     queue_family_index: u32,
@@ -72,7 +72,7 @@ impl CommandPool {
 
         Ok(CommandPool {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             queue_family_index,
             _transient: transient,
@@ -102,7 +102,7 @@ impl CommandPool {
 
         CommandPool {
             handle,
-            device: DebugWrapper(device),
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             queue_family_index,
             _transient: transient,
@@ -243,7 +243,7 @@ impl CommandPool {
 
         Ok(out.into_iter().map(move |command_buffer| CommandPoolAlloc {
             handle: command_buffer,
-            device: DebugWrapper(device.clone()),
+            device: InstanceOwnedDebugWrapper(device.clone()),
             id: CommandPoolAlloc::next_id(),
             level,
         }))
@@ -465,7 +465,7 @@ impl Default for CommandBufferAllocateInfo {
 #[derive(Debug)]
 pub struct CommandPoolAlloc {
     handle: ash::vk::CommandBuffer,
-    device: DebugWrapper<Arc<Device>>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
     level: CommandBufferLevel,
 }
