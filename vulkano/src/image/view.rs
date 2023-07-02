@@ -19,9 +19,11 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures},
-    image::{ImageAspects, ImageCreateFlags, ImageTiling, ImageType, SampleCount},
+    image::{
+        sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
+        ImageAspects, ImageCreateFlags, ImageTiling, ImageType, SampleCount,
+    },
     macros::{impl_id_counter, vulkan_enum},
-    sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
     OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
     VulkanObject,
 };

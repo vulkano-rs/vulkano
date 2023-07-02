@@ -28,7 +28,11 @@ mod linux {
             QueueCreateInfo, QueueFlags,
         },
         format::Format,
-        image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
+        image::{
+            sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+            view::ImageView,
+            ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage,
+        },
         instance::{
             debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
             Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
@@ -49,7 +53,6 @@ mod linux {
             PipelineShaderStageCreateInfo,
         },
         render_pass::{Framebuffer, RenderPass, Subpass},
-        sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
         swapchain::{AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
         sync::{
             now,

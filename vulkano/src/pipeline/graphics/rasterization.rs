@@ -81,6 +81,8 @@ pub struct RasterizationState {
     /// [`ext_line_rasterization`](crate::device::DeviceExtensions::ext_line_rasterization)
     /// extension and an additional feature must be enabled on the device.
     pub line_stipple: Option<StateMode<LineStipple>>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl RasterizationState {
@@ -99,6 +101,7 @@ impl RasterizationState {
             line_width: StateMode::Fixed(1.0),
             line_rasterization_mode: Default::default(),
             line_stipple: None,
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -148,6 +151,7 @@ impl RasterizationState {
             line_width,
             line_rasterization_mode,
             ref line_stipple,
+            _ne: _,
         } = self;
 
         let properties = device.physical_device().properties();

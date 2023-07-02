@@ -193,7 +193,6 @@ pub mod pipeline;
 pub mod query;
 mod range_map;
 pub mod range_set;
-pub mod sampler;
 pub mod shader;
 pub mod swapchain;
 pub mod sync;
@@ -675,6 +674,10 @@ impl Display for RuntimeError {
             RuntimeError::OutOfDate => {
                 "a surface has changed in such a way that it is no longer compatible with the \
                 swapchain, and further presentation requests using the swapchain will fail"
+            }
+            RuntimeError::InvalidVideoStdParameters => {
+                "the provided Video Std parameters do not adhere to the requirements of the used \
+                video compression standard"
             }
             RuntimeError::ValidationFailed => "validation failed",
             RuntimeError::FullScreenExclusiveModeLost => {

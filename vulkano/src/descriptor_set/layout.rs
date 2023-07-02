@@ -13,9 +13,8 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    image::ImageLayout,
+    image::{sampler::Sampler, ImageLayout},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    sampler::Sampler,
     shader::{DescriptorBindingRequirements, ShaderStages},
     DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
     VulkanError, VulkanObject,

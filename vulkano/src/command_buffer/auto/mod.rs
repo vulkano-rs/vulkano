@@ -322,9 +322,9 @@ mod tests {
             PersistentDescriptorSet, WriteDescriptorSet,
         },
         device::{Device, DeviceCreateInfo, QueueCreateInfo},
+        image::sampler::{Sampler, SamplerCreateInfo},
         memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
         pipeline::{layout::PipelineLayoutCreateInfo, PipelineBindPoint, PipelineLayout},
-        sampler::{Sampler, SamplerCreateInfo},
         shader::ShaderStages,
         sync::GpuFuture,
     };

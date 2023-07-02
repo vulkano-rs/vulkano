@@ -37,6 +37,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_storage_buffer_storage_class`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_storage_buffer_storage_class.html)
 - [`VK_KHR_variable_pointers`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_variable_pointers.html)
 - `vkEnumerateInstanceVersion`
+- Group operations, subgroup scope
 
 ### Partially supported
 
@@ -49,7 +50,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 - [`VK_KHR_descriptor_update_template`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_descriptor_update_template.html)
 - [`VK_KHR_device_group`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_device_group.html)
-- Group operations, subgroup scope
 - Protected memory
 
 ## Vulkan 1.2

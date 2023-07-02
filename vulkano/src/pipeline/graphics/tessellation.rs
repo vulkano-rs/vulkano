@@ -33,6 +33,8 @@ pub struct TessellationState {
     ///
     /// The default value is [`TessellationDomainOrigin::UpperLeft`].
     pub domain_origin: TessellationDomainOrigin,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl TessellationState {
@@ -42,6 +44,7 @@ impl TessellationState {
         Self {
             patch_control_points: StateMode::Fixed(3),
             domain_origin: TessellationDomainOrigin::default(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -63,6 +66,7 @@ impl TessellationState {
         let &Self {
             patch_control_points,
             domain_origin,
+            _ne: _,
         } = self;
 
         let properties = device.physical_device().properties();

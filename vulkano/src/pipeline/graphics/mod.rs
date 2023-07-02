@@ -295,6 +295,7 @@ impl GraphicsPipeline {
             let VertexInputState {
                 bindings,
                 attributes,
+                _ne: _,
             } = vertex_input_state;
 
             vertex_binding_descriptions_vk.extend(bindings.iter().map(
@@ -362,6 +363,7 @@ impl GraphicsPipeline {
             let &InputAssemblyState {
                 topology,
                 primitive_restart_enable,
+                _ne: _,
             } = input_assembly_state;
 
             let topology = match topology {
@@ -401,6 +403,7 @@ impl GraphicsPipeline {
             let &TessellationState {
                 patch_control_points,
                 domain_origin,
+                _ne: _,
             } = tessellation_state;
 
             let patch_control_points = match patch_control_points {
@@ -515,6 +518,7 @@ impl GraphicsPipeline {
                 line_width,
                 line_rasterization_mode,
                 line_stipple,
+                _ne: _,
             } = rasterization_state;
 
             let rasterizer_discard_enable = match rasterizer_discard_enable {
@@ -645,6 +649,7 @@ impl GraphicsPipeline {
                 ref sample_mask,
                 alpha_to_coverage_enable,
                 alpha_to_one_enable,
+                _ne: _,
             } = multisample_state;
 
             let (sample_shading_enable, min_sample_shading) =
@@ -674,6 +679,7 @@ impl GraphicsPipeline {
                 ref depth,
                 ref depth_bounds,
                 ref stencil,
+                _ne: _,
             } = depth_stencil_state;
 
             let (depth_test_enable, depth_write_enable, depth_compare_op) =
@@ -866,6 +872,7 @@ impl GraphicsPipeline {
                 logic_op,
                 ref attachments,
                 blend_constants,
+                _ne: _,
             } = color_blend_state;
 
             color_blend_attachments_vk.extend(attachments.iter().map(
@@ -1023,7 +1030,11 @@ impl GraphicsPipeline {
         let mut discard_rectangles: SmallVec<[_; 2]> = SmallVec::new();
 
         if let Some(discard_rectangle_state) = discard_rectangle_state {
-            let DiscardRectangleState { mode, rectangles } = discard_rectangle_state;
+            let DiscardRectangleState {
+                mode,
+                rectangles,
+                _ne: _,
+            } = discard_rectangle_state;
 
             let discard_rectangle_count = match rectangles {
                 PartialStateMode::Fixed(rectangles) => {
@@ -1230,6 +1241,7 @@ impl GraphicsPipeline {
             let &InputAssemblyState {
                 topology,
                 primitive_restart_enable,
+                _ne: _,
             } = input_assembly_state;
 
             match topology {
@@ -1255,6 +1267,7 @@ impl GraphicsPipeline {
             let &TessellationState {
                 patch_control_points,
                 domain_origin: _,
+                _ne: _,
             } = tessellation_state;
 
             match patch_control_points {
@@ -1389,6 +1402,7 @@ impl GraphicsPipeline {
                 depth,
                 depth_bounds,
                 stencil,
+                _ne: _,
             } = depth_stencil_state;
 
             if let Some(depth_state) = depth {
@@ -1506,6 +1520,7 @@ impl GraphicsPipeline {
                 logic_op,
                 ref attachments,
                 blend_constants,
+                _ne: _,
             } = color_blend_state;
 
             if let Some(logic_op) = logic_op {

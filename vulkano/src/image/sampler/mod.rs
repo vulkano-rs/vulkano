@@ -54,18 +54,10 @@ use crate::{
     macros::{impl_id_counter, vulkan_enum},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
-    DebugWrapper, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf,
-    RuntimeError, ValidationError, VulkanObject,
+    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
+    VulkanError, VulkanObject,
 };
-use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ops::RangeInclusive,
-    ptr,
-    sync::Arc,
-};
+use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc};
 
 /// Describes how to retrieve data from a sampled image within a shader.
 ///
@@ -74,7 +66,7 @@ use std::{
 /// A simple sampler for most usages:
 ///
 /// ```
-/// use vulkano::sampler::{Sampler, SamplerCreateInfo};
+/// use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear_no_mipmap());
@@ -83,7 +75,7 @@ use std::{
 /// More detailed sampler creation:
 ///
 /// ```
-/// use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
+/// use vulkano::image::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo {
@@ -118,16 +110,33 @@ pub struct Sampler {
 
 impl Sampler {
     /// Creates a new `Sampler`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `create_info.anisotropy` is `Some` and contains a value less than 1.0.
-    /// - Panics if `create_info.lod` is empty.
+    #[inline]
     pub fn new(
         device: Arc<Device>,
         create_info: SamplerCreateInfo,
-    ) -> Result<Arc<Sampler>, SamplerCreationError> {
-        let SamplerCreateInfo {
+    ) -> Result<Arc<Sampler>, VulkanError> {
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &SamplerCreateInfo,
+    ) -> Result<(), ValidationError> {
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: SamplerCreateInfo,
+    ) -> Result<Arc<Sampler>, RuntimeError> {
+        let &SamplerCreateInfo {
             mag_filter,
             min_filter,
             mipmap_mode,
@@ -135,264 +144,27 @@ impl Sampler {
             mip_lod_bias,
             anisotropy,
             compare,
-            lod,
+            ref lod,
             border_color,
             unnormalized_coordinates,
             reduction_mode,
-            sampler_ycbcr_conversion,
+            ref sampler_ycbcr_conversion,
             _ne: _,
-        } = create_info;
-
-        for filter in [mag_filter, min_filter] {
-            // VUID-VkSamplerCreateInfo-magFilter-parameter
-            // VUID-VkSamplerCreateInfo-minFilter-parameter
-            filter.validate_device(&device)?;
-        }
-
-        // VUID-VkSamplerCreateInfo-mipmapMode-parameter
-        mipmap_mode.validate_device(&device)?;
-
-        for mode in address_mode {
-            // VUID-VkSamplerCreateInfo-addressModeU-parameter
-            // VUID-VkSamplerCreateInfo-addressModeV-parameter
-            // VUID-VkSamplerCreateInfo-addressModeW-parameter
-            mode.validate_device(&device)?;
-
-            if mode == SamplerAddressMode::ClampToBorder {
-                // VUID-VkSamplerCreateInfo-addressModeU-01078
-                border_color.validate_device(&device)?;
-            }
-        }
-
-        if address_mode.contains(&SamplerAddressMode::MirrorClampToEdge) {
-            if !(device.enabled_features().sampler_mirror_clamp_to_edge
-                || device.enabled_extensions().khr_sampler_mirror_clamp_to_edge)
-            {
-                return Err(SamplerCreationError::RequirementNotMet {
-                    required_for: "`create_info.address_mode` contains \
-                        `SamplerAddressMode::MirrorClampToEdge`",
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("sampler_mirror_clamp_to_edge")]),
-                        RequiresAllOf(&[Requires::DeviceExtension(
-                            "khr_sampler_mirror_clamp_to_edge",
-                        )]),
-                    ]),
-                });
-            }
-        }
-
-        {
-            assert!(!lod.is_empty());
-            let limit = device.physical_device().properties().max_sampler_lod_bias;
-            if mip_lod_bias.abs() > limit {
-                return Err(SamplerCreationError::MaxSamplerLodBiasExceeded {
-                    requested: mip_lod_bias,
-                    maximum: limit,
-                });
-            }
-        }
-
-        // VUID-VkSamplerCreateInfo-samplerMipLodBias-04467
-        if device.enabled_extensions().khr_portability_subset
-            && !device.enabled_features().sampler_mip_lod_bias
-            && mip_lod_bias != 0.0
-        {
-            return Err(SamplerCreationError::RequirementNotMet {
-                required_for: "this device is a portability subset device, and \
-                    `create_info.mip_lod_bias` is not zero",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "sampler_mip_lod_bias",
-                )])]),
-            });
-        }
+        } = &create_info;
 
         let (anisotropy_enable, max_anisotropy) = if let Some(max_anisotropy) = anisotropy {
-            assert!(max_anisotropy >= 1.0);
-
-            if !device.enabled_features().sampler_anisotropy {
-                return Err(SamplerCreationError::RequirementNotMet {
-                    required_for: "`create_info.anisotropy` is `Some`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "sampler_anisotropy",
-                    )])]),
-                });
-            }
-
-            let limit = device.physical_device().properties().max_sampler_anisotropy;
-            if max_anisotropy > limit {
-                return Err(SamplerCreationError::MaxSamplerAnisotropyExceeded {
-                    requested: max_anisotropy,
-                    maximum: limit,
-                });
-            }
-
-            if [mag_filter, min_filter]
-                .into_iter()
-                .any(|filter| filter == Filter::Cubic)
-            {
-                return Err(SamplerCreationError::AnisotropyInvalidFilter {
-                    mag_filter,
-                    min_filter,
-                });
-            }
-
             (ash::vk::TRUE, max_anisotropy)
         } else {
             (ash::vk::FALSE, 1.0)
         };
 
         let (compare_enable, compare_op) = if let Some(compare_op) = compare {
-            // VUID-VkSamplerCreateInfo-compareEnable-01080
-            compare_op.validate_device(&device)?;
-
-            if reduction_mode != SamplerReductionMode::WeightedAverage {
-                return Err(SamplerCreationError::CompareInvalidReductionMode { reduction_mode });
-            }
-
             (ash::vk::TRUE, compare_op)
         } else {
             (ash::vk::FALSE, CompareOp::Never)
         };
 
-        if unnormalized_coordinates {
-            if min_filter != mag_filter {
-                return Err(
-                    SamplerCreationError::UnnormalizedCoordinatesFiltersNotEqual {
-                        mag_filter,
-                        min_filter,
-                    },
-                );
-            }
-
-            if mipmap_mode != SamplerMipmapMode::Nearest {
-                return Err(
-                    SamplerCreationError::UnnormalizedCoordinatesInvalidMipmapMode { mipmap_mode },
-                );
-            }
-
-            if lod != (0.0..=0.0) {
-                return Err(SamplerCreationError::UnnormalizedCoordinatesNonzeroLod { lod });
-            }
-
-            if address_mode[0..2].iter().any(|mode| {
-                !matches!(
-                    mode,
-                    SamplerAddressMode::ClampToEdge | SamplerAddressMode::ClampToBorder
-                )
-            }) {
-                return Err(
-                    SamplerCreationError::UnnormalizedCoordinatesInvalidAddressMode {
-                        address_mode: [address_mode[0], address_mode[1]],
-                    },
-                );
-            }
-
-            if anisotropy.is_some() {
-                return Err(SamplerCreationError::UnnormalizedCoordinatesAnisotropyEnabled);
-            }
-
-            if compare.is_some() {
-                return Err(SamplerCreationError::UnnormalizedCoordinatesCompareEnabled);
-            }
-        }
-
-        let mut sampler_reduction_mode_create_info = if reduction_mode
-            != SamplerReductionMode::WeightedAverage
-        {
-            if !(device.enabled_features().sampler_filter_minmax
-                || device.enabled_extensions().ext_sampler_filter_minmax)
-            {
-                return Err(SamplerCreationError::RequirementNotMet {
-                    required_for: "`create_info.reduction_mode` is not \
-                            `SamplerReductionMode::WeightedAverage`",
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("sampler_filter_minmax")]),
-                        RequiresAllOf(&[Requires::DeviceExtension("ext_sampler_filter_minmax")]),
-                    ]),
-                });
-            }
-
-            // VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter
-            reduction_mode.validate_device(&device)?;
-
-            Some(ash::vk::SamplerReductionModeCreateInfo {
-                reduction_mode: reduction_mode.into(),
-                ..Default::default()
-            })
-        } else {
-            None
-        };
-
-        // Don't need to check features because you can't create a conversion object without the
-        // feature anyway.
-        let mut sampler_ycbcr_conversion_info = if let Some(sampler_ycbcr_conversion) =
-            &sampler_ycbcr_conversion
-        {
-            assert_eq!(&device, sampler_ycbcr_conversion.device());
-
-            // Use unchecked, because all validation has been done by the SamplerYcbcrConversion.
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(sampler_ycbcr_conversion.format().unwrap())
-                    .potential_format_features()
-            };
-
-            // VUID-VkSamplerCreateInfo-minFilter-01645
-            if !potential_format_features.intersects(
-                FormatFeatures::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER,
-            ) && !(mag_filter == sampler_ycbcr_conversion.chroma_filter()
-                && min_filter == sampler_ycbcr_conversion.chroma_filter())
-            {
-                return Err(
-                    SamplerCreationError::SamplerYcbcrConversionChromaFilterMismatch {
-                        chroma_filter: sampler_ycbcr_conversion.chroma_filter(),
-                        mag_filter,
-                        min_filter,
-                    },
-                );
-            }
-
-            // VUID-VkSamplerCreateInfo-addressModeU-01646
-            if address_mode
-                .into_iter()
-                .any(|mode| !matches!(mode, SamplerAddressMode::ClampToEdge))
-            {
-                return Err(
-                    SamplerCreationError::SamplerYcbcrConversionInvalidAddressMode { address_mode },
-                );
-            }
-
-            // VUID-VkSamplerCreateInfo-addressModeU-01646
-            if anisotropy.is_some() {
-                return Err(SamplerCreationError::SamplerYcbcrConversionAnisotropyEnabled);
-            }
-
-            // VUID-VkSamplerCreateInfo-addressModeU-01646
-            if unnormalized_coordinates {
-                return Err(
-                    SamplerCreationError::SamplerYcbcrConversionUnnormalizedCoordinatesEnabled,
-                );
-            }
-
-            // VUID-VkSamplerCreateInfo-None-01647
-            if reduction_mode != SamplerReductionMode::WeightedAverage {
-                return Err(
-                    SamplerCreationError::SamplerYcbcrConversionInvalidReductionMode {
-                        reduction_mode,
-                    },
-                );
-            }
-
-            Some(ash::vk::SamplerYcbcrConversionInfo {
-                conversion: sampler_ycbcr_conversion.handle(),
-                ..Default::default()
-            })
-        } else {
-            None
-        };
-
-        let mut create_info = ash::vk::SamplerCreateInfo {
+        let mut create_info_vk = ash::vk::SamplerCreateInfo {
             flags: ash::vk::SamplerCreateFlags::empty(),
             mag_filter: mag_filter.into(),
             min_filter: min_filter.into(),
@@ -411,17 +183,30 @@ impl Sampler {
             unnormalized_coordinates: unnormalized_coordinates as ash::vk::Bool32,
             ..Default::default()
         };
+        let mut sampler_reduction_mode_create_info_vk = None;
+        let mut sampler_ycbcr_conversion_info_vk = None;
 
-        if let Some(sampler_reduction_mode_create_info) =
-            sampler_reduction_mode_create_info.as_mut()
-        {
-            sampler_reduction_mode_create_info.p_next = create_info.p_next;
-            create_info.p_next = sampler_reduction_mode_create_info as *const _ as *const _;
+        if reduction_mode != SamplerReductionMode::WeightedAverage {
+            let next = sampler_reduction_mode_create_info_vk.insert(
+                ash::vk::SamplerReductionModeCreateInfo {
+                    reduction_mode: reduction_mode.into(),
+                    ..Default::default()
+                },
+            );
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
         }
 
-        if let Some(sampler_ycbcr_conversion_info) = sampler_ycbcr_conversion_info.as_mut() {
-            sampler_ycbcr_conversion_info.p_next = create_info.p_next;
-            create_info.p_next = sampler_ycbcr_conversion_info as *const _ as *const _;
+        if let Some(sampler_ycbcr_conversion) = sampler_ycbcr_conversion {
+            let next =
+                sampler_ycbcr_conversion_info_vk.insert(ash::vk::SamplerYcbcrConversionInfo {
+                    conversion: sampler_ycbcr_conversion.handle(),
+                    ..Default::default()
+                });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
         }
 
         let handle = unsafe {
@@ -429,7 +214,7 @@ impl Sampler {
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_sampler)(
                 device.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -438,26 +223,7 @@ impl Sampler {
             output.assume_init()
         };
 
-        Ok(Arc::new(Sampler {
-            handle,
-            device: DebugWrapper(device),
-            id: Self::next_id(),
-            address_mode,
-            anisotropy,
-            border_color: address_mode
-                .into_iter()
-                .any(|mode| mode == SamplerAddressMode::ClampToBorder)
-                .then_some(border_color),
-            compare,
-            lod,
-            mag_filter,
-            min_filter,
-            mip_lod_bias,
-            mipmap_mode,
-            reduction_mode,
-            sampler_ycbcr_conversion,
-            unnormalized_coordinates,
-        }))
+        Ok(Self::from_handle(device, handle, create_info))
     }
 
     /// Creates a new `Sampler` from a raw object handle.
@@ -840,212 +606,6 @@ unsafe impl DeviceOwned for Sampler {
 
 impl_id_counter!(Sampler);
 
-/// Error that can happen when creating an instance.
-#[derive(Clone, Debug, PartialEq)]
-pub enum SamplerCreationError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    /// Too many sampler objects have been created. You must destroy some before creating new ones.
-    /// Note the specs guarantee that at least 4000 samplers can exist simultaneously.
-    TooManyObjects,
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// Anisotropy was enabled with an invalid filter.
-    AnisotropyInvalidFilter {
-        mag_filter: Filter,
-        min_filter: Filter,
-    },
-
-    /// Depth comparison was enabled with an invalid reduction mode.
-    CompareInvalidReductionMode {
-        reduction_mode: SamplerReductionMode,
-    },
-
-    /// The requested anisotropy level exceeds the device's limits.
-    MaxSamplerAnisotropyExceeded {
-        /// The value that was requested.
-        requested: f32,
-        /// The maximum supported value.
-        maximum: f32,
-    },
-
-    /// The requested mip lod bias exceeds the device's limits.
-    MaxSamplerLodBiasExceeded {
-        /// The value that was requested.
-        requested: f32,
-        /// The maximum supported value.
-        maximum: f32,
-    },
-
-    /// Sampler YCbCr conversion was enabled together with anisotropy.
-    SamplerYcbcrConversionAnisotropyEnabled,
-
-    /// Sampler YCbCr conversion was enabled, and its format does not support
-    /// `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter` or
-    /// `min_filter` did not match the conversion's `chroma_filter`.
-    SamplerYcbcrConversionChromaFilterMismatch {
-        chroma_filter: Filter,
-        mag_filter: Filter,
-        min_filter: Filter,
-    },
-
-    /// Sampler YCbCr conversion was enabled, but the address mode for `u`, `v` or `w` was
-    /// something other than `ClampToEdge`.
-    SamplerYcbcrConversionInvalidAddressMode {
-        address_mode: [SamplerAddressMode; 3],
-    },
-
-    /// Sampler YCbCr conversion was enabled, but the reduction mode was something other than
-    /// `WeightedAverage`.
-    SamplerYcbcrConversionInvalidReductionMode {
-        reduction_mode: SamplerReductionMode,
-    },
-
-    /// Sampler YCbCr conversion was enabled together with unnormalized coordinates.
-    SamplerYcbcrConversionUnnormalizedCoordinatesEnabled,
-
-    /// Unnormalized coordinates were enabled together with anisotropy.
-    UnnormalizedCoordinatesAnisotropyEnabled,
-
-    /// Unnormalized coordinates were enabled together with depth comparison.
-    UnnormalizedCoordinatesCompareEnabled,
-
-    /// Unnormalized coordinates were enabled, but the min and mag filters were not equal.
-    UnnormalizedCoordinatesFiltersNotEqual {
-        mag_filter: Filter,
-        min_filter: Filter,
-    },
-
-    /// Unnormalized coordinates were enabled, but the address mode for `u` or `v` was something
-    /// other than `ClampToEdge` or `ClampToBorder`.
-    UnnormalizedCoordinatesInvalidAddressMode {
-        address_mode: [SamplerAddressMode; 2],
-    },
-
-    /// Unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`.
-    UnnormalizedCoordinatesInvalidMipmapMode { mipmap_mode: SamplerMipmapMode },
-
-    /// Unnormalized coordinates were enabled, but the LOD range was not zero.
-    UnnormalizedCoordinatesNonzeroLod { lod: RangeInclusive<f32> },
-}
-
-impl Error for SamplerCreationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            SamplerCreationError::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for SamplerCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::TooManyObjects => write!(f, "too many simultaneous sampler objects"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::AnisotropyInvalidFilter { .. } => {
-                write!(f, "anisotropy was enabled with an invalid filter")
-            }
-            Self::CompareInvalidReductionMode { .. } => write!(
-                f,
-                "depth comparison was enabled with an invalid reduction mode",
-            ),
-            Self::MaxSamplerAnisotropyExceeded { .. } => {
-                write!(f, "max_sampler_anisotropy limit exceeded")
-            }
-            Self::MaxSamplerLodBiasExceeded { .. } => write!(f, "mip lod bias limit exceeded"),
-            Self::SamplerYcbcrConversionAnisotropyEnabled => write!(
-                f,
-                "sampler YCbCr conversion was enabled together with anisotropy",
-            ),
-            Self::SamplerYcbcrConversionChromaFilterMismatch { .. } => write!(
-                f,
-                "sampler YCbCr conversion was enabled, and its format does not support
-                `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter`
-                or `min_filter` did not match the conversion's `chroma_filter`",
-            ),
-            Self::SamplerYcbcrConversionInvalidAddressMode { .. } => write!(
-                f,
-                "sampler YCbCr conversion was enabled, but the address mode for u, v or w was
-                something other than `ClampToEdge`",
-            ),
-            Self::SamplerYcbcrConversionInvalidReductionMode { .. } => write!(
-                f,
-                "sampler YCbCr conversion was enabled, but the reduction mode was something other \
-                than `WeightedAverage`",
-            ),
-            Self::SamplerYcbcrConversionUnnormalizedCoordinatesEnabled => write!(
-                f,
-                "sampler YCbCr conversion was enabled together with unnormalized coordinates",
-            ),
-            Self::UnnormalizedCoordinatesAnisotropyEnabled => write!(
-                f,
-                "unnormalized coordinates were enabled together with anisotropy",
-            ),
-            Self::UnnormalizedCoordinatesCompareEnabled => write!(
-                f,
-                "unnormalized coordinates were enabled together with depth comparison",
-            ),
-            Self::UnnormalizedCoordinatesFiltersNotEqual { .. } => write!(
-                f,
-                "unnormalized coordinates were enabled, but the min and mag filters were not equal",
-            ),
-            Self::UnnormalizedCoordinatesInvalidAddressMode { .. } => write!(
-                f,
-                "unnormalized coordinates were enabled, but the address mode for u or v was \
-                something other than `ClampToEdge` or `ClampToBorder`",
-            ),
-            Self::UnnormalizedCoordinatesInvalidMipmapMode { .. } => write!(
-                f,
-                "unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`",
-            ),
-            Self::UnnormalizedCoordinatesNonzeroLod { .. } => write!(
-                f,
-                "unnormalized coordinates were enabled, but the LOD range was not zero",
-            ),
-        }
-    }
-}
-
-impl From<OomError> for SamplerCreationError {
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
-impl From<RuntimeError> for SamplerCreationError {
-    fn from(err: RuntimeError) -> Self {
-        match err {
-            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ RuntimeError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            RuntimeError::TooManyObjects => Self::TooManyObjects,
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<RequirementNotMet> for SamplerCreationError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
 /// Parameters to create a new `Sampler`.
 #[derive(Clone, Debug)]
 pub struct SamplerCreateInfo {
@@ -1235,6 +795,354 @@ impl SamplerCreateInfo {
             ..Default::default()
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            mag_filter,
+            min_filter,
+            mipmap_mode,
+            address_mode,
+            mip_lod_bias,
+            anisotropy,
+            compare,
+            ref lod,
+            border_color,
+            unnormalized_coordinates,
+            reduction_mode,
+            ref sampler_ycbcr_conversion,
+            _ne: _,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        mag_filter
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "mag_filter".into(),
+                vuids: &["VUID-VkSamplerCreateInfo-magFilter-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        min_filter
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "min_filter".into(),
+                vuids: &["VUID-VkSamplerCreateInfo-minFilter-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        mipmap_mode
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "mipmap_mode".into(),
+                vuids: &["VUID-VkSamplerCreateInfo-mipmapMode-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        for (index, mode) in address_mode.into_iter().enumerate() {
+            mode.validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: format!("address_mode[{}]", index).into(),
+                    vuids: &[
+                        "VUID-VkSamplerCreateInfo-addressModeU-parameter",
+                        "VUID-VkSamplerCreateInfo-addressModeV-parameter",
+                        "VUID-VkSamplerCreateInfo-addressModeW-parameter",
+                    ],
+                    ..ValidationError::from_requirement(err)
+                })?;
+        }
+
+        if address_mode.contains(&SamplerAddressMode::ClampToBorder) {
+            border_color
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "border_color".into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-addressModeU-01078"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+        }
+
+        reduction_mode
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "reduction_mode".into(),
+                vuids: &["VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if address_mode.contains(&SamplerAddressMode::MirrorClampToEdge) {
+            if !(device.enabled_features().sampler_mirror_clamp_to_edge
+                || device.enabled_extensions().khr_sampler_mirror_clamp_to_edge)
+            {
+                return Err(ValidationError {
+                    context: "address_mode".into(),
+                    problem: "contains `SamplerAddressMode::MirrorClampToEdge`".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("sampler_mirror_clamp_to_edge")]),
+                        RequiresAllOf(&[Requires::DeviceExtension(
+                            "khr_sampler_mirror_clamp_to_edge",
+                        )]),
+                    ]),
+                    ..Default::default()
+                });
+            }
+        }
+
+        if lod.is_empty() {
+            return Err(ValidationError {
+                context: "lod".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkSamplerCreateInfo-maxLod-01973"],
+                ..Default::default()
+            });
+        }
+
+        if mip_lod_bias.abs() > properties.max_sampler_lod_bias {
+            return Err(ValidationError {
+                context: "lod".into(),
+                problem: "the absolute value is greater than the `max_sampler_lod_bias` limit"
+                    .into(),
+                vuids: &["VUID-VkSamplerCreateInfo-mipLodBias-01069"],
+                ..Default::default()
+            });
+        }
+
+        if device.enabled_extensions().khr_portability_subset
+            && !device.enabled_features().sampler_mip_lod_bias
+            && mip_lod_bias != 0.0
+        {
+            return Err(ValidationError {
+                problem: "this device is a portability subset device, and \
+                    `mip_lod_bias` is not zero"
+                    .into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "sampler_mip_lod_bias",
+                )])]),
+                vuids: &["VUID-VkSamplerCreateInfo-samplerMipLodBias-04467"],
+                ..Default::default()
+            });
+        }
+
+        if let Some(max_anisotropy) = anisotropy {
+            if !device.enabled_features().sampler_anisotropy {
+                return Err(ValidationError {
+                    context: "anisotropy".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "sampler_anisotropy",
+                    )])]),
+                    vuids: &["VUID-VkSamplerCreateInfo-anisotropyEnable-01070"],
+                });
+            }
+
+            if max_anisotropy < 1.0 {
+                return Err(ValidationError {
+                    context: "anisotropy".into(),
+                    problem: "is less than 1.0".into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-anisotropyEnable-01071"],
+                    ..Default::default()
+                });
+            }
+
+            if max_anisotropy > properties.max_sampler_anisotropy {
+                return Err(ValidationError {
+                    context: "anisotropy".into(),
+                    problem: "is greater than the `max_sampler_anisotropy` limit".into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-anisotropyEnable-01071"],
+                    ..Default::default()
+                });
+            }
+
+            if [mag_filter, min_filter].contains(&Filter::Cubic) {
+                return Err(ValidationError {
+                    problem: "`anisotropy` is `Some`, but `mag_filter` or `min_filter` is \
+                        `Filter::Cubic`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-magFilter-01081"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if let Some(compare_op) = compare {
+            compare_op
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "compare".into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-compareEnable-01080"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if reduction_mode != SamplerReductionMode::WeightedAverage {
+                return Err(ValidationError {
+                    problem: "`compare` is `Some`, but `reduction_mode` is not \
+                        `SamplerReductionMode::WeightedAverage`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-compareEnable-01423"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if unnormalized_coordinates {
+            if min_filter != mag_filter {
+                return Err(ValidationError {
+                    problem: "`unnormalized_coordinates` is `true`, but \
+                        `min_filter` and `mag_filter` are not equal"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-unnormalizedCoordinates-01072"],
+                    ..Default::default()
+                });
+            }
+
+            if mipmap_mode != SamplerMipmapMode::Nearest {
+                return Err(ValidationError {
+                    problem: "`unnormalized_coordinates` is `true`, but \
+                        `mipmap_mode` is not `SamplerMipmapMode::Nearest`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-unnormalizedCoordinates-01073"],
+                    ..Default::default()
+                });
+            }
+
+            if *lod != (0.0..=0.0) {
+                return Err(ValidationError {
+                    problem: "`unnormalized_coordinates` is `true`, but \
+                        `lod` is not `0.0..=1.0`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-unnormalizedCoordinates-01074"],
+                    ..Default::default()
+                });
+            }
+
+            if address_mode[0..2].iter().any(|mode| {
+                !matches!(
+                    mode,
+                    SamplerAddressMode::ClampToEdge | SamplerAddressMode::ClampToBorder
+                )
+            }) {
+                return Err(ValidationError {
+                    problem: "`unnormalized_coordinates` is `true`, but \
+                        `address_mode[0]` or `address_mode[1]` are not \
+                        `SamplerAddressMode::ClampToEdge` or `SamplerAddressMode::ClampToBorder`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-unnormalizedCoordinates-01075"],
+                    ..Default::default()
+                });
+            }
+
+            if anisotropy.is_some() {
+                return Err(ValidationError {
+                    problem: "`unnormalized_coordinates` is `true`, but `anisotropy` is `Some`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-unnormalizedCoordinates-01076"],
+                    ..Default::default()
+                });
+            }
+
+            if compare.is_some() {
+                return Err(ValidationError {
+                    problem: "`unnormalized_coordinates` is `true`, but `compare` is `Some`".into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-unnormalizedCoordinates-0107"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if reduction_mode != SamplerReductionMode::WeightedAverage {
+            if !(device.enabled_features().sampler_filter_minmax
+                || device.enabled_extensions().ext_sampler_filter_minmax)
+            {
+                return Err(ValidationError {
+                    context: "reduction_mode".into(),
+                    problem: "is not `SamplerReductionMode::WeightedAverage`".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("sampler_filter_minmax")]),
+                        RequiresAllOf(&[Requires::DeviceExtension("ext_sampler_filter_minmax")]),
+                    ]),
+                    ..Default::default()
+                });
+            }
+        }
+
+        // Don't need to check features because you can't create a conversion object without the
+        // feature anyway.
+        if let Some(sampler_ycbcr_conversion) = sampler_ycbcr_conversion {
+            assert_eq!(device, sampler_ycbcr_conversion.device().as_ref());
+
+            // Use unchecked, because all validation has been done by the SamplerYcbcrConversion.
+            let potential_format_features = unsafe {
+                device
+                    .physical_device()
+                    .format_properties_unchecked(sampler_ycbcr_conversion.format().unwrap())
+                    .potential_format_features()
+            };
+
+            if !potential_format_features.intersects(
+                FormatFeatures::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER,
+            ) && !(mag_filter == sampler_ycbcr_conversion.chroma_filter()
+                && min_filter == sampler_ycbcr_conversion.chroma_filter())
+            {
+                return Err(ValidationError {
+                    problem: "`sampler_ycbcr_conversion` is `Some`, and \
+                        the potential format features of `sampler_ycbcr_conversion.format()` \
+                        do not include `FormatFeatures::\
+                        SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER`, but \
+                        `mag_filter` and `min_filter` are not both equal to \
+                        `sampler_ycbcr_conversion.chroma_filter()`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-minFilter-01645"],
+                    ..Default::default()
+                });
+            }
+
+            if address_mode
+                .into_iter()
+                .any(|mode| !matches!(mode, SamplerAddressMode::ClampToEdge))
+            {
+                return Err(ValidationError {
+                    problem: "`sampler_ycbcr_conversion` is `Some`, but \
+                        not all elements of `address_mode` are \
+                        `SamplerAddressMode::ClampToEdge`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-addressModeU-01646"],
+                    ..Default::default()
+                });
+            }
+
+            if anisotropy.is_some() {
+                return Err(ValidationError {
+                    problem: "`sampler_ycbcr_conversion` is `Some`, but \
+                        `anisotropy` is `Some`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-addressModeU-01646"],
+                    ..Default::default()
+                });
+            }
+
+            if unnormalized_coordinates {
+                return Err(ValidationError {
+                    problem: "`sampler_ycbcr_conversion` is `Some`, but \
+                        `unnormalized_coordinates` is `true`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-addressModeU-01646"],
+                    ..Default::default()
+                });
+            }
+
+            if reduction_mode != SamplerReductionMode::WeightedAverage {
+                return Err(ValidationError {
+                    problem: "`sampler_ycbcr_conversion` is `Some`, but \
+                        `reduction_mode` is not `SamplerReductionMode::WeightedAverage`"
+                        .into(),
+                    vuids: &["VUID-VkSamplerCreateInfo-None-01647"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// A special value to indicate that the maximum LOD should not be clamped.
@@ -1337,6 +1245,36 @@ impl ComponentMapping {
                 ComponentSwizzle::Alpha => Some(3),
             },
         ]
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self { r, g, b, a } = self;
+
+        r.validate_device(device).map_err(|err| ValidationError {
+            context: "r".into(),
+            vuids: &["VUID-VkComponentMapping-r-parameter"],
+            ..ValidationError::from_requirement(err)
+        })?;
+
+        g.validate_device(device).map_err(|err| ValidationError {
+            context: "g".into(),
+            vuids: &["VUID-VkComponentMapping-g-parameter"],
+            ..ValidationError::from_requirement(err)
+        })?;
+
+        b.validate_device(device).map_err(|err| ValidationError {
+            context: "b".into(),
+            vuids: &["VUID-VkComponentMapping-b-parameter"],
+            ..ValidationError::from_requirement(err)
+        })?;
+
+        a.validate_device(device).map_err(|err| ValidationError {
+            context: "a".into(),
+            vuids: &["VUID-VkComponentMapping-a-parameter"],
+            ..ValidationError::from_requirement(err)
+        })?;
+
+        Ok(())
     }
 }
 
@@ -1550,12 +1488,11 @@ vulkan_enum! {
 #[cfg(test)]
 mod tests {
     use crate::{
-        pipeline::graphics::depth_stencil::CompareOp,
-        sampler::{
-            Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError,
-            SamplerReductionMode,
+        image::sampler::{
+            Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerReductionMode,
         },
-        Requires, RequiresAllOf, RequiresOneOf,
+        pipeline::graphics::depth_stencil::CompareOp,
+        Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanError,
     };
 
     #[test]
@@ -1633,39 +1570,43 @@ mod tests {
     fn min_lod_inferior() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        assert_should_panic!({
-            let _ = Sampler::new(
-                device,
-                SamplerCreateInfo {
-                    mag_filter: Filter::Linear,
-                    min_filter: Filter::Linear,
-                    address_mode: [SamplerAddressMode::Repeat; 3],
-                    mip_lod_bias: 1.0,
-                    lod: 5.0..=2.0,
-                    ..Default::default()
-                },
-            );
-        });
+        if Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                mip_lod_bias: 1.0,
+                lod: 5.0..=2.0,
+                ..Default::default()
+            },
+        )
+        .is_ok()
+        {
+            panic!()
+        }
     }
 
     #[test]
     fn max_anisotropy() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        assert_should_panic!({
-            let _ = Sampler::new(
-                device,
-                SamplerCreateInfo {
-                    mag_filter: Filter::Linear,
-                    min_filter: Filter::Linear,
-                    address_mode: [SamplerAddressMode::Repeat; 3],
-                    mip_lod_bias: 1.0,
-                    anisotropy: Some(0.5),
-                    lod: 0.0..=2.0,
-                    ..Default::default()
-                },
-            );
-        });
+        if Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                mip_lod_bias: 1.0,
+                anisotropy: Some(0.5),
+                lod: 0.0..=2.0,
+                ..Default::default()
+            },
+        )
+        .is_ok()
+        {
+            panic!()
+        }
     }
 
     #[test]
@@ -1686,11 +1627,7 @@ mod tests {
         );
 
         match r {
-            Err(SamplerCreationError::RequirementNotMet {
-                requires_one_of:
-                    RequiresOneOf([RequiresAllOf([Requires::Feature("sampler_anisotropy")])]),
-                ..
-            }) => (),
+            Err(VulkanError::ValidationError(_)) => (),
             _ => panic!(),
         }
     }
@@ -1713,7 +1650,7 @@ mod tests {
         );
 
         match r {
-            Err(SamplerCreationError::MaxSamplerAnisotropyExceeded { .. }) => (),
+            Err(VulkanError::ValidationError(_)) => (),
             _ => panic!(),
         }
     }
@@ -1735,7 +1672,7 @@ mod tests {
         );
 
         match r {
-            Err(SamplerCreationError::MaxSamplerLodBiasExceeded { .. }) => (),
+            Err(VulkanError::ValidationError(_)) => (),
             _ => panic!(),
         }
     }
@@ -1757,7 +1694,7 @@ mod tests {
         );
 
         match r {
-            Err(SamplerCreationError::RequirementNotMet {
+            Err(VulkanError::ValidationError(ValidationError {
                 requires_one_of:
                     RequiresOneOf(
                         [RequiresAllOf([Requires::Feature("sampler_mirror_clamp_to_edge")]), RequiresAllOf(
@@ -1765,7 +1702,7 @@ mod tests {
                         )],
                     ),
                 ..
-            }) => {}
+            })) => {}
             _ => panic!(),
         }
     }
@@ -1785,13 +1722,13 @@ mod tests {
         );
 
         match r {
-            Err(SamplerCreationError::RequirementNotMet {
+            Err(VulkanError::ValidationError(ValidationError {
                 requires_one_of:
                     RequiresOneOf(
                         [RequiresAllOf([Requires::Feature("sampler_filter_minmax")]), RequiresAllOf([Requires::DeviceExtension("ext_sampler_filter_minmax")])],
                     ),
                 ..
-            }) => {}
+            })) => {}
             _ => panic!(),
         }
     }

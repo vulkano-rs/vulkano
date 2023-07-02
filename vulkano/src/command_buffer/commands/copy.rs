@@ -16,10 +16,9 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures, NumericType},
     image::{
-        ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageType,
-        ImageUsage, SampleCount, SampleCounts,
+        sampler::Filter, ImageAccess, ImageAspects, ImageDimensions, ImageLayout,
+        ImageSubresourceLayers, ImageType, ImageUsage, SampleCount, SampleCounts,
     },
-    sampler::Filter,
     sync::PipelineStageAccessFlags,
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanObject,
 };
