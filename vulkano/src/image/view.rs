@@ -19,7 +19,7 @@
 
 use super::{Image, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage};
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     format::{ChromaSampling, Format, FormatFeatures},
     image::{
         sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
@@ -47,7 +47,7 @@ use std::{
 #[derive(Debug)]
 pub struct ImageView {
     handle: ash::vk::ImageView,
-    image: Arc<Image>,
+    image: DeviceOwnedDebugWrapper<Arc<Image>>,
     id: NonZeroU64,
 
     view_type: ImageViewType,
@@ -676,7 +676,7 @@ impl ImageView {
 
         Ok(Arc::new(ImageView {
             handle,
-            image,
+            image: DeviceOwnedDebugWrapper(image),
             id: Self::next_id(),
             view_type,
             format,

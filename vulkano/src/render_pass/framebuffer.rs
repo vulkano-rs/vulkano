@@ -51,7 +51,7 @@ pub struct Framebuffer {
     id: NonZeroU64,
 
     flags: FramebufferCreateFlags,
-    attachments: Vec<Arc<ImageView>>,
+    attachments: Vec<DeviceOwnedDebugWrapper<Arc<ImageView>>>,
     extent: [u32; 2],
     layers: u32,
 }
@@ -317,6 +317,11 @@ impl Framebuffer {
             _ne: _,
         } = create_info;
 
+        let attachments = attachments
+            .into_iter()
+            .map(DeviceOwnedDebugWrapper)
+            .collect();
+
         Arc::new(Framebuffer {
             handle,
             render_pass: DeviceOwnedDebugWrapper(render_pass),
@@ -344,7 +349,7 @@ impl Framebuffer {
     /// Returns the attachments of the framebuffer.
     #[inline]
     pub fn attachments(&self) -> &[Arc<ImageView>] {
-        &self.attachments
+        DeviceOwnedDebugWrapper::cast_slice_inner(&self.attachments)
     }
 
     /// Returns the extent (width and height) of the framebuffer.
