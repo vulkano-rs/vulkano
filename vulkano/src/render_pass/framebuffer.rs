@@ -317,18 +317,16 @@ impl Framebuffer {
             _ne: _,
         } = create_info;
 
-        let attachments = attachments
-            .into_iter()
-            .map(DeviceOwnedDebugWrapper)
-            .collect();
-
         Arc::new(Framebuffer {
             handle,
             render_pass: DeviceOwnedDebugWrapper(render_pass),
             id: Self::next_id(),
 
             flags,
-            attachments,
+            attachments: attachments
+                .into_iter()
+                .map(DeviceOwnedDebugWrapper)
+                .collect(),
             extent,
             layers,
         })
