@@ -65,12 +65,13 @@ pub use self::sys::ImageCreateInfo;
 pub use self::{
     aspect::{ImageAspect, ImageAspects},
     layout::ImageLayout,
-    sys::ImageError,
     usage::ImageUsage,
 };
-use self::{sys::RawImage, view::ImageViewType};
+use self::{
+    sys::{ImageError, RawImage},
+    view::ImageViewType,
+};
 use crate::{
-    buffer::subbuffer::{ReadLockError, WriteLockError},
     device::{physical::PhysicalDevice, Device, DeviceOwned},
     format::{Format, FormatFeatures},
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
@@ -81,7 +82,7 @@ use crate::{
     },
     range_map::RangeMap,
     swapchain::Swapchain,
-    sync::{future::AccessError, CurrentAccess, Sharing},
+    sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -572,11 +573,11 @@ impl ImageState {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn check_cpu_read(&self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
+    pub(crate) fn check_cpu_read(&self, range: Range<DeviceSize>) -> Result<(), AccessConflict> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
-                CurrentAccess::CpuExclusive { .. } => return Err(ReadLockError::CpuWriteLocked),
-                CurrentAccess::GpuExclusive { .. } => return Err(ReadLockError::GpuWriteLocked),
+                CurrentAccess::CpuExclusive { .. } => return Err(AccessConflict::HostWrite),
+                CurrentAccess::GpuExclusive { .. } => return Err(AccessConflict::DeviceWrite),
                 CurrentAccess::Shared { .. } => (),
             }
         }
@@ -613,19 +614,19 @@ impl ImageState {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn check_cpu_write(&self, range: Range<DeviceSize>) -> Result<(), WriteLockError> {
+    pub(crate) fn check_cpu_write(&self, range: Range<DeviceSize>) -> Result<(), AccessConflict> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
-                CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
-                CurrentAccess::GpuExclusive { .. } => return Err(WriteLockError::GpuLocked),
+                CurrentAccess::CpuExclusive => return Err(AccessConflict::HostWrite),
+                CurrentAccess::GpuExclusive { .. } => return Err(AccessConflict::DeviceWrite),
                 CurrentAccess::Shared {
                     cpu_reads: 0,
                     gpu_reads: 0,
                 } => (),
                 CurrentAccess::Shared { cpu_reads, .. } if *cpu_reads > 0 => {
-                    return Err(WriteLockError::CpuLocked)
+                    return Err(AccessConflict::HostRead)
                 }
-                CurrentAccess::Shared { .. } => return Err(WriteLockError::GpuLocked),
+                CurrentAccess::Shared { .. } => return Err(AccessConflict::DeviceRead),
             }
         }
 

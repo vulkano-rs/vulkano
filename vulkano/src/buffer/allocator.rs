@@ -10,7 +10,7 @@
 //! Efficiently suballocates buffers into smaller subbuffers.
 
 use super::{
-    sys::BufferCreateInfo, Buffer, BufferContents, BufferError, BufferMemory, BufferUsage,
+    sys::BufferCreateInfo, Buffer, BufferAllocateError, BufferContents, BufferMemory, BufferUsage,
     Subbuffer,
 };
 use crate::{
@@ -355,7 +355,7 @@ where
             DeviceLayout::from_size_alignment(self.arena_size, 1).unwrap(),
         )
         .map_err(|err| match err {
-            BufferError::AllocError(err) => err,
+            BufferAllocateError::AllocateMemory(err) => err,
             // We don't use sparse-binding, concurrent sharing or external memory, therefore the
             // other errors can't happen.
             _ => unreachable!(),
