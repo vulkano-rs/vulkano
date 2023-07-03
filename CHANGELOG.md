@@ -28,8 +28,10 @@ Changes to pipeline construction:
 - Added a `_ne` field to all pipeline state create info structs, as they should have had all along.
 
 Changes to images:
-- Removed the `ImageInner` type. The `inner` method of the `ImageAccess` trait now returns a reference to the inner image directly.
-- Removed the `descriptor_layouts` method on the `ImageAccess` trait. All images by default now use the `General` layout for storage image descriptors, and `ShaderReadOnlyOptimal` for all other image descriptors.
+- There is now only the single type `Image` to represent images. `ImageAccess`, `ImageInner`, `AttachmentImage`, `ImmutableImage`, `StorageImage` and `SwapchainImage` were removed.
+- `ImageView` no longer has a type parameter, `ImageViewAbstract` was removed.
+- Removed `ImageAccessFromUndefinedLayout`, `ImmutableImageCreationError`, `ImmutableImageInitialization` and `MipmapsCount`.
+- `Image` was moved to the `image` module.
 
 Changes to buffers:
 - The `Subbuffer::{try_cast, try_cast_slice, try_from_bytes}` functions were replaced by `Subbuffer::reinterpret[_ref]`.
