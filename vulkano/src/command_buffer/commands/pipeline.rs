@@ -24,8 +24,9 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
     image::{
-        sampler::Sampler, view::ImageViewType, ImageAccess, ImageAspects, ImageLayout,
-        ImageViewAbstract, SampleCount,
+        sampler::Sampler,
+        view::{ImageView, ImageViewType},
+        ImageAspects, ImageLayout, SampleCount,
     },
     pipeline::{
         graphics::{
@@ -864,7 +865,7 @@ where
                 Ok(())
             };
 
-            let check_image_view_common = |index: u32, image_view: &Arc<dyn ImageViewAbstract>| {
+            let check_image_view_common = |index: u32, image_view: &Arc<ImageView>| {
                 for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
                     .chain(binding_reqs.descriptors.get(&None))
                 {
@@ -2029,13 +2030,12 @@ where
                                 image_layout = default_image_layout;
                             }
 
-                            let image = image_view.image();
                             let (use_ref, memory_access) = use_iter(index as u32);
 
                             used_resources.push((
                                 use_ref,
                                 Resource::Image {
-                                    image,
+                                    image: image_view.image().clone(),
                                     subresource_range: image_view.subresource_range().clone(),
                                     memory_access,
                                     start_layout: image_layout,
@@ -2057,13 +2057,12 @@ where
                                 image_layout = default_image_layout;
                             }
 
-                            let image = image_view.image();
                             let (use_ref, memory_access) = use_iter(index as u32);
 
                             used_resources.push((
                                 use_ref,
                                 Resource::Image {
-                                    image,
+                                    image: image_view.image().clone(),
                                     subresource_range: image_view.subresource_range().clone(),
                                     memory_access,
                                     start_layout: image_layout,

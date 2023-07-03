@@ -30,14 +30,22 @@ mod linux {
         format::Format,
         image::{
             sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+            sys::RawImage,
             view::ImageView,
-            ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage,
+            Image, ImageCreateFlags, ImageCreateInfo, ImageDimensions, ImageUsage,
         },
         instance::{
             debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
             Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
         },
-        memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+        memory::{
+            allocator::{
+                AllocationCreateInfo, MemoryAlloc, MemoryAllocator, MemoryUsage,
+                StandardMemoryAllocator,
+            },
+            DedicatedAllocation, DeviceMemory, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+            MemoryAllocateInfo,
+        },
         pipeline::{
             graphics::{
                 color_blend::ColorBlendState,
@@ -52,7 +60,7 @@ mod linux {
             GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
             PipelineShaderStageCreateInfo,
         },
-        render_pass::{Framebuffer, RenderPass, Subpass},
+        render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
         swapchain::{AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
         sync::{
             now,
@@ -108,23 +116,55 @@ mod linux {
             vertex_buffer,
         ) = vk_setup(display, &event_loop);
 
-        let image = StorageImage::new_with_exportable_fd(
-            &memory_allocator,
-            vulkano::image::ImageDimensions::Dim2d {
-                width: 200,
-                height: 200,
-                array_layers: 1,
+        let raw_image = RawImage::new(
+            device.clone(),
+            ImageCreateInfo {
+                flags: ImageCreateFlags::MUTABLE_FORMAT,
+                dimensions: ImageDimensions::Dim2d {
+                    width: 200,
+                    height: 200,
+                    array_layers: 1,
+                },
+                format: Some(Format::R16G16B16A16_UNORM),
+                usage: ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                external_memory_handle_types: ExternalMemoryHandleTypes::OPAQUE_FD,
+                ..Default::default()
             },
-            Format::R16G16B16A16_UNORM,
-            ImageUsage::SAMPLED | ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST,
-            ImageCreateFlags::MUTABLE_FORMAT,
-            [queue.queue_family_index()],
         )
         .unwrap();
 
-        let image_fd = image.export_posix_fd().unwrap();
+        let image_requirements = raw_image.memory_requirements()[0];
 
-        let image_view = ImageView::new_default(image.clone()).unwrap();
+        let image_memory = DeviceMemory::allocate(
+            device.clone(),
+            MemoryAllocateInfo {
+                allocation_size: image_requirements.layout.size(),
+                memory_type_index: memory_allocator
+                    .find_memory_type_index(
+                        image_requirements.memory_type_bits,
+                        MemoryUsage::DeviceOnly.into(),
+                    )
+                    .unwrap(),
+                dedicated_allocation: Some(DedicatedAllocation::Image(&raw_image)),
+                export_handle_types: ExternalMemoryHandleTypes::OPAQUE_FD,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let allocation_size = image_memory.allocation_size();
+        let image_fd = image_memory
+            .export_fd(ExternalMemoryHandleType::OpaqueFd)
+            .unwrap();
+
+        let image = Arc::new(
+            raw_image
+                .bind_memory([MemoryAlloc::new(image_memory).unwrap()])
+                .map_err(|(err, _, _)| err)
+                .unwrap(),
+        );
+
+        let image_view = ImageView::new_default(image).unwrap();
 
         let barrier = Arc::new(Barrier::new(2));
         let barrier_2 = Arc::new(Barrier::new(2));
@@ -159,6 +199,7 @@ mod linux {
 
         let barrier_clone = barrier.clone();
         let barrier_2_clone = barrier_2.clone();
+
         build_display(hrb, move |gl_display| {
             let gl_tex = unsafe {
                 glium::texture::Texture2d::new_from_fd(
@@ -171,7 +212,7 @@ mod linux {
                     },
                     glium::texture::ImportParameters {
                         dedicated_memory: true,
-                        size: image.mem_size(),
+                        size: allocation_size,
                         offset: 0,
                         tiling: glium::texture::ExternalTilingMode::Optimal,
                     },
@@ -536,7 +577,6 @@ mod linux {
                 device.clone(),
                 surface,
                 SwapchainCreateInfo {
-                    // Some drivers report `min_image_count=1` but fullscreen mode requires at least 2.
                     min_image_count: surface_capabilities.min_image_count.max(2),
                     image_format,
                     image_extent: window.inner_size().into(),
@@ -633,6 +673,7 @@ mod linux {
             )
             .unwrap();
             let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
             GraphicsPipeline::new(
                 device.clone(),
                 None,
@@ -697,11 +738,10 @@ mod linux {
     }
 
     fn window_size_dependent_setup(
-        images: &[Arc<SwapchainImage>],
+        images: &[Arc<Image>],
         render_pass: Arc<RenderPass>,
         viewport: &mut Viewport,
     ) -> Vec<Arc<Framebuffer>> {
-        use vulkano::{image::ImageAccess, render_pass::FramebufferCreateInfo};
         let dimensions = images[0].dimensions().width_height();
         viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
 

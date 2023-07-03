@@ -15,12 +15,9 @@ use std::{sync::Arc, time::Instant};
 use vulkano::{
     command_buffer::allocator::StandardCommandBufferAllocator,
     descriptor_set::allocator::StandardDescriptorSetAllocator, device::Queue,
-    memory::allocator::StandardMemoryAllocator, sync::GpuFuture,
+    image::view::ImageView, memory::allocator::StandardMemoryAllocator, sync::GpuFuture,
 };
-use vulkano_util::{
-    renderer::{DeviceImageView, VulkanoWindowRenderer},
-    window::WindowDescriptor,
-};
+use vulkano_util::{renderer::VulkanoWindowRenderer, window::WindowDescriptor};
 use winit::{
     dpi::PhysicalPosition,
     event::{
@@ -121,7 +118,7 @@ Usage:
     }
 
     /// Runs our compute pipeline and return a future of when the compute is finished.
-    pub fn compute(&self, image_target: DeviceImageView) -> Box<dyn GpuFuture> {
+    pub fn compute(&self, image_target: Arc<ImageView>) -> Box<dyn GpuFuture> {
         self.fractal_pipeline.compute(
             image_target,
             self.c,

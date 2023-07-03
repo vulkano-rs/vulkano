@@ -22,7 +22,7 @@ use vulkano::{
     },
     device::Queue,
     format::Format,
-    image::{ImageAccess, ImageUsage, StorageImage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageUsage},
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
@@ -31,7 +31,6 @@ use vulkano::{
     },
     sync::GpuFuture,
 };
-use vulkano_util::renderer::DeviceImageView;
 
 /// Pipeline holding double buffered grid & color image. Grids are used to calculate the state, and
 /// color image is used to show the output. Because on each step we determine state in parallel, we
@@ -44,7 +43,7 @@ pub struct GameOfLifeComputePipeline {
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     life_in: Subbuffer<[u32]>,
     life_out: Subbuffer<[u32]>,
-    image: DeviceImageView,
+    image: Arc<ImageView>,
 }
 
 fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 2]) -> Subbuffer<[u32]> {
@@ -58,9 +57,7 @@ fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 2]) -> Subbuff
             usage: MemoryUsage::Upload,
             ..Default::default()
         },
-        (0..(size[0] * size[1]))
-            .map(|_| rand::thread_rng().gen_range(0u32..=1))
-            .collect::<Vec<u32>>(),
+        (0..(size[0] * size[1])).map(|_| rand::thread_rng().gen_range(0u32..=1)),
     )
     .unwrap()
 }
@@ -85,6 +82,7 @@ impl GameOfLifeComputePipeline {
                     .unwrap(),
             )
             .unwrap();
+
             ComputePipeline::new(
                 device.clone(),
                 None,
@@ -93,12 +91,22 @@ impl GameOfLifeComputePipeline {
             .unwrap()
         };
 
-        let image = StorageImage::general_purpose_image_view(
-            memory_allocator,
-            compute_queue.clone(),
-            size,
-            Format::R8G8B8A8_UNORM,
-            ImageUsage::SAMPLED | ImageUsage::STORAGE | ImageUsage::TRANSFER_DST,
+        let image = ImageView::new_default(
+            Image::new(
+                memory_allocator,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: size[0],
+                        height: size[1],
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED | ImageUsage::STORAGE,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -113,7 +121,7 @@ impl GameOfLifeComputePipeline {
         }
     }
 
-    pub fn color_image(&self) -> DeviceImageView {
+    pub fn color_image(&self) -> Arc<ImageView> {
         self.image.clone()
     }
 

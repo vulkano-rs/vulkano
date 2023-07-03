@@ -282,7 +282,7 @@
 //!
 //! // let (swapchain, images) = Swapchain::new(...);
 //! # let mut swapchain: ::std::sync::Arc<::vulkano::swapchain::Swapchain> = return;
-//! # let mut images: Vec<::std::sync::Arc<::vulkano::image::SwapchainImage>> = return;
+//! # let mut images: Vec<::std::sync::Arc<::vulkano::image::Image>> = return;
 //! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
 //! let mut recreate_swapchain = false;
 //!
@@ -332,7 +332,7 @@ mod surface;
 use crate::{
     device::{Device, DeviceOwned},
     format::Format,
-    image::{sys::Image, ImageFormatInfo, ImageTiling, ImageType, ImageUsage, SwapchainImage},
+    image::{Image, ImageFormatInfo, ImageTiling, ImageType, ImageUsage},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     sync::Sharing,
@@ -420,7 +420,7 @@ impl Swapchain {
         device: Arc<Device>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), VulkanError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         Self::validate_new_inner(&device, &surface, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, surface, create_info)?) }
@@ -432,7 +432,7 @@ impl Swapchain {
         device: Arc<Device>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), RuntimeError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), RuntimeError> {
         let (handle, image_handles) =
             Self::new_inner_unchecked(&device, &surface, &create_info, None)?;
 
@@ -455,7 +455,7 @@ impl Swapchain {
     pub fn recreate(
         self: &Arc<Self>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), VulkanError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         Self::validate_new_inner(&self.device, &self.surface, &create_info)?;
 
         {
@@ -489,7 +489,7 @@ impl Swapchain {
     pub unsafe fn recreate_unchecked(
         self: &Arc<Self>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), RuntimeError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), RuntimeError> {
         // According to the documentation of VkSwapchainCreateInfoKHR:
         //
         // > Upon calling vkCreateSwapchainKHR with a oldSwapchain that is not VK_NULL_HANDLE,
@@ -1160,7 +1160,7 @@ impl Swapchain {
         image_handles: impl IntoIterator<Item = ash::vk::Image>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> (Arc<Swapchain>, Vec<Arc<SwapchainImage>>) {
+    ) -> (Arc<Swapchain>, Vec<Arc<Image>>) {
         let SwapchainCreateInfo {
             flags,
             min_image_count,
@@ -1223,7 +1223,11 @@ impl Swapchain {
             .iter()
             .enumerate()
             .map(|(image_index, entry)| unsafe {
-                SwapchainImage::from_handle(entry.handle, swapchain.clone(), image_index as u32)
+                Arc::new(Image::from_swapchain(
+                    entry.handle,
+                    swapchain.clone(),
+                    image_index as u32,
+                ))
             })
             .collect();
 
@@ -1796,6 +1800,7 @@ impl SwapchainCreateInfo {
                 for (index, &queue_family_index) in queue_family_indices.iter().enumerate() {
                     if queue_family_indices[..index].contains(&queue_family_index) {
                         return Err(ValidationError {
+                            context: "queue_family_indices".into(),
                             problem: format!(
                                 "the queue family index in the list at index {} is contained in \
                                 the list more than once",

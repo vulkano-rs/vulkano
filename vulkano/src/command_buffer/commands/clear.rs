@@ -15,7 +15,7 @@ use crate::{
     },
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, Format, FormatFeatures},
-    image::{ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage},
+    image::{Image, ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage},
     sync::PipelineStageAccessFlags,
     DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, SafeDeref, Version,
     VulkanObject,
@@ -101,26 +101,26 @@ where
             }
         }
 
-        let image_aspects = image.format().aspects();
+        let image_aspects = image.format().unwrap().aspects();
 
         // VUID-vkCmdClearColorImage-image-00007
         if image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             return Err(ClearError::FormatNotSupported {
-                format: image.format(),
+                format: image.format().unwrap(),
             });
         }
 
         // VUID-vkCmdClearColorImage-image-00007
-        if image.format().compression().is_some() {
+        if image.format().unwrap().compression().is_some() {
             return Err(ClearError::FormatNotSupported {
-                format: image.format(),
+                format: image.format().unwrap(),
             });
         }
 
         // VUID-vkCmdClearColorImage-image-01545
-        if image.format().ycbcr_chroma_sampling().is_some() {
+        if image.format().unwrap().ycbcr_chroma_sampling().is_some() {
             return Err(ClearError::FormatNotSupported {
-                format: image.format(),
+                format: image.format().unwrap(),
             });
         }
 
@@ -278,12 +278,12 @@ where
             }
         }
 
-        let image_aspects = image.format().aspects();
+        let image_aspects = image.format().unwrap().aspects();
 
         // VUID-vkCmdClearDepthStencilImage-image-00014
         if !image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             return Err(ClearError::FormatNotSupported {
-                format: image.format(),
+                format: image.format().unwrap(),
             });
         }
 
@@ -693,7 +693,7 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_color_image)(
             self.handle(),
-            image.inner().handle(),
+            image.handle(),
             image_layout.into(),
             &clear_value_vk,
             ranges_vk.len() as u32,
@@ -734,7 +734,7 @@ where
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_depth_stencil_image)(
             self.handle(),
-            image.inner().handle(),
+            image.handle(),
             image_layout.into(),
             &clear_value_vk,
             ranges_vk.len() as u32,
@@ -783,7 +783,7 @@ pub struct ClearColorImageInfo {
     /// The image to clear.
     ///
     /// There is no default value.
-    pub image: Arc<dyn ImageAccess>,
+    pub image: Arc<Image>,
 
     /// The layout used for `image` during the clear operation.
     ///
@@ -810,7 +810,7 @@ pub struct ClearColorImageInfo {
 impl ClearColorImageInfo {
     /// Returns a `ClearColorImageInfo` with the specified `image`.
     #[inline]
-    pub fn image(image: Arc<dyn ImageAccess>) -> Self {
+    pub fn image(image: Arc<Image>) -> Self {
         let range = image.subresource_range();
 
         Self {
@@ -829,7 +829,7 @@ pub struct ClearDepthStencilImageInfo {
     /// The image to clear.
     ///
     /// There is no default value.
-    pub image: Arc<dyn ImageAccess>,
+    pub image: Arc<Image>,
 
     /// The layout used for `image` during the clear operation.
     ///
@@ -856,7 +856,7 @@ pub struct ClearDepthStencilImageInfo {
 impl ClearDepthStencilImageInfo {
     /// Returns a `ClearDepthStencilImageInfo` with the specified `image`.
     #[inline]
-    pub fn image(image: Arc<dyn ImageAccess>) -> Self {
+    pub fn image(image: Arc<Image>) -> Self {
         let range = image.subresource_range();
 
         Self {

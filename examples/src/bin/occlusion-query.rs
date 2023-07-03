@@ -23,7 +23,7 @@ use vulkano::{
         QueueFlags,
     },
     format::Format,
-    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SwapchainImage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
@@ -138,7 +138,6 @@ fn main() {
             device.clone(),
             surface,
             SwapchainCreateInfo {
-                // Some drivers report `min_image_count=1` but fullscreen mode requires at least 2.
                 min_image_count: surface_capabilities.min_image_count.max(2),
                 image_format,
                 image_extent: window.inner_size().into(),
@@ -327,6 +326,7 @@ fn main() {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
         GraphicsPipeline::new(
             device.clone(),
             None,
@@ -561,7 +561,7 @@ fn main() {
 }
 
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage>],
+    images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
     memory_allocator: &StandardMemoryAllocator,
@@ -570,11 +570,15 @@ fn window_size_dependent_setup(
     viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
 
     let depth_attachment = ImageView::new_default(
-        AttachmentImage::with_usage(
+        Image::new(
             memory_allocator,
-            dimensions,
-            Format::D16_UNORM,
-            ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+            ImageCreateInfo {
+                dimensions: images[0].dimensions(),
+                format: Some(Format::D16_UNORM),
+                usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
         )
         .unwrap(),
     )

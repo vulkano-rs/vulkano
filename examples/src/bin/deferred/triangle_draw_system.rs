@@ -98,6 +98,7 @@ impl TriangleDrawSystem {
                     .unwrap(),
             )
             .unwrap();
+
             GraphicsPipeline::new(
                 device.clone(),
                 None,

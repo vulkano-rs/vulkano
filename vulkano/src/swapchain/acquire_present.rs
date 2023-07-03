@@ -11,7 +11,7 @@ use super::{PresentMode, Swapchain};
 use crate::{
     buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
-    image::{sys::Image, ImageLayout},
+    image::{Image, ImageLayout},
     sync::{
         fence::{Fence, FenceError},
         future::{AccessCheckError, AccessError, FlushError, GpuFuture, SubmitAnyBuilder},

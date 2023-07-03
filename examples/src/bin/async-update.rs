@@ -65,7 +65,7 @@ use vulkano::{
     image::{
         sampler::{Sampler, SamplerCreateInfo},
         view::ImageView,
-        ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
+        Image, ImageCreateInfo, ImageDimensions, ImageUsage,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -238,7 +238,6 @@ fn main() {
             device.clone(),
             surface,
             SwapchainCreateInfo {
-                // Some drivers report `min_image_count=1` but fullscreen mode requires at least 2.
                 min_image_count: surface_capabilities.min_image_count.max(2),
                 image_format,
                 image_extent: window.inner_size().into(),
@@ -313,15 +312,19 @@ fn main() {
     // Create two textures, where at any point in time one is used exclusively for reading and one
     // is used exclusively for writing, swapping the two after each update.
     let textures = [(); 2].map(|_| {
-        StorageImage::new(
+        Image::new(
             &memory_allocator,
-            ImageDimensions::Dim2d {
-                width: TRANSFER_GRANULARITY * 2,
-                height: TRANSFER_GRANULARITY * 2,
-                array_layers: 1,
+            ImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: TRANSFER_GRANULARITY * 2,
+                    height: TRANSFER_GRANULARITY * 2,
+                    array_layers: 1,
+                },
+                format: Some(Format::R8G8B8A8_UNORM),
+                usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                ..Default::default()
             },
-            Format::R8G8B8A8_UNORM,
-            None,
+            AllocationCreateInfo::default(),
         )
         .unwrap()
     });
@@ -685,7 +688,7 @@ fn main() {
 fn run_worker(
     channel: mpsc::Receiver<()>,
     transfer_queue: Arc<Queue>,
-    textures: [Arc<StorageImage>; 2],
+    textures: [Arc<Image>; 2],
     current_texture_index: Arc<AtomicBool>,
     current_generation: Arc<AtomicU64>,
     swapchain_image_count: u32,
@@ -844,7 +847,7 @@ fn run_worker(
 
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage>],
+    images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {

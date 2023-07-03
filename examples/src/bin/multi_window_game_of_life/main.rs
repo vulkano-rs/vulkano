@@ -24,7 +24,6 @@ mod render_pass;
 use crate::app::{App, RenderPipeline};
 use cgmath::Vector2;
 use std::time::Instant;
-use vulkano::image::ImageAccess;
 use vulkano_util::renderer::VulkanoWindowRenderer;
 use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
