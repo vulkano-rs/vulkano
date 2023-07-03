@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::{io::Cursor, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -27,7 +27,7 @@ use vulkano::{
     image::{
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
         view::ImageView,
-        ImageAccess, ImageDimensions, ImageLayout, ImageUsage, StorageImage, SwapchainImage,
+        Image, ImageCreateInfo, ImageDimensions, ImageLayout, ImageUsage,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -51,7 +51,7 @@ use vulkano::{
         SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
+    DeviceSize, VulkanLibrary,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -145,7 +145,6 @@ fn main() {
             device.clone(),
             surface,
             SwapchainCreateInfo {
-                // Some drivers report `min_image_count=1` but fullscreen mode requires at least 2.
                 min_image_count: surface_capabilities.min_image_count.max(2),
                 image_format,
                 image_extent: window.inner_size().into(),
@@ -225,9 +224,8 @@ fn main() {
     .unwrap();
 
     let texture = {
-        let png_bytes = include_bytes!("image_img.png").to_vec();
-        let cursor = Cursor::new(png_bytes);
-        let decoder = png::Decoder::new(cursor);
+        let png_bytes = include_bytes!("image_img.png").as_slice();
+        let decoder = png::Decoder::new(png_bytes);
         let mut reader = decoder.read_info().unwrap();
         let info = reader.info();
         let img_size = [info.width, info.height];
@@ -236,19 +234,8 @@ fn main() {
             height: info.height * 2,
             array_layers: 1,
         };
-        let mut image_data = Vec::new();
-        image_data.resize((info.width * info.height * 4) as usize, 0);
-        reader.next_frame(&mut image_data).unwrap();
 
-        let image = StorageImage::new(
-            &memory_allocator,
-            dimensions,
-            Format::R8G8B8A8_UNORM,
-            [queue.queue_family_index()],
-        )
-        .unwrap();
-
-        let buffer = Buffer::from_iter(
+        let upload_buffer = Buffer::new_slice(
             &memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC,
@@ -258,7 +245,23 @@ fn main() {
                 usage: MemoryUsage::Upload,
                 ..Default::default()
             },
-            image_data,
+            (info.width * info.height * 4) as DeviceSize,
+        )
+        .unwrap();
+
+        reader
+            .next_frame(&mut upload_buffer.write().unwrap())
+            .unwrap();
+
+        let image = Image::new(
+            &memory_allocator,
+            ImageCreateInfo {
+                dimensions,
+                format: Some(Format::R8G8B8A8_UNORM),
+                usage: ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
         )
         .unwrap();
 
@@ -275,7 +278,7 @@ fn main() {
                     ..Default::default()
                 }]
                 .into(),
-                ..CopyBufferToImageInfo::buffer_image(buffer, image.clone())
+                ..CopyBufferToImageInfo::buffer_image(upload_buffer, image.clone())
             })
             .unwrap()
             // Copy from the top left corner to the bottom right corner.
@@ -359,6 +362,7 @@ fn main() {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
         GraphicsPipeline::new(
             device.clone(),
             None,
@@ -521,7 +525,7 @@ fn main() {
 
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage>],
+    images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {

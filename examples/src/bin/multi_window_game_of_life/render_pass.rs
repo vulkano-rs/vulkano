@@ -16,11 +16,10 @@ use vulkano::{
     },
     device::Queue,
     format::Format,
-    image::ImageAccess,
+    image::view::ImageView,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
-use vulkano_util::renderer::{DeviceImageView, SwapchainImageView};
 
 /// A render pass which places an incoming image over the frame, filling it.
 pub struct RenderPassPlaceOverFrame {
@@ -68,8 +67,8 @@ impl RenderPassPlaceOverFrame {
     pub fn render<F>(
         &self,
         before_future: F,
-        view: DeviceImageView,
-        target: SwapchainImageView,
+        view: Arc<ImageView>,
+        target: Arc<ImageView>,
     ) -> Box<dyn GpuFuture>
     where
         F: GpuFuture + 'static,

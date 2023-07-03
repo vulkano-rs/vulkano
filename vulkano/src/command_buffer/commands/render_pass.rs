@@ -19,7 +19,7 @@ use crate::{
     },
     device::{DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, Format, NumericType},
-    image::{ImageAspect, ImageAspects, ImageLayout, ImageUsage, ImageViewAbstract, SampleCount},
+    image::{view::ImageView, ImageAspect, ImageAspects, ImageLayout, ImageUsage, SampleCount},
     pipeline::graphics::subpass::PipelineRenderingCreateInfo,
     render_pass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, Framebuffer, RenderPass,
@@ -466,7 +466,7 @@ where
                     (
                         ResourceInCommand::FramebufferAttachment { index }.into(),
                         Resource::Image {
-                            image: image_view.image(),
+                            image: image_view.image().clone(),
                             subresource_range: image_view.subresource_range().clone(),
                             // TODO: suboptimal
                             memory_access: PipelineStageAccessFlags::FragmentShader_InputAttachmentRead
@@ -1378,7 +1378,7 @@ where
                         Some((
                             ResourceInCommand::ColorAttachment { index }.into(),
                             Resource::Image {
-                                image: image_view.image(),
+                                image: image_view.image().clone(),
                                 subresource_range: image_view.subresource_range().clone(),
                                 // TODO: suboptimal
                                 memory_access: PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentRead
@@ -1397,7 +1397,7 @@ where
                             (
                                 ResourceInCommand::ColorResolveAttachment { index }.into(),
                                 Resource::Image {
-                                    image: image_view.image(),
+                                    image: image_view.image().clone(),
                                     subresource_range: image_view.subresource_range().clone(),
                                     // TODO: suboptimal
                                     memory_access: PipelineStageAccessFlags::ColorAttachmentOutput_ColorAttachmentRead
@@ -1426,7 +1426,7 @@ where
                     Some((
                         ResourceInCommand::DepthStencilAttachment.into(),
                         Resource::Image {
-                            image: image_view.image(),
+                            image: image_view.image().clone(),
                             subresource_range: image_view.subresource_range().clone(),
                             // TODO: suboptimal
                             memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
@@ -1447,7 +1447,7 @@ where
                         (
                             ResourceInCommand::DepthStencilResolveAttachment.into(),
                             Resource::Image {
-                                image: image_view.image(),
+                                image: image_view.image().clone(),
                                 subresource_range: image_view.subresource_range().clone(),
                                 // TODO: suboptimal
                                 memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
@@ -1478,7 +1478,7 @@ where
                     Some((
                         ResourceInCommand::DepthStencilAttachment.into(),
                         Resource::Image {
-                            image: image_view.image(),
+                            image: image_view.image().clone(),
                             subresource_range: image_view.subresource_range().clone(),
                             // TODO: suboptimal
                             memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
@@ -1499,7 +1499,7 @@ where
                         (
                             ResourceInCommand::DepthStencilResolveAttachment.into(),
                             Resource::Image {
-                                image: image_view.image(),
+                                image: image_view.image().clone(),
                                 subresource_range: image_view.subresource_range().clone(),
                                 // TODO: suboptimal
                                 memory_access: PipelineStageAccessFlags::EarlyFragmentTests_DepthStencilAttachmentRead
@@ -2341,7 +2341,7 @@ pub struct RenderingAttachmentInfo {
     /// The image view to use as the attachment.
     ///
     /// There is no default value.
-    pub image_view: Arc<dyn ImageViewAbstract>,
+    pub image_view: Arc<ImageView>,
 
     /// The image layout that `image_view` should be in during the resolve operation.
     ///
@@ -2379,7 +2379,7 @@ pub struct RenderingAttachmentInfo {
 impl RenderingAttachmentInfo {
     /// Returns a `RenderingAttachmentInfo` with the specified `image_view`.
     #[inline]
-    pub fn image_view(image_view: Arc<dyn ImageViewAbstract>) -> Self {
+    pub fn image_view(image_view: Arc<ImageView>) -> Self {
         let aspects = image_view.format().unwrap().aspects();
         let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal
@@ -2410,7 +2410,7 @@ pub struct RenderingAttachmentResolveInfo {
     /// The image view that the result of the resolve operation should be written to.
     ///
     /// There is no default value.
-    pub image_view: Arc<dyn ImageViewAbstract>,
+    pub image_view: Arc<ImageView>,
 
     /// The image layout that `image_view` should be in during the resolve operation.
     ///
@@ -2423,7 +2423,7 @@ pub struct RenderingAttachmentResolveInfo {
 impl RenderingAttachmentResolveInfo {
     /// Returns a `RenderingAttachmentResolveInfo` with the specified `image_view`.
     #[inline]
-    pub fn image_view(image_view: Arc<dyn ImageViewAbstract>) -> Self {
+    pub fn image_view(image_view: Arc<ImageView>) -> Self {
         let aspects = image_view.format().unwrap().aspects();
         let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal

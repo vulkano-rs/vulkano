@@ -20,7 +20,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    image::ImageAccess,
+    image::view::ImageView,
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
@@ -29,7 +29,6 @@ use vulkano::{
     },
     sync::GpuFuture,
 };
-use vulkano_util::renderer::DeviceImageView;
 
 pub struct FractalComputePipeline {
     queue: Arc<Queue>,
@@ -135,7 +134,7 @@ impl FractalComputePipeline {
 
     pub fn compute(
         &self,
-        image: DeviceImageView,
+        image: Arc<ImageView>,
         c: Vector2<f32>,
         scale: Vector2<f32>,
         translation: Vector2<f32>,

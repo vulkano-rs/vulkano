@@ -17,8 +17,9 @@ use crate::{
     descriptor_set::layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags},
     device::DeviceOwned,
     image::{
-        sampler::Sampler, view::ImageViewType, ImageAspects, ImageLayout, ImageType, ImageUsage,
-        ImageViewAbstract,
+        sampler::Sampler,
+        view::{ImageView, ImageViewType},
+        ImageAspects, ImageLayout, ImageType, ImageUsage,
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
@@ -158,7 +159,7 @@ impl WriteDescriptorSet {
     /// Write a single image view to array element 0, using the `Undefined` image layout,
     /// which will be automatically replaced with an appropriate default layout.
     #[inline]
-    pub fn image_view(binding: u32, image_view: Arc<dyn ImageViewAbstract>) -> Self {
+    pub fn image_view(binding: u32, image_view: Arc<ImageView>) -> Self {
         Self::image_view_with_layout_array(
             binding,
             0,
@@ -175,7 +176,7 @@ impl WriteDescriptorSet {
     pub fn image_view_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = Arc<dyn ImageViewAbstract>>,
+        elements: impl IntoIterator<Item = Arc<ImageView>>,
     ) -> Self {
         Self::image_view_with_layout_array(
             binding,
@@ -218,7 +219,7 @@ impl WriteDescriptorSet {
     #[inline]
     pub fn image_view_sampler(
         binding: u32,
-        image_view: Arc<dyn ImageViewAbstract>,
+        image_view: Arc<ImageView>,
         sampler: Arc<Sampler>,
     ) -> Self {
         Self::image_view_with_layout_sampler_array(
@@ -241,7 +242,7 @@ impl WriteDescriptorSet {
     pub fn image_view_sampler_array(
         binding: u32,
         first_array_element: u32,
-        elements: impl IntoIterator<Item = (Arc<dyn ImageViewAbstract>, Arc<Sampler>)>,
+        elements: impl IntoIterator<Item = (Arc<ImageView>, Arc<Sampler>)>,
     ) -> Self {
         Self::image_view_with_layout_sampler_array(
             binding,
@@ -424,8 +425,8 @@ impl WriteDescriptorSet {
         }
 
         let validate_image_view =
-            |image_view: &dyn ImageViewAbstract, index: usize| -> Result<(), ValidationError> {
-                if image_view.image().inner().dimensions().image_type() == ImageType::Dim3d {
+            |image_view: &ImageView, index: usize| -> Result<(), ValidationError> {
+                if image_view.image().dimensions().image_type() == ImageType::Dim3d {
                     if image_view.view_type() == ImageViewType::Dim2dArray {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
@@ -1523,7 +1524,7 @@ pub struct DescriptorBufferInfo {
 #[derive(Clone, Debug)]
 pub struct DescriptorImageViewInfo {
     /// The image view to write to the descriptor.
-    pub image_view: Arc<dyn ImageViewAbstract>,
+    pub image_view: Arc<ImageView>,
 
     /// The layout that the image is expected to be in when it's accessed in the shader.
     ///

@@ -23,8 +23,8 @@ use vulkano::{
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
     format::Format,
-    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract},
-    memory::allocator::StandardMemoryAllocator,
+    image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageUsage},
+    memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
@@ -43,14 +43,14 @@ pub struct FrameSystem {
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
 
     // Intermediate render target that will contain the albedo of each pixel of the scene.
-    diffuse_buffer: Arc<ImageView<AttachmentImage>>,
+    diffuse_buffer: Arc<ImageView>,
     // Intermediate render target that will contain the normal vector in world coordinates of each
     // pixel of the scene.
     // The normal vector is the vector perpendicular to the surface of the object at this point.
-    normals_buffer: Arc<ImageView<AttachmentImage>>,
+    normals_buffer: Arc<ImageView>,
     // Intermediate render target that will contain the depth of each pixel of the scene.
     // This is a traditional depth buffer. `0.0` means "near", and `1.0` means "far".
-    depth_buffer: Arc<ImageView<AttachmentImage>>,
+    depth_buffer: Arc<ImageView>,
 
     // Will allow us to add an ambient lighting to a scene during the second subpass.
     ambient_lighting_system: AmbientLightingSystem,
@@ -154,31 +154,57 @@ impl FrameSystem {
         // For now we create three temporary images with a dimension of 1 by 1 pixel. These images
         // will be replaced the first time we call `frame()`.
         let diffuse_buffer = ImageView::new_default(
-            AttachmentImage::with_usage(
+            Image::new(
                 &memory_allocator,
-                [1, 1],
-                Format::A2B10G10R10_UNORM_PACK32,
-                ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 1,
+                        height: 1,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::A2B10G10R10_UNORM_PACK32),
+                    usage: ImageUsage::COLOR_ATTACHMENT
+                        | ImageUsage::TRANSIENT_ATTACHMENT
+                        | ImageUsage::INPUT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
         let normals_buffer = ImageView::new_default(
-            AttachmentImage::with_usage(
+            Image::new(
                 &memory_allocator,
-                [1, 1],
-                Format::R16G16B16A16_SFLOAT,
-                ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 1,
+                        height: 1,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R16G16B16A16_SFLOAT),
+                    usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
         let depth_buffer = ImageView::new_default(
-            AttachmentImage::with_usage(
+            Image::new(
                 &memory_allocator,
-                [1, 1],
-                Format::D16_UNORM,
-                ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                ImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 1,
+                        height: 1,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::D16_UNORM),
+                    usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
@@ -248,46 +274,64 @@ impl FrameSystem {
     pub fn frame<F>(
         &mut self,
         before_future: F,
-        final_image: Arc<dyn ImageViewAbstract + 'static>,
+        final_image: Arc<ImageView>,
         world_to_framebuffer: Matrix4<f32>,
     ) -> Frame
     where
         F: GpuFuture + 'static,
     {
         // First of all we recreate `self.diffuse_buffer`, `self.normals_buffer` and
-        // `self.depth_buffer` if their dimensions doesn't match the dimensions of the final image.
-        let img_dims = final_image.image().dimensions().width_height();
-        if self.diffuse_buffer.image().dimensions().width_height() != img_dims {
+        // `self.depth_buffer` if their dimensions don't match the dimensions of the final image.
+        let dimensions = final_image.image().dimensions();
+        if self.diffuse_buffer.image().dimensions() != dimensions {
             // Note that we create "transient" images here. This means that the content of the
             // image is only defined when within a render pass. In other words you can draw to
             // them in a subpass then read them in another subpass, but as soon as you leave the
             // render pass their content becomes undefined.
             self.diffuse_buffer = ImageView::new_default(
-                AttachmentImage::with_usage(
+                Image::new(
                     &self.memory_allocator,
-                    img_dims,
-                    Format::A2B10G10R10_UNORM_PACK32,
-                    ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                    ImageCreateInfo {
+                        dimensions,
+                        format: Some(Format::A2B10G10R10_UNORM_PACK32),
+                        usage: ImageUsage::COLOR_ATTACHMENT
+                            | ImageUsage::TRANSIENT_ATTACHMENT
+                            | ImageUsage::INPUT_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
                 )
                 .unwrap(),
             )
             .unwrap();
             self.normals_buffer = ImageView::new_default(
-                AttachmentImage::with_usage(
+                Image::new(
                     &self.memory_allocator,
-                    img_dims,
-                    Format::R16G16B16A16_SFLOAT,
-                    ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                    ImageCreateInfo {
+                        dimensions,
+                        format: Some(Format::R16G16B16A16_SFLOAT),
+                        usage: ImageUsage::COLOR_ATTACHMENT
+                            | ImageUsage::TRANSIENT_ATTACHMENT
+                            | ImageUsage::INPUT_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
                 )
                 .unwrap(),
             )
             .unwrap();
             self.depth_buffer = ImageView::new_default(
-                AttachmentImage::with_usage(
+                Image::new(
                     &self.memory_allocator,
-                    img_dims,
-                    Format::D16_UNORM,
-                    ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                    ImageCreateInfo {
+                        dimensions,
+                        format: Some(Format::D16_UNORM),
+                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                            | ImageUsage::TRANSIENT_ATTACHMENT
+                            | ImageUsage::INPUT_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
                 )
                 .unwrap(),
             )
@@ -300,7 +344,7 @@ impl FrameSystem {
             self.render_pass.clone(),
             FramebufferCreateInfo {
                 attachments: vec![
-                    final_image.clone(),
+                    final_image,
                     self.diffuse_buffer.clone(),
                     self.normals_buffer.clone(),
                     self.depth_buffer.clone(),

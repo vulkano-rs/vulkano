@@ -134,7 +134,7 @@ pub use self::{
 use crate::{
     buffer::{Buffer, Subbuffer},
     format::Format,
-    image::{sys::Image, ImageAccess, ImageLayout, ImageSubresourceRange, SampleCount},
+    image::{Image, ImageLayout, ImageSubresourceRange, SampleCount},
     macros::vulkan_enum,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     range_map::RangeMap,
@@ -627,7 +627,7 @@ pub(crate) struct SecondaryCommandBufferBufferUsage {
 #[derive(Debug)]
 pub(crate) struct SecondaryCommandBufferImageUsage {
     pub(crate) use_ref: ResourceUseRef,
-    pub(crate) image: Arc<dyn ImageAccess>,
+    pub(crate) image: Arc<Image>,
     pub(crate) subresource_range: ImageSubresourceRange,
     pub(crate) memory_access: PipelineStageAccessFlags,
     pub(crate) start_layout: ImageLayout,

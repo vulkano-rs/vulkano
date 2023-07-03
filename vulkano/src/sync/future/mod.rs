@@ -107,7 +107,7 @@ use crate::{
         ResourceUseRef, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
-    image::{sys::Image, ImageLayout},
+    image::{Image, ImageLayout},
     memory::BindSparseInfo,
     swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
     DeviceSize, OomError, RuntimeError,

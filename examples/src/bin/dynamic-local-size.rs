@@ -28,7 +28,7 @@ use vulkano::{
         QueueFlags,
     },
     format::Format,
-    image::{view::ImageView, ImageDimensions, StorageImage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
@@ -214,15 +214,19 @@ fn main() {
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
-    let image = StorageImage::new(
+    let image = Image::new(
         &memory_allocator,
-        ImageDimensions::Dim2d {
-            width: 1024,
-            height: 1024,
-            array_layers: 1,
+        ImageCreateInfo {
+            dimensions: ImageDimensions::Dim2d {
+                width: 1024,
+                height: 1024,
+                array_layers: 1,
+            },
+            format: Some(Format::R8G8B8A8_UNORM),
+            usage: ImageUsage::TRANSFER_SRC | ImageUsage::STORAGE,
+            ..Default::default()
         },
-        Format::R8G8B8A8_UNORM,
-        Some(queue.queue_family_index()),
+        AllocationCreateInfo::default(),
     )
     .unwrap();
     let view = ImageView::new_default(image.clone()).unwrap();

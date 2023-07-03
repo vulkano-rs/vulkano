@@ -82,7 +82,7 @@ use super::{
 use crate::{
     buffer::Subbuffer,
     device::{Device, DeviceOwned},
-    image::{ImageAccess, ImageLayout, ImageSubresourceRange},
+    image::{Image, ImageLayout, ImageSubresourceRange},
     sync::PipelineStageAccessFlags,
     DeviceSize, VulkanObject,
 };
@@ -277,7 +277,7 @@ pub(super) enum Resource {
         memory_access: PipelineStageAccessFlags,
     },
     Image {
-        image: Arc<dyn ImageAccess>,
+        image: Arc<Image>,
         subresource_range: ImageSubresourceRange,
         memory_access: PipelineStageAccessFlags,
         start_layout: ImageLayout,

@@ -13,21 +13,15 @@ use std::sync::Arc;
 use vulkano::{
     device::{Device, Queue},
     format::Format,
-    image::{
-        view::ImageView, ImageAccess, ImageUsage, ImageViewAbstract, StorageImage, SwapchainImage,
-    },
-    memory::allocator::StandardMemoryAllocator,
+    image::{view::ImageView, Image, ImageCreateInfo, ImageUsage},
+    memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     swapchain::{
-        self, AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
+        self, AcquireError, PresentMode, Surface, Swapchain, SwapchainCreateInfo,
+        SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
 };
 use winit::window::Window;
-
-/// Swapchain Image View. Your final render target typically.
-pub type SwapchainImageView = Arc<ImageView<SwapchainImage>>;
-/// Multipurpose image view
-pub type DeviceImageView = Arc<ImageView<StorageImage>>;
 
 /// Most common image format
 pub const DEFAULT_IMAGE_FORMAT: Format = Format::R8G8B8A8_UNORM;
@@ -44,11 +38,11 @@ pub struct VulkanoWindowRenderer {
     graphics_queue: Arc<Queue>,
     compute_queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
-    final_views: Vec<SwapchainImageView>,
+    final_views: Vec<Arc<ImageView>>,
     memory_allocator: Arc<StandardMemoryAllocator>,
     /// Additional image views that you can add which are resized with the window.
     /// Use associated functions to get access to these.
-    additional_image_views: HashMap<usize, DeviceImageView>,
+    additional_image_views: HashMap<usize, Arc<ImageView>>,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     image_index: u32,
@@ -99,7 +93,7 @@ impl VulkanoWindowRenderer {
         window: &Arc<Window>,
         window_descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
-    ) -> (Arc<Swapchain>, Vec<SwapchainImageView>) {
+    ) -> (Arc<Swapchain>, Vec<Arc<ImageView>>) {
         let surface = Surface::from_window(device.instance().clone(), window.clone()).unwrap();
         let surface_capabilities = device
             .physical_device()
@@ -141,7 +135,7 @@ impl VulkanoWindowRenderer {
 
     /// Set window renderer present mode. This triggers a swapchain recreation.
     #[inline]
-    pub fn set_present_mode(&mut self, present_mode: vulkano::swapchain::PresentMode) {
+    pub fn set_present_mode(&mut self, present_mode: PresentMode) {
         if self.present_mode != present_mode {
             self.present_mode = present_mode;
             self.recreate_swapchain = true;
@@ -201,7 +195,7 @@ impl VulkanoWindowRenderer {
 
     /// Return the current swapchain image view.
     #[inline]
-    pub fn swapchain_image_view(&self) -> SwapchainImageView {
+    pub fn swapchain_image_view(&self) -> Arc<ImageView> {
         self.final_views[self.image_index as usize].clone()
     }
 
@@ -232,13 +226,19 @@ impl VulkanoWindowRenderer {
     /// Add interim image view that resizes with window.
     #[inline]
     pub fn add_additional_image_view(&mut self, key: usize, format: Format, usage: ImageUsage) {
-        let size = self.swapchain_image_size();
-        let image = StorageImage::general_purpose_image_view(
-            &*self.memory_allocator,
-            self.graphics_queue.clone(),
-            size,
-            format,
-            usage,
+        let dimensions = self.final_views[0].image().dimensions();
+        let image = ImageView::new_default(
+            Image::new(
+                &self.memory_allocator,
+                ImageCreateInfo {
+                    dimensions,
+                    format: Some(format),
+                    usage,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         self.additional_image_views.insert(key, image);
@@ -246,7 +246,7 @@ impl VulkanoWindowRenderer {
 
     /// Get additional image view by key.
     #[inline]
-    pub fn get_additional_image_view(&mut self, key: usize) -> DeviceImageView {
+    pub fn get_additional_image_view(&mut self, key: usize) -> Arc<ImageView> {
         self.additional_image_views.get(&key).unwrap().clone()
     }
 
@@ -262,7 +262,7 @@ impl VulkanoWindowRenderer {
     /// Execute your command buffers after calling this function and finish rendering by calling
     /// [`VulkanoWindowRenderer::present`].
     #[inline]
-    pub fn acquire(&mut self) -> std::result::Result<Box<dyn GpuFuture>, AcquireError> {
+    pub fn acquire(&mut self) -> Result<Box<dyn GpuFuture>, AcquireError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
         if self.recreate_swapchain {

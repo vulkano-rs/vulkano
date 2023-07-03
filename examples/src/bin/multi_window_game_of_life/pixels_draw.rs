@@ -21,7 +21,7 @@ use vulkano::{
     device::Queue,
     image::{
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
-        ImageViewAbstract,
+        view::ImageView,
     },
     memory::allocator::{AllocationCreateInfo, MemoryUsage},
     pipeline::{
@@ -141,6 +141,7 @@ impl PixelsDrawPipeline {
                     .unwrap(),
             )
             .unwrap();
+
             GraphicsPipeline::new(
                 device.clone(),
                 None,
@@ -170,10 +171,7 @@ impl PixelsDrawPipeline {
         }
     }
 
-    fn create_image_sampler_nearest(
-        &self,
-        image: Arc<dyn ImageViewAbstract>,
-    ) -> Arc<PersistentDescriptorSet> {
+    fn create_image_sampler_nearest(&self, image: Arc<ImageView>) -> Arc<PersistentDescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
         let sampler = Sampler::new(
             self.gfx_queue.device().clone(),
@@ -190,11 +188,7 @@ impl PixelsDrawPipeline {
         PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             layout.clone(),
-            [WriteDescriptorSet::image_view_sampler(
-                0,
-                image.clone(),
-                sampler,
-            )],
+            [WriteDescriptorSet::image_view_sampler(0, image, sampler)],
             [],
         )
         .unwrap()
@@ -204,7 +198,7 @@ impl PixelsDrawPipeline {
     pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
-        image: Arc<dyn ImageViewAbstract>,
+        image: Arc<ImageView>,
     ) -> Arc<SecondaryAutoCommandBuffer> {
         let mut builder = AutoCommandBufferBuilder::secondary(
             self.command_buffer_allocator.as_ref(),

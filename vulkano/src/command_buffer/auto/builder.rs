@@ -27,10 +27,7 @@ use crate::{
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned, QueueFamilyProperties},
     format::FormatFeatures,
-    image::{
-        sys::Image, ImageAccess, ImageAspects, ImageLayout, ImageSubresourceRange,
-        ImageViewAbstract,
-    },
+    image::{view::ImageView, Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     pipeline::{
         graphics::{
             color_blend::LogicOp,
@@ -1097,7 +1094,7 @@ impl AutoSyncState {
 
     fn find_image_conflict(
         &self,
-        image: &dyn ImageAccess,
+        image: &Image,
         subresource_range: ImageSubresourceRange,
         memory_access: PipelineStageAccessFlags,
         start_layout: ImageLayout,
@@ -1108,10 +1105,9 @@ impl AutoSyncState {
         let last_allowed_barrier_index =
             self.latest_render_pass_enter.unwrap_or(self.command_index);
 
-        let inner = image.inner();
-        let range_map = self.images.get(inner)?;
+        let range_map = self.images.get(image)?;
 
-        for range in inner.iter_ranges(subresource_range) {
+        for range in image.iter_ranges(subresource_range) {
             for (_range, state) in range_map
                 .range(&range)
                 .filter(|(_range, state)| !state.resource_uses.is_empty())
@@ -1335,7 +1331,7 @@ impl AutoSyncState {
     fn add_image(
         &mut self,
         use_ref: ResourceUseRef,
-        image: Arc<dyn ImageAccess>,
+        image: Arc<Image>,
         mut subresource_range: ImageSubresourceRange,
         memory_access: PipelineStageAccessFlags,
         start_layout: ImageLayout,
@@ -1357,8 +1353,6 @@ impl AutoSyncState {
         let last_allowed_barrier_index =
             self.latest_render_pass_enter.unwrap_or(self.command_index);
 
-        let inner = image.inner();
-
         // VUID-VkImageMemoryBarrier2-image-03320
         if !self
             .device
@@ -1366,15 +1360,16 @@ impl AutoSyncState {
             .separate_depth_stencil_layouts
             && image
                 .format()
+                .unwrap()
                 .aspects()
                 .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
         {
             subresource_range.aspects = ImageAspects::DEPTH | ImageAspects::STENCIL;
         }
 
-        let range_map = self.images.entry(inner.clone()).or_insert_with(|| {
+        let range_map = self.images.entry(image.clone()).or_insert_with(|| {
             [(
-                0..inner.range_size(),
+                0..image.range_size(),
                 match self.level {
                     CommandBufferLevel::Primary => {
                         // In a primary command buffer, the initial layout is determined
@@ -1416,7 +1411,7 @@ impl AutoSyncState {
             .collect()
         });
 
-        for range in inner.iter_ranges(subresource_range) {
+        for range in image.iter_ranges(subresource_range) {
             range_map.split_at(&range.start);
             range_map.split_at(&range.end);
 
@@ -1446,8 +1441,8 @@ impl AutoSyncState {
                                 dst_access: AccessFlags::MEMORY_READ | AccessFlags::MEMORY_WRITE,
                                 old_layout: state.initial_layout,
                                 new_layout: start_layout,
-                                subresource_range: inner.range_to_subresources(range.clone()),
-                                ..ImageMemoryBarrier::image(inner.clone())
+                                subresource_range: image.range_to_subresources(range.clone()),
+                                ..ImageMemoryBarrier::image(image.clone())
                             };
 
                             // If the `new_layout` is Undefined or Preinitialized, this requires
@@ -1561,8 +1556,8 @@ impl AutoSyncState {
                                     .into_supported(&self.device),
                                 old_layout: state.current_layout,
                                 new_layout: start_layout,
-                                subresource_range: inner.range_to_subresources(range.clone()),
-                                ..ImageMemoryBarrier::image(inner.clone())
+                                subresource_range: image.range_to_subresources(range.clone()),
+                                ..ImageMemoryBarrier::image(image.clone())
                             });
 
                         // Update state.
@@ -2055,13 +2050,13 @@ impl RenderPassStateAttachments {
 }
 
 pub(in crate::command_buffer) struct RenderPassStateAttachmentInfo {
-    pub(in crate::command_buffer) image_view: Arc<dyn ImageViewAbstract>,
+    pub(in crate::command_buffer) image_view: Arc<ImageView>,
     pub(in crate::command_buffer) _image_layout: ImageLayout,
     pub(in crate::command_buffer) _resolve_info: Option<RenderPassStateAttachmentResolveInfo>,
 }
 
 pub(in crate::command_buffer) struct RenderPassStateAttachmentResolveInfo {
-    pub(in crate::command_buffer) _image_view: Arc<dyn ImageViewAbstract>,
+    pub(in crate::command_buffer) _image_view: Arc<ImageView>,
     pub(in crate::command_buffer) _image_layout: ImageLayout,
 }
 

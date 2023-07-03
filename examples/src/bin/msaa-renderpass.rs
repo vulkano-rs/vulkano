@@ -74,7 +74,7 @@ use vulkano::{
         QueueFlags,
     },
     format::Format,
-    image::{view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageUsage, SampleCount},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
@@ -157,28 +157,45 @@ fn main() {
     // As explained in the introduction, we pass the same dimensions and format as for the final
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
     let intermediary = ImageView::new_default(
-        AttachmentImage::transient_multisampled(
+        Image::new(
             &memory_allocator,
-            [1024, 1024],
-            SampleCount::Sample4,
-            Format::R8G8B8A8_UNORM,
+            ImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: 1024,
+                    height: 1024,
+                    array_layers: 1,
+                },
+                format: Some(Format::R8G8B8A8_UNORM),
+                usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                samples: SampleCount::Sample4,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
         )
         .unwrap(),
     )
     .unwrap();
 
     // This is the final image that will receive the anti-aliased triangle.
-    let image = StorageImage::new(
+    let image = Image::new(
         &memory_allocator,
-        ImageDimensions::Dim2d {
-            width: 1024,
-            height: 1024,
-            array_layers: 1,
+        ImageCreateInfo {
+            dimensions: ImageDimensions::Dim2d {
+                width: 1024,
+                height: 1024,
+                array_layers: 1,
+            },
+            format: Some(Format::R8G8B8A8_UNORM),
+            usage: ImageUsage::TRANSFER_SRC
+                | ImageUsage::TRANSFER_DST
+                | ImageUsage::COLOR_ATTACHMENT
+                | ImageUsage::STORAGE,
+            ..Default::default()
         },
-        Format::R8G8B8A8_UNORM,
-        Some(queue.queue_family_index()),
+        AllocationCreateInfo::default(),
     )
     .unwrap();
+
     let view = ImageView::new_default(image.clone()).unwrap();
 
     // In this example, we are going to perform the *resolve* (ie. turning a multisampled image
@@ -325,6 +342,7 @@ fn main() {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass, 0).unwrap();
+
         GraphicsPipeline::new(
             device.clone(),
             None,

@@ -18,7 +18,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    image::ImageViewAbstract,
+    image::view::ImageView,
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
     pipeline::{
         graphics::{
@@ -109,6 +109,7 @@ impl AmbientLightingSystem {
                     .unwrap(),
             )
             .unwrap();
+
             GraphicsPipeline::new(
                 device.clone(),
                 None,
@@ -162,7 +163,7 @@ impl AmbientLightingSystem {
     pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
-        color_input: Arc<dyn ImageViewAbstract + 'static>,
+        color_input: Arc<ImageView>,
         ambient_color: [f32; 3],
     ) -> Arc<SecondaryAutoCommandBuffer> {
         let push_constants = fs::PushConstants {
