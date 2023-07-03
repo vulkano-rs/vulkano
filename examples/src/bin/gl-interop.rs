@@ -30,8 +30,9 @@ mod linux {
         format::Format,
         image::{
             sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+            sys::RawImage,
             view::ImageView,
-            Image, ImageCreateFlags, ImageCreateInfo, ImageDimensions, ImageMemory, ImageUsage,
+            Image, ImageCreateFlags, ImageCreateInfo, ImageDimensions, ImageUsage,
         },
         instance::{
             debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
@@ -39,10 +40,11 @@ mod linux {
         },
         memory::{
             allocator::{
-                AllocationCreateInfo, GenericMemoryAllocatorCreateInfo, MemoryAllocatePreference,
-                MemoryUsage, StandardMemoryAllocator,
+                AllocationCreateInfo, MemoryAlloc, MemoryAllocator, MemoryUsage,
+                StandardMemoryAllocator,
             },
-            ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+            DedicatedAllocation, DeviceMemory, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+            MemoryAllocateInfo,
         },
         pipeline::{
             graphics::{
@@ -114,8 +116,8 @@ mod linux {
             vertex_buffer,
         ) = vk_setup(display, &event_loop);
 
-        let image = Image::new(
-            &memory_allocator,
+        let raw_image = RawImage::new(
+            device.clone(),
             ImageCreateInfo {
                 flags: ImageCreateFlags::MUTABLE_FORMAT,
                 dimensions: ImageDimensions::Dim2d {
@@ -128,24 +130,41 @@ mod linux {
                 external_memory_handle_types: ExternalMemoryHandleTypes::OPAQUE_FD,
                 ..Default::default()
             },
-            AllocationCreateInfo {
-                usage: MemoryUsage::DeviceOnly,
-                allocate_preference: MemoryAllocatePreference::AlwaysAllocate,
+        )
+        .unwrap();
+
+        let image_requirements = raw_image.memory_requirements()[0];
+
+        let image_memory = DeviceMemory::allocate(
+            device.clone(),
+            MemoryAllocateInfo {
+                allocation_size: image_requirements.layout.size(),
+                memory_type_index: memory_allocator
+                    .find_memory_type_index(
+                        image_requirements.memory_type_bits,
+                        MemoryUsage::DeviceOnly.into(),
+                    )
+                    .unwrap(),
+                dedicated_allocation: Some(DedicatedAllocation::Image(&raw_image)),
+                export_handle_types: ExternalMemoryHandleTypes::OPAQUE_FD,
                 ..Default::default()
             },
         )
         .unwrap();
 
-        let image_memory = match image.memory() {
-            ImageMemory::Normal(a) => a[0].device_memory(),
-            _ => unreachable!(),
-        };
         let allocation_size = image_memory.allocation_size();
         let image_fd = image_memory
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
             .unwrap();
 
-        let image_view = ImageView::new_default(image.clone()).unwrap();
+        let image = Arc::new(
+            raw_image
+                .bind_memory([MemoryAlloc::new(image_memory).unwrap()])
+                .map_err(|(err, _, _)| err)
+                .unwrap(),
+        );
+
+        let image_view = ImageView::new_default(image).unwrap();
 
         let barrier = Arc::new(Barrier::new(2));
         let barrier_2 = Arc::new(Barrier::new(2));
@@ -527,7 +546,7 @@ mod linux {
         );
 
         let (device, mut queues) = Device::new(
-            physical_device.clone(),
+            physical_device,
             DeviceCreateInfo {
                 enabled_extensions: device_extensions,
                 queue_create_infos: vec![QueueCreateInfo {
@@ -573,28 +592,7 @@ mod linux {
             .unwrap()
         };
 
-        let memory_allocator = {
-            let export_handle_types = physical_device
-                .memory_properties()
-                .memory_types
-                .iter()
-                .map(|_| ExternalMemoryHandleTypes::OPAQUE_FD)
-                .collect::<Vec<_>>();
-
-            StandardMemoryAllocator::new(
-                device.clone(),
-                GenericMemoryAllocatorCreateInfo {
-                    #[rustfmt::skip]
-                    block_sizes: &[
-                        (                 0,  64 * 1024 * 1024),
-                        (1024 * 1024 * 1024, 256 * 1024 * 1024),
-                    ],
-                    export_handle_types: &export_handle_types,
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        };
+        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 
         let vertices = [
             MyVertex {
