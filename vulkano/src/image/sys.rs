@@ -19,7 +19,6 @@ use super::{
     SampleCounts, SparseImageMemoryRequirements,
 };
 use crate::{
-    buffer::subbuffer::{ReadLockError, WriteLockError},
     cache::OnceCache,
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
@@ -35,7 +34,7 @@ use crate::{
     },
     range_map::RangeMap,
     swapchain::Swapchain,
-    sync::{future::AccessError, CurrentAccess, Sharing},
+    sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
     DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
     VulkanObject,
 };
@@ -2409,11 +2408,11 @@ impl ImageState {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn check_cpu_read(&self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
+    pub(crate) fn check_cpu_read(&self, range: Range<DeviceSize>) -> Result<(), AccessConflict> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
-                CurrentAccess::CpuExclusive { .. } => return Err(ReadLockError::CpuWriteLocked),
-                CurrentAccess::GpuExclusive { .. } => return Err(ReadLockError::GpuWriteLocked),
+                CurrentAccess::CpuExclusive { .. } => return Err(AccessConflict::HostWrite),
+                CurrentAccess::GpuExclusive { .. } => return Err(AccessConflict::DeviceWrite),
                 CurrentAccess::Shared { .. } => (),
             }
         }
@@ -2450,19 +2449,19 @@ impl ImageState {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn check_cpu_write(&self, range: Range<DeviceSize>) -> Result<(), WriteLockError> {
+    pub(crate) fn check_cpu_write(&self, range: Range<DeviceSize>) -> Result<(), AccessConflict> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
-                CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
-                CurrentAccess::GpuExclusive { .. } => return Err(WriteLockError::GpuLocked),
+                CurrentAccess::CpuExclusive => return Err(AccessConflict::HostWrite),
+                CurrentAccess::GpuExclusive { .. } => return Err(AccessConflict::DeviceWrite),
                 CurrentAccess::Shared {
                     cpu_reads: 0,
                     gpu_reads: 0,
                 } => (),
                 CurrentAccess::Shared { cpu_reads, .. } if *cpu_reads > 0 => {
-                    return Err(WriteLockError::CpuLocked)
+                    return Err(AccessConflict::HostRead)
                 }
-                CurrentAccess::Shared { .. } => return Err(WriteLockError::GpuLocked),
+                CurrentAccess::Shared { .. } => return Err(AccessConflict::DeviceRead),
             }
         }
 

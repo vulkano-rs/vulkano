@@ -53,17 +53,9 @@ use crate::{
     format::{Format, FormatFeatures},
     macros::impl_id_counter,
     memory::{is_aligned, DeviceAlignment},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    DeviceSize, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
 };
-use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ops::Range,
-    ptr,
-    sync::Arc,
-};
+use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
@@ -84,37 +76,29 @@ impl BufferView {
     pub fn new(
         subbuffer: Subbuffer<impl ?Sized>,
         create_info: BufferViewCreateInfo,
-    ) -> Result<Arc<BufferView>, BufferViewCreationError> {
-        Self::new_inner(subbuffer.into_bytes(), create_info)
+    ) -> Result<Arc<BufferView>, VulkanError> {
+        let subbuffer = subbuffer.into_bytes();
+        Self::validate_new(&subbuffer, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(subbuffer, create_info)?) }
     }
 
-    fn new_inner(
-        subbuffer: Subbuffer<[u8]>,
-        create_info: BufferViewCreateInfo,
-    ) -> Result<Arc<BufferView>, BufferViewCreationError> {
+    fn validate_new(
+        subbuffer: &Subbuffer<[u8]>,
+        create_info: &BufferViewCreateInfo,
+    ) -> Result<(), ValidationError> {
+        let device = subbuffer.device();
+
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
         let BufferViewCreateInfo { format, _ne: _ } = create_info;
 
         let buffer = subbuffer.buffer();
-        let device = buffer.device();
         let properties = device.physical_device().properties();
-        let size = subbuffer.size();
-        let offset = subbuffer.offset();
 
-        // No VUID, but seems sensible?
         let format = format.unwrap();
-
-        // VUID-VkBufferViewCreateInfo-format-parameter
-        format.validate_device(device)?;
-
-        // VUID-VkBufferViewCreateInfo-buffer-00932
-        if !buffer
-            .usage()
-            .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER)
-        {
-            return Err(BufferViewCreationError::BufferMissingUsage);
-        }
-
-        // Use unchecked, because all validation has been done above.
         let format_features = unsafe {
             device
                 .physical_device()
@@ -122,36 +106,70 @@ impl BufferView {
                 .buffer_features
         };
 
-        // VUID-VkBufferViewCreateInfo-buffer-00933
+        if !buffer
+            .usage()
+            .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER)
+        {
+            return Err(ValidationError {
+                context: "subbuffer".into(),
+                problem: "was not created with the `BufferUsage::UNIFORM_TEXEL_BUFFER` \
+                    or `BufferUsage::STORAGE_TEXEL_BUFFER` usage"
+                    .into(),
+                vuids: &["VUID-VkBufferViewCreateInfo-buffer-00932"],
+                ..Default::default()
+            });
+        }
+
         if buffer.usage().intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
             && !format_features.intersects(FormatFeatures::UNIFORM_TEXEL_BUFFER)
         {
-            return Err(BufferViewCreationError::UnsupportedFormat);
+            return Err(ValidationError {
+                problem: "`subbuffer` was created with the `BufferUsage::UNIFORM_TEXEL_BUFFER` \
+                    usage, but the format features of `create_info.format` do not include \
+                    `FormatFeatures::UNIFORM_TEXEL_BUFFER`"
+                    .into(),
+                vuids: &["VUID-VkBufferViewCreateInfo-buffer-00933"],
+                ..Default::default()
+            });
         }
 
-        // VUID-VkBufferViewCreateInfo-buffer-00934
         if buffer.usage().intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
             && !format_features.intersects(FormatFeatures::STORAGE_TEXEL_BUFFER)
         {
-            return Err(BufferViewCreationError::UnsupportedFormat);
+            return Err(ValidationError {
+                problem: "`subbuffer` was created with the `BufferUsage::STORAGE_TEXEL_BUFFER` \
+                    usage, but the format features of `create_info.format` do not include \
+                    `FormatFeatures::STORAGE_TEXEL_BUFFER`"
+                    .into(),
+                vuids: &["VUID-VkBufferViewCreateInfo-buffer-00934"],
+                ..Default::default()
+            });
         }
 
         let block_size = format.block_size().unwrap();
         let texels_per_block = format.texels_per_block();
 
-        // VUID-VkBufferViewCreateInfo-range-00929
-        if size % block_size != 0 {
-            return Err(BufferViewCreationError::RangeNotAligned {
-                range: size,
-                required_alignment: block_size,
+        if subbuffer.size() % block_size != 0 {
+            return Err(ValidationError {
+                problem: "`subbuffer.size()` is not a multiple of \
+                    `create_info.format.block_size()`"
+                    .into(),
+                vuids: &["VUID-VkBufferViewCreateInfo-range-00929"],
+                ..Default::default()
             });
         }
 
-        // VUID-VkBufferViewCreateInfo-range-00930
-        if ((size / block_size) * texels_per_block as DeviceSize) as u32
+        if ((subbuffer.size() / block_size) * texels_per_block as DeviceSize) as u32
             > properties.max_texel_buffer_elements
         {
-            return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
+            return Err(ValidationError {
+                problem: "`subbuffer.size() / create_info.format.block_size() * \
+                    create_info.format.texels_per_block()` is greater than the \
+                    `max_texel_buffer_elements` limit"
+                    .into(),
+                vuids: &["VUID-VkBufferViewCreateInfo-range-00930"],
+                ..Default::default()
+            });
         }
 
         if device.api_version() >= Version::V1_3 || device.enabled_features().texel_buffer_alignment
@@ -164,64 +182,131 @@ impl BufferView {
             .unwrap();
 
             if buffer.usage().intersects(BufferUsage::STORAGE_TEXEL_BUFFER) {
-                let mut required_alignment = properties
-                    .storage_texel_buffer_offset_alignment_bytes
-                    .unwrap();
-
                 if properties
                     .storage_texel_buffer_offset_single_texel_alignment
                     .unwrap()
                 {
-                    required_alignment = required_alignment.min(element_size);
-                }
-
-                // VUID-VkBufferViewCreateInfo-buffer-02750
-                if !is_aligned(offset, required_alignment) {
-                    return Err(BufferViewCreationError::OffsetNotAligned {
-                        offset,
-                        required_alignment,
-                    });
+                    if !is_aligned(
+                        subbuffer.offset(),
+                        properties
+                            .storage_texel_buffer_offset_alignment_bytes
+                            .unwrap()
+                            .min(element_size),
+                    ) {
+                        return Err(ValidationError {
+                            problem: "`subbuffer` was created with the \
+                                `BufferUsage::STORAGE_TEXEL_BUFFER` usage, and the \
+                                `storage_texel_buffer_offset_single_texel_alignment` \
+                                property is `true`, but \
+                                `subbuffer.offset()` is not a multiple of the \
+                                minimum of `create_info.format.block_size()` and the \
+                                `storage_texel_buffer_offset_alignment_bytes` limit"
+                                .into(),
+                            vuids: &["VUID-VkBufferViewCreateInfo-buffer-02750"],
+                            ..Default::default()
+                        });
+                    }
+                } else {
+                    if !is_aligned(
+                        subbuffer.offset(),
+                        properties
+                            .storage_texel_buffer_offset_alignment_bytes
+                            .unwrap(),
+                    ) {
+                        return Err(ValidationError {
+                            problem: "`subbuffer` was created with the \
+                                `BufferUsage::STORAGE_TEXEL_BUFFER` usage, and the \
+                                `storage_texel_buffer_offset_single_texel_alignment` \
+                                property is `false`, but \
+                                `subbuffer.offset()` is not a multiple of the \
+                                `storage_texel_buffer_offset_alignment_bytes` limit"
+                                .into(),
+                            vuids: &["VUID-VkBufferViewCreateInfo-buffer-02750"],
+                            ..Default::default()
+                        });
+                    }
                 }
             }
 
             if buffer.usage().intersects(BufferUsage::UNIFORM_TEXEL_BUFFER) {
-                let mut required_alignment = properties
-                    .uniform_texel_buffer_offset_alignment_bytes
-                    .unwrap();
-
                 if properties
                     .uniform_texel_buffer_offset_single_texel_alignment
                     .unwrap()
                 {
-                    required_alignment = required_alignment.min(element_size);
-                }
-
-                // VUID-VkBufferViewCreateInfo-buffer-02751
-                if !is_aligned(offset, required_alignment) {
-                    return Err(BufferViewCreationError::OffsetNotAligned {
-                        offset,
-                        required_alignment,
-                    });
+                    if !is_aligned(
+                        subbuffer.offset(),
+                        properties
+                            .uniform_texel_buffer_offset_alignment_bytes
+                            .unwrap()
+                            .min(element_size),
+                    ) {
+                        return Err(ValidationError {
+                            problem: "`subbuffer` was created with the \
+                                `BufferUsage::UNIFORM_TEXEL_BUFFER` usage, and the \
+                                `uniform_texel_buffer_offset_single_texel_alignment` \
+                                property is `false`, but \
+                                `subbuffer.offset()` is not a multiple of the \
+                                minimum of `create_info.format.block_size()` and the \
+                                `uniform_texel_buffer_offset_alignment_bytes` limit"
+                                .into(),
+                            vuids: &["VUID-VkBufferViewCreateInfo-buffer-02751"],
+                            ..Default::default()
+                        });
+                    }
+                } else {
+                    if !is_aligned(
+                        subbuffer.offset(),
+                        properties
+                            .uniform_texel_buffer_offset_alignment_bytes
+                            .unwrap(),
+                    ) {
+                        return Err(ValidationError {
+                            problem: "`subbuffer` was created with the \
+                                `BufferUsage::UNIFORM_TEXEL_BUFFER` usage, and the \
+                                `uniform_texel_buffer_offset_single_texel_alignment` \
+                                property is `false`, but \
+                                `subbuffer.offset()` is not a multiple of the \
+                                `uniform_texel_buffer_offset_alignment_bytes` limit"
+                                .into(),
+                            vuids: &["VUID-VkBufferViewCreateInfo-buffer-02751"],
+                            ..Default::default()
+                        });
+                    }
                 }
             }
         } else {
-            let required_alignment = properties.min_texel_buffer_offset_alignment;
-
-            // VUID-VkBufferViewCreateInfo-offset-02749
-            if !is_aligned(offset, required_alignment) {
-                return Err(BufferViewCreationError::OffsetNotAligned {
-                    offset,
-                    required_alignment,
+            if !is_aligned(
+                subbuffer.offset(),
+                properties.min_texel_buffer_offset_alignment,
+            ) {
+                return Err(ValidationError {
+                    problem: "`subbuffer.offset()` is not a multiple of the \
+                        `min_texel_buffer_offset_alignment` limit"
+                        .into(),
+                    vuids: &["VUID-VkBufferViewCreateInfo-offset-02749"],
+                    ..Default::default()
                 });
             }
         }
 
-        let create_info = ash::vk::BufferViewCreateInfo {
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        subbuffer: Subbuffer<impl ?Sized>,
+        create_info: BufferViewCreateInfo,
+    ) -> Result<Arc<BufferView>, RuntimeError> {
+        let &BufferViewCreateInfo { format, _ne: _ } = &create_info;
+
+        let device = subbuffer.device();
+
+        let create_info_vk = ash::vk::BufferViewCreateInfo {
             flags: ash::vk::BufferViewCreateFlags::empty(),
-            buffer: buffer.handle(),
-            format: format.into(),
-            offset,
-            range: size,
+            buffer: subbuffer.buffer().handle(),
+            format: format.unwrap().into(),
+            offset: subbuffer.offset(),
+            range: subbuffer.size(),
             ..Default::default()
         };
 
@@ -230,7 +315,7 @@ impl BufferView {
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_buffer_view)(
                 device.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -239,14 +324,39 @@ impl BufferView {
             output.assume_init()
         };
 
-        Ok(Arc::new(BufferView {
+        Ok(Self::from_handle(subbuffer, handle, create_info))
+    }
+
+    /// Creates a new `BufferView` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `subbuffer` and `create_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        subbuffer: Subbuffer<impl ?Sized>,
+        handle: ash::vk::BufferView,
+        create_info: BufferViewCreateInfo,
+    ) -> Arc<BufferView> {
+        let &BufferViewCreateInfo { format, _ne: _ } = &create_info;
+        let format = format.unwrap();
+        let size = subbuffer.size();
+        let format_features = unsafe {
+            subbuffer
+                .device()
+                .physical_device()
+                .format_properties_unchecked(format)
+                .buffer_features
+        };
+
+        Arc::new(BufferView {
             handle,
-            subbuffer,
+            subbuffer: subbuffer.into_bytes(),
             id: Self::next_id(),
             format: Some(format),
             format_features,
             range: 0..size,
-        }))
+        })
     }
 
     /// Returns the buffer associated to this view.
@@ -327,108 +437,31 @@ impl Default for BufferViewCreateInfo {
     }
 }
 
-/// Error that can happen when creating a buffer view.
-#[derive(Debug, Copy, Clone)]
-pub enum BufferViewCreationError {
-    /// Out of memory.
-    OomError(OomError),
+impl BufferViewCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let Self { format, _ne: _ } = self;
 
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
+        let format = format.ok_or(ValidationError {
+            context: "format".into(),
+            problem: "is `None`".into(),
+            ..Default::default()
+        })?;
 
-    /// The buffer was not created with one of the `storage_texel_buffer` or
-    /// `uniform_texel_buffer` usages.
-    BufferMissingUsage,
+        format
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "format".into(),
+                vuids: &["VUID-VkBufferViewCreateInfo-format-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-    /// The offset within the buffer is not a multiple of the required alignment.
-    OffsetNotAligned {
-        offset: DeviceSize,
-        required_alignment: DeviceAlignment,
-    },
-
-    /// The range within the buffer is not a multiple of the required alignment.
-    RangeNotAligned {
-        range: DeviceSize,
-        required_alignment: DeviceSize,
-    },
-
-    /// The requested format is not supported for this usage.
-    UnsupportedFormat,
-
-    /// The `max_texel_buffer_elements` limit has been exceeded.
-    MaxTexelBufferElementsExceeded,
-}
-
-impl Error for BufferViewCreationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            BufferViewCreationError::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for BufferViewCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "out of memory when creating buffer view"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::BufferMissingUsage => write!(
-                f,
-                "the buffer was not created with one of the `storage_texel_buffer` or \
-                `uniform_texel_buffer` usages",
-            ),
-            Self::OffsetNotAligned { .. } => write!(
-                f,
-                "the offset within the buffer is not a multiple of the required alignment",
-            ),
-            Self::RangeNotAligned { .. } => write!(
-                f,
-                "the range within the buffer is not a multiple of the required alignment",
-            ),
-            Self::UnsupportedFormat => {
-                write!(f, "the requested format is not supported for this usage")
-            }
-            Self::MaxTexelBufferElementsExceeded => {
-                write!(f, "the `max_texel_buffer_elements` limit has been exceeded")
-            }
-        }
-    }
-}
-
-impl From<OomError> for BufferViewCreationError {
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
-impl From<RuntimeError> for BufferViewCreationError {
-    fn from(err: RuntimeError) -> Self {
-        OomError::from(err).into()
-    }
-}
-
-impl From<RequirementNotMet> for BufferViewCreationError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{BufferView, BufferViewCreateInfo, BufferViewCreationError};
+    use super::{BufferView, BufferViewCreateInfo};
     use crate::{
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         format::Format,
@@ -540,7 +573,7 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(BufferViewCreationError::BufferMissingUsage) => (),
+            Err(_) => (),
             _ => panic!(),
         }
     }
@@ -569,7 +602,7 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(BufferViewCreationError::UnsupportedFormat) => (),
+            Err(_) => (),
             _ => panic!(),
         }
     }

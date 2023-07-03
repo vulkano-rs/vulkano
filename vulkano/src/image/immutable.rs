@@ -14,7 +14,9 @@ use super::{
     ImageSubresourceLayers, ImageUsage, MipmapsCount,
 };
 use crate::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferError, BufferUsage, Subbuffer},
+    buffer::{
+        Buffer, BufferAllocateError, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer,
+    },
     command_buffer::{
         allocator::CommandBufferAllocator, auto::CommandBufferBeginError, AutoCommandBufferBuilder,
         BlitImageInfo, BufferImageCopy, CopyBufferToImageInfo, ImageBlit,
@@ -204,7 +206,7 @@ impl ImmutableImage {
             iter,
         )
         .map_err(|err| match err {
-            BufferError::AllocError(err) => err,
+            BufferAllocateError::AllocateMemory(err) => err,
             // We don't use sparse-binding, concurrent sharing or external memory, therefore the
             // other errors can't happen.
             _ => unreachable!(),
