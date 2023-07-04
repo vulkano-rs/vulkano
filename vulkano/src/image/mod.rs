@@ -61,34 +61,29 @@
 //! [imported]: crate::memory::DeviceMemory::import
 //! [create a `MemoryAlloc` from `DeviceMemory`]: MemoryAlloc::new
 
-pub use self::sys::ImageCreateInfo;
-pub use self::{
-    aspect::{ImageAspect, ImageAspects},
-    layout::ImageLayout,
-    usage::ImageUsage,
-};
-use self::{
-    sys::{ImageError, RawImage},
-    view::ImageViewType,
-};
+pub use self::{aspect::*, layout::*, sys::ImageCreateInfo, usage::*};
+use self::{sys::RawImage, view::ImageViewType};
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},
     format::{Format, FormatFeatures},
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{
-        allocator::{AllocationCreateInfo, MemoryAlloc, MemoryAllocator},
+        allocator::{AllocationCreateInfo, MemoryAlloc, MemoryAllocator, MemoryAllocatorError},
         is_aligned, DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
         ExternalMemoryProperties, MemoryRequirements,
     },
     range_map::RangeMap,
     swapchain::Swapchain,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
-    cmp,
+    cmp::max,
+    error::Error,
+    fmt::{Display, Formatter},
     hash::{Hash, Hasher},
     iter::{FusedIterator, Peekable},
     ops::Range,
@@ -133,7 +128,7 @@ pub enum ImageMemory {
     /// The image is backed by normal memory, bound with [`bind_memory`].
     ///
     /// [`bind_memory`]: RawImage::bind_memory
-    Normal(SmallVec<[MemoryAlloc; 3]>),
+    Normal(SmallVec<[MemoryAlloc; 4]>),
 
     /// The image is backed by sparse memory, bound with [`bind_sparse`].
     ///
@@ -153,22 +148,25 @@ impl Image {
         allocator: &(impl MemoryAllocator + ?Sized),
         image_info: ImageCreateInfo,
         allocation_info: AllocationCreateInfo,
-    ) -> Result<Arc<Self>, ImageError> {
+    ) -> Result<Arc<Self>, ImageAllocateError> {
         // TODO: adjust the code below to make this safe
         assert!(!image_info.flags.intersects(ImageCreateFlags::DISJOINT));
 
         let allocation_type = image_info.tiling.into();
-        let raw_image = RawImage::new(allocator.device().clone(), image_info)?;
+        let raw_image = RawImage::new(allocator.device().clone(), image_info)
+            .map_err(ImageAllocateError::CreateImage)?;
         let requirements = raw_image.memory_requirements()[0];
 
         let allocation = unsafe {
-            allocator.allocate_unchecked(
-                requirements,
-                allocation_type,
-                allocation_info,
-                Some(DedicatedAllocation::Image(&raw_image)),
-            )
-        }?;
+            allocator
+                .allocate_unchecked(
+                    requirements,
+                    allocation_type,
+                    allocation_info,
+                    Some(DedicatedAllocation::Image(&raw_image)),
+                )
+                .map_err(ImageAllocateError::AllocateMemory)?
+        };
 
         debug_assert!(is_aligned(
             allocation.offset(),
@@ -176,8 +174,8 @@ impl Image {
         ));
         debug_assert!(allocation.size() == requirements.layout.size());
 
-        let image =
-            unsafe { raw_image.bind_memory_unchecked([allocation]) }.map_err(|(err, _, _)| err)?;
+        let image = unsafe { raw_image.bind_memory_unchecked([allocation]) }
+            .map_err(|(err, _, _)| ImageAllocateError::BindMemory(err))?;
 
         Ok(Arc::new(image))
     }
@@ -185,7 +183,7 @@ impl Image {
     fn from_raw(inner: RawImage, memory: ImageMemory, layout: ImageLayout) -> Self {
         let aspects = inner.format().unwrap().aspects();
         let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.into_iter().collect();
-        let mip_level_size = inner.dimensions().array_layers() as DeviceSize;
+        let mip_level_size = inner.array_layers() as DeviceSize;
         let aspect_size = mip_level_size * inner.mip_levels() as DeviceSize;
         let range_size = aspect_list.len() as DeviceSize * aspect_size;
         let state = Mutex::new(ImageState::new(range_size, inner.initial_layout()));
@@ -209,38 +207,36 @@ impl Image {
         handle: ash::vk::Image,
         swapchain: Arc<Swapchain>,
         image_index: u32,
-    ) -> Self {
+    ) -> Result<Self, RuntimeError> {
         let create_info = ImageCreateInfo {
             flags: ImageCreateFlags::empty(),
-            dimensions: ImageDimensions::Dim2d {
-                width: swapchain.image_extent()[0],
-                height: swapchain.image_extent()[1],
-                array_layers: swapchain.image_array_layers(),
-            },
+            image_type: ImageType::Dim2d,
             format: Some(swapchain.image_format()),
-            initial_layout: ImageLayout::Undefined,
+            extent: [swapchain.image_extent()[0], swapchain.image_extent()[1], 1],
+            array_layers: swapchain.image_array_layers(),
             mip_levels: 1,
             samples: SampleCount::Sample1,
             tiling: ImageTiling::Optimal,
             usage: swapchain.image_usage(),
             stencil_usage: swapchain.image_usage(),
             sharing: swapchain.image_sharing().clone(),
+            initial_layout: ImageLayout::Undefined,
             ..Default::default()
         };
 
-        Self::from_raw(
+        Ok(Self::from_raw(
             RawImage::from_handle_with_destruction(
                 swapchain.device().clone(),
                 handle,
                 create_info,
                 false,
-            ),
+            )?,
             ImageMemory::Swapchain {
                 swapchain,
                 image_index,
             },
             ImageLayout::PresentSrc,
-        )
+        ))
     }
 
     /// Returns the type of memory that is backing this image.
@@ -266,10 +262,10 @@ impl Image {
         self.inner.flags()
     }
 
-    /// Returns the dimensions of the image.
+    /// Returns the image type of the image.
     #[inline]
-    pub fn dimensions(&self) -> ImageDimensions {
-        self.inner.dimensions()
+    pub fn image_type(&self) -> ImageType {
+        self.inner.image_type()
     }
 
     /// Returns the image's format.
@@ -284,7 +280,19 @@ impl Image {
         self.inner.format_features()
     }
 
-    /// Returns the number of mipmap levels in the image.
+    /// Returns the extent of the image.
+    #[inline]
+    pub fn extent(&self) -> [u32; 3] {
+        self.inner.extent()
+    }
+
+    /// Returns the number of array layers in the image.
+    #[inline]
+    pub fn array_layers(&self) -> u32 {
+        self.inner.array_layers()
+    }
+
+    /// Returns the number of mip levels in the image.
     #[inline]
     pub fn mip_levels(&self) -> u32 {
         self.inner.mip_levels()
@@ -326,6 +334,15 @@ impl Image {
         self.inner.sharing()
     }
 
+    /// If `self.tiling()` is `ImageTiling::DrmFormatModifier`, returns the DRM format modifier
+    /// of the image, and the number of memory planes.
+    /// This was either provided in [`ImageCreateInfo::drm_format_modifiers`], or if
+    /// multiple modifiers were provided, selected from the list by the Vulkan implementation.
+    #[inline]
+    pub fn drm_format_modifier(&self) -> Option<(u64, u32)> {
+        self.inner.drm_format_modifier()
+    }
+
     /// Returns the external memory handle types that are supported with this image.
     #[inline]
     pub fn external_memory_handle_types(&self) -> ExternalMemoryHandleTypes {
@@ -364,7 +381,7 @@ impl Image {
         aspect: ImageAspect,
         mip_level: u32,
         array_layer: u32,
-    ) -> Result<SubresourceLayout, ImageError> {
+    ) -> Result<SubresourceLayout, ValidationError> {
         self.inner
             .subresource_layout(aspect, mip_level, array_layer)
     }
@@ -400,7 +417,7 @@ impl Image {
             .aspects()
             .contains(subresource_range.aspects));
         assert!(subresource_range.mip_levels.end <= self.mip_levels());
-        assert!(subresource_range.array_layers.end <= self.dimensions().array_layers());
+        assert!(subresource_range.array_layers.end <= self.array_layers());
 
         SubresourceRangeIterator::new(
             subresource_range,
@@ -408,7 +425,7 @@ impl Image {
             self.aspect_size,
             self.mip_levels(),
             self.mip_level_size,
-            self.dimensions().array_layers(),
+            self.array_layers(),
         )
     }
 
@@ -432,7 +449,7 @@ impl Image {
                     .copied()
                     .collect(),
                 mip_levels: 0..self.mip_levels(),
-                array_layers: 0..self.dimensions().array_layers(),
+                array_layers: 0..self.array_layers(),
             }
         } else {
             let aspect_num = (range.start / self.aspect_size) as usize;
@@ -454,7 +471,7 @@ impl Image {
                 ImageSubresourceRange {
                     aspects: self.aspect_list[aspect_num].into(),
                     mip_levels: start_mip_level..end_mip_level,
-                    array_layers: 0..self.dimensions().array_layers(),
+                    array_layers: 0..self.array_layers(),
                 }
             } else {
                 let mip_level = (range.start / self.mip_level_size) as u32;
@@ -545,6 +562,34 @@ impl Eq for Image {}
 impl Hash for Image {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
+    }
+}
+
+/// Error that can happen when allocating a new image.
+#[derive(Clone, Debug)]
+pub enum ImageAllocateError {
+    CreateImage(VulkanError),
+    AllocateMemory(MemoryAllocatorError),
+    BindMemory(RuntimeError),
+}
+
+impl Error for ImageAllocateError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::CreateImage(err) => Some(err),
+            Self::AllocateMemory(err) => Some(err),
+            Self::BindMemory(err) => Some(err),
+        }
+    }
+}
+
+impl Display for ImageAllocateError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CreateImage(_) => write!(f, "creating the image failed"),
+            Self::AllocateMemory(_) => write!(f, "allocating memory for the image failed"),
+            Self::BindMemory(_) => write!(f, "binding memory to the image failed"),
+        }
     }
 }
 
@@ -943,7 +988,7 @@ vulkan_bitflags! {
     ///
     /// This requires the `sparse_binding` flag as well.
     ///
-    /// Depending on the image dimensions, either the [`sparse_residency_image2_d`] or the
+    /// Depending on the image type, either the [`sparse_residency_image2_d`] or the
     /// [`sparse_residency_image3_d`] feature must be enabled on the device.
     /// For a multisampled image, the one of the features [`sparse_residency2_samples`],
     /// [`sparse_residency4_samples`], [`sparse_residency8_samples`] or
@@ -1002,14 +1047,19 @@ vulkan_bitflags! {
     /// For 3D images, whether an image view of type [`ImageViewType::Dim2d`] or
     /// [`ImageViewType::Dim2dArray`] can be created from the image.
     ///
+    /// 2D image views created from 3D images with this flag cannot be written to a
+    /// descriptor set and accessed in shaders, but can be used as a framebuffer attachment.
+    /// To write such an image view to a descriptor set, use the [`DIM2D_VIEW_COMPATIBLE`] flag.
+    ///
     /// On [portability subset] devices, the [`image_view2_d_on3_d_image`] feature must be enabled
     /// on the device.
     ///
     /// [`ImageViewType::Dim2d`]: crate::image::view::ImageViewType::Dim2d
     /// [`ImageViewType::Dim2dArray`]: crate::image::view::ImageViewType::Dim2dArray
+    /// [`DIM2D_VIEW_COMPATIBLE`]: ImageCreateFlags::DIM2D_VIEW_COMPATIBLE
     /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
     /// [`image_view2_d_on3_d_image`]: crate::device::Features::image_view2_d_on3_d_image
-    ARRAY_2D_COMPATIBLE = TYPE_2D_ARRAY_COMPATIBLE
+    DIM2D_ARRAY_COMPATIBLE = TYPE_2D_ARRAY_COMPATIBLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_1)]),
         RequiresAllOf([DeviceExtension(khr_maintenance1)]),
@@ -1019,20 +1069,21 @@ vulkan_bitflags! {
     /// format can be created from the image, where each texel in the view will correspond to a
     /// compressed texel block in the image.
     ///
-    /// Requires `mutable_format`.
+    /// Requires `MUTABLE_FORMAT`.
     BLOCK_TEXEL_VIEW_COMPATIBLE = BLOCK_TEXEL_VIEW_COMPATIBLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_1)]),
         RequiresAllOf([DeviceExtension(khr_maintenance2)]),
     ]),
 
-    /* TODO: enable
-    // TODO: document
+    /// If `MUTABLE_FORMAT` is also enabled, allows specifying a `usage` for the image that is not
+    /// supported by the `format` of the image, as long as there is a format that does support the
+    /// usage, that an image view created from the image can have.
     EXTENDED_USAGE = EXTENDED_USAGE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_1)]),
         RequiresAllOf([DeviceExtension(khr_maintenance2)]),
-    ]),*/
+    ]),
 
     /* TODO: enable
     // TODO: document
@@ -1077,12 +1128,23 @@ vulkan_bitflags! {
         RequiresAllOf([DeviceExtension(ext_multisampled_render_to_single_sampled)]),
     ]),*/
 
-    /* TODO: enable
-    // TODO: document
-    TYPE_2D_VIEW_COMPATIBLE = TYPE_2D_VIEW_COMPATIBLE_EXT
+    /// For 3D images, whether an image view of type [`ImageViewType::Dim2d`]
+    /// (but not [`ImageViewType::Dim2dArray`]) can be created from the image.
+    ///
+    /// Unlike [`DIM2D_ARRAY_COMPATIBLE`], 2D image views created from 3D images with this flag
+    /// can be written to a descriptor set and accessed in shaders. To do this,
+    /// a feature must also be enabled, depending on the descriptor type:
+    /// - [`image2_d_view_of3_d`] for storage images.
+    /// - [`sampler2_d_view_of3_d`] for sampled images.
+    ///
+    /// [`ImageViewType::Dim2d`]: crate::image::view::ImageViewType::Dim2d
+    /// [`DIM2D_ARRAY_COMPATIBLE`]: ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE
+    /// [`image2_d_view_of3_d`]: crate::device::Features::image2_d_view_of3_d
+    /// [`sampler2_d_view_of3_d`]: crate::device::Features::sampler2_d_view_of3_d
+    DIM2D_VIEW_COMPATIBLE = TYPE_2D_VIEW_COMPATIBLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_image_2d_view_of_3d)]),
-    ]),*/
+    ]),
 
     /* TODO: enable
     // TODO: document
@@ -1096,27 +1158,7 @@ vulkan_bitflags_enum! {
     #[non_exhaustive]
 
     /// A set of [`SampleCount`] values.
-    SampleCounts impl {
-        /// Returns the maximum sample count in `self`.
-        #[inline]
-        pub const fn max_count(self) -> SampleCount {
-            if self.intersects(SampleCounts::SAMPLE_64) {
-                SampleCount::Sample64
-            } else if self.intersects(SampleCounts::SAMPLE_32) {
-                SampleCount::Sample32
-            } else if self.intersects(SampleCounts::SAMPLE_16) {
-                SampleCount::Sample16
-            } else if self.intersects(SampleCounts::SAMPLE_8) {
-                SampleCount::Sample8
-            } else if self.intersects(SampleCounts::SAMPLE_4) {
-                SampleCount::Sample4
-            } else if self.intersects(SampleCounts::SAMPLE_2) {
-                SampleCount::Sample2
-            } else {
-                SampleCount::Sample1
-            }
-        }
-    },
+    SampleCounts,
 
     /// The number of samples per texel of an image.
     SampleCount,
@@ -1143,6 +1185,28 @@ vulkan_bitflags_enum! {
 
     /// 64 samples per texel.
     SAMPLE_64, Sample64 = TYPE_64,
+}
+
+impl SampleCounts {
+    /// Returns the maximum sample count in `self`.
+    #[inline]
+    pub const fn max_count(self) -> SampleCount {
+        if self.intersects(SampleCounts::SAMPLE_64) {
+            SampleCount::Sample64
+        } else if self.intersects(SampleCounts::SAMPLE_32) {
+            SampleCount::Sample32
+        } else if self.intersects(SampleCounts::SAMPLE_16) {
+            SampleCount::Sample16
+        } else if self.intersects(SampleCounts::SAMPLE_8) {
+            SampleCount::Sample8
+        } else if self.intersects(SampleCounts::SAMPLE_4) {
+            SampleCount::Sample4
+        } else if self.intersects(SampleCounts::SAMPLE_2) {
+            SampleCount::Sample2
+        } else {
+            SampleCount::Sample1
+        }
+    }
 }
 
 impl From<SampleCount> for u32 {
@@ -1173,241 +1237,103 @@ impl TryFrom<u32> for SampleCount {
 vulkan_enum! {
     #[non_exhaustive]
 
-    // TODO: document
+    /// The basic dimensionality of an image.
     ImageType = ImageType(i32);
 
-    // TODO: document
+    /// A one-dimensional image, consisting of only a width, with a height and depth of 1.
     Dim1d = TYPE_1D,
 
-    // TODO: document
+    /// A two-dimensional image, consisting of a width and height, with a depth of 1.
     Dim2d = TYPE_2D,
 
-    // TODO: document
+    /// A three-dimensional image, consisting of a width, height and depth.
     Dim3d = TYPE_3D,
 }
 
 vulkan_enum! {
     #[non_exhaustive]
 
-    // TODO: document
+    /// The arrangement of texels or texel blocks in an image.
     ImageTiling = ImageTiling(i32);
 
-    // TODO: document
+    /// The arrangement is optimized for access in an implementation-defined way.
+    ///
+    /// This layout is opaque to the user, and cannot be queried. Data can only be read from or
+    /// written to the image by using Vulkan commands, such as copy commands.
     Optimal = OPTIMAL,
 
-    // TODO: document
+    /// The texels are laid out in row-major order. This allows easy access by the user, but
+    /// is much slower for the device, so it should be used only in specific situations that call
+    /// for it.
+    ///
+    /// You can query the layout by calling [`Image::subresource_layout`].
     Linear = LINEAR,
 
-    // TODO: document
+    /// The tiling is defined by a Linux DRM format modifier associated with the image.
+    ///
+    /// You can query the layout by calling [`Image::subresource_layout`].
     DrmFormatModifier = DRM_FORMAT_MODIFIER_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_image_drm_format_modifier)]),
     ]),
 }
 
-/// The dimensions of an image.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ImageDimensions {
-    Dim1d {
-        width: u32,
-        array_layers: u32,
-    },
-    Dim2d {
-        width: u32,
-        height: u32,
-        array_layers: u32,
-    },
-    Dim3d {
-        width: u32,
-        height: u32,
-        depth: u32,
-    },
+/// Returns the maximum number of mipmap levels for the given image extent.
+///
+/// The returned value is always at least 1.
+///
+/// # Examples
+///
+/// ```
+/// use vulkano::image::max_mip_levels;
+///
+/// assert_eq!(max_mip_levels([32, 50, 1]), 6);
+/// ```
+#[inline]
+pub fn max_mip_levels(extent: [u32; 3]) -> u32 {
+    // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#resources-image-miplevel-sizing
+    //
+    // This calculates `floor(log2(max(width, height, depth))) + 1` using fast integer operations.
+    32 - (extent[0] | extent[1] | extent[2]).leading_zeros()
 }
 
-impl ImageDimensions {
-    #[inline]
-    pub fn width(&self) -> u32 {
-        match *self {
-            ImageDimensions::Dim1d { width, .. } => width,
-            ImageDimensions::Dim2d { width, .. } => width,
-            ImageDimensions::Dim3d { width, .. } => width,
-        }
+/// Returns the extent of the `level`th mipmap level.
+/// If `level` is 0, then it returns `extent` back unchanged.
+///
+/// Returns `None` if `level` is not less than `max_mip_levels(extent)`.
+///
+/// # Examples
+///
+/// ```
+/// use vulkano::image::mip_level_extent;
+///
+/// let extent = [963, 256, 1];
+///
+/// assert_eq!(mip_level_extent(extent, 0), Some(extent));
+/// assert_eq!(mip_level_extent(extent, 1), Some([481, 128, 1]));
+/// assert_eq!(mip_level_extent(extent, 6), Some([15, 4, 1]));
+/// assert_eq!(mip_level_extent(extent, 9), Some([1, 1, 1]));
+/// assert_eq!(mip_level_extent(extent, 11), None);
+/// ```
+///
+/// # Panics
+///
+/// - In debug mode, panics if `extent` contains 0.
+///   In release, returns an unspecified value.
+#[inline]
+pub fn mip_level_extent(extent: [u32; 3], level: u32) -> Option<[u32; 3]> {
+    if level == 0 {
+        return Some(extent);
     }
 
-    #[inline]
-    pub fn height(&self) -> u32 {
-        match *self {
-            ImageDimensions::Dim1d { .. } => 1,
-            ImageDimensions::Dim2d { height, .. } => height,
-            ImageDimensions::Dim3d { height, .. } => height,
-        }
+    if level >= max_mip_levels(extent) {
+        return None;
     }
 
-    #[inline]
-    pub fn width_height(&self) -> [u32; 2] {
-        [self.width(), self.height()]
-    }
-
-    #[inline]
-    pub fn depth(&self) -> u32 {
-        match *self {
-            ImageDimensions::Dim1d { .. } => 1,
-            ImageDimensions::Dim2d { .. } => 1,
-            ImageDimensions::Dim3d { depth, .. } => depth,
-        }
-    }
-
-    #[inline]
-    pub fn width_height_depth(&self) -> [u32; 3] {
-        [self.width(), self.height(), self.depth()]
-    }
-
-    #[inline]
-    pub fn array_layers(&self) -> u32 {
-        match *self {
-            ImageDimensions::Dim1d { array_layers, .. } => array_layers,
-            ImageDimensions::Dim2d { array_layers, .. } => array_layers,
-            ImageDimensions::Dim3d { .. } => 1,
-        }
-    }
-
-    /// Returns the total number of texels for an image of these dimensions.
-    #[inline]
-    pub fn num_texels(&self) -> u32 {
-        self.width() * self.height() * self.depth() * self.array_layers()
-    }
-
-    #[inline]
-    pub fn image_type(&self) -> ImageType {
-        match *self {
-            ImageDimensions::Dim1d { .. } => ImageType::Dim1d,
-            ImageDimensions::Dim2d { .. } => ImageType::Dim2d,
-            ImageDimensions::Dim3d { .. } => ImageType::Dim3d,
-        }
-    }
-
-    /// Returns the maximum number of mipmap levels for these image dimensions.
-    ///
-    /// The returned value is always at least 1.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use vulkano::image::ImageDimensions;
-    ///
-    /// let dims = ImageDimensions::Dim2d {
-    ///     width: 32,
-    ///     height: 50,
-    ///     array_layers: 1,
-    /// };
-    ///
-    /// assert_eq!(dims.max_mip_levels(), 6);
-    /// ```
-    #[inline]
-    pub fn max_mip_levels(&self) -> u32 {
-        // This calculates `log2(max(width, height, depth)) + 1` using fast integer operations.
-        let max = match *self {
-            ImageDimensions::Dim1d { width, .. } => width,
-            ImageDimensions::Dim2d { width, height, .. } => width | height,
-            ImageDimensions::Dim3d {
-                width,
-                height,
-                depth,
-            } => width | height | depth,
-        };
-        32 - max.leading_zeros()
-    }
-
-    /// Returns the dimensions of the `level`th mipmap level. If `level` is 0, then the dimensions
-    /// are left unchanged.
-    ///
-    /// Returns `None` if `level` is superior or equal to `max_mip_levels()`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use vulkano::image::ImageDimensions;
-    ///
-    /// let dims = ImageDimensions::Dim2d {
-    ///     width: 963,
-    ///     height: 256,
-    ///     array_layers: 1,
-    /// };
-    ///
-    /// assert_eq!(dims.mip_level_dimensions(0), Some(dims));
-    /// assert_eq!(dims.mip_level_dimensions(1), Some(ImageDimensions::Dim2d {
-    ///     width: 481,
-    ///     height: 128,
-    ///     array_layers: 1,
-    /// }));
-    /// assert_eq!(dims.mip_level_dimensions(6), Some(ImageDimensions::Dim2d {
-    ///     width: 15,
-    ///     height: 4,
-    ///     array_layers: 1,
-    /// }));
-    /// assert_eq!(dims.mip_level_dimensions(9), Some(ImageDimensions::Dim2d {
-    ///     width: 1,
-    ///     height: 1,
-    ///     array_layers: 1,
-    /// }));
-    /// assert_eq!(dims.mip_level_dimensions(11), None);
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// - In debug mode, panics if `width`, `height` or `depth` is equal to 0. In release, returns
-    ///   an unspecified value.
-    #[inline]
-    pub fn mip_level_dimensions(&self, level: u32) -> Option<ImageDimensions> {
-        if level == 0 {
-            return Some(*self);
-        }
-
-        if level >= self.max_mip_levels() {
-            return None;
-        }
-
-        Some(match *self {
-            ImageDimensions::Dim1d {
-                width,
-                array_layers,
-            } => {
-                debug_assert_ne!(width, 0);
-                ImageDimensions::Dim1d {
-                    array_layers,
-                    width: cmp::max(1, width >> level),
-                }
-            }
-
-            ImageDimensions::Dim2d {
-                width,
-                height,
-                array_layers,
-            } => {
-                debug_assert_ne!(width, 0);
-                debug_assert_ne!(height, 0);
-                ImageDimensions::Dim2d {
-                    width: cmp::max(1, width >> level),
-                    height: cmp::max(1, height >> level),
-                    array_layers,
-                }
-            }
-
-            ImageDimensions::Dim3d {
-                width,
-                height,
-                depth,
-            } => {
-                debug_assert_ne!(width, 0);
-                debug_assert_ne!(height, 0);
-                ImageDimensions::Dim3d {
-                    width: cmp::max(1, width >> level),
-                    height: cmp::max(1, height >> level),
-                    depth: cmp::max(1, depth >> level),
-                }
-            }
-        })
-    }
+    Some(extent.map(|x| {
+        debug_assert!(x != 0);
+        max(1, x >> level)
+    }))
 }
 
 /// One or more subresources of an image, spanning a single mip level, that should be accessed by a
@@ -1431,7 +1357,7 @@ pub struct ImageSubresourceLayers {
 
 impl ImageSubresourceLayers {
     /// Returns an `ImageSubresourceLayers` from the given image parameters, covering the first
-    /// mip level of the image. All aspects of the image are selected, or `plane0` if the image
+    /// mip level of the image. All aspects of the image are selected, or `PLANE_0` if the image
     /// is multi-planar.
     #[inline]
     pub fn from_parameters(format: Format, array_layers: u32) -> Self {
@@ -1448,6 +1374,83 @@ impl ImageSubresourceLayers {
             mip_level: 0,
             array_layers: 0..array_layers,
         }
+    }
+}
+
+impl ImageSubresourceLayers {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            aspects,
+            mip_level: _,
+            ref array_layers,
+        } = self;
+
+        aspects
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "aspects".into(),
+                vuids: &["VUID-VkImageSubresourceLayers-aspectMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if aspects.is_empty() {
+            return Err(ValidationError {
+                context: "aspects".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask"],
+                ..Default::default()
+            });
+        }
+
+        if aspects.intersects(ImageAspects::COLOR)
+            && aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        {
+            return Err(ValidationError {
+                context: "aspects".into(),
+                problem: "contains both `ImageAspects::COLOR`, and either `ImageAspects::DEPTH` \
+                    or `ImageAspects::STENCIL`"
+                    .into(),
+                vuids: &["VUID-VkImageSubresourceLayers-aspectMask-00167"],
+                ..Default::default()
+            });
+        }
+
+        if aspects.intersects(ImageAspects::METADATA) {
+            return Err(ValidationError {
+                context: "aspects".into(),
+                problem: "contains `ImageAspects::METADATA`".into(),
+                vuids: &["VUID-VkImageSubresourceLayers-aspectMask-00168"],
+                ..Default::default()
+            });
+        }
+
+        if aspects.intersects(
+            ImageAspects::MEMORY_PLANE_0
+                | ImageAspects::MEMORY_PLANE_1
+                | ImageAspects::MEMORY_PLANE_2
+                | ImageAspects::MEMORY_PLANE_3,
+        ) {
+            return Err(ValidationError {
+                context: "aspects".into(),
+                problem: "contains `ImageAspects::MEMORY_PLANE_0`, \
+                    `ImageAspects::MEMORY_PLANE_1`, `ImageAspects::MEMORY_PLANE_2` or \
+                    `ImageAspects::MEMORY_PLANE_3`"
+                    .into(),
+                vuids: &["VUID-VkImageSubresourceLayers-aspectMask-02247"],
+                ..Default::default()
+            });
+        }
+
+        if array_layers.is_empty() {
+            return Err(ValidationError {
+                context: "array_layers".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkImageSubresourceLayers-layerCount-01700"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
     }
 }
 
@@ -1506,6 +1509,82 @@ impl ImageSubresourceRange {
             mip_levels: 0..mip_levels,
             array_layers: 0..array_layers,
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            aspects,
+            ref mip_levels,
+            ref array_layers,
+        } = self;
+
+        aspects
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "aspects".into(),
+                vuids: &["VUID-VkImageSubresourceRange-aspectMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if aspects.is_empty() {
+            return Err(ValidationError {
+                context: "aspects".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkImageSubresourceRange-aspectMask-requiredbitmask"],
+                ..Default::default()
+            });
+        }
+
+        if mip_levels.is_empty() {
+            return Err(ValidationError {
+                context: "mip_levels".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkImageSubresourceRange-levelCount-01720"],
+                ..Default::default()
+            });
+        }
+
+        if array_layers.is_empty() {
+            return Err(ValidationError {
+                context: "array_layers".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkImageSubresourceRange-layerCount-01721"],
+                ..Default::default()
+            });
+        }
+
+        if aspects.intersects(ImageAspects::COLOR)
+            && aspects
+                .intersects(ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2)
+        {
+            return Err(ValidationError {
+                context: "aspects".into(),
+                problem: "contains both `ImageAspects::COLOR`, and one of \
+                    `ImageAspects::PLANE_0`, `ImageAspects::PLANE_1` or `ImageAspects::PLANE_2`"
+                    .into(),
+                vuids: &["VUID-VkImageSubresourceRange-aspectMask-01670"],
+                ..Default::default()
+            });
+        }
+
+        if aspects.intersects(
+            ImageAspects::MEMORY_PLANE_0
+                | ImageAspects::MEMORY_PLANE_1
+                | ImageAspects::MEMORY_PLANE_2
+                | ImageAspects::MEMORY_PLANE_3,
+        ) {
+            return Err(ValidationError {
+                context: "aspects".into(),
+                problem: "contains `ImageAspects::MEMORY_PLANE_0`, \
+                    `ImageAspects::MEMORY_PLANE_1`, `ImageAspects::MEMORY_PLANE_2` or \
+                    `ImageAspects::MEMORY_PLANE_3`"
+                    .into(),
+                vuids: &["VUID-VkImageSubresourceLayers-aspectMask-02247"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
     }
 }
 
@@ -1623,6 +1702,15 @@ pub struct ImageFormatInfo {
     /// The default value is `None`.
     pub image_view_type: Option<ImageViewType>,
 
+    /// The Linux DRM format modifier information to query.
+    ///
+    /// If this is `Some`, then the
+    /// [`ext_image_drm_format_modifier`](crate::device::DeviceExtensions::ext_image_drm_format_modifier)
+    /// extension must be supported by the physical device.
+    ///
+    /// The default value is `None`.
+    pub drm_format_modifier_info: Option<ImageDrmFormatModifierInfo>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1638,6 +1726,7 @@ impl Default for ImageFormatInfo {
             stencil_usage: ImageUsage::empty(),
             external_memory_handle_type: None,
             image_view_type: None,
+            drm_format_modifier_info: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -1654,6 +1743,7 @@ impl ImageFormatInfo {
             mut stencil_usage,
             external_memory_handle_type,
             image_view_type,
+            ref drm_format_modifier_info,
             _ne: _,
         } = self;
 
@@ -1714,13 +1804,14 @@ impl ImageFormatInfo {
             });
         }
 
-        let has_separate_stencil_usage = if stencil_usage.is_empty()
-            || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        let has_separate_stencil_usage = if aspects
+            .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+            && !stencil_usage.is_empty()
         {
+            stencil_usage == usage
+        } else {
             stencil_usage = usage;
             false
-        } else {
-            stencil_usage == usage
         };
 
         if has_separate_stencil_usage {
@@ -1809,8 +1900,138 @@ impl ImageFormatInfo {
                 })?;
         }
 
-        // TODO: VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02313
-        // Currently there is nothing in Vulkano for for adding a VkImageFormatListCreateInfo.
+        if let Some(drm_format_modifier_info) = drm_format_modifier_info {
+            if !physical_device
+                .supported_extensions()
+                .ext_image_drm_format_modifier
+            {
+                return Err(ValidationError {
+                    context: "drm_format_modifier_info".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_image_drm_format_modifier",
+                    )])]),
+                    ..Default::default()
+                });
+            }
+
+            drm_format_modifier_info
+                .validate(physical_device)
+                .map_err(|err| err.add_context("drm_format_modifier_info"))?;
+
+            if tiling != ImageTiling::DrmFormatModifier {
+                return Err(ValidationError {
+                    problem: "`drm_format_modifier_info` is `Some` but \
+                        `tiling` is not `ImageTiling::DrmFormatModifier`"
+                        .into(),
+                    vuids: &[" VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249"],
+                    ..Default::default()
+                });
+            }
+
+            if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) {
+                return Err(ValidationError {
+                    problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
+                        `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`"
+                        .into(),
+                    vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02313"],
+                    ..Default::default()
+                });
+            }
+        } else if tiling == ImageTiling::DrmFormatModifier {
+            return Err(ValidationError {
+                problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
+                    `drm_format_modifier_info` is `None`"
+                    .into(),
+                vuids: &[" VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249"],
+                ..Default::default()
+            });
+        }
+
+        Ok(())
+    }
+}
+
+/// The image's DRM format modifier configuration to query in
+/// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ImageDrmFormatModifierInfo {
+    /// The DRM format modifier to query.
+    ///
+    /// The default value is 0.
+    pub drm_format_modifier: u64,
+
+    /// Whether the image can be shared across multiple queues, or is limited to a single queue.
+    ///
+    /// The default value is [`Sharing::Exclusive`].
+    pub sharing: Sharing<SmallVec<[u32; 4]>>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for ImageDrmFormatModifierInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            drm_format_modifier: 0,
+            sharing: Sharing::Exclusive,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl ImageDrmFormatModifierInfo {
+    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+        let &Self {
+            drm_format_modifier: _,
+            ref sharing,
+            _ne,
+        } = self;
+
+        match sharing {
+            Sharing::Exclusive => (),
+            Sharing::Concurrent(queue_family_indices) => {
+                if queue_family_indices.len() < 2 {
+                    return Err(ValidationError {
+                        context: "sharing".into(),
+                        problem: "is `Sharing::Concurrent`, but contains less than 2 elements"
+                            .into(),
+                        vuids: &[
+                            "VUID-VkPhysicalDeviceImageDrmFormatModifierInfoEXT-sharingMode-02315",
+                        ],
+                        ..Default::default()
+                    });
+                }
+
+                let queue_family_count = physical_device.queue_family_properties().len() as u32;
+
+                for (index, &queue_family_index) in queue_family_indices.iter().enumerate() {
+                    if queue_family_indices[..index].contains(&queue_family_index) {
+                        return Err(ValidationError {
+                            context: "queue_family_indices".into(),
+                            problem: format!(
+                                "the queue family index in the list at index {} is contained in \
+                                the list more than once",
+                                index,
+                            )
+                            .into(),
+                            vuids: &[" VUID-VkPhysicalDeviceImageDrmFormatModifierInfoEXT-sharingMode-02316"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if queue_family_index >= queue_family_count {
+                        return Err(ValidationError {
+                            context: format!("sharing[{}]", index).into(),
+                            problem: "is not less than the number of queue families in the device"
+                                .into(),
+                            vuids: &[" VUID-VkPhysicalDeviceImageDrmFormatModifierInfoEXT-sharingMode-02316"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
@@ -1820,10 +2041,10 @@ impl ImageFormatInfo {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct ImageFormatProperties {
-    /// The maximum dimensions.
+    /// The maximum image extent.
     pub max_extent: [u32; 3],
 
-    /// The maximum number of mipmap levels.
+    /// The maximum number of mip levels.
     pub max_mip_levels: u32,
 
     /// The maximum number of array layers.
@@ -1841,13 +2062,13 @@ pub struct ImageFormatProperties {
     pub external_memory_properties: ExternalMemoryProperties,
 
     /// When querying with an image view type, whether such image views support sampling with
-    /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
+    /// a [`Cubic`](crate::image::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
     pub filter_cubic: bool,
 
     /// When querying with an image view type, whether such image views support sampling with
-    /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
-    /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
-    /// [`Max`](crate::sampler::SamplerReductionMode::Max) `reduction_mode`.
+    /// a [`Cubic`](crate::image::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
+    /// [`Min`](crate::image::sampler::SamplerReductionMode::Min) or
+    /// [`Max`](crate::image::sampler::SamplerReductionMode::Max) `reduction_mode`.
     pub filter_cubic_minmax: bool,
 }
 
@@ -2053,105 +2274,25 @@ pub struct SparseImageMemoryRequirements {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn max_mip_levels() {
-        let dims = ImageDimensions::Dim2d {
-            width: 2,
-            height: 1,
-            array_layers: 1,
-        };
-        assert_eq!(dims.max_mip_levels(), 2);
-
-        let dims = ImageDimensions::Dim2d {
-            width: 2,
-            height: 3,
-            array_layers: 1,
-        };
-        assert_eq!(dims.max_mip_levels(), 2);
-
-        let dims = ImageDimensions::Dim2d {
-            width: 512,
-            height: 512,
-            array_layers: 1,
-        };
-        assert_eq!(dims.max_mip_levels(), 10);
+        assert_eq!(super::max_mip_levels([2, 1, 1]), 2);
+        assert_eq!(super::max_mip_levels([2, 3, 1]), 2);
+        assert_eq!(super::max_mip_levels([512, 512, 1]), 10);
     }
 
     #[test]
-    fn mip_level_dimensions() {
-        let dims = ImageDimensions::Dim2d {
-            width: 283,
-            height: 175,
-            array_layers: 1,
-        };
-        assert_eq!(dims.mip_level_dimensions(0), Some(dims));
-        assert_eq!(
-            dims.mip_level_dimensions(1),
-            Some(ImageDimensions::Dim2d {
-                width: 141,
-                height: 87,
-                array_layers: 1,
-            })
-        );
-        assert_eq!(
-            dims.mip_level_dimensions(2),
-            Some(ImageDimensions::Dim2d {
-                width: 70,
-                height: 43,
-                array_layers: 1,
-            })
-        );
-        assert_eq!(
-            dims.mip_level_dimensions(3),
-            Some(ImageDimensions::Dim2d {
-                width: 35,
-                height: 21,
-                array_layers: 1,
-            })
-        );
-
-        assert_eq!(
-            dims.mip_level_dimensions(4),
-            Some(ImageDimensions::Dim2d {
-                width: 17,
-                height: 10,
-                array_layers: 1,
-            })
-        );
-        assert_eq!(
-            dims.mip_level_dimensions(5),
-            Some(ImageDimensions::Dim2d {
-                width: 8,
-                height: 5,
-                array_layers: 1,
-            })
-        );
-        assert_eq!(
-            dims.mip_level_dimensions(6),
-            Some(ImageDimensions::Dim2d {
-                width: 4,
-                height: 2,
-                array_layers: 1,
-            })
-        );
-        assert_eq!(
-            dims.mip_level_dimensions(7),
-            Some(ImageDimensions::Dim2d {
-                width: 2,
-                height: 1,
-                array_layers: 1,
-            })
-        );
-        assert_eq!(
-            dims.mip_level_dimensions(8),
-            Some(ImageDimensions::Dim2d {
-                width: 1,
-                height: 1,
-                array_layers: 1,
-            })
-        );
-        assert_eq!(dims.mip_level_dimensions(9), None);
+    fn mip_level_size() {
+        let extent = [283, 175, 1];
+        assert_eq!(super::mip_level_extent(extent, 0), Some(extent));
+        assert_eq!(super::mip_level_extent(extent, 1), Some([141, 87, 1]));
+        assert_eq!(super::mip_level_extent(extent, 2), Some([70, 43, 1]));
+        assert_eq!(super::mip_level_extent(extent, 3), Some([35, 21, 1]));
+        assert_eq!(super::mip_level_extent(extent, 4), Some([17, 10, 1]));
+        assert_eq!(super::mip_level_extent(extent, 5), Some([8, 5, 1]));
+        assert_eq!(super::mip_level_extent(extent, 6), Some([4, 2, 1]));
+        assert_eq!(super::mip_level_extent(extent, 7), Some([2, 1, 1]));
+        assert_eq!(super::mip_level_extent(extent, 8), Some([1, 1, 1]));
+        assert_eq!(super::mip_level_extent(extent, 9), None);
     }
 }

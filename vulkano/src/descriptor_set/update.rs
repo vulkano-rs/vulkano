@@ -19,7 +19,7 @@ use crate::{
     image::{
         sampler::Sampler,
         view::{ImageView, ImageViewType},
-        ImageAspects, ImageLayout, ImageType, ImageUsage,
+        ImageAspects, ImageCreateFlags, ImageLayout, ImageType, ImageUsage,
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
@@ -426,7 +426,7 @@ impl WriteDescriptorSet {
 
         let validate_image_view =
             |image_view: &ImageView, index: usize| -> Result<(), ValidationError> {
-                if image_view.image().dimensions().image_type() == ImageType::Dim3d {
+                if image_view.image().image_type() == ImageType::Dim3d {
                     if image_view.view_type() == ImageViewType::Dim2dArray {
                         return Err(ValidationError {
                             context: format!("elements[{}]", index).into(),
@@ -437,9 +437,21 @@ impl WriteDescriptorSet {
                             ..Default::default()
                         });
                     } else if image_view.view_type() == ImageViewType::Dim2d {
-                        // VUID-VkDescriptorImageInfo-imageView-07796
-                        // Already checked at image view creation by
-                        // VUID-VkImageViewCreateInfo-image-06728
+                        if !image_view
+                            .image()
+                            .flags()
+                            .intersects(ImageCreateFlags::DIM2D_VIEW_COMPATIBLE)
+                        {
+                            return Err(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "the image view's type is `ImageViewType::Dim2d`, and \
+                                    was created from a 3D image, but the image's flags do not \
+                                    contain `ImageCreateFlags::DIM2D_VIEW_COMPATIBLE`"
+                                    .into(),
+                                vuids: &["VUID-VkDescriptorImageInfo-imageView-07796"],
+                                ..Default::default()
+                            });
+                        }
 
                         match layout_binding.descriptor_type {
                             DescriptorType::StorageImage => {

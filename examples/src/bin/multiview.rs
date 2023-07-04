@@ -25,8 +25,8 @@ use vulkano::{
     },
     format::Format,
     image::{
-        view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageLayout,
-        ImageSubresourceLayers, ImageUsage, SampleCount,
+        view::ImageView, Image, ImageCreateInfo, ImageLayout, ImageSubresourceLayers, ImageType,
+        ImageUsage, SampleCount,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -139,12 +139,10 @@ fn main() {
     let image = Image::new(
         &memory_allocator,
         ImageCreateInfo {
-            dimensions: ImageDimensions::Dim2d {
-                width: 512,
-                height: 512,
-                array_layers: 2,
-            },
+            image_type: ImageType::Dim2d,
             format: Some(Format::B8G8R8A8_SRGB),
+            extent: [512, 512, 1],
+            array_layers: 2,
             usage: ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
             ..Default::default()
         },
@@ -295,10 +293,7 @@ fn main() {
                 viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([
                     Viewport {
                         offset: [0.0, 0.0],
-                        extent: [
-                            image.dimensions().width() as f32,
-                            image.dimensions().height() as f32,
-                        ],
+                        extent: [image.extent()[0] as f32, image.extent()[1] as f32],
                         depth_range: 0.0..=1.0,
                     },
                 ])),
@@ -326,7 +321,7 @@ fn main() {
                 usage: MemoryUsage::Upload,
                 ..Default::default()
             },
-            (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),
+            (0..image.extent()[0] * image.extent()[1] * 4).map(|_| 0u8),
         )
         .unwrap()
     };
@@ -367,7 +362,7 @@ fn main() {
                     array_layers: 0..1,
                     ..image.subresource_layers()
                 },
-                image_extent: image.dimensions().width_height_depth(),
+                image_extent: image.extent(),
                 ..Default::default()
             }]
             .into(),
@@ -380,7 +375,7 @@ fn main() {
                     array_layers: 1..2,
                     ..image.subresource_layers()
                 },
-                image_extent: image.dimensions().width_height_depth(),
+                image_extent: image.extent(),
                 ..Default::default()
             }]
             .into(),
@@ -402,14 +397,14 @@ fn main() {
     write_image_buffer_to_file(
         buffer1,
         "multiview1.png",
-        image.dimensions().width(),
-        image.dimensions().height(),
+        image.extent()[0],
+        image.extent()[1],
     );
     write_image_buffer_to_file(
         buffer2,
         "multiview2.png",
-        image.dimensions().width(),
-        image.dimensions().height(),
+        image.extent()[0],
+        image.extent()[1],
     );
 }
 

@@ -23,7 +23,7 @@ use vulkano::{
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
     format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageUsage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
@@ -157,12 +157,9 @@ impl FrameSystem {
             Image::new(
                 &memory_allocator,
                 ImageCreateInfo {
-                    dimensions: ImageDimensions::Dim2d {
-                        width: 1,
-                        height: 1,
-                        array_layers: 1,
-                    },
+                    image_type: ImageType::Dim2d,
                     format: Some(Format::A2B10G10R10_UNORM_PACK32),
+                    extent: [1, 1, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT
                         | ImageUsage::TRANSIENT_ATTACHMENT
                         | ImageUsage::INPUT_ATTACHMENT,
@@ -177,12 +174,9 @@ impl FrameSystem {
             Image::new(
                 &memory_allocator,
                 ImageCreateInfo {
-                    dimensions: ImageDimensions::Dim2d {
-                        width: 1,
-                        height: 1,
-                        array_layers: 1,
-                    },
+                    image_type: ImageType::Dim2d,
                     format: Some(Format::R16G16B16A16_SFLOAT),
+                    extent: [1, 1, 1],
                     usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
                     ..Default::default()
                 },
@@ -195,12 +189,9 @@ impl FrameSystem {
             Image::new(
                 &memory_allocator,
                 ImageCreateInfo {
-                    dimensions: ImageDimensions::Dim2d {
-                        width: 1,
-                        height: 1,
-                        array_layers: 1,
-                    },
+                    image_type: ImageType::Dim2d,
                     format: Some(Format::D16_UNORM),
+                    extent: [1, 1, 1],
                     usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
                     ..Default::default()
                 },
@@ -274,16 +265,16 @@ impl FrameSystem {
     pub fn frame<F>(
         &mut self,
         before_future: F,
-        final_image: Arc<ImageView>,
+        final_image_view: Arc<ImageView>,
         world_to_framebuffer: Matrix4<f32>,
     ) -> Frame
     where
         F: GpuFuture + 'static,
     {
         // First of all we recreate `self.diffuse_buffer`, `self.normals_buffer` and
-        // `self.depth_buffer` if their dimensions don't match the dimensions of the final image.
-        let dimensions = final_image.image().dimensions();
-        if self.diffuse_buffer.image().dimensions() != dimensions {
+        // `self.depth_buffer` if their extent doesn't match the extent of the final image.
+        let extent = final_image_view.image().extent();
+        if self.diffuse_buffer.image().extent() != extent {
             // Note that we create "transient" images here. This means that the content of the
             // image is only defined when within a render pass. In other words you can draw to
             // them in a subpass then read them in another subpass, but as soon as you leave the
@@ -292,7 +283,7 @@ impl FrameSystem {
                 Image::new(
                     &self.memory_allocator,
                     ImageCreateInfo {
-                        dimensions,
+                        extent,
                         format: Some(Format::A2B10G10R10_UNORM_PACK32),
                         usage: ImageUsage::COLOR_ATTACHMENT
                             | ImageUsage::TRANSIENT_ATTACHMENT
@@ -308,7 +299,7 @@ impl FrameSystem {
                 Image::new(
                     &self.memory_allocator,
                     ImageCreateInfo {
-                        dimensions,
+                        extent,
                         format: Some(Format::R16G16B16A16_SFLOAT),
                         usage: ImageUsage::COLOR_ATTACHMENT
                             | ImageUsage::TRANSIENT_ATTACHMENT
@@ -324,7 +315,7 @@ impl FrameSystem {
                 Image::new(
                     &self.memory_allocator,
                     ImageCreateInfo {
-                        dimensions,
+                        extent,
                         format: Some(Format::D16_UNORM),
                         usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
                             | ImageUsage::TRANSIENT_ATTACHMENT
@@ -344,7 +335,7 @@ impl FrameSystem {
             self.render_pass.clone(),
             FramebufferCreateInfo {
                 attachments: vec![
-                    final_image,
+                    final_image_view,
                     self.diffuse_buffer.clone(),
                     self.normals_buffer.clone(),
                     self.depth_buffer.clone(),

@@ -99,4 +99,13 @@ vulkan_bitflags_enum! {
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_image_drm_format_modifier)]),
     ]),
+
+    /// The fourth memory plane of images created through the [`ext_image_drm_format_modifier`]
+    /// extension.
+    ///
+    /// [`ext_image_drm_format_modifier`]: crate::device::DeviceExtensions::ext_image_drm_format_modifier
+    MEMORY_PLANE_3, MemoryPlane3 = MEMORY_PLANE_3_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_image_drm_format_modifier)]),
+    ]),
 }

@@ -495,10 +495,12 @@ pub struct SwapchainPresentInfo {
     /// present, and any future presents where this value is `None`.
     ///
     /// If this is not `None`, then the provided present mode must be one of the present modes
-    /// specified with [`present_modes`](SwapchainCreateInfo::present_modes) when creating the
+    /// specified with [`present_modes`] when creating the
     /// swapchain.
     ///
     /// The default value is `None`.
+    ///
+    /// [`present_modes`]: crate::swapchain::SwapchainCreateInfo::present_modes
     pub present_mode: Option<PresentMode>,
 
     /// An optimization hint to the implementation, that only some parts of the swapchain image are

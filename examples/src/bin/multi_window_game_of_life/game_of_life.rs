@@ -22,7 +22,7 @@ use vulkano::{
     },
     device::Queue,
     format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageUsage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
@@ -95,12 +95,9 @@ impl GameOfLifeComputePipeline {
             Image::new(
                 memory_allocator,
                 ImageCreateInfo {
-                    dimensions: ImageDimensions::Dim2d {
-                        width: size[0],
-                        height: size[1],
-                        array_layers: 1,
-                    },
+                    image_type: ImageType::Dim2d,
                     format: Some(Format::R8G8B8A8_UNORM),
+                    extent: [size[0], size[1], 1],
                     usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED | ImageUsage::STORAGE,
                     ..Default::default()
                 },
@@ -127,11 +124,11 @@ impl GameOfLifeComputePipeline {
 
     pub fn draw_life(&self, pos: Vector2<i32>) {
         let mut life_in = self.life_in.write().unwrap();
-        let size = self.image.image().dimensions().width_height();
-        if pos.y < 0 || pos.y >= size[1] as i32 || pos.x < 0 || pos.x >= size[0] as i32 {
+        let extent = self.image.image().extent();
+        if pos.y < 0 || pos.y >= extent[1] as i32 || pos.x < 0 || pos.x >= extent[0] as i32 {
             return;
         }
-        let index = (pos.y * size[0] as i32 + pos.x) as usize;
+        let index = (pos.y * extent[0] as i32 + pos.x) as usize;
         life_in[index] = 1;
     }
 
@@ -181,7 +178,7 @@ impl GameOfLifeComputePipeline {
         step: i32,
     ) {
         // Resize image if needed.
-        let img_dims = self.image.image().dimensions().width_height();
+        let image_extent = self.image.image().extent();
         let pipeline_layout = self.compute_life_pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
@@ -205,7 +202,7 @@ impl GameOfLifeComputePipeline {
             .bind_pipeline_compute(self.compute_life_pipeline.clone())
             .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
             .push_constants(pipeline_layout.clone(), 0, push_constants)
-            .dispatch([img_dims[0] / 8, img_dims[1] / 8, 1])
+            .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
             .unwrap();
     }
 }

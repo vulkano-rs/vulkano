@@ -869,7 +869,7 @@ impl Display for SuballocatorError {
 ///
 /// ```
 /// use vulkano::format::Format;
-/// use vulkano::image::{Image, ImageCreateInfo, ImageDimensions, ImageUsage};
+/// use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
 /// use vulkano::memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator};
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 ///
@@ -882,12 +882,9 @@ impl Display for SuballocatorError {
 ///     let image = Image::new(
 ///         &memory_allocator,
 ///         ImageCreateInfo {
-///             dimensions: ImageDimensions::Dim2d {
-///                 width: 1024,
-///                 height: 1024,
-///                 array_layers: 1,
-///             },
+///             image_type: ImageType::Dim2d,
 ///             format: Some(Format::R8G8B8A8_UNORM),
+///             extent: [1024, 1024, 1],
 ///             usage: ImageUsage::SAMPLED,
 ///             ..Default::default()
 ///         },

@@ -19,7 +19,7 @@
 //!
 //! Once that is done, you can extract the data from the cache and store it. See the documentation
 //! of [`get_data`](crate::pipeline::cache::PipelineCache::get_data) for example of how to store the data
-//! on the disk, and [`with_data`](crate::pipeline::cache::PipelineCache::with_data) for how to reload it.
+//! on the disk, and [`new`](crate::pipeline::cache::PipelineCache::new) for how to reload it.
 
 use crate::{
     device::{Device, DeviceOwned},

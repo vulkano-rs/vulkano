@@ -431,8 +431,8 @@ fn window_size_dependent_setup(
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
-    let dimensions = images[0].dimensions().width_height();
-    viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
+    let extent = images[0].extent();
+    viewport.extent = [extent[0] as f32, extent[1] as f32];
 
     images
         .iter()

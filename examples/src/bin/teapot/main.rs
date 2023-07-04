@@ -27,7 +27,7 @@ use vulkano::{
         QueueCreateInfo, QueueFlags,
     },
     format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageUsage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
@@ -436,14 +436,15 @@ fn window_size_dependent_setup(
     images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
-    let dimensions = images[0].dimensions().width_height();
+    let extent = images[0].extent();
 
     let depth_buffer = ImageView::new_default(
         Image::new(
             memory_allocator,
             ImageCreateInfo {
-                dimensions: images[0].dimensions(),
+                image_type: ImageType::Dim2d,
                 format: Some(Format::D16_UNORM),
+                extent: images[0].extent(),
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
                 ..Default::default()
             },
@@ -500,7 +501,7 @@ fn window_size_dependent_setup(
                 viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([
                     Viewport {
                         offset: [0.0, 0.0],
-                        extent: [dimensions[0] as f32, dimensions[1] as f32],
+                        extent: [extent[0] as f32, extent[1] as f32],
                         depth_range: 0.0..=1.0,
                     },
                 ])),

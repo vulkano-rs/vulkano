@@ -84,7 +84,7 @@ impl RenderPassPlaceOverFrame {
         F: GpuFuture + 'static,
     {
         // Get dimensions.
-        let img_dims = target.image().dimensions();
+        let img_dims: [u32; 2] = target.image().extent()[0..2].try_into().unwrap();
 
         // Create framebuffer (must be in same order as render pass description in `new`.
         let framebuffer = Framebuffer::new(
@@ -116,9 +116,7 @@ impl RenderPassPlaceOverFrame {
             .unwrap();
 
         // Create secondary command buffer from texture pipeline & send draw commands.
-        let cb = self
-            .pixels_draw_pipeline
-            .draw(img_dims.width_height(), view);
+        let cb = self.pixels_draw_pipeline.draw(img_dims, view);
 
         // Execute above commands (subpass).
         command_buffer_builder.execute_commands(cb).unwrap();

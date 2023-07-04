@@ -12,10 +12,10 @@ use crate::{
     buffer::{ExternalBufferInfo, ExternalBufferProperties},
     cache::OnceCache,
     device::{properties::Properties, DeviceExtensions, Features, FeaturesFfi, PropertiesFfi},
-    format::{Format, FormatProperties},
+    format::{DrmFormatModifierProperties, Format, FormatProperties},
     image::{
-        ImageAspects, ImageFormatInfo, ImageFormatProperties, ImageUsage, SparseImageFormatInfo,
-        SparseImageFormatProperties,
+        ImageAspects, ImageDrmFormatModifierInfo, ImageFormatInfo, ImageFormatProperties,
+        ImageUsage, SparseImageFormatInfo, SparseImageFormatProperties,
     },
     instance::{Instance, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
@@ -27,6 +27,7 @@ use crate::{
     sync::{
         fence::{ExternalFenceInfo, ExternalFenceProperties},
         semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
+        Sharing,
     },
     DebugWrapper, ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
     ValidationError, Version, VulkanError, VulkanObject,
@@ -818,27 +819,86 @@ impl PhysicalDevice {
     #[inline]
     pub unsafe fn format_properties_unchecked(&self, format: Format) -> FormatProperties {
         self.format_properties.get_or_insert(format, |&format| {
-            let mut format_properties2 = ash::vk::FormatProperties2::default();
-            let mut format_properties3 = if self.api_version() >= Version::V1_3
+            let mut format_properties2_vk = ash::vk::FormatProperties2::default();
+            let mut format_properties3_vk = None;
+            let mut drm_format_modifier_properties_list_vk = None;
+            let mut drm_format_modifier_properties_vk = Vec::new();
+            let mut drm_format_modifier_properties_list2_vk = None;
+            let mut drm_format_modifier_properties2_vk = Vec::new();
+
+            if self.api_version() >= Version::V1_3
                 || self.supported_extensions().khr_format_feature_flags2
             {
-                Some(ash::vk::FormatProperties3KHR::default())
-            } else {
-                None
-            };
+                let next = format_properties3_vk.insert(ash::vk::FormatProperties3KHR::default());
+                next.p_next = format_properties2_vk.p_next;
+                format_properties2_vk.p_next = next as *mut _ as *mut _;
+            }
 
-            if let Some(next) = format_properties3.as_mut() {
-                next.p_next = format_properties2.p_next;
-                format_properties2.p_next = next as *mut _ as *mut _;
+            if self.supported_extensions().ext_image_drm_format_modifier {
+                let next = drm_format_modifier_properties_list_vk
+                    .insert(ash::vk::DrmFormatModifierPropertiesListEXT::default());
+                next.p_next = format_properties2_vk.p_next;
+                format_properties2_vk.p_next = next as *mut _ as *mut _;
+
+                if self.api_version() >= Version::V1_3
+                    || self.supported_extensions().khr_format_feature_flags2
+                {
+                    let next = drm_format_modifier_properties_list2_vk
+                        .insert(ash::vk::DrmFormatModifierPropertiesList2EXT::default());
+                    next.p_next = format_properties2_vk.p_next;
+                    format_properties2_vk.p_next = next as *mut _ as *mut _;
+                }
             }
 
             let fns = self.instance.fns();
+
+            // Get the number of DRM format modifier properties first.
+            if let Some(drm_format_modifier_properties_list_vk) =
+                &mut drm_format_modifier_properties_list_vk
+            {
+                if self.api_version() >= Version::V1_1 {
+                    (fns.v1_1.get_physical_device_format_properties2)(
+                        self.handle,
+                        format.into(),
+                        &mut format_properties2_vk,
+                    );
+                } else if self
+                    .instance
+                    .enabled_extensions()
+                    .khr_get_physical_device_properties2
+                {
+                    (fns.khr_get_physical_device_properties2
+                        .get_physical_device_format_properties2_khr)(
+                        self.handle,
+                        format.into(),
+                        &mut format_properties2_vk,
+                    );
+                }
+
+                drm_format_modifier_properties_vk = vec![
+                        ash::vk::DrmFormatModifierPropertiesEXT::default();
+                        drm_format_modifier_properties_list_vk.drm_format_modifier_count as usize
+                    ];
+                drm_format_modifier_properties_list_vk.p_drm_format_modifier_properties =
+                    drm_format_modifier_properties_vk.as_mut_ptr();
+
+                if let Some(drm_format_modifier_properties_list2_vk) =
+                    &mut drm_format_modifier_properties_list2_vk
+                {
+                    drm_format_modifier_properties2_vk = vec![
+                        ash::vk::DrmFormatModifierProperties2EXT::default();
+                        drm_format_modifier_properties_list2_vk.drm_format_modifier_count as usize
+                    ];
+                    drm_format_modifier_properties_list2_vk.p_drm_format_modifier_properties =
+                        drm_format_modifier_properties2_vk.as_mut_ptr();
+                }
+            }
 
             if self.api_version() >= Version::V1_1 {
                 (fns.v1_1.get_physical_device_format_properties2)(
                     self.handle,
                     format.into(),
-                    &mut format_properties2,
+                    &mut format_properties2_vk,
                 );
             } else if self
                 .instance
@@ -849,35 +909,72 @@ impl PhysicalDevice {
                     .get_physical_device_format_properties2_khr)(
                     self.handle,
                     format.into(),
-                    &mut format_properties2,
+                    &mut format_properties2_vk,
                 );
             } else {
                 (fns.v1_0.get_physical_device_format_properties)(
                     self.handle(),
                     format.into(),
-                    &mut format_properties2.format_properties,
+                    &mut format_properties2_vk.format_properties,
                 );
             }
 
-            match format_properties3 {
-                Some(format_properties3) => FormatProperties {
-                    linear_tiling_features: format_properties3.linear_tiling_features.into(),
-                    optimal_tiling_features: format_properties3.optimal_tiling_features.into(),
-                    buffer_features: format_properties3.buffer_features.into(),
-                    _ne: crate::NonExhaustive(()),
-                },
-                None => FormatProperties {
-                    linear_tiling_features: format_properties2
-                        .format_properties
-                        .linear_tiling_features
-                        .into(),
-                    optimal_tiling_features: format_properties2
-                        .format_properties
-                        .optimal_tiling_features
-                        .into(),
-                    buffer_features: format_properties2.format_properties.buffer_features.into(),
-                    _ne: crate::NonExhaustive(()),
-                },
+            match format_properties3_vk {
+                Some(format_properties3) => {
+                    FormatProperties {
+                        linear_tiling_features: format_properties3.linear_tiling_features.into(),
+                        optimal_tiling_features: format_properties3.optimal_tiling_features.into(),
+                        buffer_features: format_properties3.buffer_features.into(),
+                        drm_format_modifier_properties: drm_format_modifier_properties_list2_vk
+                            .map_or(Vec::new(), |list2_vk| {
+                                drm_format_modifier_properties2_vk
+                                    [..list2_vk.drm_format_modifier_count as usize]
+                                    .iter()
+                                    .map(|properties2_vk| DrmFormatModifierProperties {
+                                        drm_format_modifier: properties2_vk.drm_format_modifier,
+                                        drm_format_modifier_plane_count: properties2_vk
+                                            .drm_format_modifier_plane_count,
+                                        drm_format_modifier_tiling_features: properties2_vk
+                                            .drm_format_modifier_tiling_features
+                                            .into(),
+                                    })
+                                    .collect()
+                            }),
+                        _ne: crate::NonExhaustive(()),
+                    }
+                }
+                None => {
+                    FormatProperties {
+                        linear_tiling_features: format_properties2_vk
+                            .format_properties
+                            .linear_tiling_features
+                            .into(),
+                        optimal_tiling_features: format_properties2_vk
+                            .format_properties
+                            .optimal_tiling_features
+                            .into(),
+                        buffer_features: format_properties2_vk
+                            .format_properties
+                            .buffer_features
+                            .into(),
+                        drm_format_modifier_properties: drm_format_modifier_properties_list_vk
+                            .map_or(Vec::new(), |list_vk| {
+                                drm_format_modifier_properties_vk
+                                    [..list_vk.drm_format_modifier_count as usize]
+                                    .iter()
+                                    .map(|properties_vk| DrmFormatModifierProperties {
+                                        drm_format_modifier: properties_vk.drm_format_modifier,
+                                        drm_format_modifier_plane_count: properties_vk
+                                            .drm_format_modifier_plane_count,
+                                        drm_format_modifier_tiling_features: properties_vk
+                                            .drm_format_modifier_tiling_features
+                                            .into(),
+                                    })
+                                    .collect()
+                            }),
+                        _ne: crate::NonExhaustive(()),
+                    }
+                }
             }
         })
     }
@@ -948,6 +1045,7 @@ impl PhysicalDevice {
                     stencil_usage,
                     external_memory_handle_type,
                     image_view_type,
+                    ref drm_format_modifier_info,
                     _ne: _,
                 } = image_format_info;
 
@@ -961,9 +1059,41 @@ impl PhysicalDevice {
                     flags: flags.into(),
                     ..Default::default()
                 };
+                let mut drm_format_modifier_info_vk = None;
                 let mut external_info_vk = None;
                 let mut image_view_info_vk = None;
                 let mut stencil_usage_info_vk = None;
+
+                if let Some(drm_format_modifier_info) = drm_format_modifier_info {
+                    let &ImageDrmFormatModifierInfo {
+                        drm_format_modifier,
+                        ref sharing,
+                        _ne: _,
+                    } = drm_format_modifier_info;
+
+                    let (sharing_mode, queue_family_index_count, p_queue_family_indices) =
+                        match sharing {
+                            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, &[] as _),
+                            Sharing::Concurrent(queue_family_indices) => (
+                                ash::vk::SharingMode::CONCURRENT,
+                                queue_family_indices.len() as u32,
+                                queue_family_indices.as_ptr(),
+                            ),
+                        };
+
+                    let next = drm_format_modifier_info_vk.insert(
+                        ash::vk::PhysicalDeviceImageDrmFormatModifierInfoEXT {
+                            drm_format_modifier,
+                            sharing_mode,
+                            queue_family_index_count,
+                            p_queue_family_indices,
+                            ..Default::default()
+                        },
+                    );
+
+                    next.p_next = info2_vk.p_next;
+                    info2_vk.p_next = next as *const _ as *const _;
+                }
 
                 if let Some(handle_type) = external_memory_handle_type {
                     let next =

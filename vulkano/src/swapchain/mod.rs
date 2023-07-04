@@ -436,13 +436,7 @@ impl Swapchain {
         let (handle, image_handles) =
             Self::new_inner_unchecked(&device, &surface, &create_info, None)?;
 
-        Ok(Self::from_handle(
-            device,
-            handle,
-            image_handles,
-            surface,
-            create_info,
-        ))
+        Self::from_handle(device, handle, image_handles, surface, create_info)
     }
 
     /// Creates a new swapchain from this one.
@@ -510,7 +504,7 @@ impl Swapchain {
             image_handles,
             self.surface.clone(),
             create_info,
-        );
+        )?;
 
         if self.full_screen_exclusive == FullScreenExclusive::ApplicationControlled {
             Arc::get_mut(&mut swapchain)
@@ -1160,7 +1154,7 @@ impl Swapchain {
         image_handles: impl IntoIterator<Item = ash::vk::Image>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> (Arc<Swapchain>, Vec<Arc<Image>>) {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), RuntimeError> {
         let SwapchainCreateInfo {
             flags,
             min_image_count,
@@ -1223,15 +1217,15 @@ impl Swapchain {
             .iter()
             .enumerate()
             .map(|(image_index, entry)| unsafe {
-                Arc::new(Image::from_swapchain(
+                Ok(Arc::new(Image::from_swapchain(
                     entry.handle,
                     swapchain.clone(),
                     image_index as u32,
-                ))
+                )?))
             })
-            .collect();
+            .collect::<Result<_, RuntimeError>>()?;
 
-        (swapchain, swapchain_images)
+        Ok((swapchain, swapchain_images))
     }
 
     /// Returns the creation parameters of the swapchain.

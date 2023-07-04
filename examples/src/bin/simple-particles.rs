@@ -456,7 +456,7 @@ fn main() {
     )
     .unwrap();
 
-    // Fixed viewport dimensions.
+    // Fixed viewport.
     let viewport = Viewport {
         offset: [0.0, 0.0],
         extent: [WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32],

@@ -52,7 +52,7 @@
 //
 // Using MSAA with Vulkan is done by creating a regular image, but with a number of samples per
 // pixel different from 1. For example if you want to use 4x MSAA, you should create an image with
-// 4 samples per pixel. Internally this image will have 4 times as many pixels as its dimensions
+// 4 samples per pixel. Internally this image will have 4 times as many pixels as its extent
 // would normally require, but this is handled transparently for you. Drawing to a multisampled
 // image is exactly the same as drawing to a regular image.
 //
@@ -74,7 +74,7 @@ use vulkano::{
         QueueFlags,
     },
     format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageUsage, SampleCount},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage, SampleCount},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
@@ -154,18 +154,15 @@ fn main() {
 
     // Creating our intermediate multisampled image.
     //
-    // As explained in the introduction, we pass the same dimensions and format as for the final
+    // As explained in the introduction, we pass the same extent and format as for the final
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
     let intermediary = ImageView::new_default(
         Image::new(
             &memory_allocator,
             ImageCreateInfo {
-                dimensions: ImageDimensions::Dim2d {
-                    width: 1024,
-                    height: 1024,
-                    array_layers: 1,
-                },
+                image_type: ImageType::Dim2d,
                 format: Some(Format::R8G8B8A8_UNORM),
+                extent: [1024, 1024, 1],
                 usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
                 samples: SampleCount::Sample4,
                 ..Default::default()
@@ -180,12 +177,9 @@ fn main() {
     let image = Image::new(
         &memory_allocator,
         ImageCreateInfo {
-            dimensions: ImageDimensions::Dim2d {
-                width: 1024,
-                height: 1024,
-                array_layers: 1,
-            },
+            image_type: ImageType::Dim2d,
             format: Some(Format::R8G8B8A8_UNORM),
+            extent: [1024, 1024, 1],
             usage: ImageUsage::TRANSFER_SRC
                 | ImageUsage::TRANSFER_DST
                 | ImageUsage::COLOR_ATTACHMENT

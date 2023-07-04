@@ -228,18 +228,18 @@ fn main() {
 
                 image_format,
 
-                // The dimensions of the window, only used to initially setup the swapchain.
+                // The size of the window, only used to initially setup the swapchain.
                 //
                 // NOTE:
-                // On some drivers the swapchain dimensions are specified by
-                // `surface_capabilities.current_extent` and the swapchain size must use these
-                // dimensions. These dimensions are always the same as the window dimensions.
+                // On some drivers the swapchain extent is specified by
+                // `surface_capabilities.current_extent` and the swapchain size must use this
+                // extent. This extent are always the same as the window size.
                 //
                 // However, other drivers don't specify a value, i.e.
                 // `surface_capabilities.current_extent` is `None`. These drivers will allow
-                // anything, but the only sensible value is the window dimensions.
+                // anything, but the only sensible value is the window size.
                 //
-                // Both of these cases need the swapchain to use the window dimensions, so we just
+                // Both of these cases need the swapchain to use the window size, so we just
                 // use that.
                 image_extent: window.inner_size().into(),
 
@@ -522,7 +522,7 @@ fn main() {
                 recreate_swapchain = true;
             }
             Event::RedrawEventsCleared => {
-                // Do not draw the frame when the screen dimensions are zero. On Windows, this can
+                // Do not draw the frame when the screen size is zero. On Windows, this can
                 // occur when minimizing the application.
                 let image_extent: [u32; 2] = window.inner_size().into();
 
@@ -687,8 +687,8 @@ fn window_size_dependent_setup(
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
-    let dimensions = images[0].dimensions().width_height();
-    viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
+    let extent = images[0].extent();
+    viewport.extent = [extent[0] as f32, extent[1] as f32];
 
     images
         .iter()

@@ -23,7 +23,7 @@ use vulkano::{
         QueueFlags,
     },
     format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageUsage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
@@ -566,15 +566,16 @@ fn window_size_dependent_setup(
     viewport: &mut Viewport,
     memory_allocator: &StandardMemoryAllocator,
 ) -> Vec<Arc<Framebuffer>> {
-    let dimensions = images[0].dimensions().width_height();
-    viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
+    let extent = images[0].extent();
+    viewport.extent = [extent[0] as f32, extent[1] as f32];
 
     let depth_attachment = ImageView::new_default(
         Image::new(
             memory_allocator,
             ImageCreateInfo {
-                dimensions: images[0].dimensions(),
+                image_type: ImageType::Dim2d,
                 format: Some(Format::D16_UNORM),
+                extent: images[0].extent(),
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
                 ..Default::default()
             },

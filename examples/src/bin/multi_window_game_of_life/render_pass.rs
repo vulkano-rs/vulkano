@@ -67,14 +67,14 @@ impl RenderPassPlaceOverFrame {
     pub fn render<F>(
         &self,
         before_future: F,
-        view: Arc<ImageView>,
+        image_view: Arc<ImageView>,
         target: Arc<ImageView>,
     ) -> Box<dyn GpuFuture>
     where
         F: GpuFuture + 'static,
     {
         // Get the dimensions.
-        let img_dims = target.image().dimensions();
+        let img_dims: [u32; 2] = target.image().extent()[0..2].try_into().unwrap();
 
         // Create the framebuffer.
         let framebuffer = Framebuffer::new(
@@ -106,9 +106,7 @@ impl RenderPassPlaceOverFrame {
             .unwrap();
 
         // Create a secondary command buffer from the texture pipeline & send draw commands.
-        let cb = self
-            .pixels_draw_pipeline
-            .draw(img_dims.width_height(), view);
+        let cb = self.pixels_draw_pipeline.draw(img_dims, image_view);
 
         // Execute above commands (subpass).
         command_buffer_builder.execute_commands(cb).unwrap();

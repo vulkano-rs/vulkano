@@ -41,7 +41,7 @@
 //!             Sampler, SamplerCreateInfo,
 //!         },
 //!         view::{ImageView, ImageViewCreateInfo},
-//!         Image, ImageCreateFlags, ImageCreateInfo, ImageDimensions, ImageUsage,
+//!         Image, ImageCreateFlags, ImageCreateInfo, ImageType, ImageUsage,
 //!     },
 //!     memory::allocator::AllocationCreateInfo,
 //!     shader::ShaderStage,
@@ -84,12 +84,9 @@
 //! let image = Image::new(
 //!     &memory_allocator,
 //!     ImageCreateInfo {
-//!         dimensions: ImageDimensions::Dim2d {
-//!             width: 1920,
-//!             height: 1080,
-//!             array_layers: 1,
-//!         },
+//!         image_type: ImageType::Dim2d,
 //!         format: Some(Format::G8_B8_R8_3PLANE_420_UNORM),
+//!         extent: [1920, 1080, 1],
 //!         usage: ImageUsage::SAMPLED,
 //!         ..Default::default()
 //!     },

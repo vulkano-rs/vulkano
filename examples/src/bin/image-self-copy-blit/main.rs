@@ -27,7 +27,7 @@ use vulkano::{
     image::{
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
         view::ImageView,
-        Image, ImageCreateInfo, ImageDimensions, ImageLayout, ImageUsage,
+        Image, ImageCreateInfo, ImageLayout, ImageUsage,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -229,11 +229,7 @@ fn main() {
         let mut reader = decoder.read_info().unwrap();
         let info = reader.info();
         let img_size = [info.width, info.height];
-        let dimensions = ImageDimensions::Dim2d {
-            width: info.width * 2,
-            height: info.height * 2,
-            array_layers: 1,
-        };
+        let extent = [info.width * 2, info.height * 2, 1];
 
         let upload_buffer = Buffer::new_slice(
             &memory_allocator,
@@ -256,8 +252,8 @@ fn main() {
         let image = Image::new(
             &memory_allocator,
             ImageCreateInfo {
-                dimensions,
                 format: Some(Format::R8G8B8A8_UNORM),
+                extent,
                 usage: ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
                 ..Default::default()
             },
@@ -529,8 +525,8 @@ fn window_size_dependent_setup(
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
-    let dimensions = images[0].dimensions().width_height();
-    viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
+    let extent = images[0].extent();
+    viewport.extent = [extent[0] as f32, extent[1] as f32];
 
     images
         .iter()

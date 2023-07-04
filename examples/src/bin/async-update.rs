@@ -65,7 +65,7 @@ use vulkano::{
     image::{
         sampler::{Sampler, SamplerCreateInfo},
         view::ImageView,
-        Image, ImageCreateInfo, ImageDimensions, ImageUsage,
+        Image, ImageCreateInfo, ImageType, ImageUsage,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -315,12 +315,9 @@ fn main() {
         Image::new(
             &memory_allocator,
             ImageCreateInfo {
-                dimensions: ImageDimensions::Dim2d {
-                    width: TRANSFER_GRANULARITY * 2,
-                    height: TRANSFER_GRANULARITY * 2,
-                    array_layers: 1,
-                },
+                image_type: ImageType::Dim2d,
                 format: Some(Format::R8G8B8A8_UNORM),
+                extent: [TRANSFER_GRANULARITY * 2, TRANSFER_GRANULARITY * 2, 1],
                 usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
                 ..Default::default()
             },
@@ -851,8 +848,8 @@ fn window_size_dependent_setup(
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
-    let dimensions = images[0].dimensions().width_height();
-    viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
+    let extent = images[0].extent();
+    viewport.extent = [extent[0] as f32, extent[1] as f32];
 
     images
         .iter()

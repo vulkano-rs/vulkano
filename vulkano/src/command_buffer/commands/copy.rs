@@ -16,8 +16,8 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures, NumericType},
     image::{
-        sampler::Filter, Image, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers,
-        ImageType, ImageUsage, SampleCount, SampleCounts,
+        mip_level_extent, sampler::Filter, Image, ImageAspects, ImageLayout,
+        ImageSubresourceLayers, ImageType, ImageUsage, SampleCount, SampleCounts,
     },
     sync::PipelineStageAccessFlags,
     DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanObject,
@@ -452,12 +452,12 @@ where
                 // VUID-VkCopyImageInfo2-dstSubresource-01699
                 // VUID-VkCopyImageInfo2-srcImage-04443
                 // VUID-VkCopyImageInfo2-dstImage-04444
-                if subresource.array_layers.end > image.dimensions().array_layers() {
+                if subresource.array_layers.end > image.array_layers() {
                     return Err(CopyError::ArrayLayersOutOfRange {
                         resource,
                         region_index,
                         array_layers_range_end: subresource.array_layers.end,
-                        image_array_layers: image.dimensions().array_layers(),
+                        image_array_layers: image.array_layers(),
                     });
                 }
 
@@ -493,10 +493,7 @@ where
                         }
 
                         if subresource.aspects.intersects(ImageAspects::PLANE_0) {
-                            (
-                                image.format().unwrap().planes()[0],
-                                image.dimensions().width_height_depth(),
-                            )
+                            (image.format().unwrap().planes()[0], image.extent())
                         } else if subresource.aspects.intersects(ImageAspects::PLANE_1) {
                             (
                                 image.format().unwrap().planes()[1],
@@ -505,7 +502,7 @@ where
                                     .unwrap()
                                     .ycbcr_chroma_sampling()
                                     .unwrap()
-                                    .subsampled_extent(image.dimensions().width_height_depth()),
+                                    .subsampled_extent(image.extent()),
                             )
                         } else {
                             (
@@ -515,17 +512,13 @@ where
                                     .unwrap()
                                     .ycbcr_chroma_sampling()
                                     .unwrap()
-                                    .subsampled_extent(image.dimensions().width_height_depth()),
+                                    .subsampled_extent(image.extent()),
                             )
                         }
                     } else {
                         (
                             image.format().unwrap(),
-                            image
-                                .dimensions()
-                                .mip_level_dimensions(subresource.mip_level)
-                                .unwrap()
-                                .width_height_depth(),
+                            mip_level_extent(image.extent(), subresource.mip_level).unwrap(),
                         )
                     };
 
@@ -582,10 +575,7 @@ where
                 dst_subresource.array_layers.end - dst_subresource.array_layers.start;
 
             if copy_2d_3d_supported {
-                match (
-                    src_image.dimensions().image_type(),
-                    dst_image.dimensions().image_type(),
-                ) {
+                match (src_image.image_type(), dst_image.image_type()) {
                     (ImageType::Dim2d, ImageType::Dim3d) => {
                         src_extent[2] = 1;
 
@@ -1163,12 +1153,12 @@ where
 
             // VUID-VkCopyBufferToImageInfo2-imageSubresource-01702
             // VUID-VkCopyBufferToImageInfo2-baseArrayLayer-00213
-            if image_subresource.array_layers.end > dst_image.dimensions().array_layers() {
+            if image_subresource.array_layers.end > dst_image.array_layers() {
                 return Err(CopyError::ArrayLayersOutOfRange {
                     resource: CopyErrorResource::Destination,
                     region_index,
                     array_layers_range_end: image_subresource.array_layers.end,
-                    image_array_layers: dst_image.dimensions().array_layers(),
+                    image_array_layers: dst_image.array_layers(),
                 });
             }
 
@@ -1198,10 +1188,7 @@ where
             let (image_subresource_format, image_subresource_extent) =
                 if image_aspects.intersects(ImageAspects::PLANE_0) {
                     if image_subresource.aspects.intersects(ImageAspects::PLANE_0) {
-                        (
-                            dst_image.format().unwrap().planes()[0],
-                            dst_image.dimensions().width_height_depth(),
-                        )
+                        (dst_image.format().unwrap().planes()[0], dst_image.extent())
                     } else if image_subresource.aspects.intersects(ImageAspects::PLANE_1) {
                         (
                             dst_image.format().unwrap().planes()[1],
@@ -1210,7 +1197,7 @@ where
                                 .unwrap()
                                 .ycbcr_chroma_sampling()
                                 .unwrap()
-                                .subsampled_extent(dst_image.dimensions().width_height_depth()),
+                                .subsampled_extent(dst_image.extent()),
                         )
                     } else {
                         (
@@ -1220,17 +1207,13 @@ where
                                 .unwrap()
                                 .ycbcr_chroma_sampling()
                                 .unwrap()
-                                .subsampled_extent(dst_image.dimensions().width_height_depth()),
+                                .subsampled_extent(dst_image.extent()),
                         )
                     }
                 } else {
                     (
                         dst_image.format().unwrap(),
-                        dst_image
-                            .dimensions()
-                            .mip_level_dimensions(image_subresource.mip_level)
-                            .unwrap()
-                            .width_height_depth(),
+                        mip_level_extent(dst_image.extent(), image_subresource.mip_level).unwrap(),
                     )
                 };
 
@@ -1657,12 +1640,12 @@ where
 
             // VUID-VkCopyImageToBufferInfo2-imageSubresource-01704
             // VUID-VkCopyImageToBufferInfo2-baseArrayLayer-00213
-            if image_subresource.array_layers.end > src_image.dimensions().array_layers() {
+            if image_subresource.array_layers.end > src_image.array_layers() {
                 return Err(CopyError::ArrayLayersOutOfRange {
                     resource: CopyErrorResource::Source,
                     region_index,
                     array_layers_range_end: image_subresource.array_layers.end,
-                    image_array_layers: src_image.dimensions().array_layers(),
+                    image_array_layers: src_image.array_layers(),
                 });
             }
 
@@ -1691,10 +1674,7 @@ where
             let (image_subresource_format, image_subresource_extent) =
                 if image_aspects.intersects(ImageAspects::PLANE_0) {
                     if image_subresource.aspects.intersects(ImageAspects::PLANE_0) {
-                        (
-                            src_image.format().unwrap().planes()[0],
-                            src_image.dimensions().width_height_depth(),
-                        )
+                        (src_image.format().unwrap().planes()[0], src_image.extent())
                     } else if image_subresource.aspects.intersects(ImageAspects::PLANE_1) {
                         (
                             src_image.format().unwrap().planes()[1],
@@ -1703,7 +1683,7 @@ where
                                 .unwrap()
                                 .ycbcr_chroma_sampling()
                                 .unwrap()
-                                .subsampled_extent(src_image.dimensions().width_height_depth()),
+                                .subsampled_extent(src_image.extent()),
                         )
                     } else {
                         (
@@ -1713,17 +1693,13 @@ where
                                 .unwrap()
                                 .ycbcr_chroma_sampling()
                                 .unwrap()
-                                .subsampled_extent(src_image.dimensions().width_height_depth()),
+                                .subsampled_extent(src_image.extent()),
                         )
                     }
                 } else {
                     (
                         src_image.format().unwrap(),
-                        src_image
-                            .dimensions()
-                            .mip_level_dimensions(image_subresource.mip_level)
-                            .unwrap()
-                            .width_height_depth(),
+                        mip_level_extent(src_image.extent(), image_subresource.mip_level).unwrap(),
                     )
                 };
 
@@ -2071,8 +2047,8 @@ where
 
         let src_image_aspects = src_image.format().unwrap().aspects();
         let dst_image_aspects = dst_image.format().unwrap().aspects();
-        let src_image_type = src_image.dimensions().image_type();
-        let dst_image_type = dst_image.dimensions().image_type();
+        let src_image_type = src_image.image_type();
+        let dst_image_type = dst_image.image_type();
 
         // VUID-VkBlitImageInfo2-srcImage-00219
         if !src_image.usage().intersects(ImageUsage::TRANSFER_SRC) {
@@ -2247,7 +2223,7 @@ where
                 }
 
                 // VUID-VkBlitImageInfo2-filter-00237
-                if !matches!(src_image.dimensions(), ImageDimensions::Dim2d { .. }) {
+                if !matches!(src_image.image_type(), ImageType::Dim2d) {
                     return Err(CopyError::FilterNotSupportedForImageType);
                 }
             }
@@ -2288,12 +2264,12 @@ where
                 // VUID-VkBlitImageInfo2-srcSubresource-01707
                 // VUID-VkBlitImageInfo2-dstSubresource-01708
                 // VUID-VkBlitImageInfo2-srcImage-00240
-                if subresource.array_layers.end > image.dimensions().array_layers() {
+                if subresource.array_layers.end > image.array_layers() {
                     return Err(CopyError::ArrayLayersOutOfRange {
                         resource,
                         region_index,
                         array_layers_range_end: subresource.array_layers.end,
-                        image_array_layers: image.dimensions().array_layers(),
+                        image_array_layers: image.array_layers(),
                     });
                 }
 
@@ -2314,11 +2290,7 @@ where
                     });
                 }
 
-                Ok(image
-                    .dimensions()
-                    .mip_level_dimensions(subresource.mip_level)
-                    .unwrap()
-                    .width_height_depth())
+                Ok(mip_level_extent(image.extent(), subresource.mip_level).unwrap())
             };
 
             let src_subresource_extent = check_subresource(
@@ -2643,8 +2615,8 @@ where
         assert_eq!(device, src_image.device());
         assert_eq!(device, dst_image.device());
 
-        let src_image_type = src_image.dimensions().image_type();
-        let dst_image_type = dst_image.dimensions().image_type();
+        let src_image_type = src_image.image_type();
+        let dst_image_type = dst_image.image_type();
 
         // VUID-VkResolveImageInfo2-srcImage-00257
         if src_image.samples() == SampleCount::Sample1 {
@@ -2759,12 +2731,12 @@ where
                 // VUID-VkResolveImageInfo2-dstSubresource-01712
                 // VUID-VkResolveImageInfo2-srcImage-04446
                 // VUID-VkResolveImageInfo2-srcImage-04447
-                if subresource.array_layers.end > image.dimensions().array_layers() {
+                if subresource.array_layers.end > image.array_layers() {
                     return Err(CopyError::ArrayLayersOutOfRange {
                         resource: CopyErrorResource::Destination,
                         region_index,
                         array_layers_range_end: subresource.array_layers.end,
-                        image_array_layers: image.dimensions().array_layers(),
+                        image_array_layers: image.array_layers(),
                     });
                 }
 
@@ -2782,11 +2754,7 @@ where
                     });
                 }
 
-                Ok(image
-                    .dimensions()
-                    .mip_level_dimensions(subresource.mip_level)
-                    .unwrap()
-                    .width_height_depth())
+                Ok(mip_level_extent(image.extent(), subresource.mip_level).unwrap())
             };
 
             let src_subresource_extent =
@@ -3838,10 +3806,7 @@ impl CopyImageInfo {
     /// Returns a `CopyImageInfo` with the specified `src_image` and `dst_image`.
     #[inline]
     pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
-        let min_array_layers = src_image
-            .dimensions()
-            .array_layers()
-            .min(dst_image.dimensions().array_layers());
+        let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageCopy {
             src_subresource: ImageSubresourceLayers {
                 array_layers: 0..min_array_layers,
@@ -3852,8 +3817,8 @@ impl CopyImageInfo {
                 ..dst_image.subresource_layers()
             },
             extent: {
-                let src_extent = src_image.dimensions().width_height_depth();
-                let dst_extent = dst_image.dimensions().width_height_depth();
+                let src_extent = src_image.extent();
+                let dst_extent = dst_image.extent();
 
                 [
                     src_extent[0].min(dst_extent[0]),
@@ -3966,7 +3931,7 @@ impl CopyBufferToImageInfo {
     pub fn buffer_image(src_buffer: Subbuffer<impl ?Sized>, dst_image: Arc<Image>) -> Self {
         let region = BufferImageCopy {
             image_subresource: dst_image.subresource_layers(),
-            image_extent: dst_image.dimensions().width_height_depth(),
+            image_extent: dst_image.extent(),
             ..Default::default()
         };
 
@@ -4018,7 +3983,7 @@ impl CopyImageToBufferInfo {
     pub fn image_buffer(src_image: Arc<Image>, dst_buffer: Subbuffer<impl ?Sized>) -> Self {
         let region = BufferImageCopy {
             image_subresource: src_image.subresource_layers(),
-            image_extent: src_image.dimensions().width_height_depth(),
+            image_extent: src_image.extent(),
             ..Default::default()
         };
 
@@ -4206,21 +4171,18 @@ impl BlitImageInfo {
     /// Returns a `BlitImageInfo` with the specified `src_image` and `dst_image`.
     #[inline]
     pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
-        let min_array_layers = src_image
-            .dimensions()
-            .array_layers()
-            .min(dst_image.dimensions().array_layers());
+        let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageBlit {
             src_subresource: ImageSubresourceLayers {
                 array_layers: 0..min_array_layers,
                 ..src_image.subresource_layers()
             },
-            src_offsets: [[0; 3], src_image.dimensions().width_height_depth()],
+            src_offsets: [[0; 3], src_image.extent()],
             dst_subresource: ImageSubresourceLayers {
                 array_layers: 0..min_array_layers,
                 ..dst_image.subresource_layers()
             },
-            dst_offsets: [[0; 3], dst_image.dimensions().width_height_depth()],
+            dst_offsets: [[0; 3], dst_image.extent()],
             ..Default::default()
         };
 
@@ -4334,10 +4296,7 @@ impl ResolveImageInfo {
     /// Returns a `ResolveImageInfo` with the specified `src_image` and `dst_image`.
     #[inline]
     pub fn images(src_image: Arc<Image>, dst_image: Arc<Image>) -> Self {
-        let min_array_layers = src_image
-            .dimensions()
-            .array_layers()
-            .min(dst_image.dimensions().array_layers());
+        let min_array_layers = src_image.array_layers().min(dst_image.array_layers());
         let region = ImageResolve {
             src_subresource: ImageSubresourceLayers {
                 array_layers: 0..min_array_layers,
@@ -4348,8 +4307,8 @@ impl ResolveImageInfo {
                 ..dst_image.subresource_layers()
             },
             extent: {
-                let src_extent = src_image.dimensions().width_height_depth();
-                let dst_extent = dst_image.dimensions().width_height_depth();
+                let src_extent = src_image.extent();
+                let dst_extent = dst_image.extent();
 
                 [
                     src_extent[0].min(dst_extent[0]),

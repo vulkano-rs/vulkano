@@ -13,7 +13,7 @@ use std::sync::Arc;
 use vulkano::{
     device::{Device, Queue},
     format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageUsage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     swapchain::{
         self, AcquireError, PresentMode, Surface, Swapchain, SwapchainCreateInfo,
@@ -190,7 +190,9 @@ impl VulkanoWindowRenderer {
     /// Size of the final swapchain image (surface).
     #[inline]
     pub fn swapchain_image_size(&self) -> [u32; 2] {
-        self.final_views[0].image().dimensions().width_height()
+        self.final_views[0].image().extent()[0..2]
+            .try_into()
+            .unwrap()
     }
 
     /// Return the current swapchain image view.
@@ -217,7 +219,7 @@ impl VulkanoWindowRenderer {
     }
 
     /// Resize swapchain and camera view images at the beginning of next frame based on window
-    /// dimensions.
+    /// size.
     #[inline]
     pub fn resize(&mut self) {
         self.recreate_swapchain = true;
@@ -226,13 +228,14 @@ impl VulkanoWindowRenderer {
     /// Add interim image view that resizes with window.
     #[inline]
     pub fn add_additional_image_view(&mut self, key: usize, format: Format, usage: ImageUsage) {
-        let dimensions = self.final_views[0].image().dimensions();
+        let final_view_image = self.final_views[0].image();
         let image = ImageView::new_default(
             Image::new(
                 &self.memory_allocator,
                 ImageCreateInfo {
-                    dimensions,
+                    image_type: ImageType::Dim2d,
                     format: Some(format),
+                    extent: final_view_image.extent(),
                     usage,
                     ..Default::default()
                 },
