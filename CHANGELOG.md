@@ -94,6 +94,8 @@ Changes to samplers:
 - When creating an instance or device, you only need to specify the extensions and features you actually care about. Any extensions and features that are required by the extensions that you specified are now automatically enabled too.
 - Support for the `ext_surface_maintenance1` and most of the `ext_swapchain_maintenance1` extension.
 - Added a `domain_origin` field to `TessellationState`.
+- Added the trait `InstanceOwned`.
+- Debug formatting of Vulkan objects no longer follows references to other objects, instead only printing their handles, in order to alleviate the spam.
 
 ### Bugs fixed
 
