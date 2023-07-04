@@ -628,14 +628,14 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
 
             #[inline]
             fn bitand(self, rhs: Self) -> Self::Output {
-                self.union(&rhs)
+                self.intersection(&rhs)
             }
         }
 
         impl std::ops::BitAndAssign for #struct_name {
             #[inline]
             fn bitand_assign(&mut self, rhs: Self) {
-                *self = self.union(&rhs);
+                *self = self.intersection(&rhs);
             }
         }
 
@@ -644,14 +644,14 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
 
             #[inline]
             fn bitor(self, rhs: Self) -> Self::Output {
-                self.intersection(&rhs)
+                self.union(&rhs)
             }
         }
 
         impl std::ops::BitOrAssign for #struct_name {
             #[inline]
             fn bitor_assign(&mut self, rhs: Self) {
-                *self = self.intersection(&rhs);
+                *self = self.union(&rhs);
             }
         }
 
