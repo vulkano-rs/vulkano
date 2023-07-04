@@ -102,6 +102,7 @@ Changes to samplers:
 - Fixed a bug when using `GenericMemoryAllocator` configured not to use dedicated allocation, where a dedicated allocation wasn't created even when required.
 - Fixed UB in `{AutoCommandBufferBuilder, UnsafeCommandBufferBuilder}::push_constants` where a reference to uninitialized bytes could have been created.
 - `Device::set_debug_utils_object_name` no longer exhibits use-after-free UB.
+- [#2248](https://github.com/vulkano-rs/vulkano/issues/2248): Meanings of | and & operators for extensions were swapped.
 
 # Version 0.33.0 (2023-04-01)
 
