@@ -14,6 +14,7 @@
 use crate::{
     device::{Device, DeviceOwned},
     image::{sampler::Sampler, ImageLayout},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     shader::{DescriptorBindingRequirements, ShaderStages},
     Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
@@ -26,7 +27,7 @@ use std::{collections::BTreeMap, mem::MaybeUninit, num::NonZeroU64, ptr, sync::A
 #[derive(Debug)]
 pub struct DescriptorSetLayout {
     handle: ash::vk::DescriptorSetLayout,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: DescriptorSetLayoutCreateFlags,
@@ -212,16 +213,12 @@ impl DescriptorSetLayout {
 
         Arc::new(DescriptorSetLayout {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             flags,
             bindings,
             descriptor_counts,
         })
-    }
-
-    pub(crate) fn id(&self) -> NonZeroU64 {
-        self.id
     }
 
     /// Returns the flags that the descriptor set layout was created with.

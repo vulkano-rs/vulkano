@@ -9,7 +9,7 @@
 
 use super::RenderPass;
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     image::{
         view::{ImageView, ImageViewType},
         ImageAspects, ImageType, ImageUsage,
@@ -47,11 +47,11 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct Framebuffer {
     handle: ash::vk::Framebuffer,
-    render_pass: Arc<RenderPass>,
+    render_pass: DeviceOwnedDebugWrapper<Arc<RenderPass>>,
     id: NonZeroU64,
 
     flags: FramebufferCreateFlags,
-    attachments: Vec<Arc<ImageView>>,
+    attachments: Vec<DeviceOwnedDebugWrapper<Arc<ImageView>>>,
     extent: [u32; 2],
     layers: u32,
 }
@@ -319,11 +319,14 @@ impl Framebuffer {
 
         Arc::new(Framebuffer {
             handle,
-            render_pass,
+            render_pass: DeviceOwnedDebugWrapper(render_pass),
             id: Self::next_id(),
 
             flags,
-            attachments,
+            attachments: attachments
+                .into_iter()
+                .map(DeviceOwnedDebugWrapper)
+                .collect(),
             extent,
             layers,
         })
@@ -344,7 +347,7 @@ impl Framebuffer {
     /// Returns the attachments of the framebuffer.
     #[inline]
     pub fn attachments(&self) -> &[Arc<ImageView>] {
-        &self.attachments
+        DeviceOwnedDebugWrapper::cast_slice_inner(&self.attachments)
     }
 
     /// Returns the extent (width and height) of the framebuffer.

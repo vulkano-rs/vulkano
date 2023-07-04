@@ -16,6 +16,7 @@
 use super::{Buffer, BufferCreateFlags, BufferMemory, BufferUsage};
 use crate::{
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
         allocator::{AllocationType, DeviceLayout, MemoryAlloc},
@@ -37,7 +38,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct RawBuffer {
     handle: ash::vk::Buffer,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: BufferCreateFlags,
@@ -191,7 +192,7 @@ impl RawBuffer {
 
         RawBuffer {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             flags,
             size,
@@ -267,10 +268,6 @@ impl RawBuffer {
             requires_dedicated_allocation: memory_dedicated_requirements_vk
                 .map_or(false, |dreqs| dreqs.requires_dedicated_allocation != 0),
         }
-    }
-
-    pub(crate) fn id(&self) -> NonZeroU64 {
-        self.id
     }
 
     /// Binds device memory to this buffer.

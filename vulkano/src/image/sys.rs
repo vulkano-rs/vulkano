@@ -30,6 +30,7 @@ use crate::{
         view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType,
         SparseImageFormatProperties,
     },
+    instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
         allocator::{AllocationType, DeviceLayout, MemoryAlloc, MemoryAllocatorError},
@@ -63,7 +64,7 @@ use std::{
 #[derive(Debug)]
 pub struct RawImage {
     handle: ash::vk::Image,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: ImageCreateFlags,
@@ -1057,7 +1058,7 @@ impl RawImage {
 
         RawImage {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             flags,
             dimensions,
@@ -1348,10 +1349,6 @@ impl RawImage {
                     .collect()
             }
         }
-    }
-
-    pub(crate) fn id(&self) -> NonZeroU64 {
-        self.id
     }
 
     /// Binds device memory to this image.

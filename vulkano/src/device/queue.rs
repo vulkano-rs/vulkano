@@ -15,7 +15,7 @@ use crate::{
         SubmitInfo,
     },
     image::ImageState,
-    instance::debug::DebugUtilsLabel,
+    instance::{debug::DebugUtilsLabel, InstanceOwnedDebugWrapper},
     macros::vulkan_bitflags,
     memory::{
         BindSparseInfo, SparseBufferMemoryBind, SparseImageMemoryBind, SparseImageOpaqueMemoryBind,
@@ -46,7 +46,7 @@ use std::{
 #[derive(Debug)]
 pub struct Queue {
     handle: ash::vk::Queue,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
 
     flags: QueueCreateFlags,
     queue_family_index: u32,
@@ -88,7 +88,7 @@ impl Queue {
     ) -> Arc<Self> {
         Arc::new(Queue {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             flags,
             queue_family_index,
             id,

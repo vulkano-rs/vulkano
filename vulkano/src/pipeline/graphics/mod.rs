@@ -73,9 +73,10 @@ use super::{
     PipelineLayout, PipelineShaderStageCreateInfo, StateMode,
 };
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     format::{FormatFeatures, NumericType},
     image::{ImageAspect, ImageAspects},
+    instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     pipeline::{
         graphics::{
@@ -98,12 +99,7 @@ use crate::{
 use ahash::HashMap;
 use smallvec::SmallVec;
 use std::{
-    collections::hash_map::Entry,
-    ffi::CString,
-    fmt::{Debug, Error as FmtError, Formatter},
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ptr,
+    collections::hash_map::Entry, ffi::CString, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr,
     sync::Arc,
 };
 
@@ -124,9 +120,10 @@ pub mod viewport;
 ///
 /// This object contains the shaders and the various fixed states that describe how the
 /// implementation should perform the various operations needed by a draw command.
+#[derive(Debug)]
 pub struct GraphicsPipeline {
     handle: ash::vk::Pipeline,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     // TODO: replace () with an object that describes the shaders in some way.
@@ -143,7 +140,7 @@ pub struct GraphicsPipeline {
     multisample_state: Option<MultisampleState>,
     depth_stencil_state: Option<DepthStencilState>,
     color_blend_state: Option<ColorBlendState>,
-    layout: Arc<PipelineLayout>,
+    layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,
     subpass: PipelineSubpassType,
     dynamic_state: HashMap<DynamicState, bool>,
 
@@ -1582,7 +1579,7 @@ impl GraphicsPipeline {
 
         Arc::new(Self {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
 
             shaders,
@@ -1598,7 +1595,7 @@ impl GraphicsPipeline {
             multisample_state,
             depth_stencil_state,
             color_blend_state,
-            layout,
+            layout: DeviceOwnedDebugWrapper(layout),
             subpass: render_pass.unwrap(),
             dynamic_state,
 
@@ -1734,12 +1731,6 @@ unsafe impl DeviceOwned for GraphicsPipeline {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
-    }
-}
-
-impl Debug for GraphicsPipeline {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(f, "<Vulkan graphics pipeline {:?}>", self.handle)
     }
 }
 

@@ -16,6 +16,7 @@
 use crate::{
     buffer::BufferContents,
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
     DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
     VulkanObject,
@@ -35,7 +36,7 @@ use std::{
 #[derive(Debug)]
 pub struct QueryPool {
     handle: ash::vk::QueryPool,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     query_type: QueryType,
@@ -101,7 +102,7 @@ impl QueryPool {
 
         Ok(Arc::new(QueryPool {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             query_type,
             query_count,
@@ -128,7 +129,7 @@ impl QueryPool {
 
         Arc::new(QueryPool {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             query_type,
             query_count,

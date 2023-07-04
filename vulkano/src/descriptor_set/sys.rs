@@ -20,10 +20,7 @@ use crate::{
     VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{
-    fmt::{Debug, Error as FmtError, Formatter},
-    num::NonZeroU64,
-};
+use std::{fmt::Debug, num::NonZeroU64};
 
 /// Low-level descriptor set.
 ///
@@ -32,6 +29,7 @@ use std::{
 /// Instead it is an object meant to be used with the [`DescriptorPool`].
 ///
 /// [`DescriptorPool`]: super::pool::DescriptorPool
+#[derive(Debug)]
 pub struct UnsafeDescriptorSet {
     handle: ash::vk::DescriptorSet,
     id: NonZeroU64,
@@ -168,12 +166,6 @@ unsafe impl VulkanObject for UnsafeDescriptorSet {
     #[inline]
     fn handle(&self) -> Self::Handle {
         self.handle
-    }
-}
-
-impl Debug for UnsafeDescriptorSet {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(f, "<Vulkan descriptor set {:?}>", self.handle)
     }
 }
 

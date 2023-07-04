@@ -48,12 +48,13 @@ pub mod ycbcr;
 
 use self::ycbcr::SamplerYcbcrConversion;
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     format::FormatFeatures,
     image::{
         view::{ImageView, ImageViewType},
         ImageAspects,
     },
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_enum},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
@@ -94,7 +95,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc
 #[derive(Debug)]
 pub struct Sampler {
     handle: ash::vk::Sampler,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     address_mode: [SamplerAddressMode; 3],
@@ -107,7 +108,7 @@ pub struct Sampler {
     mip_lod_bias: f32,
     mipmap_mode: SamplerMipmapMode,
     reduction_mode: SamplerReductionMode,
-    sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
+    sampler_ycbcr_conversion: Option<DeviceOwnedDebugWrapper<Arc<SamplerYcbcrConversion>>>,
     unnormalized_coordinates: bool,
 }
 
@@ -259,7 +260,7 @@ impl Sampler {
 
         Arc::new(Sampler {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             address_mode,
             anisotropy,
@@ -274,7 +275,7 @@ impl Sampler {
             mip_lod_bias,
             mipmap_mode,
             reduction_mode,
-            sampler_ycbcr_conversion,
+            sampler_ycbcr_conversion: sampler_ycbcr_conversion.map(DeviceOwnedDebugWrapper),
             unnormalized_coordinates,
         })
     }
@@ -568,7 +569,7 @@ impl Sampler {
     /// Returns a reference to the sampler YCbCr conversion of this sampler, if any.
     #[inline]
     pub fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
-        self.sampler_ycbcr_conversion.as_ref()
+        self.sampler_ycbcr_conversion.as_deref()
     }
 
     /// Returns true if the sampler uses unnormalized coordinates.

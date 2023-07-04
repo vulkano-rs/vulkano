@@ -95,6 +95,7 @@ use crate::{
     buffer::{BufferUsage, IndexBuffer, Subbuffer},
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     DeviceSize, NonZeroDeviceSize, Packed24_8, Requires, RequiresAllOf, RequiresOneOf,
     RuntimeError, ValidationError, VulkanError, VulkanObject,
@@ -105,7 +106,7 @@ use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::
 /// An opaque data structure that is used to accelerate spatial queries on geometry data.
 #[derive(Debug)]
 pub struct AccelerationStructure {
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     handle: ash::vk::AccelerationStructureKHR,
     id: NonZeroU64,
 
@@ -225,7 +226,7 @@ impl AccelerationStructure {
         } = create_info;
 
         Arc::new(Self {
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             handle,
             id: Self::next_id(),
 

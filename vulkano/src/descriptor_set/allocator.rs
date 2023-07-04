@@ -25,6 +25,7 @@ use super::{
 use crate::{
     descriptor_set::layout::{DescriptorSetLayoutCreateFlags, DescriptorType},
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     RuntimeError, VulkanError,
 };
 use crossbeam_queue::ArrayQueue;
@@ -92,7 +93,7 @@ pub trait DescriptorSetAlloc: Send + Sync {
 /// [`DescriptorPool`]: crate::descriptor_set::pool::DescriptorPool
 #[derive(Debug)]
 pub struct StandardDescriptorSetAllocator {
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     pools: ThreadLocal<UnsafeCell<SortedMap<NonZeroU64, Entry>>>,
 }
 
@@ -112,7 +113,7 @@ impl StandardDescriptorSetAllocator {
     #[inline]
     pub fn new(device: Arc<Device>) -> StandardDescriptorSetAllocator {
         StandardDescriptorSetAllocator {
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             pools: ThreadLocal::new(),
         }
     }

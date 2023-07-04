@@ -23,6 +23,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
     RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
@@ -34,7 +35,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 /// See [the documentation of the module](crate::pipeline::cache) for more info.
 #[derive(Debug)]
 pub struct PipelineCache {
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     handle: ash::vk::PipelineCache,
     id: NonZeroU64,
 
@@ -165,7 +166,7 @@ impl PipelineCache {
         } = create_info;
 
         Arc::new(PipelineCache {
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             handle,
             id: Self::next_id(),
 

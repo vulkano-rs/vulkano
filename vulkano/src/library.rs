@@ -342,8 +342,8 @@ where
 }
 
 impl Debug for dyn Loader {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        Ok(())
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        f.debug_struct("Loader").finish_non_exhaustive()
     }
 }
 

@@ -116,6 +116,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     image::sampler::{ComponentMapping, ComponentSwizzle, Filter},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_enum},
     Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
     VulkanObject,
@@ -126,7 +127,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 #[derive(Debug)]
 pub struct SamplerYcbcrConversion {
     handle: ash::vk::SamplerYcbcrConversion,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     format: Option<Format>,
@@ -251,7 +252,7 @@ impl SamplerYcbcrConversion {
 
         Arc::new(SamplerYcbcrConversion {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             format,
             ycbcr_model,

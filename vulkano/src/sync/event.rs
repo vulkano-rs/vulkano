@@ -26,6 +26,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, VulkanObject,
 };
@@ -47,7 +48,7 @@ use std::{
 #[derive(Debug)]
 pub struct Event {
     handle: ash::vk::Event,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
     must_put_in_pool: bool,
 }
@@ -91,7 +92,7 @@ impl Event {
 
         Ok(Event {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             must_put_in_pool: false,
         })
@@ -117,7 +118,7 @@ impl Event {
                 }
                 Event {
                     handle,
-                    device,
+                    device: InstanceOwnedDebugWrapper(device),
                     id: Self::next_id(),
                     must_put_in_pool: true,
                 }
@@ -147,7 +148,7 @@ impl Event {
     ) -> Event {
         Event {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             must_put_in_pool: false,
         }

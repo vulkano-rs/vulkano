@@ -44,8 +44,8 @@
 use super::{Instance, InstanceExtensions};
 use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
-    VulkanObject,
+    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use std::{
     ffi::{c_void, CStr},
@@ -64,7 +64,7 @@ pub type UserCallback = Arc<dyn Fn(&Message<'_>) + RefUnwindSafe + Send + Sync>;
 #[must_use = "The DebugUtilsMessenger object must be kept alive for as long as you want your callback to be called"]
 pub struct DebugUtilsMessenger {
     handle: ash::vk::DebugUtilsMessengerEXT,
-    instance: Arc<Instance>,
+    instance: DebugWrapper<Arc<Instance>>,
     _user_callback: Box<UserCallback>,
 }
 
@@ -148,7 +148,7 @@ impl DebugUtilsMessenger {
 
         Ok(DebugUtilsMessenger {
             handle,
-            instance,
+            instance: DebugWrapper(instance),
             _user_callback: user_callback,
         })
     }

@@ -333,6 +333,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::Format,
     image::{Image, ImageFormatInfo, ImageTiling, ImageType, ImageUsage},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     sync::Sharing,
     OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
@@ -353,10 +354,11 @@ use std::{
 };
 
 /// Contains the swapping system and the images that can be shown on a surface.
+#[derive(Debug)]
 pub struct Swapchain {
     handle: ash::vk::SwapchainKHR,
-    device: Arc<Device>,
-    surface: Arc<Surface>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
+    surface: InstanceOwnedDebugWrapper<Arc<Surface>>,
     id: NonZeroU64,
 
     flags: SwapchainCreateFlags,
@@ -1182,8 +1184,8 @@ impl Swapchain {
 
         let swapchain = Arc::new(Swapchain {
             handle,
-            device,
-            surface,
+            device: InstanceOwnedDebugWrapper(device),
+            surface: InstanceOwnedDebugWrapper(surface),
             id: Self::next_id(),
 
             flags,
@@ -1505,67 +1507,6 @@ unsafe impl DeviceOwned for Swapchain {
 }
 
 impl_id_counter!(Swapchain);
-
-impl Debug for Swapchain {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        let Self {
-            handle,
-            device,
-            surface,
-            id: _,
-
-            flags,
-            min_image_count,
-            image_format,
-            image_color_space,
-            image_extent,
-            image_array_layers,
-            image_usage,
-            image_sharing,
-            pre_transform,
-            composite_alpha,
-            present_mode,
-            present_modes,
-            clipped,
-            scaling_behavior,
-            present_gravity,
-            full_screen_exclusive,
-            win32_monitor,
-
-            prev_present_id,
-            full_screen_exclusive_held,
-            images,
-            is_retired,
-        } = self;
-
-        f.debug_struct("Swapchain")
-            .field("handle", &handle)
-            .field("device", &device.handle())
-            .field("surface", &surface.handle())
-            .field("flags", &flags)
-            .field("min_image_count", min_image_count)
-            .field("image_format", image_format)
-            .field("image_color_space", image_color_space)
-            .field("image_extent", image_extent)
-            .field("image_array_layers", image_array_layers)
-            .field("image_usage", image_usage)
-            .field("image_sharing", image_sharing)
-            .field("pre_transform", pre_transform)
-            .field("composite_alpha", composite_alpha)
-            .field("present_mode", present_mode)
-            .field("present_modes", present_modes)
-            .field("clipped", clipped)
-            .field("scaling_behavior", scaling_behavior)
-            .field("present_gravity", present_gravity)
-            .field("full_screen_exclusive", full_screen_exclusive)
-            .field("win32_monitor", win32_monitor)
-            .field("prev_present_id", prev_present_id)
-            .field("full_screen_exclusive_held", full_screen_exclusive_held)
-            .field("images", images)
-            .field("retired", is_retired)
-            .finish()
-    }
-}
 
 /// Parameters to create a new `Swapchain`.
 ///

@@ -24,21 +24,15 @@
 
 use super::{PipelineCreateFlags, PipelineShaderStageCreateInfo};
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
+    instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
     shader::{DescriptorBindingRequirements, ShaderExecution, ShaderStage},
     RuntimeError, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
-use std::{
-    ffi::CString,
-    fmt::{Debug, Error as FmtError, Formatter},
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ptr,
-    sync::Arc,
-};
+use std::{ffi::CString, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -48,11 +42,12 @@ use std::{
 /// Pass an optional `Arc` to a `PipelineCache` to enable pipeline caching. The vulkan
 /// implementation will handle the `PipelineCache` and check if it is available.
 /// Check the documentation of the `PipelineCache` for more information.
+#[derive(Debug)]
 pub struct ComputePipeline {
     handle: ash::vk::Pipeline,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
-    layout: Arc<PipelineLayout>,
+    layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
 }
@@ -217,9 +212,9 @@ impl ComputePipeline {
 
         Arc::new(ComputePipeline {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
-            layout,
+            layout: DeviceOwnedDebugWrapper(layout),
             descriptor_binding_requirements,
             num_used_descriptor_sets,
         })
@@ -253,12 +248,6 @@ impl Pipeline for ComputePipeline {
         &self,
     ) -> &HashMap<(u32, u32), DescriptorBindingRequirements> {
         &self.descriptor_binding_requirements
-    }
-}
-
-impl Debug for ComputePipeline {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(f, "<Vulkan compute pipeline {:?}>", self.handle)
     }
 }
 

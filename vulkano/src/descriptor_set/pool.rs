@@ -13,6 +13,7 @@ use crate::{
         sys::UnsafeDescriptorSet,
     },
     device::{Device, DeviceOwned},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
     Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
     VulkanObject,
@@ -28,7 +29,7 @@ use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, pt
 #[derive(Debug)]
 pub struct DescriptorPool {
     handle: ash::vk::DescriptorPool,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: DescriptorPoolCreateFlags,
@@ -146,7 +147,7 @@ impl DescriptorPool {
 
         DescriptorPool {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
 
             flags,

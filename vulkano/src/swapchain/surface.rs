@@ -13,11 +13,11 @@ use crate::{
     device::physical::PhysicalDevice,
     format::Format,
     image::ImageUsage,
-    instance::{Instance, InstanceExtensions},
+    instance::{Instance, InstanceExtensions, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
     swapchain::display::{DisplayMode, DisplayPlane},
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
-    VulkanObject,
+    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError,
+    VulkanError, VulkanObject,
 };
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
@@ -39,7 +39,7 @@ use std::{
 /// Creating a `Surface` is platform-specific.
 pub struct Surface {
     handle: ash::vk::SurfaceKHR,
-    instance: Arc<Instance>,
+    instance: DebugWrapper<Arc<Instance>>,
     id: NonZeroU64,
     api: SurfaceApi,
     object: Option<Arc<dyn Any + Send + Sync>>,
@@ -150,7 +150,7 @@ impl Surface {
     ) -> Self {
         Surface {
             handle,
-            instance,
+            instance: DebugWrapper(instance),
             id: Self::next_id(),
             api,
             object,
@@ -1342,6 +1342,30 @@ impl Surface {
     }
 }
 
+impl Debug for Surface {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        let Self {
+            handle,
+            instance,
+            id,
+            api,
+            object,
+
+            surface_formats: _,
+            surface_present_modes: _,
+            surface_support: _,
+        } = self;
+
+        f.debug_struct("Surface")
+            .field("handle", handle)
+            .field("instance", instance)
+            .field("id", id)
+            .field("api", api)
+            .field("object", object)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Drop for Surface {
     #[inline]
     fn drop(&mut self) {
@@ -1361,26 +1385,14 @@ unsafe impl VulkanObject for Surface {
     }
 }
 
-impl_id_counter!(Surface);
-
-impl Debug for Surface {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        let Self {
-            handle,
-            instance,
-            api,
-            object: _,
-            ..
-        } = self;
-
-        f.debug_struct("Surface")
-            .field("handle", handle)
-            .field("instance", instance)
-            .field("api", api)
-            .field("window", &())
-            .finish()
+unsafe impl InstanceOwned for Surface {
+    #[inline]
+    fn instance(&self) -> &Arc<Instance> {
+        &self.instance
     }
 }
+
+impl_id_counter!(Surface);
 
 /// Get sublayer from iOS main view (ui_view). The sublayer is created as `CAMetalLayer`.
 #[cfg(target_os = "ios")]

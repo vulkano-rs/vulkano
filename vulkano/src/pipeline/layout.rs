@@ -69,7 +69,8 @@ use crate::{
         DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateFlags,
         DescriptorSetLayoutCreateInfo, DescriptorType,
     },
-    device::{Device, DeviceOwned, Properties},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper, Properties},
+    instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
     shader::{DescriptorBindingRequirements, ShaderStage, ShaderStages},
     RuntimeError, ValidationError, VulkanError, VulkanObject,
@@ -92,11 +93,11 @@ use std::{
 #[derive(Debug)]
 pub struct PipelineLayout {
     handle: ash::vk::PipelineLayout,
-    device: Arc<Device>,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
     flags: PipelineLayoutCreateFlags,
-    set_layouts: Vec<Arc<DescriptorSetLayout>>,
+    set_layouts: Vec<DeviceOwnedDebugWrapper<Arc<DescriptorSetLayout>>>,
     push_constant_ranges: Vec<PushConstantRange>,
 
     push_constant_ranges_disjoint: Vec<PushConstantRange>,
@@ -240,10 +241,13 @@ impl PipelineLayout {
 
         Arc::new(PipelineLayout {
             handle,
-            device,
+            device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             flags,
-            set_layouts,
+            set_layouts: set_layouts
+                .into_iter()
+                .map(DeviceOwnedDebugWrapper)
+                .collect(),
             push_constant_ranges,
             push_constant_ranges_disjoint,
         })
@@ -258,7 +262,7 @@ impl PipelineLayout {
     /// Returns the descriptor set layouts this pipeline layout was created from.
     #[inline]
     pub fn set_layouts(&self) -> &[Arc<DescriptorSetLayout>] {
-        &self.set_layouts
+        DeviceOwnedDebugWrapper::cast_slice_inner(&self.set_layouts)
     }
 
     /// Returns a slice containing the push constant ranges this pipeline layout was created from.
